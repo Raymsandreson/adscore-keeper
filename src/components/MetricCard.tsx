@@ -13,102 +13,80 @@ interface MetricCardProps {
 }
 
 const MetricCard = ({ title, value, icon: Icon, status, benchmark, isConnected }: MetricCardProps) => {
-  const getStatusStyles = (status: string) => {
+  const getStatusBgColor = (status: string) => {
     switch (status) {
       case 'success':
-        return 'border-success/30 hover:border-success/50 bg-gradient-to-br from-success/5 to-success/10';
+        return 'bg-success/10';
       case 'warning':
-        return 'border-warning/30 hover:border-warning/50 bg-gradient-to-br from-warning/5 to-warning/10';
+        return 'bg-warning/10';
       case 'danger':
-        return 'border-danger/30 hover:border-danger/50 bg-gradient-to-br from-danger/5 to-danger/10';
+        return 'bg-danger/10';
       default:
-        return 'border-border bg-gradient-card';
+        return 'bg-muted/10';
     }
   };
 
-  const getIconStyles = (status: string) => {
+  const getStatusTextColor = (status: string) => {
     switch (status) {
       case 'success':
-        return 'text-success bg-success/10 border-success/20';
+        return 'text-success';
       case 'warning':
-        return 'text-warning bg-warning/10 border-warning/20';
+        return 'text-warning';
       case 'danger':
-        return 'text-danger bg-danger/10 border-danger/20';
+        return 'text-danger';
       default:
-        return 'text-muted-foreground bg-muted/10 border-muted/20';
+        return 'text-muted-foreground';
+    }
+  };
+
+  const getStatusClasses = (status: string) => {
+    switch (status) {
+      case 'success':
+        return 'status-success';
+      case 'warning':
+        return 'status-warning';
+      case 'danger':
+        return 'status-danger';
+      default:
+        return 'bg-muted text-muted-foreground';
     }
   };
 
   return (
-    <Card className={cn(
-      "metric-card group relative overflow-hidden transition-all duration-500 shadow-card-custom",
-      isConnected ? getStatusStyles(status) : "border-border bg-gradient-card opacity-60",
-      "hover:shadow-glow hover:-translate-y-2"
-    )}>
-      {/* Efeito de gradiente animado no hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-transparent via-primary/5 to-accent-bright/10 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-      
-      {/* Indicador de status */}
-      <div className={cn(
-        "absolute top-0 left-0 w-full h-1 transition-all duration-500",
-        isConnected && status === 'success' && "bg-gradient-success animate-shimmer",
-        isConnected && status === 'warning' && "bg-gradient-warning animate-shimmer",
-        isConnected && status === 'danger' && "bg-gradient-danger animate-shimmer",
-        !isConnected && "bg-muted/20"
-      )}></div>
-
-      <CardContent className="p-6 relative z-10">
+    <Card className="bg-gradient-card border-border shadow-card-custom metric-card relative">
+      <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "p-3 rounded-xl border transition-all duration-300 group-hover:scale-110",
-              getIconStyles(status)
+              "p-2 rounded-lg transition-colors",
+              getStatusBgColor(status)
             )}>
-              <Icon className="h-5 w-5" />
+              <Icon className={cn("h-5 w-5", getStatusTextColor(status))} />
             </div>
-            <h3 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors duration-300">
-              {title}
-            </h3>
+            <span className="text-sm font-medium text-foreground">{title}</span>
           </div>
-          
           {isConnected && (
-            <Badge className={cn(
-              "text-xs px-3 py-1 transition-all duration-300 shadow-sm",
-              status === 'success' && "bg-gradient-success text-success-foreground border-success/20",
-              status === 'warning' && "bg-gradient-warning text-warning-foreground border-warning/20", 
-              status === 'danger' && "bg-gradient-danger text-danger-foreground border-danger/20"
-            )}>
-              {status === 'success' && '🚀 Ótimo'}
-              {status === 'warning' && '⚡ Médio'}
-              {status === 'danger' && '🔥 Atenção'}
+            <Badge className={getStatusClasses(status)}>
+              {status === 'success' && '✓'}
+              {status === 'warning' && '⚠'}
+              {status === 'danger' && '✗'}
             </Badge>
           )}
         </div>
         
         <div className="space-y-3">
-          <div className={cn(
-            "text-3xl font-bold transition-all duration-500",
-            isConnected ? "group-hover:scale-105 group-hover:text-primary" : "text-transparent bg-gradient-to-r from-muted via-muted-foreground to-muted bg-clip-text animate-shimmer"
-          )}>
-            {isConnected ? value : '━━━━'}
+          <div className="text-3xl font-bold text-foreground">
+            {isConnected ? value : '—'}
           </div>
-          
-          <div className="text-xs leading-relaxed">
-            {isConnected ? (
-              <span className="text-muted-foreground">{benchmark}</span>
-            ) : (
-              <span className="flex items-center gap-2 text-warning">
-                <div className="w-1.5 h-1.5 bg-warning rounded-full animate-pulse"></div>
-                Conecte para ver dados reais
-              </span>
-            )}
+          <div className="text-sm text-muted-foreground border-t border-border pt-3">
+            {isConnected ? benchmark : "Conecte ao Meta BM para ver dados reais"}
           </div>
         </div>
-
-        {/* Indicador de conexão animado */}
+        
+        {/* Status indicator */}
         <div className={cn(
-          "absolute top-6 right-6 w-2 h-2 rounded-full transition-all duration-300",
-          isConnected ? "bg-success animate-pulse-glow shadow-[0_0_10px_hsl(var(--success))]" : "bg-muted-foreground/30"
+          "absolute top-4 right-4 w-2 h-2 rounded-full",
+          isConnected ? "bg-success" : "bg-muted-foreground/30"
         )}></div>
       </CardContent>
     </Card>
