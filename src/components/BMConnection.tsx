@@ -108,13 +108,24 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
             <div className="flex items-start gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg">
               <AlertCircle className="h-4 w-4 text-warning mt-0.5" />
               <div className="text-sm">
-                <strong>Como obter seus dados:</strong>
-                <ol className="mt-1 ml-4 list-decimal text-xs text-muted-foreground">
-                  <li>Acesse o Meta Business Manager</li>
-                  <li>Vá em Configurações → Usuários do sistema</li>
-                  <li>Gere um Access Token com permissões de leitura</li>
-                  <li>Copie o ID da sua conta de anúncios</li>
-                </ol>
+                <strong>ℹ️ Modo de Demonstração Ativo</strong>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  🔄 Sistema funcionando com dados simulados realistas<br/>
+                  📊 Métricas são atualizadas automaticamente<br/>
+                  🚀 Para dados reais, configure um backend/proxy para contornar limitações de CORS
+                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs font-medium hover:text-primary">
+                    📋 Como obter dados reais do Meta BM
+                  </summary>
+                  <ol className="mt-1 ml-4 list-decimal text-xs text-muted-foreground">
+                    <li>Acesse o Meta Business Manager</li>
+                    <li>Vá em Configurações → Usuários do sistema</li>
+                    <li>Gere um Access Token com permissões: ads_read, ads_management</li>
+                    <li>Copie o ID da sua conta de anúncios (formato: act_123456789)</li>
+                    <li>Configure um servidor backend para fazer as requisições à API</li>
+                  </ol>
+                </details>
               </div>
             </div>
             
@@ -154,7 +165,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
                 ) : (
                   <>
                     <Wifi className="h-4 w-4 group-hover:animate-pulse" />
-                    Conectar ao Meta BM
+                    Testar Conexão (Demo)
                   </>
                 )}
               </span>
@@ -176,10 +187,10 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium flex items-center gap-2">
                     <div className="w-2 h-2 bg-success rounded-full animate-pulse-glow"></div>
-                    Status: Coletando dados reais da Meta API
+                    Status: Simulando dados reais da Meta API
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    🔄 Atualização automática a cada 30 segundos
+                    🎯 Dados simulados atualizados a cada 30 segundos | ✨ Experiência realista completa
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -205,7 +216,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
             </div>
             
             <div className="text-xs text-muted-foreground">
-              <strong>Conta conectada:</strong> {accountId} | <strong>Intervalo de atualização:</strong> 3 segundos
+              <strong>Modo Demonstração:</strong> {accountId} | <strong>Simulação:</strong> Dados realistas atualizados automaticamente
             </div>
           </div>
         )}

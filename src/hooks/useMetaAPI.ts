@@ -31,6 +31,7 @@ export const useMetaAPI = () => {
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
 
   const connectToMeta = useCallback(async (apiConfig: MetaAPIConfig): Promise<boolean> => {
+    console.log('🚀 Iniciando conexão com Meta API...', { accessToken: apiConfig.accessToken.substring(0, 10) + '...', accountId: apiConfig.accountId });
     setIsLoading(true);
     setError(null);
 
@@ -41,26 +42,31 @@ export const useMetaAPI = () => {
       }
 
       // Validar token
+      console.log('🔑 Validando token...');
       const isTokenValid = await metaAPIService.validateToken(apiConfig.accessToken);
       if (!isTokenValid) {
         throw new Error('Access Token inválido. Verifique se tem as permissões: ads_read, ads_management, business_management');
       }
 
       // Validar conta
+      console.log('🏢 Validando conta...');
       const isAccountValid = await metaAPIService.validateAccount(apiConfig.accessToken, apiConfig.accountId);
       if (!isAccountValid) {
         throw new Error('Account ID inválido ou conta inativa. Use o formato: act_123456789');
       }
 
       // Buscar dados iniciais
+      console.log('📊 Buscando dados iniciais...');
       const initialData = await metaAPIService.getAdInsights(apiConfig);
       
       setConfig(apiConfig);
       setMetrics(initialData);
       setIsConnected(true);
+      console.log('✅ Conexão estabelecida com sucesso!');
       return true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido na conexão';
+      console.error('❌ Erro na conexão:', errorMessage);
       setError(errorMessage);
       setIsConnected(false);
       return false;
