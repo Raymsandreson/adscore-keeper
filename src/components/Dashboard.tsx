@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
+import SegmentAnalysis from "./SegmentAnalysis";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 
@@ -114,6 +115,9 @@ const Dashboard = () => {
 
         {/* Benchmark Reference Table */}
         <BenchmarkTable />
+
+        {/* Segment Analysis */}
+        <SegmentAnalysis />
       </div>
     </div>
   );
