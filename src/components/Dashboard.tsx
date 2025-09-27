@@ -38,16 +38,26 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-dashboard p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+    <div className="min-h-screen bg-gradient-dashboard p-4 md:p-8 overflow-hidden relative">
+      {/* Partículas de fundo animadas */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-10 left-10 w-2 h-2 bg-primary/20 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+        <div className="absolute top-20 right-20 w-1 h-1 bg-accent-bright/30 rounded-full animate-bounce" style={{animationDelay: '1s'}}></div>
+        <div className="absolute bottom-20 left-1/4 w-1.5 h-1.5 bg-neon-purple/25 rounded-full animate-bounce" style={{animationDelay: '2s'}}></div>
+        <div className="absolute bottom-32 right-1/3 w-1 h-1 bg-success/20 rounded-full animate-bounce" style={{animationDelay: '1.5s'}}></div>
+        <div className="absolute top-1/3 left-1/3 w-1 h-1 bg-warning/25 rounded-full animate-bounce" style={{animationDelay: '0.5s'}}></div>
+      </div>
+
+      <div className="max-w-7xl mx-auto space-y-8 relative z-10">
+        {/* Header com animação */}
+        <div className="text-center space-y-4 animate-fade-in-up">
+          <h1 className="text-4xl md:text-6xl font-bold gradient-text mb-4 tracking-tight">
             Dashboard de Marketing
           </h1>
-          <p className="text-muted-foreground text-lg">
-            Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
+          <p className="text-muted-foreground text-lg md:text-xl animate-slide-in-right animation-delay-300 max-w-3xl mx-auto">
+            🚀 Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
           </p>
+          <div className="w-24 h-1 bg-gradient-primary mx-auto rounded-full animate-bounce-in animation-delay-500 shadow-glow"></div>
         </div>
 
         {/* Connection Status */}
@@ -55,8 +65,9 @@ const Dashboard = () => {
           onConnectionChange={setIsConnected}
         />
 
-        {/* Metrics Grid */}
+        {/* Metrics Grid com animações escalonadas */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Cada MetricCard receberá a classe metric-card automaticamente */}
           <MetricCard
             title="CPC - Custo por Clique"
             value={`R$ ${metrics.cpc.toFixed(2)}`}

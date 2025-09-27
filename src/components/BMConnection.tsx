@@ -68,22 +68,36 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
   };
 
   return (
-    <Card className="bg-gradient-card border-border shadow-card-custom">
-      <CardHeader>
+    <Card className="bg-gradient-card border-border shadow-card-custom animate-fade-in-up group overflow-hidden relative">
+      {/* Efeito de borda animada */}
+      <div className={`absolute inset-0 rounded-lg p-[1px] ${
+        isConnected 
+          ? 'bg-gradient-success animate-gradient-move' 
+          : 'bg-gradient-to-r from-border to-muted'
+      }`}>
+        <div className="h-full w-full rounded-[calc(0.75rem-1px)] bg-gradient-card"></div>
+      </div>
+      
+      <CardHeader className="relative z-10">
         <CardTitle className="flex items-center gap-3">
           {isConnected ? (
             <>
-              <Wifi className="h-6 w-6 text-success animate-pulse" />
-              <span>Meta Business Manager</span>
-              <Badge variant="default" className="bg-success text-success-foreground">
-                Conectado
+              <div className="relative">
+                <Wifi className="h-6 w-6 text-success animate-pulse" />
+                <div className="absolute -inset-1 bg-success/20 rounded-full animate-pulse-glow"></div>
+              </div>
+              <span className="group-hover:text-success transition-colors duration-300">Meta Business Manager</span>
+              <Badge className="bg-gradient-success text-success-foreground shadow-success animate-bounce-in">
+                ✅ Conectado
               </Badge>
             </>
           ) : (
             <>
-              <WifiOff className="h-6 w-6 text-muted-foreground" />
+              <WifiOff className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
               <span>Meta Business Manager</span>
-              <Badge variant="secondary">Desconectado</Badge>
+              <Badge variant="secondary" className="group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
+                ⚡ Desconectado
+              </Badge>
             </>
           )}
         </CardTitle>
@@ -129,9 +143,21 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
             <Button 
               onClick={handleConnect}
               disabled={isLoading}
-              className="w-full"
+              className="w-full bg-gradient-primary hover:shadow-glow transition-all duration-300 hover:scale-105 group"
             >
-              {isLoading ? "Conectando..." : "Conectar ao Meta BM"}
+              <span className="flex items-center gap-2">
+                {isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-primary-foreground/20 border-t-primary-foreground rounded-full animate-spin"></div>
+                    Conectando...
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="h-4 w-4 group-hover:animate-pulse" />
+                    Conectar ao Meta BM
+                  </>
+                )}
+              </span>
             </Button>
             
             {error && (
@@ -142,19 +168,39 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-success/10 border border-success/20 rounded-lg">
-              <div>
-                <p className="text-sm font-medium">Status: Coletando dados reais da Meta API</p>
-                <p className="text-xs text-muted-foreground">Atualização automática a cada 30 segundos</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleRefresh}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Atualizar
-                </Button>
-                <Button variant="destructive" size="sm" onClick={handleDisconnect}>
-                  Desconectar
-                </Button>
+            <div className="relative p-4 bg-success/10 border border-success/20 rounded-lg overflow-hidden animate-slide-in-right">
+              {/* Efeito de brilho animado */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-success/5 to-transparent -translate-x-full animate-shimmer"></div>
+              
+              <div className="flex items-center justify-between relative z-10">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <div className="w-2 h-2 bg-success rounded-full animate-pulse-glow"></div>
+                    Status: Coletando dados reais da Meta API
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    🔄 Atualização automática a cada 30 segundos
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRefresh}
+                    className="hover:bg-success/10 hover:border-success hover:text-success transition-all duration-300 hover:scale-105"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Atualizar
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    onClick={handleDisconnect}
+                    className="bg-gradient-danger hover:shadow-danger transition-all duration-300 hover:scale-105"
+                  >
+                    Desconectar
+                  </Button>
+                </div>
               </div>
             </div>
             

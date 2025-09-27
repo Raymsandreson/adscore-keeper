@@ -38,24 +38,37 @@ All colors MUST be HSL.
 
     --radius: 0.75rem;
 
-    /* Performance Colors */
-    --success: 142 76% 36%;
+    /* Performance Colors - Mais vibrantes */
+    --success: 142 85% 45%;
     --success-foreground: 355 7% 97%;
-    --warning: 38 92% 50%;
+    --warning: 38 100% 55%;
     --warning-foreground: 20 14% 4%;
-    --danger: 0 84% 60%;
+    --danger: 0 90% 65%;
     --danger-foreground: 210 40% 98%;
 
-    /* Gradients */
-    --gradient-dashboard: linear-gradient(135deg, hsl(var(--background)), hsl(222 47% 12%));
-    --gradient-card: linear-gradient(135deg, hsl(var(--card)), hsl(222 47% 12%));
-    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 30%));
-    --gradient-warning: linear-gradient(135deg, hsl(var(--warning)), hsl(38 92% 45%));
-    --gradient-danger: linear-gradient(135deg, hsl(var(--danger)), hsl(0 84% 55%));
+    /* Cores adicionais para dinamismo */
+    --primary-glow: 221 83% 70%;
+    --accent-bright: 280 100% 70%;
+    --neon-blue: 200 100% 60%;
+    --neon-purple: 280 100% 65%;
 
-    /* Shadows */
-    --shadow-metric: 0 4px 20px -4px hsl(var(--primary) / 0.3);
-    --shadow-card: 0 8px 25px -8px hsl(0 0% 0% / 0.4);
+    /* Gradientes dinâmicos e modernos */
+    --gradient-dashboard: linear-gradient(135deg, hsl(var(--background)), hsl(230 25% 18%), hsl(220 30% 5%));
+    --gradient-card: linear-gradient(135deg, hsl(var(--card)), hsl(222 50% 15%), hsl(222 47% 8%));
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 85% 35%), hsl(142 90% 60%));
+    --gradient-warning: linear-gradient(135deg, hsl(var(--warning)), hsl(38 100% 45%), hsl(45 100% 65%));
+    --gradient-danger: linear-gradient(135deg, hsl(var(--danger)), hsl(0 90% 55%), hsl(10 100% 70%));
+    --gradient-glow: linear-gradient(135deg, hsl(var(--neon-blue)), hsl(var(--neon-purple)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent-bright)) 50%, hsl(var(--primary-glow)) 100%);
+
+    /* Sombras elegantes com glow */
+    --shadow-metric: 0 8px 32px -8px hsl(var(--primary) / 0.25), 0 0 0 1px hsl(var(--primary) / 0.05);
+    --shadow-card: 0 10px 40px -10px hsl(0 0% 0% / 0.3), 0 0 0 1px hsl(var(--border) / 0.8);
+    --shadow-glow: 0 0 50px -12px hsl(var(--primary) / 0.4);
+    --shadow-success: 0 8px 32px -8px hsl(var(--success) / 0.3);
+    --shadow-warning: 0 8px 32px -8px hsl(var(--warning) / 0.3);
+    --shadow-danger: 0 8px 32px -8px hsl(var(--danger) / 0.3);
 
     --radius: 0.75rem;
 
@@ -122,5 +135,116 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Animações suaves para cards */
+  .metric-card {
+    @apply transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-glow;
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  .metric-card:nth-child(1) { animation-delay: 0.1s; }
+  .metric-card:nth-child(2) { animation-delay: 0.2s; }
+  .metric-card:nth-child(3) { animation-delay: 0.3s; }
+  .metric-card:nth-child(4) { animation-delay: 0.4s; }
+  .metric-card:nth-child(5) { animation-delay: 0.5s; }
+  .metric-card:nth-child(6) { animation-delay: 0.6s; }
+
+  /* Efeito de pulso para status conectado */
+  .pulse-success {
+    animation: pulseGlow 2s ease-in-out infinite;
+  }
+
+  /* Transições de loading */
+  .loading-shimmer {
+    background: linear-gradient(90deg, 
+      hsl(var(--muted)) 25%, 
+      hsl(var(--muted-foreground) / 0.1) 50%, 
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Gradiente animado para títulos */
+  .gradient-text {
+    background: var(--gradient-hero);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientMove 3s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  /* Animações personalizadas */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(var(--success) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(var(--success) / 0.6);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  @keyframes gradientMove {
+    0%, 100% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+  }
+
+  @keyframes bounceIn {
+    from {
+      opacity: 0;
+      transform: scale(0.3);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    70% {
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(50px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 }
