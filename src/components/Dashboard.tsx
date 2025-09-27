@@ -1,47 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-react";
-
-interface Metrics {
-  cpc: number;
-  ctr: number;
-  cpm: number;
-  conversionRate: number;
-  hookRate: number;
-  spend: number;
-}
+import { useMetaAPI } from "@/hooks/useMetaAPI";
 
 const Dashboard = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const [metrics, setMetrics] = useState<Metrics>({
-    cpc: 2.15,
-    ctr: 1.8,
-    cpm: 25.50,
-    conversionRate: 2.4,
-    hookRate: 28,
-    spend: 1250.75
-  });
-
-  // Simular dados em tempo real quando conectado
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        cpc: prev.cpc + (Math.random() - 0.5) * 0.1,
-        ctr: Math.max(0.1, prev.ctr + (Math.random() - 0.5) * 0.2),
-        cpm: Math.max(1, prev.cpm + (Math.random() - 0.5) * 2),
-        conversionRate: Math.max(0.1, prev.conversionRate + (Math.random() - 0.5) * 0.3),
-        hookRate: Math.max(5, Math.min(60, prev.hookRate + (Math.random() - 0.5) * 3)),
-        spend: prev.spend + Math.random() * 10
-      }));
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isConnected]);
+  const { metrics } = useMetaAPI();
 
   const getPerformanceStatus = (value: number, metric: string) => {
     switch (metric) {
@@ -85,7 +52,6 @@ const Dashboard = () => {
 
         {/* Connection Status */}
         <BMConnection 
-          isConnected={isConnected}
           onConnectionChange={setIsConnected}
         />
 

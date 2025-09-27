@@ -4,19 +4,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff, Settings, AlertCircle } from "lucide-react";
+import { Wifi, WifiOff, Settings, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useMetaAPI } from "@/hooks/useMetaAPI";
 
 interface BMConnectionProps {
-  isConnected: boolean;
   onConnectionChange: (connected: boolean) => void;
 }
 
-const BMConnection = ({ isConnected, onConnectionChange }: BMConnectionProps) => {
+const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
   const [accessToken, setAccessToken] = useState("");
   const [accountId, setAccountId] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
+  const { isConnected, isLoading, error, connectToMeta, disconnect, refreshMetrics } = useMetaAPI();
 
   const handleConnect = async () => {
     if (!accessToken.trim() || !accountId.trim()) {
@@ -28,26 +28,42 @@ const BMConnection = ({ isConnected, onConnectionChange }: BMConnectionProps) =>
       return;
     }
 
-    setIsConnecting(true);
-    
-    // Simular conexão com delay
-    setTimeout(() => {
+    const success = await connectToMeta({
+      accessToken: accessToken.trim(),
+      accountId: accountId.trim()
+    });
+
+    if (success) {
       onConnectionChange(true);
-      setIsConnecting(false);
       toast({
         title: "✅ Conectado com sucesso!",
-        description: "Dados do Meta Business Manager sendo coletados em tempo real",
+        description: "Dados reais do Meta Business Manager sendo coletados",
       });
-    }, 2000);
+    } else {
+      toast({
+        title: "❌ Erro na conexão",
+        description: error || "Verifique suas credenciais",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDisconnect = () => {
+    disconnect();
     onConnectionChange(false);
     setAccessToken("");
     setAccountId("");
     toast({
       title: "Desconectado",
       description: "Conexão com Meta Business Manager encerrada",
+    });
+  };
+
+  const handleRefresh = async () => {
+    await refreshMetrics();
+    toast({
+      title: "Dados atualizados",
+      description: "Métricas foram atualizadas com sucesso",
     });
   };
 
@@ -112,23 +128,29 @@ const BMConnection = ({ isConnected, onConnectionChange }: BMConnectionProps) =>
             
             <Button 
               onClick={handleConnect}
-              disabled={isConnecting}
+              disabled={isLoading}
               className="w-full"
             >
-              {isConnecting ? "Conectando..." : "Conectar ao Meta BM"}
+              {isLoading ? "Conectando..." : "Conectar ao Meta BM"}
             </Button>
+            
+            {error && (
+              <div className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-lg p-3">
+                <strong>Erro:</strong> {error}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-success/10 border border-success/20 rounded-lg">
               <div>
-                <p className="text-sm font-medium">Status: Coletando dados em tempo real</p>
-                <p className="text-xs text-muted-foreground">Última atualização: agora</p>
+                <p className="text-sm font-medium">Status: Coletando dados reais da Meta API</p>
+                <p className="text-xs text-muted-foreground">Atualização automática a cada 30 segundos</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurar
+                <Button variant="outline" size="sm" onClick={handleRefresh}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Atualizar
                 </Button>
                 <Button variant="destructive" size="sm" onClick={handleDisconnect}>
                   Desconectar
