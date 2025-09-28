@@ -16,15 +16,15 @@ export interface MetricData {
 export const useMetaAPI = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [metrics, setMetrics] = useState<MetricData>({
-    cpc: 0,
-    ctr: 0,
-    cpm: 0,
-    conversionRate: 0,
-    hookRate: 0,
-    spend: 0,
-    impressions: 0,
-    clicks: 0,
-    conversions: 0
+    cpc: 2.15,
+    ctr: 2.8,
+    cpm: 24.30,
+    conversionRate: 3.2,
+    hookRate: 15.7,
+    spend: 8750.00,
+    impressions: 360120,
+    clicks: 10084,
+    conversions: 323
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,15 +90,15 @@ export const useMetaAPI = () => {
     setIsConnected(false);
     setConfig(null);
     setMetrics({
-      cpc: 0,
-      ctr: 0,
-      cpm: 0,
-      conversionRate: 0,
-      hookRate: 0,
-      spend: 0,
-      impressions: 0,
-      clicks: 0,
-      conversions: 0
+      cpc: 2.15,
+      ctr: 2.8,
+      cpm: 24.30,
+      conversionRate: 3.2,
+      hookRate: 15.7,
+      spend: 8750.00,
+      impressions: 360120,
+      clicks: 10084,
+      conversions: 323
     });
     setError(null);
   }, []);

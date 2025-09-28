@@ -65,6 +65,42 @@ const SegmentAnalysis = () => {
       impressions: 12580,
       clicks: 151,
       conversions: 2
+    },
+    {
+      id: "creative_4",
+      name: "Vídeo Testemunhal",
+      cpc: 1.65,
+      ctr: 3.1,
+      cpm: 19.80,
+      conversionRate: 4.8,
+      spend: 2150.00,
+      impressions: 108590,
+      clicks: 3366,
+      conversions: 162
+    },
+    {
+      id: "creative_5",
+      name: "Imagem Estática - Desconto",
+      cpc: 2.95,
+      ctr: 1.4,
+      cpm: 31.20,
+      conversionRate: 1.9,
+      spend: 680.00,
+      impressions: 21795,
+      clicks: 305,
+      conversions: 6
+    },
+    {
+      id: "creative_6",
+      name: "GIF Animado - Produto",
+      cpc: 2.20,
+      ctr: 2.6,
+      cpm: 25.40,
+      conversionRate: 3.7,
+      spend: 1540.00,
+      impressions: 60630,
+      clicks: 1576,
+      conversions: 58
     }
   ];
 
@@ -105,6 +141,54 @@ const SegmentAnalysis = () => {
       impressions: 68992,
       clicks: 2415,
       conversions: 125
+    },
+    {
+      id: "audience_4",
+      name: "Lookalike 3% - Engajamento",
+      cpc: 2.45,
+      ctr: 2.2,
+      cpm: 26.90,
+      conversionRate: 2.6,
+      spend: 1320.00,
+      impressions: 49070,
+      clicks: 1079,
+      conversions: 28
+    },
+    {
+      id: "audience_5",
+      name: "Interesses - Beleza e Cuidados",
+      cpc: 1.80,
+      ctr: 3.2,
+      cpm: 16.50,
+      conversionRate: 3.9,
+      spend: 1650.00,
+      impressions: 100000,
+      clicks: 3200,
+      conversions: 125
+    },
+    {
+      id: "audience_6",
+      name: "Custom - Base de Leads",
+      cpc: 1.35,
+      ctr: 4.1,
+      cpm: 14.20,
+      conversionRate: 6.8,
+      spend: 950.00,
+      impressions: 66900,
+      clicks: 2743,
+      conversions: 187
+    },
+    {
+      id: "audience_7",
+      name: "Comportamental - Compras Online",
+      cpc: 2.65,
+      ctr: 1.9,
+      cpm: 29.40,
+      conversionRate: 2.3,
+      spend: 780.00,
+      impressions: 26530,
+      clicks: 504,
+      conversions: 12
     }
   ];
 
@@ -133,6 +217,78 @@ const SegmentAnalysis = () => {
       impressions: 23552,
       clicks: 495,
       conversions: 15
+    },
+    {
+      id: "keyword_3",
+      name: "blusa feminina",
+      cpc: 1.35,
+      ctr: 4.1,
+      cpm: 12.80,
+      conversionRate: 5.2,
+      spend: 320.00,
+      impressions: 25000,
+      clicks: 1025,
+      conversions: 53
+    },
+    {
+      id: "keyword_4",
+      name: "calça jeans feminina",
+      cpc: 2.10,
+      ctr: 2.8,
+      cpm: 21.50,
+      conversionRate: 3.8,
+      spend: 580.00,
+      impressions: 26980,
+      clicks: 755,
+      conversions: 29
+    },
+    {
+      id: "keyword_5",
+      name: "sapato feminino",
+      cpc: 2.95,
+      ctr: 1.7,
+      cpm: 33.20,
+      conversionRate: 2.1,
+      spend: 420.00,
+      impressions: 12650,
+      clicks: 215,
+      conversions: 5
+    },
+    {
+      id: "keyword_6",
+      name: "bolsa feminina",
+      cpc: 1.55,
+      ctr: 3.6,
+      cpm: 14.90,
+      conversionRate: 4.2,
+      spend: 390.00,
+      impressions: 26180,
+      clicks: 943,
+      conversions: 40
+    },
+    {
+      id: "keyword_7",
+      name: "moda feminina",
+      cpc: 3.40,
+      ctr: 1.3,
+      cpm: 38.50,
+      conversionRate: 1.8,
+      spend: 510.00,
+      impressions: 13240,
+      clicks: 172,
+      conversions: 3
+    },
+    {
+      id: "keyword_8",
+      name: "roupas femininas online",
+      cpc: 1.90,
+      ctr: 2.9,
+      cpm: 19.20,
+      conversionRate: 3.5,
+      spend: 640.00,
+      impressions: 33330,
+      clicks: 966,
+      conversions: 34
     }
   ];
 
