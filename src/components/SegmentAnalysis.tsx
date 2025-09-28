@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, TrendingDown, TrendingUp } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, ExternalLink, Eye } from "lucide-react";
 
 interface SegmentData {
   id: string;
@@ -16,6 +16,9 @@ interface SegmentData {
   impressions: number;
   clicks: number;
   conversions: number;
+  imageUrl?: string;
+  previewUrl?: string;
+  type?: 'creative' | 'audience' | 'keyword';
 }
 
 interface AIsuggestion {
@@ -40,7 +43,10 @@ const SegmentAnalysis = () => {
       spend: 1250.00,
       impressions: 43850,
       clicks: 789,
-      conversions: 17
+      conversions: 17,
+      imageUrl: "https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/123456",
+      type: 'creative'
     },
     {
       id: "creative_2", 
@@ -52,7 +58,10 @@ const SegmentAnalysis = () => {
       spend: 980.50,
       impressions: 44350,
       clicks: 1065,
-      conversions: 34
+      conversions: 34,
+      imageUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/234567",
+      type: 'creative'
     },
     {
       id: "creative_3",
@@ -64,7 +73,10 @@ const SegmentAnalysis = () => {
       spend: 450.00,
       impressions: 12580,
       clicks: 151,
-      conversions: 2
+      conversions: 2,
+      imageUrl: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/345678",
+      type: 'creative'
     },
     {
       id: "creative_4",
@@ -76,7 +88,10 @@ const SegmentAnalysis = () => {
       spend: 2150.00,
       impressions: 108590,
       clicks: 3366,
-      conversions: 162
+      conversions: 162,
+      imageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/456789",
+      type: 'creative'
     },
     {
       id: "creative_5",
@@ -88,7 +103,10 @@ const SegmentAnalysis = () => {
       spend: 680.00,
       impressions: 21795,
       clicks: 305,
-      conversions: 6
+      conversions: 6,
+      imageUrl: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/567890",
+      type: 'creative'
     },
     {
       id: "creative_6",
@@ -100,7 +118,10 @@ const SegmentAnalysis = () => {
       spend: 1540.00,
       impressions: 60630,
       clicks: 1576,
-      conversions: 58
+      conversions: 58,
+      imageUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&h=200&fit=crop",
+      previewUrl: "https://facebook.com/ads/library/preview/678901",
+      type: 'creative'
     }
   ];
 
@@ -116,7 +137,8 @@ const SegmentAnalysis = () => {
       spend: 2100.00,
       impressions: 114130,
       clicks: 3195,
-      conversions: 131
+      conversions: 131,
+      type: 'audience'
     },
     {
       id: "audience_2",
@@ -128,7 +150,8 @@ const SegmentAnalysis = () => {
       spend: 1580.30,
       impressions: 63720,
       clicks: 1338,
-      conversions: 37
+      conversions: 37,
+      type: 'audience'
     },
     {
       id: "audience_3",
@@ -140,7 +163,8 @@ const SegmentAnalysis = () => {
       spend: 890.00,
       impressions: 68992,
       clicks: 2415,
-      conversions: 125
+      conversions: 125,
+      type: 'audience'
     },
     {
       id: "audience_4",
@@ -152,7 +176,8 @@ const SegmentAnalysis = () => {
       spend: 1320.00,
       impressions: 49070,
       clicks: 1079,
-      conversions: 28
+      conversions: 28,
+      type: 'audience'
     },
     {
       id: "audience_5",
@@ -164,7 +189,8 @@ const SegmentAnalysis = () => {
       spend: 1650.00,
       impressions: 100000,
       clicks: 3200,
-      conversions: 125
+      conversions: 125,
+      type: 'audience'
     },
     {
       id: "audience_6",
@@ -176,7 +202,8 @@ const SegmentAnalysis = () => {
       spend: 950.00,
       impressions: 66900,
       clicks: 2743,
-      conversions: 187
+      conversions: 187,
+      type: 'audience'
     },
     {
       id: "audience_7",
@@ -188,7 +215,8 @@ const SegmentAnalysis = () => {
       spend: 780.00,
       impressions: 26530,
       clicks: 504,
-      conversions: 12
+      conversions: 12,
+      type: 'audience'
     }
   ];
 
@@ -204,7 +232,8 @@ const SegmentAnalysis = () => {
       spend: 450.00,
       impressions: 28846,
       clicks: 923,
-      conversions: 42
+      conversions: 42,
+      type: 'keyword'
     },
     {
       id: "keyword_2",
@@ -216,7 +245,8 @@ const SegmentAnalysis = () => {
       spend: 680.50,
       impressions: 23552,
       clicks: 495,
-      conversions: 15
+      conversions: 15,
+      type: 'keyword'
     },
     {
       id: "keyword_3",
@@ -228,7 +258,8 @@ const SegmentAnalysis = () => {
       spend: 320.00,
       impressions: 25000,
       clicks: 1025,
-      conversions: 53
+      conversions: 53,
+      type: 'keyword'
     },
     {
       id: "keyword_4",
@@ -240,7 +271,8 @@ const SegmentAnalysis = () => {
       spend: 580.00,
       impressions: 26980,
       clicks: 755,
-      conversions: 29
+      conversions: 29,
+      type: 'keyword'
     },
     {
       id: "keyword_5",
@@ -252,7 +284,8 @@ const SegmentAnalysis = () => {
       spend: 420.00,
       impressions: 12650,
       clicks: 215,
-      conversions: 5
+      conversions: 5,
+      type: 'keyword'
     },
     {
       id: "keyword_6",
@@ -264,7 +297,8 @@ const SegmentAnalysis = () => {
       spend: 390.00,
       impressions: 26180,
       clicks: 943,
-      conversions: 40
+      conversions: 40,
+      type: 'keyword'
     },
     {
       id: "keyword_7",
@@ -276,7 +310,8 @@ const SegmentAnalysis = () => {
       spend: 510.00,
       impressions: 13240,
       clicks: 172,
-      conversions: 3
+      conversions: 3,
+      type: 'keyword'
     },
     {
       id: "keyword_8",
@@ -288,7 +323,8 @@ const SegmentAnalysis = () => {
       spend: 640.00,
       impressions: 33330,
       clicks: 966,
-      conversions: 34
+      conversions: 34,
+      type: 'keyword'
     }
   ];
 
@@ -353,6 +389,29 @@ const SegmentAnalysis = () => {
 
   const SegmentCard = ({ segment, onClick }: { segment: SegmentData; onClick: () => void }) => (
     <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
+      {segment.imageUrl && segment.type === 'creative' && (
+        <div className="relative">
+          <img 
+            src={segment.imageUrl} 
+            alt={segment.name}
+            className="w-full h-32 object-cover rounded-t-lg"
+          />
+          {segment.previewUrl && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="absolute top-2 right-2 h-7 px-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(segment.previewUrl, '_blank');
+              }}
+            >
+              <Eye className="h-3 w-3 mr-1" />
+              Preview
+            </Button>
+          )}
+        </div>
+      )}
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium text-gray-900">{segment.name}</CardTitle>
       </CardHeader>
@@ -381,10 +440,25 @@ const SegmentAnalysis = () => {
             <span className="font-medium">R$ {segment.spend.toFixed(0)}</span>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="w-full text-xs">
-          <Lightbulb className="h-3 w-3 mr-1" />
-          Ver Sugestões IA
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="flex-1 text-xs">
+            <Lightbulb className="h-3 w-3 mr-1" />
+            Ver Sugestões IA
+          </Button>
+          {segment.previewUrl && segment.type === 'creative' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="px-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(segment.previewUrl, '_blank');
+              }}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
