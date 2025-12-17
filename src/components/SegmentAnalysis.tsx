@@ -4,10 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users, Pause, Play, Settings2 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
+import { useCampaignManager } from "@/hooks/useCampaignManager";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -28,6 +29,8 @@ interface SegmentAnalysisProps {
 
 const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeChange, isLoading, onRefresh }: SegmentAnalysisProps) => {
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const { updateStatus } = useCampaignManager();
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
     const suggestions: AIsuggestion[] = [];
@@ -169,84 +172,179 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     return 'ad';
   };
 
-  const ItemCard = ({ item }: { item: CampaignInsight }) => (
-    <Card 
-      className="hover:shadow-md transition-all border-border/50 hover:border-primary/30"
-    >
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2 flex-1 min-w-0">
-            {item.type === 'campaign' ? (
-              <Target className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            ) : item.type === 'adset' ? (
-              <Users className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            ) : (
-              <Megaphone className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-            )}
-            <CardTitle className="text-sm font-medium leading-tight truncate">{item.name}</CardTitle>
+  const getRecommendation = (item: CampaignInsight): { action: 'pause' | 'optimize' | 'scale' | 'monitor', label: string, variant: 'destructive' | 'secondary' | 'default', urgent: boolean } => {
+    // Pausar: CTR muito baixo ou ROI negativo
+    if (item.ctr < 1.0 || (item.spend > 300 && item.conversions < 2)) {
+      return { action: 'pause', label: 'Pausar', variant: 'destructive', urgent: true };
+    }
+    // Escalar: Ótima performance
+    if (item.ctr > 2.5 && item.conversionRate > 3.5 && item.cpc < 2.0) {
+      return { action: 'scale', label: 'Escalar', variant: 'default', urgent: false };
+    }
+    // Otimizar: Performance média
+    if (item.ctr < 2.0 || item.conversionRate < 3.0) {
+      return { action: 'optimize', label: 'Otimizar', variant: 'secondary', urgent: false };
+    }
+    // Manter
+    return { action: 'monitor', label: 'Manter', variant: 'default', urgent: false };
+  };
+
+  const handleDirectAction = async (item: CampaignInsight, action: 'pause' | 'activate') => {
+    setActionLoading(item.id);
+    const entityType = getEntityType(item);
+    const result = await updateStatus(item.id, entityType, action === 'pause' ? 'PAUSED' : 'ACTIVE');
+    setActionLoading(null);
+    if (result.success) {
+      onRefresh?.();
+    }
+  };
+
+  const ItemCard = ({ item }: { item: CampaignInsight }) => {
+    const recommendation = getRecommendation(item);
+    const isActive = item.status === 'ACTIVE' || !item.status;
+    const isLoadingThis = actionLoading === item.id;
+    
+    return (
+      <Card 
+        className={`hover:shadow-md transition-all border-border/50 hover:border-primary/30 ${
+          recommendation.urgent ? 'border-destructive/50 bg-destructive/5' : ''
+        }`}
+      >
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline" className="text-xs">
+                {item.type === 'campaign' ? (
+                  <><Target className="h-3 w-3 mr-1" />Campanha</>
+                ) : item.type === 'adset' ? (
+                  <><Users className="h-3 w-3 mr-1" />Conjunto</>
+                ) : (
+                  <><Megaphone className="h-3 w-3 mr-1" />Criativo</>
+                )}
+              </Badge>
+              <Badge variant={recommendation.variant} className="text-xs">
+                {recommendation.action === 'pause' && <Pause className="h-3 w-3 mr-1" />}
+                {recommendation.action === 'scale' && <TrendingUp className="h-3 w-3 mr-1" />}
+                {recommendation.action === 'optimize' && <Settings2 className="h-3 w-3 mr-1" />}
+                {recommendation.label.toUpperCase()}
+              </Badge>
+              {recommendation.urgent && (
+                <Badge variant="destructive" className="text-xs">⚠ URGENTE</Badge>
+              )}
+            </div>
+            <CampaignControls
+              entityId={item.id}
+              entityType={getEntityType(item)}
+              entityName={item.name}
+              currentStatus={item.status as 'ACTIVE' | 'PAUSED' || 'ACTIVE'}
+              currentBudget={item.spend}
+              onActionComplete={onRefresh}
+            />
           </div>
-          <CampaignControls
-            entityId={item.id}
-            entityType={getEntityType(item)}
-            entityName={item.name}
-            currentStatus={item.status as 'ACTIVE' | 'PAUSED' || 'ACTIVE'}
-            currentBudget={item.spend}
-            onActionComplete={onRefresh}
-          />
-        </div>
-        {item.status && (
-          <Badge 
-            variant={item.status === 'ACTIVE' ? 'default' : 'secondary'}
-            className="text-xs w-fit"
-          >
-            {item.status === 'ACTIVE' ? 'Ativo' : 'Pausado'}
-          </Badge>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">CPC:</span>
-            <Badge className={getStatusBadge(item.cpc, 'cpc')}>
-              R$ {item.cpc.toFixed(2)}
-            </Badge>
+          <CardTitle className="text-sm font-medium leading-tight mt-2">{item.name}</CardTitle>
+          {item.status && (
+            <p className="text-xs text-muted-foreground">
+              Status: {item.status === 'ACTIVE' ? 'Ativo' : 'Pausado'}
+            </p>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {recommendation.action === 'pause' && 'CTR muito baixo. Queimando budget sem engajamento.'}
+            {recommendation.action === 'scale' && 'Performance excelente! Considere aumentar investimento.'}
+            {recommendation.action === 'optimize' && 'Performance abaixo do ideal. Testar variações.'}
+            {recommendation.action === 'monitor' && 'Performance estável. Continue monitorando.'}
+          </p>
+          
+          <div className="grid grid-cols-4 gap-2 text-xs text-center">
+            <div>
+              <p className="text-muted-foreground">CTR</p>
+              <p className={`font-semibold ${item.ctr < 1.5 ? 'text-destructive' : item.ctr > 2.5 ? 'text-green-600' : 'text-foreground'}`}>
+                {item.ctr.toFixed(2)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Conv.</p>
+              <p className={`font-semibold ${item.conversionRate < 2 ? 'text-destructive' : item.conversionRate > 3.5 ? 'text-green-600' : 'text-foreground'}`}>
+                {item.conversionRate.toFixed(2)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Gasto</p>
+              <p className="font-semibold">R${item.spend.toFixed(0)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">CPA</p>
+              <p className="font-semibold">R${item.conversions > 0 ? (item.spend / item.conversions).toFixed(0) : '0'}</p>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">CTR:</span>
-            <Badge className={getStatusBadge(item.ctr, 'ctr')}>
-              {item.ctr.toFixed(2)}%
-            </Badge>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Conv:</span>
-            <Badge className={getStatusBadge(item.conversionRate, 'conversion')}>
-              {item.conversionRate.toFixed(1)}%
-            </Badge>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground">Gasto:</span>
-            <span className="font-medium text-foreground">R$ {item.spend.toFixed(0)}</span>
-          </div>
-        </div>
-        <div className="pt-1 border-t border-border/50">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{item.impressions.toLocaleString()} impr.</span>
-            <span>{item.clicks.toLocaleString()} cliques</span>
-            <span>{item.conversions} conv.</span>
-          </div>
-        </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="w-full text-xs"
-          onClick={() => setSelectedItem(item)}
-        >
-          <Lightbulb className="h-3 w-3 mr-1" />
-          Ver Sugestões IA
-        </Button>
-      </CardContent>
-    </Card>
-  );
+
+          {/* Direct Action Button */}
+          {recommendation.action === 'pause' && isActive && (
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              className="w-full"
+              onClick={() => handleDirectAction(item, 'pause')}
+              disabled={isLoadingThis}
+            >
+              {isLoadingThis ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
+              Pausar Agora
+            </Button>
+          )}
+          
+          {recommendation.action !== 'pause' && !isActive && (
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="w-full"
+              onClick={() => handleDirectAction(item, 'activate')}
+              disabled={isLoadingThis}
+            >
+              {isLoadingThis ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2" />}
+              Ativar
+            </Button>
+          )}
+
+          {recommendation.action === 'optimize' && isActive && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full border-amber-500 text-amber-600 hover:bg-amber-50"
+              onClick={() => setSelectedItem(item)}
+            >
+              <Settings2 className="h-4 w-4 mr-2" />
+              Otimizar
+            </Button>
+          )}
+
+          {recommendation.action === 'scale' && isActive && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full border-green-500 text-green-600 hover:bg-green-50"
+              onClick={() => setSelectedItem(item)}
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Escalar
+            </Button>
+          )}
+
+          {recommendation.action === 'monitor' && isActive && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="w-full text-muted-foreground"
+              onClick={() => setSelectedItem(item)}
+            >
+              <Lightbulb className="h-4 w-4 mr-2" />
+              Ver Sugestões
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   const SuggestionPanel = ({ item }: { item: CampaignInsight }) => {
     const suggestions = generateAISuggestions(item);
