@@ -34,7 +34,7 @@ export interface AdInsights {
 export interface CampaignInsight {
   id: string;
   name: string;
-  type: 'campaign' | 'creative';
+  type: 'campaign' | 'adset' | 'creative';
   cpc: number;
   ctr: number;
   cpm: number;
@@ -250,7 +250,7 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de campanhas obtidos:', data.data.length);
-        return data.data.map((item: any) => this.parseCampaignData(item, 'campaign'));
+        return data.data.map((item: any) => this.parseInsightData(item, 'campaign'));
       }
 
       console.log('⚠️ Sem dados de campanha, usando fallback');
@@ -258,6 +258,47 @@ class MetaAPIService {
     } catch (error) {
       console.error('Error fetching campaign insights:', error);
       return this.generateFallbackCampaigns();
+    }
+  }
+
+  async getAdSetInsights(config: MetaAPIConfig, dateRange: string = 'last_7d'): Promise<CampaignInsight[]> {
+    try {
+      const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
+      const { since, until } = this.getDateRange(dateRange);
+      
+      const fields = [
+        'adset_name',
+        'adset_id',
+        'cpc',
+        'ctr',
+        'cpm',
+        'spend',
+        'impressions',
+        'clicks',
+        'actions'
+      ].join(',');
+
+      const url = `${this.baseURL}/${cleanAccountId}/insights?` + 
+        `access_token=${config.accessToken}&` +
+        `fields=${fields}&` +
+        `time_range={"since":"${since}","until":"${until}"}&` +
+        `level=adset&` +
+        `limit=30`;
+
+      console.log('📊 Buscando insights por conjunto...');
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.data && data.data.length > 0) {
+        console.log('✅ Dados de conjuntos obtidos:', data.data.length);
+        return data.data.map((item: any) => this.parseInsightData(item, 'adset'));
+      }
+
+      console.log('⚠️ Sem dados de conjuntos, usando fallback');
+      return this.generateFallbackAdSets();
+    } catch (error) {
+      console.error('Error fetching adset insights:', error);
+      return this.generateFallbackAdSets();
     }
   }
 
@@ -283,7 +324,7 @@ class MetaAPIService {
         `fields=${fields}&` +
         `time_range={"since":"${since}","until":"${until}"}&` +
         `level=ad&` +
-        `limit=20`;
+        `limit=30`;
 
       console.log('📊 Buscando insights por criativo...');
       const response = await fetch(url);
@@ -291,7 +332,7 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de criativos obtidos:', data.data.length);
-        return data.data.map((item: any) => this.parseCampaignData(item, 'creative'));
+        return data.data.map((item: any) => this.parseInsightData(item, 'creative'));
       }
 
       console.log('⚠️ Sem dados de criativos, usando fallback');
@@ -302,14 +343,15 @@ class MetaAPIService {
     }
   }
 
-  private parseCampaignData(item: any, type: 'campaign' | 'creative'): CampaignInsight {
+  private parseInsightData(item: any, type: 'campaign' | 'adset' | 'creative'): CampaignInsight {
     let conversions = 0;
     if (item.actions) {
       conversions = item.actions
         .filter((action: any) => 
           action.action_type === 'purchase' || 
           action.action_type === 'lead' ||
-          action.action_type === 'complete_registration'
+          action.action_type === 'complete_registration' ||
+          action.action_type === 'onsite_conversion.messaging_conversation_started_7d'
         )
         .reduce((sum: number, action: any) => sum + parseInt(action.value || '0'), 0);
     }
@@ -318,9 +360,23 @@ class MetaAPIService {
     const impressions = parseInt(item.impressions || '0');
     const spend = parseFloat(item.spend || '0');
 
+    let id = '';
+    let name = '';
+    
+    if (type === 'campaign') {
+      id = item.campaign_id;
+      name = item.campaign_name;
+    } else if (type === 'adset') {
+      id = item.adset_id;
+      name = item.adset_name;
+    } else {
+      id = item.ad_id;
+      name = item.ad_name;
+    }
+
     return {
-      id: type === 'campaign' ? item.campaign_id : item.ad_id,
-      name: type === 'campaign' ? item.campaign_name : item.ad_name,
+      id,
+      name,
       type,
       cpc: parseFloat(item.cpc || '0'),
       ctr: parseFloat(item.ctr || '0'),
@@ -338,7 +394,14 @@ class MetaAPIService {
       { id: 'camp_1', name: 'Campanha - Tráfego Frio', type: 'campaign', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
       { id: 'camp_2', name: 'Campanha - Remarketing', type: 'campaign', cpc: 1.25, ctr: 3.5, cpm: 12.90, conversionRate: 5.2, spend: 890, impressions: 68992, clicks: 2415, conversions: 125 },
       { id: 'camp_3', name: 'Campanha - Lookalike 1%', type: 'campaign', cpc: 1.95, ctr: 2.8, cpm: 18.40, conversionRate: 4.1, spend: 2100, impressions: 114130, clicks: 3195, conversions: 131 },
-      { id: 'camp_4', name: 'Campanha - Interesses', type: 'campaign', cpc: 2.65, ctr: 1.9, cpm: 29.40, conversionRate: 2.3, spend: 780, impressions: 26530, clicks: 504, conversions: 12 },
+    ];
+  }
+
+  private generateFallbackAdSets(): CampaignInsight[] {
+    return [
+      { id: 'adset_1', name: 'Conjunto - Público Frio 25-45', type: 'adset', cpc: 2.10, ctr: 2.0, cpm: 22.00, conversionRate: 2.8, spend: 850, impressions: 38636, clicks: 773, conversions: 22 },
+      { id: 'adset_2', name: 'Conjunto - Remarketing 7d', type: 'adset', cpc: 1.15, ctr: 3.8, cpm: 11.50, conversionRate: 5.5, spend: 650, impressions: 56522, clicks: 2148, conversions: 118 },
+      { id: 'adset_3', name: 'Conjunto - Lookalike Compradores', type: 'adset', cpc: 1.85, ctr: 2.9, cpm: 17.80, conversionRate: 4.3, spend: 1200, impressions: 67416, clicks: 1955, conversions: 84 },
     ];
   }
 
@@ -347,7 +410,6 @@ class MetaAPIService {
       { id: 'ad_1', name: 'Vídeo Promocional - Black Friday', type: 'creative', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
       { id: 'ad_2', name: 'Carrossel de Produtos', type: 'creative', cpc: 1.89, ctr: 2.4, cpm: 22.10, conversionRate: 3.2, spend: 980, impressions: 44350, clicks: 1065, conversions: 34 },
       { id: 'ad_3', name: 'Vídeo Testemunhal', type: 'creative', cpc: 1.65, ctr: 3.1, cpm: 19.80, conversionRate: 4.8, spend: 2150, impressions: 108590, clicks: 3366, conversions: 162 },
-      { id: 'ad_4', name: 'Imagem Estática - Desconto', type: 'creative', cpc: 2.95, ctr: 1.4, cpm: 31.20, conversionRate: 1.9, spend: 680, impressions: 21795, clicks: 305, conversions: 6 },
     ];
   }
 

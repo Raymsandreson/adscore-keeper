@@ -33,25 +33,29 @@ export const useMetaAPI = () => {
     { id: 'camp_1', name: 'Campanha - Tráfego Frio', type: 'campaign', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
     { id: 'camp_2', name: 'Campanha - Remarketing', type: 'campaign', cpc: 1.25, ctr: 3.5, cpm: 12.90, conversionRate: 5.2, spend: 890, impressions: 68992, clicks: 2415, conversions: 125 },
     { id: 'camp_3', name: 'Campanha - Lookalike 1%', type: 'campaign', cpc: 1.95, ctr: 2.8, cpm: 18.40, conversionRate: 4.1, spend: 2100, impressions: 114130, clicks: 3195, conversions: 131 },
-    { id: 'camp_4', name: 'Campanha - Interesses', type: 'campaign', cpc: 2.65, ctr: 1.9, cpm: 29.40, conversionRate: 2.3, spend: 780, impressions: 26530, clicks: 504, conversions: 12 },
+  ]);
+  const [adSets, setAdSets] = useState<CampaignInsight[]>([
+    { id: 'adset_1', name: 'Conjunto - Público Frio 25-45', type: 'adset', cpc: 2.10, ctr: 2.0, cpm: 22.00, conversionRate: 2.8, spend: 850, impressions: 38636, clicks: 773, conversions: 22 },
+    { id: 'adset_2', name: 'Conjunto - Remarketing 7d', type: 'adset', cpc: 1.15, ctr: 3.8, cpm: 11.50, conversionRate: 5.5, spend: 650, impressions: 56522, clicks: 2148, conversions: 118 },
+    { id: 'adset_3', name: 'Conjunto - Lookalike Compradores', type: 'adset', cpc: 1.85, ctr: 2.9, cpm: 17.80, conversionRate: 4.3, spend: 1200, impressions: 67416, clicks: 1955, conversions: 84 },
   ]);
   const [creatives, setCreatives] = useState<CampaignInsight[]>([
     { id: 'ad_1', name: 'Vídeo Promocional - Black Friday', type: 'creative', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
     { id: 'ad_2', name: 'Carrossel de Produtos', type: 'creative', cpc: 1.89, ctr: 2.4, cpm: 22.10, conversionRate: 3.2, spend: 980, impressions: 44350, clicks: 1065, conversions: 34 },
     { id: 'ad_3', name: 'Vídeo Testemunhal', type: 'creative', cpc: 1.65, ctr: 3.1, cpm: 19.80, conversionRate: 4.8, spend: 2150, impressions: 108590, clicks: 3366, conversions: 162 },
-    { id: 'ad_4', name: 'Imagem Estática - Desconto', type: 'creative', cpc: 2.95, ctr: 1.4, cpm: 31.20, conversionRate: 1.9, spend: 680, impressions: 21795, clicks: 305, conversions: 6 },
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
 
   const fetchData = useCallback(async (apiConfig: MetaAPIConfig, range: DateRangeOption) => {
-    const [insightData, campaignData, creativeData] = await Promise.all([
+    const [insightData, campaignData, adSetData, creativeData] = await Promise.all([
       metaAPIService.getAdInsights(apiConfig, range),
       metaAPIService.getCampaignInsights(apiConfig, range),
+      metaAPIService.getAdSetInsights(apiConfig, range),
       metaAPIService.getAdCreativeInsights(apiConfig, range)
     ]);
-    return { insightData, campaignData, creativeData };
+    return { insightData, campaignData, adSetData, creativeData };
   }, []);
 
   const connectToMeta = useCallback(async (apiConfig: MetaAPIConfig): Promise<boolean> => {
@@ -74,11 +78,12 @@ export const useMetaAPI = () => {
         throw new Error('Account ID inválido ou conta inativa');
       }
 
-      const { insightData, campaignData, creativeData } = await fetchData(apiConfig, dateRange);
+      const { insightData, campaignData, adSetData, creativeData } = await fetchData(apiConfig, dateRange);
       
       setConfig(apiConfig);
       setMetrics(insightData);
       setCampaigns(campaignData);
+      setAdSets(adSetData);
       setCreatives(creativeData);
       setIsConnected(true);
       return true;
@@ -98,9 +103,10 @@ export const useMetaAPI = () => {
     
     setIsLoading(true);
     try {
-      const { insightData, campaignData, creativeData } = await fetchData(config, newRange);
+      const { insightData, campaignData, adSetData, creativeData } = await fetchData(config, newRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
+      setAdSets(adSetData);
       setCreatives(creativeData);
     } catch (err) {
       console.error('Error changing date range:', err);
@@ -113,9 +119,10 @@ export const useMetaAPI = () => {
     if (!config || !isConnected) return;
 
     try {
-      const { insightData, campaignData, creativeData } = await fetchData(config, dateRange);
+      const { insightData, campaignData, adSetData, creativeData } = await fetchData(config, dateRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
+      setAdSets(adSetData);
       setCreatives(creativeData);
     } catch (err) {
       console.error('Error refreshing metrics:', err);
@@ -130,6 +137,7 @@ export const useMetaAPI = () => {
       hookRate: 15.7, spend: 8750.00, impressions: 360120, clicks: 10084, conversions: 323
     });
     setCampaigns([]);
+    setAdSets([]);
     setCreatives([]);
     setError(null);
   }, []);
@@ -144,6 +152,7 @@ export const useMetaAPI = () => {
     isConnected,
     metrics,
     campaigns,
+    adSets,
     creatives,
     isLoading,
     error,

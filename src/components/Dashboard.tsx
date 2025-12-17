@@ -10,6 +10,7 @@ const Dashboard = () => {
   const { 
     metrics, 
     campaigns, 
+    adSets,
     creatives, 
     dateRange, 
     changeDateRange, 
@@ -134,6 +135,7 @@ const Dashboard = () => {
         {/* Segment Analysis */}
         <SegmentAnalysis 
           campaigns={campaigns} 
+          adSets={adSets}
           creatives={creatives} 
           dateRange={dateRange}
           onDateRangeChange={changeDateRange}
