@@ -20,7 +20,12 @@ import {
   RefreshCcw,
   PlusCircle,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Pause,
+  Play,
+  Scale,
+  TrendingDown,
+  CircleDollarSign
 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 
@@ -254,6 +259,102 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
     return suggestions;
   };
 
+  // Gerar recomendações de investimento para cada item
+  const getInvestmentRecommendation = (item: CampaignInsight) => {
+    const cpaEstimate = item.conversions > 0 ? item.spend / item.conversions : item.spend;
+    const targetCPA = ltvData.averageLTV > 0 ? ltvData.averageLTV * 0.3 : 50; // 30% do LTV ou R$50 padrão
+    
+    // Classificação de performance
+    let status: 'scale' | 'maintain' | 'optimize' | 'pause' = 'maintain';
+    let budgetAction: string;
+    let budgetAmount: string;
+    let reason: string;
+    let urgency: 'high' | 'medium' | 'low' = 'medium';
+
+    // Regras de decisão baseadas em métricas
+    if (item.ctr >= 2.0 && item.conversionRate >= 3.0 && item.cpc <= 2.0) {
+      // Top performer - escalar
+      status = 'scale';
+      budgetAction = 'Aumentar investimento';
+      budgetAmount = `+20-30% a cada 3 dias (de R$${item.spend.toFixed(0)} para R$${(item.spend * 1.25).toFixed(0)})`;
+      reason = 'Performance excelente em todas as métricas. Escalar gradualmente.';
+      urgency = 'high';
+    } else if (item.ctr >= 1.5 && item.conversionRate >= 2.0) {
+      // Bom performer - manter e otimizar
+      status = 'maintain';
+      budgetAction = 'Manter investimento';
+      budgetAmount = `R$${item.spend.toFixed(0)} (atual)`;
+      reason = 'Performance boa. Manter budget e monitorar por mais 48h.';
+      urgency = 'low';
+    } else if (item.impressions < 500) {
+      // Pouco dado - aguardar
+      status = 'maintain';
+      budgetAction = 'Aguardar dados';
+      budgetAmount = `Manter R$${item.spend.toFixed(0)} até 500+ impressões`;
+      reason = `Apenas ${item.impressions} impressões. Dados insuficientes para decisão.`;
+      urgency = 'low';
+    } else if (item.ctr < 1.0 && item.spend > 100) {
+      // CTR muito baixo com gasto alto - pausar
+      status = 'pause';
+      budgetAction = 'PAUSAR';
+      budgetAmount = 'R$0 - Parar imediatamente';
+      reason = `CTR de ${item.ctr.toFixed(2)}% muito baixo. Queimando budget sem engajamento.`;
+      urgency = 'high';
+    } else if (item.conversionRate < 1.0 && item.spend > 200) {
+      // Conversão muito baixa com gasto alto - pausar
+      status = 'pause';
+      budgetAction = 'PAUSAR';
+      budgetAmount = 'R$0 - Parar imediatamente';
+      reason = `Conversão de ${item.conversionRate.toFixed(2)}% muito baixa. Não está gerando resultados.`;
+      urgency = 'high';
+    } else if (item.ctr < 1.5 || item.conversionRate < 2.0) {
+      // Performance abaixo - otimizar ou reduzir
+      status = 'optimize';
+      budgetAction = 'Reduzir ou otimizar';
+      budgetAmount = `Reduzir 50% para R$${(item.spend * 0.5).toFixed(0)} e testar variações`;
+      reason = 'Performance abaixo do ideal. Testar novas variações antes de escalar.';
+      urgency = 'medium';
+    }
+
+    // Calcular limites de gasto recomendados
+    const maxDailyBudget = targetCPA * 3; // 3x CPA alvo por dia
+    const stopLossAmount = targetCPA * 2; // Parar após gastar 2x CPA sem conversão
+
+    return {
+      status,
+      budgetAction,
+      budgetAmount,
+      reason,
+      urgency,
+      metrics: {
+        cpaEstimate,
+        targetCPA,
+        maxDailyBudget,
+        stopLossAmount
+      }
+    };
+  };
+
+  // Agrupar todos os itens com recomendações
+  const getAllInvestmentRecommendations = () => {
+    const allItems = [
+      ...campaigns.map(c => ({ ...c, category: 'Campanha' as const })),
+      ...adSets.map(a => ({ ...a, category: 'Conjunto' as const })),
+      ...creatives.map(cr => ({ ...cr, category: 'Criativo' as const }))
+    ];
+
+    return allItems.map(item => ({
+      item,
+      recommendation: getInvestmentRecommendation(item)
+    })).sort((a, b) => {
+      // Ordenar por urgência (pause primeiro, scale último)
+      const order = { pause: 0, optimize: 1, maintain: 2, scale: 3 };
+      return order[a.recommendation.status] - order[b.recommendation.status];
+    });
+  };
+
+  const investmentRecs = getAllInvestmentRecommendations();
+
   const fbSuggestions = getFacebookFeedbackSuggestions();
 
   return (
@@ -274,8 +375,12 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
         </p>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="creatives" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-4">
+        <Tabs defaultValue="budget" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 mb-4">
+            <TabsTrigger value="budget" className="text-xs">
+              <CircleDollarSign className="h-3 w-3 mr-1" />
+              Budget
+            </TabsTrigger>
             <TabsTrigger value="creatives" className="text-xs">
               <Layers className="h-3 w-3 mr-1" />
               Criativos
@@ -293,6 +398,182 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
               Feedback FB
             </TabsTrigger>
           </TabsList>
+
+          {/* Aba de Budget - Recomendações de Investimento */}
+          <TabsContent value="budget" className="space-y-4">
+            {/* Resumo */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="border-red-500/30 bg-red-50/30 dark:bg-red-950/20">
+                <CardContent className="pt-4 text-center">
+                  <Pause className="h-5 w-5 text-red-500 mx-auto mb-1" />
+                  <div className="text-2xl font-bold text-red-600">
+                    {investmentRecs.filter(r => r.recommendation.status === 'pause').length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Pausar</div>
+                </CardContent>
+              </Card>
+              <Card className="border-yellow-500/30 bg-yellow-50/30 dark:bg-yellow-950/20">
+                <CardContent className="pt-4 text-center">
+                  <Scale className="h-5 w-5 text-yellow-500 mx-auto mb-1" />
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {investmentRecs.filter(r => r.recommendation.status === 'optimize').length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Otimizar</div>
+                </CardContent>
+              </Card>
+              <Card className="border-blue-500/30 bg-blue-50/30 dark:bg-blue-950/20">
+                <CardContent className="pt-4 text-center">
+                  <Target className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                  <div className="text-2xl font-bold text-blue-600">
+                    {investmentRecs.filter(r => r.recommendation.status === 'maintain').length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Manter</div>
+                </CardContent>
+              </Card>
+              <Card className="border-green-500/30 bg-green-50/30 dark:bg-green-950/20">
+                <CardContent className="pt-4 text-center">
+                  <Rocket className="h-5 w-5 text-green-500 mx-auto mb-1" />
+                  <div className="text-2xl font-bold text-green-600">
+                    {investmentRecs.filter(r => r.recommendation.status === 'scale').length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Escalar</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Regras de Budget */}
+            <Card className="bg-muted/50">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                  Regras de Investimento (Grandes Operações)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                      <strong>PAUSAR quando:</strong>
+                    </div>
+                    <ul className="ml-5 text-muted-foreground space-y-1">
+                      <li>• CTR {"<"} 1% após 500+ impressões</li>
+                      <li>• Conversão {"<"} 1% após R$200 gastos</li>
+                      <li>• CPA {">"} 2x do CPA alvo</li>
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                      <strong>ESCALAR quando:</strong>
+                    </div>
+                    <ul className="ml-5 text-muted-foreground space-y-1">
+                      <li>• CTR {"≥"} 2% E Conversão {"≥"} 3%</li>
+                      <li>• CPA {"≤"} 30% do LTV</li>
+                      <li>• Após 48h de dados consistentes</li>
+                    </ul>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Lista de Recomendações */}
+            <div className="space-y-3">
+              <h4 className="font-semibold">Recomendações por Item</h4>
+              {investmentRecs.map(({ item, recommendation }, index) => (
+                <Card 
+                  key={index}
+                  className={`${
+                    recommendation.status === 'pause' ? 'border-red-500/50 bg-red-50/30 dark:bg-red-950/20' :
+                    recommendation.status === 'optimize' ? 'border-yellow-500/50 bg-yellow-50/30 dark:bg-yellow-950/20' :
+                    recommendation.status === 'scale' ? 'border-green-500/50 bg-green-50/30 dark:bg-green-950/20' :
+                    'border-border'
+                  }`}
+                >
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline" className="text-xs">
+                            {item.category}
+                          </Badge>
+                          <Badge 
+                            variant={
+                              recommendation.status === 'pause' ? 'destructive' :
+                              recommendation.status === 'scale' ? 'default' : 'secondary'
+                            }
+                            className="flex items-center gap-1"
+                          >
+                            {recommendation.status === 'pause' && <Pause className="h-3 w-3" />}
+                            {recommendation.status === 'scale' && <TrendingUp className="h-3 w-3" />}
+                            {recommendation.status === 'optimize' && <Scale className="h-3 w-3" />}
+                            {recommendation.status === 'maintain' && <Target className="h-3 w-3" />}
+                            {recommendation.budgetAction}
+                          </Badge>
+                          {recommendation.urgency === 'high' && (
+                            <Badge variant="destructive" className="text-xs">URGENTE</Badge>
+                          )}
+                        </div>
+                        <h5 className="font-medium truncate">{item.name}</h5>
+                        <p className="text-sm text-muted-foreground mt-1">{recommendation.reason}</p>
+                        
+                        <div className="mt-3 p-2 bg-background/50 rounded text-sm">
+                          <strong>Ação:</strong> {recommendation.budgetAmount}
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
+                          <div className="text-center">
+                            <div className="text-muted-foreground">CTR</div>
+                            <div className={`font-medium ${item.ctr >= 2 ? 'text-green-600' : item.ctr >= 1.5 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {item.ctr.toFixed(2)}%
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-muted-foreground">Conv.</div>
+                            <div className={`font-medium ${item.conversionRate >= 3 ? 'text-green-600' : item.conversionRate >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {item.conversionRate.toFixed(2)}%
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-muted-foreground">Gasto</div>
+                            <div className="font-medium">R${item.spend.toFixed(0)}</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-muted-foreground">CPA Est.</div>
+                            <div className="font-medium">
+                              R${recommendation.metrics.cpaEstimate.toFixed(0)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {/* Stop Loss */}
+            <Card className="bg-red-50/50 dark:bg-red-950/30 border-red-500/30">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold flex items-center gap-2 mb-3 text-red-700 dark:text-red-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  Regras de Stop Loss
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                    <span><strong>Criativo:</strong> Pause após gastar 2x CPA alvo sem conversão (R${ltvData.averageLTV > 0 ? (ltvData.averageLTV * 0.6).toFixed(0) : '100'})</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                    <span><strong>Conjunto:</strong> Pause se CPA subir {">"} 50% por 48h consecutivas</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                    <span><strong>Campanha:</strong> Reduza 50% budget se ROAS cair abaixo de 1x</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Aba de Criativos */}
           <TabsContent value="creatives" className="space-y-4">
