@@ -58,6 +58,13 @@ export const MetricsChart = ({ data, isLoading }: MetricsChartProps) => {
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   };
 
+  const getDateRangeText = () => {
+    if (data.length === 0) return '';
+    const firstDate = new Date(data[0].date);
+    const lastDate = new Date(data[data.length - 1].date);
+    return `${firstDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${lastDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
+  };
+
   const formatCurrency = (value: number) => `R$ ${value.toFixed(2)}`;
   const formatPercent = (value: number) => `${value.toFixed(2)}%`;
   const formatNumber = (value: number) => value.toLocaleString('pt-BR');
@@ -83,10 +90,15 @@ export const MetricsChart = ({ data, isLoading }: MetricsChartProps) => {
   return (
     <Card className="bg-card border-border">
       <CardHeader>
-        <CardTitle className="text-foreground flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-primary" />
-          Evolução das Métricas
-        </CardTitle>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Evolução das Métricas
+          </CardTitle>
+          <span className="text-sm text-muted-foreground">
+            Período: {getDateRangeText()} (dados consolidados até ontem)
+          </span>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="custos" className="w-full">
