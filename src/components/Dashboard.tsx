@@ -9,7 +9,7 @@ import { useMetaAPI } from "@/hooks/useMetaAPI";
 
 const Dashboard = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const { metrics, campaigns, creatives } = useMetaAPI();
+  const { metrics, campaigns, creatives, dateRange, changeDateRange, isLoading } = useMetaAPI();
 
   const getPerformanceStatus = (value: number, metric: string) => {
     switch (metric) {
@@ -117,7 +117,13 @@ const Dashboard = () => {
         <BenchmarkTable />
 
         {/* Segment Analysis */}
-        <SegmentAnalysis campaigns={campaigns} creatives={creatives} />
+        <SegmentAnalysis 
+          campaigns={campaigns} 
+          creatives={creatives} 
+          dateRange={dateRange}
+          onDateRangeChange={changeDateRange}
+          isLoading={isLoading}
+        />
       </div>
     </div>
   );
