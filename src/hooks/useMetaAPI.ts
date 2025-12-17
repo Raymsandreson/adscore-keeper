@@ -29,8 +29,18 @@ export const useMetaAPI = () => {
     clicks: 10084,
     conversions: 323
   });
-  const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
-  const [creatives, setCreatives] = useState<CampaignInsight[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignInsight[]>([
+    { id: 'camp_1', name: 'Campanha - Tráfego Frio', type: 'campaign', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
+    { id: 'camp_2', name: 'Campanha - Remarketing', type: 'campaign', cpc: 1.25, ctr: 3.5, cpm: 12.90, conversionRate: 5.2, spend: 890, impressions: 68992, clicks: 2415, conversions: 125 },
+    { id: 'camp_3', name: 'Campanha - Lookalike 1%', type: 'campaign', cpc: 1.95, ctr: 2.8, cpm: 18.40, conversionRate: 4.1, spend: 2100, impressions: 114130, clicks: 3195, conversions: 131 },
+    { id: 'camp_4', name: 'Campanha - Interesses', type: 'campaign', cpc: 2.65, ctr: 1.9, cpm: 29.40, conversionRate: 2.3, spend: 780, impressions: 26530, clicks: 504, conversions: 12 },
+  ]);
+  const [creatives, setCreatives] = useState<CampaignInsight[]>([
+    { id: 'ad_1', name: 'Vídeo Promocional - Black Friday', type: 'creative', cpc: 2.35, ctr: 1.8, cpm: 28.50, conversionRate: 2.1, spend: 1250, impressions: 43850, clicks: 789, conversions: 17 },
+    { id: 'ad_2', name: 'Carrossel de Produtos', type: 'creative', cpc: 1.89, ctr: 2.4, cpm: 22.10, conversionRate: 3.2, spend: 980, impressions: 44350, clicks: 1065, conversions: 34 },
+    { id: 'ad_3', name: 'Vídeo Testemunhal', type: 'creative', cpc: 1.65, ctr: 3.1, cpm: 19.80, conversionRate: 4.8, spend: 2150, impressions: 108590, clicks: 3366, conversions: 162 },
+    { id: 'ad_4', name: 'Imagem Estática - Desconto', type: 'creative', cpc: 2.95, ctr: 1.4, cpm: 31.20, conversionRate: 1.9, spend: 680, impressions: 21795, clicks: 305, conversions: 6 },
+  ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
