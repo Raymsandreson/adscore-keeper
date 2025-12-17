@@ -54,14 +54,16 @@ export const MetricsChart = ({ data, isLoading }: MetricsChartProps) => {
   }
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    const date = new Date(dateStr + 'T12:00:00');
+    const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' });
+    const dayMonth = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return `${dayOfWeek.replace('.', '')} ${dayMonth}`;
   };
 
   const getDateRangeText = () => {
     if (data.length === 0) return '';
-    const firstDate = new Date(data[0].date);
-    const lastDate = new Date(data[data.length - 1].date);
+    const firstDate = new Date(data[0].date + 'T12:00:00');
+    const lastDate = new Date(data[data.length - 1].date + 'T12:00:00');
     return `${firstDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${lastDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
   };
 

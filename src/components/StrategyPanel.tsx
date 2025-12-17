@@ -53,6 +53,8 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
   const [ltvData, setLtvData] = useState<LTVData>({ averageLTV: 0, totalRevenue: 0, convertedLeads: 0 });
   const [newLTV, setNewLTV] = useState("");
   const [newLeadValue, setNewLeadValue] = useState("");
+  const [monthlyBudget, setMonthlyBudget] = useState<number>(0);
+  const [budgetInput, setBudgetInput] = useState("");
 
   // Calcular métricas gerais
   const avgCTR = campaigns.length > 0 
@@ -401,6 +403,127 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
 
           {/* Aba de Budget - Recomendações de Investimento */}
           <TabsContent value="budget" className="space-y-4">
+            {/* Input de Orçamento Mensal */}
+            <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <CircleDollarSign className="h-4 w-4 text-primary" />
+                  Orçamento Mensal de Tráfego
+                </h4>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="budget-input" className="text-sm mb-2 block">
+                      Qual seu orçamento mensal para tráfego pago?
+                    </Label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
+                        <Input
+                          id="budget-input"
+                          type="number"
+                          placeholder="5000"
+                          value={budgetInput}
+                          onChange={(e) => setBudgetInput(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          const value = parseFloat(budgetInput);
+                          if (value > 0) setMonthlyBudget(value);
+                        }}
+                        disabled={!budgetInput}
+                      >
+                        Calcular Distribuição
+                      </Button>
+                    </div>
+                  </div>
+                  {monthlyBudget > 0 && (
+                    <div className="sm:text-right">
+                      <div className="text-sm text-muted-foreground">Orçamento definido</div>
+                      <div className="text-2xl font-bold text-primary">
+                        R$ {monthlyBudget.toLocaleString('pt-BR')}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        ≈ R$ {(monthlyBudget / 30).toFixed(0)}/dia
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Distribuição Sugerida de Budget */}
+            {monthlyBudget > 0 && (
+              <Card className="bg-muted/50">
+                <CardContent className="pt-4">
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    Distribuição Sugerida do Orçamento
+                  </h4>
+                  
+                  {(() => {
+                    const scaleItems = investmentRecs.filter(r => r.recommendation.status === 'scale');
+                    const maintainItems = investmentRecs.filter(r => r.recommendation.status === 'maintain');
+                    const optimizeItems = investmentRecs.filter(r => r.recommendation.status === 'optimize');
+                    
+                    const totalScaleWeight = scaleItems.length * 3;
+                    const totalMaintainWeight = maintainItems.length * 2;
+                    const totalOptimizeWeight = optimizeItems.length * 1;
+                    const totalWeight = totalScaleWeight + totalMaintainWeight + totalOptimizeWeight || 1;
+                    
+                    const scaleAllocation = (totalScaleWeight / totalWeight) * monthlyBudget * 0.7;
+                    const maintainAllocation = (totalMaintainWeight / totalWeight) * monthlyBudget * 0.7;
+                    const optimizeAllocation = (totalOptimizeWeight / totalWeight) * monthlyBudget * 0.7;
+                    const testingReserve = monthlyBudget * 0.3;
+
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="p-3 rounded-lg bg-green-100 dark:bg-green-950/50">
+                            <div className="text-xs text-green-700 dark:text-green-400">Para Escalar ({scaleItems.length} itens)</div>
+                            <div className="text-lg font-bold text-green-600">R$ {scaleAllocation.toFixed(0)}</div>
+                            <div className="text-xs text-muted-foreground">{scaleItems.length > 0 ? `≈ R$ ${(scaleAllocation / scaleItems.length).toFixed(0)}/cada` : '-'}</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-950/50">
+                            <div className="text-xs text-blue-700 dark:text-blue-400">Para Manter ({maintainItems.length} itens)</div>
+                            <div className="text-lg font-bold text-blue-600">R$ {maintainAllocation.toFixed(0)}</div>
+                            <div className="text-xs text-muted-foreground">{maintainItems.length > 0 ? `≈ R$ ${(maintainAllocation / maintainItems.length).toFixed(0)}/cada` : '-'}</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-yellow-100 dark:bg-yellow-950/50">
+                            <div className="text-xs text-yellow-700 dark:text-yellow-400">Para Otimizar ({optimizeItems.length} itens)</div>
+                            <div className="text-lg font-bold text-yellow-600">R$ {optimizeAllocation.toFixed(0)}</div>
+                            <div className="text-xs text-muted-foreground">{optimizeItems.length > 0 ? `≈ R$ ${(optimizeAllocation / optimizeItems.length).toFixed(0)}/cada` : '-'}</div>
+                          </div>
+                          <div className="p-3 rounded-lg bg-purple-100 dark:bg-purple-950/50">
+                            <div className="text-xs text-purple-700 dark:text-purple-400">Reserva p/ Testes</div>
+                            <div className="text-lg font-bold text-purple-600">R$ {testingReserve.toFixed(0)}</div>
+                            <div className="text-xs text-muted-foreground">30% do budget</div>
+                          </div>
+                        </div>
+
+                        <div className="text-sm text-muted-foreground bg-background/50 p-3 rounded">
+                          <strong>💡 Estratégia sugerida:</strong>
+                          <ul className="mt-2 space-y-1 ml-4">
+                            {scaleItems.length > 0 && (
+                              <li>• Aloque R$ {(scaleAllocation / scaleItems.length).toFixed(0)}/mês para cada item que deve escalar</li>
+                            )}
+                            {maintainItems.length > 0 && (
+                              <li>• Mantenha R$ {(maintainAllocation / maintainItems.length).toFixed(0)}/mês nos itens estáveis</li>
+                            )}
+                            {optimizeItems.length > 0 && (
+                              <li>• Limite R$ {(optimizeAllocation / optimizeItems.length).toFixed(0)}/mês para itens em otimização</li>
+                            )}
+                            <li>• Use os R$ {testingReserve.toFixed(0)} de reserva para testar novos criativos ({(testingReserve / 100).toFixed(0)} testes de R$100)</li>
+                          </ul>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Resumo */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card className="border-red-500/30 bg-red-50/30 dark:bg-red-950/20">
