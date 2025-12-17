@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,8 @@ import {
   BarChart3, 
   CheckCircle2, 
   AlertTriangle,
+  AlertCircle,
+  HelpCircle,
   Rocket,
   Layers,
   RefreshCcw,
@@ -25,7 +28,8 @@ import {
   Play,
   Scale,
   TrendingDown,
-  CircleDollarSign
+  CircleDollarSign,
+  ExternalLink
 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 
@@ -50,6 +54,7 @@ interface ConversionFeedback {
 }
 
 const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversions }: StrategyPanelProps) => {
+  const { toast } = useToast();
   const [ltvData, setLtvData] = useState<LTVData>({ averageLTV: 0, totalRevenue: 0, convertedLeads: 0 });
   const [newLTV, setNewLTV] = useState("");
   const [newLeadValue, setNewLeadValue] = useState("");
@@ -381,7 +386,7 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
           <TabsList className="grid w-full grid-cols-5 mb-4">
             <TabsTrigger value="budget" className="text-xs">
               <CircleDollarSign className="h-3 w-3 mr-1" />
-              Budget
+              Investimento
             </TabsTrigger>
             <TabsTrigger value="creatives" className="text-xs">
               <Layers className="h-3 w-3 mr-1" />
@@ -393,16 +398,34 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
             </TabsTrigger>
             <TabsTrigger value="ltv" className="text-xs">
               <DollarSign className="h-3 w-3 mr-1" />
-              LTV/ROAS
+              Faturamento
             </TabsTrigger>
             <TabsTrigger value="feedback" className="text-xs">
               <RefreshCcw className="h-3 w-3 mr-1" />
-              Feedback FB
+              Facebook
             </TabsTrigger>
           </TabsList>
 
-          {/* Aba de Budget - Recomendações de Investimento */}
+          {/* Aba de Investimento - Recomendações de Investimento */}
           <TabsContent value="budget" className="space-y-4">
+            {/* Explicação para leigos */}
+            <Card className="bg-blue-50/50 dark:bg-blue-950/30 border-blue-500/30">
+              <CardContent className="pt-4">
+                <h4 className="font-semibold mb-2 flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                  <AlertCircle className="h-4 w-4" />
+                  O que é esta aba?
+                </h4>
+                <p className="text-sm text-muted-foreground">
+                  Aqui você vê <strong>quanto dinheiro investir</strong> em cada anúncio, campanha ou conjunto. 
+                  O sistema analisa o desempenho de cada um e diz se você deve: 
+                  <span className="text-red-600 font-medium"> pausar</span> (parar de gastar), 
+                  <span className="text-yellow-600 font-medium"> otimizar</span> (ajustar), 
+                  <span className="text-blue-600 font-medium"> manter</span> (deixar como está) ou 
+                  <span className="text-green-600 font-medium"> escalar</span> (investir mais).
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Input de Orçamento Mensal */}
             <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/30">
               <CardContent className="pt-4">
@@ -600,7 +623,13 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
 
             {/* Lista de Recomendações */}
             <div className="space-y-3">
-              <h4 className="font-semibold">Recomendações por Item</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold">Recomendações por Item</h4>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <HelpCircle className="h-3 w-3" />
+                  Clique nos botões para executar a ação
+                </div>
+              </div>
               {investmentRecs.map(({ item, recommendation }, index) => (
                 <Card 
                   key={index}
@@ -612,60 +641,142 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
                   }`}
                 >
                   <CardContent className="pt-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="outline" className="text-xs">
-                            {item.category}
-                          </Badge>
-                          <Badge 
-                            variant={
-                              recommendation.status === 'pause' ? 'destructive' :
-                              recommendation.status === 'scale' ? 'default' : 'secondary'
-                            }
-                            className="flex items-center gap-1"
-                          >
-                            {recommendation.status === 'pause' && <Pause className="h-3 w-3" />}
-                            {recommendation.status === 'scale' && <TrendingUp className="h-3 w-3" />}
-                            {recommendation.status === 'optimize' && <Scale className="h-3 w-3" />}
-                            {recommendation.status === 'maintain' && <Target className="h-3 w-3" />}
-                            {recommendation.budgetAction}
-                          </Badge>
-                          {recommendation.urgency === 'high' && (
-                            <Badge variant="destructive" className="text-xs">URGENTE</Badge>
-                          )}
-                        </div>
-                        <h5 className="font-medium truncate">{item.name}</h5>
-                        <p className="text-sm text-muted-foreground mt-1">{recommendation.reason}</p>
-                        
-                        <div className="mt-3 p-2 bg-background/50 rounded text-sm">
-                          <strong>Ação:</strong> {recommendation.budgetAmount}
-                        </div>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <Badge variant="outline" className="text-xs">
+                              {item.category === 'Campanha' ? '📢 Campanha' : 
+                               item.category === 'Conjunto' ? '👥 Conjunto' : '🎨 Criativo'}
+                            </Badge>
+                            <Badge 
+                              variant={
+                                recommendation.status === 'pause' ? 'destructive' :
+                                recommendation.status === 'scale' ? 'default' : 'secondary'
+                              }
+                              className="flex items-center gap-1"
+                            >
+                              {recommendation.status === 'pause' && <Pause className="h-3 w-3" />}
+                              {recommendation.status === 'scale' && <TrendingUp className="h-3 w-3" />}
+                              {recommendation.status === 'optimize' && <Scale className="h-3 w-3" />}
+                              {recommendation.status === 'maintain' && <Target className="h-3 w-3" />}
+                              {recommendation.status === 'pause' ? 'PAUSAR' :
+                               recommendation.status === 'scale' ? 'ESCALAR' :
+                               recommendation.status === 'optimize' ? 'OTIMIZAR' : 'MANTER'}
+                            </Badge>
+                            {recommendation.urgency === 'high' && (
+                              <Badge variant="destructive" className="text-xs animate-pulse">⚠️ URGENTE</Badge>
+                            )}
+                          </div>
+                          <h5 className="font-medium">{item.name}</h5>
+                          <p className="text-sm text-muted-foreground mt-1">{recommendation.reason}</p>
+                          
+                          <div className="mt-3 p-2 bg-background/50 rounded text-sm">
+                            <strong>💡 O que fazer:</strong> {recommendation.budgetAmount}
+                          </div>
 
-                        <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
-                          <div className="text-center">
-                            <div className="text-muted-foreground">CTR</div>
-                            <div className={`font-medium ${item.ctr >= 2 ? 'text-green-600' : item.ctr >= 1.5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {item.ctr.toFixed(2)}%
+                          <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
+                            <div className="text-center p-2 bg-background/30 rounded">
+                              <div className="text-muted-foreground">CTR</div>
+                              <div className="text-xs text-muted-foreground">(% que clicou)</div>
+                              <div className={`font-medium ${item.ctr >= 2 ? 'text-green-600' : item.ctr >= 1.5 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {item.ctr.toFixed(2)}%
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-muted-foreground">Conv.</div>
-                            <div className={`font-medium ${item.conversionRate >= 3 ? 'text-green-600' : item.conversionRate >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>
-                              {item.conversionRate.toFixed(2)}%
+                            <div className="text-center p-2 bg-background/30 rounded">
+                              <div className="text-muted-foreground">Conv.</div>
+                              <div className="text-xs text-muted-foreground">(% que virou lead)</div>
+                              <div className={`font-medium ${item.conversionRate >= 3 ? 'text-green-600' : item.conversionRate >= 2 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {item.conversionRate.toFixed(2)}%
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-muted-foreground">Gasto</div>
-                            <div className="font-medium">R${item.spend.toFixed(0)}</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-muted-foreground">CPA Est.</div>
-                            <div className="font-medium">
-                              R${recommendation.metrics.cpaEstimate.toFixed(0)}
+                            <div className="text-center p-2 bg-background/30 rounded">
+                              <div className="text-muted-foreground">Gasto</div>
+                              <div className="text-xs text-muted-foreground">(investido)</div>
+                              <div className="font-medium">R${item.spend.toFixed(0)}</div>
+                            </div>
+                            <div className="text-center p-2 bg-background/30 rounded">
+                              <div className="text-muted-foreground">CPA</div>
+                              <div className="text-xs text-muted-foreground">(custo/lead)</div>
+                              <div className="font-medium">
+                                R${recommendation.metrics.cpaEstimate.toFixed(0)}
+                              </div>
                             </div>
                           </div>
                         </div>
+                      </div>
+                      
+                      {/* Botões de Ação */}
+                      <div className="flex gap-2 pt-2 border-t border-border/50">
+                        {recommendation.status === 'pause' && (
+                          <Button 
+                            size="sm" 
+                            variant="destructive"
+                            className="flex-1"
+                            onClick={() => {
+                              window.open(`https://business.facebook.com/adsmanager/manage/ads?act=${item.id}`, '_blank');
+                              toast({
+                                title: "📋 Ação: PAUSAR",
+                                description: `Abra o Gerenciador de Anúncios e pause "${item.name}". Economize seu dinheiro!`,
+                              });
+                            }}
+                          >
+                            <Pause className="h-4 w-4 mr-2" />
+                            Pausar Agora
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </Button>
+                        )}
+                        {recommendation.status === 'scale' && (
+                          <Button 
+                            size="sm" 
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                            onClick={() => {
+                              window.open(`https://business.facebook.com/adsmanager/manage/ads?act=${item.id}`, '_blank');
+                              toast({
+                                title: "🚀 Ação: ESCALAR",
+                                description: `Abra o Gerenciador de Anúncios e aumente o orçamento de "${item.name}" em 20-30%`,
+                              });
+                            }}
+                          >
+                            <TrendingUp className="h-4 w-4 mr-2" />
+                            Aumentar Investimento
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </Button>
+                        )}
+                        {recommendation.status === 'optimize' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="flex-1 border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+                            onClick={() => {
+                              window.open(`https://business.facebook.com/adsmanager/manage/ads?act=${item.id}`, '_blank');
+                              toast({
+                                title: "⚙️ Ação: OTIMIZAR",
+                                description: `Teste novos públicos ou criativos para "${item.name}"`,
+                              });
+                            }}
+                          >
+                            <Scale className="h-4 w-4 mr-2" />
+                            Otimizar
+                            <ExternalLink className="h-3 w-3 ml-2" />
+                          </Button>
+                        )}
+                        {recommendation.status === 'maintain' && (
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => {
+                              toast({
+                                title: "✅ Tudo certo!",
+                                description: `"${item.name}" está performando bem. Continue monitorando.`,
+                              });
+                            }}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Manter como está
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -673,25 +784,52 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
               ))}
             </div>
 
-            {/* Stop Loss */}
+            {/* Stop Loss - Explicação para leigos */}
             <Card className="bg-red-50/50 dark:bg-red-950/30 border-red-500/30">
               <CardContent className="pt-4">
-                <h4 className="font-semibold flex items-center gap-2 mb-3 text-red-700 dark:text-red-400">
+                <h4 className="font-semibold flex items-center gap-2 mb-2 text-red-700 dark:text-red-400">
                   <AlertTriangle className="h-4 w-4" />
-                  Regras de Stop Loss
+                  🛑 Quando PARAR de Gastar (Stop Loss)
                 </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-start gap-2">
-                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
-                    <span><strong>Criativo:</strong> Pause após gastar 2x CPA alvo sem conversão (R${ltvData.averageLTV > 0 ? (ltvData.averageLTV * 0.6).toFixed(0) : '100'})</span>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Stop Loss = limite de prejuízo. É como um alarme que avisa quando você deve parar de investir para não perder mais dinheiro.
+                </p>
+                <div className="space-y-3 text-sm">
+                  <div className="p-2 bg-background/50 rounded">
+                    <div className="flex items-start gap-2">
+                      <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                      <div>
+                        <strong>🎨 Criativo (anúncio):</strong>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          Se gastou R${ltvData.averageLTV > 0 ? (ltvData.averageLTV * 0.6).toFixed(0) : '100'} e não teve nenhum lead → PAUSE. 
+                          O anúncio não está funcionando.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
-                    <span><strong>Conjunto:</strong> Pause se CPA subir {">"} 50% por 48h consecutivas</span>
+                  <div className="p-2 bg-background/50 rounded">
+                    <div className="flex items-start gap-2">
+                      <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                      <div>
+                        <strong>👥 Conjunto (público):</strong>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          Se o custo por lead subiu mais de 50% por 2 dias seguidos → PAUSE. 
+                          O público está saturado.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
-                    <span><strong>Campanha:</strong> Reduza 50% budget se ROAS cair abaixo de 1x</span>
+                  <div className="p-2 bg-background/50 rounded">
+                    <div className="flex items-start gap-2">
+                      <TrendingDown className="h-4 w-4 text-red-500 mt-0.5" />
+                      <div>
+                        <strong>📢 Campanha:</strong>
+                        <p className="text-muted-foreground text-xs mt-1">
+                          Se está gastando mais do que está faturando (ROAS {"<"} 1) → REDUZA 50% do investimento. 
+                          Você está perdendo dinheiro.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>
