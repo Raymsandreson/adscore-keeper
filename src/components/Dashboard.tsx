@@ -3,6 +3,7 @@ import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
+import StrategyPanel from "./StrategyPanel";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 
@@ -140,6 +141,15 @@ const Dashboard = () => {
           dateRange={dateRange}
           onDateRangeChange={changeDateRange}
           isLoading={isLoading}
+        />
+
+        {/* Strategy Panel - Estrategista de Escala */}
+        <StrategyPanel
+          campaigns={campaigns}
+          adSets={adSets}
+          creatives={creatives}
+          totalSpend={metrics.spend}
+          totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
         />
       </div>
     </div>
