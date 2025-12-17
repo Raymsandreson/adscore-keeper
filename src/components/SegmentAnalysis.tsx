@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
+import { DateRangeOption } from "@/hooks/useMetaAPI";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -16,9 +18,12 @@ interface AIsuggestion {
 interface SegmentAnalysisProps {
   campaigns: CampaignInsight[];
   creatives: CampaignInsight[];
+  dateRange: DateRangeOption;
+  onDateRangeChange: (range: DateRangeOption) => void;
+  isLoading?: boolean;
 }
 
-const SegmentAnalysis = ({ campaigns, creatives }: SegmentAnalysisProps) => {
+const SegmentAnalysis = ({ campaigns, creatives, dateRange, onDateRangeChange, isLoading }: SegmentAnalysisProps) => {
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -286,13 +291,31 @@ const SegmentAnalysis = ({ campaigns, creatives }: SegmentAnalysisProps) => {
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5 text-primary" />
-          Análise por Segmento
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Selecione uma campanha ou criativo para ver sugestões de otimização da IA
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Lightbulb className="h-5 w-5 text-primary" />
+              Análise por Segmento
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Selecione uma campanha ou criativo para ver sugestões de otimização da IA
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <Select value={dateRange} onValueChange={(value) => onDateRangeChange(value as DateRangeOption)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hoje</SelectItem>
+                <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
+              </SelectContent>
+            </Select>
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="campaigns" className="w-full">
