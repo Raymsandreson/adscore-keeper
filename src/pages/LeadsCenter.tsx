@@ -18,6 +18,54 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { format, subDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+// Dados simulados de conversão de leads ao longo do tempo
+const generateLeadsData = () => {
+  const data = [];
+  for (let i = 29; i >= 0; i--) {
+    const date = subDays(new Date(), i);
+    const dayOfWeek = format(date, 'EEE', { locale: ptBR });
+    const leads = Math.floor(Math.random() * 30) + 10;
+    const converted = Math.floor(leads * (Math.random() * 0.3 + 0.1));
+    const notQualified = Math.floor((leads - converted) * (Math.random() * 0.4 + 0.2));
+    const inProgress = leads - converted - notQualified;
+    
+    data.push({
+      date: format(date, 'dd/MM'),
+      dayOfWeek: `${dayOfWeek} ${format(date, 'dd/MM')}`,
+      leads,
+      converted,
+      notQualified,
+      inProgress,
+      conversionRate: ((converted / leads) * 100).toFixed(1),
+    });
+  }
+  return data;
+};
+
+const leadsData = generateLeadsData();
+
+// Dados para o gráfico de pizza
+const statusDistribution = [
+  { name: 'Convertidos', value: leadsData.reduce((acc, d) => acc + d.converted, 0), color: 'hsl(var(--chart-2))' },
+  { name: 'Em andamento', value: leadsData.reduce((acc, d) => acc + d.inProgress, 0), color: 'hsl(var(--chart-4))' },
+  { name: 'Não qualificados', value: leadsData.reduce((acc, d) => acc + d.notQualified, 0), color: 'hsl(var(--chart-5))' },
+];
+
+const totalLeads = statusDistribution.reduce((acc, d) => acc + d.value, 0);
+const avgConversionRate = (statusDistribution[0].value / totalLeads * 100).toFixed(1);
+
+const chartConfig = {
+  leads: { label: "Total Leads", color: "hsl(var(--chart-1))" },
+  converted: { label: "Convertidos", color: "hsl(var(--chart-2))" },
+  conversionRate: { label: "Taxa de Conversão", color: "hsl(var(--chart-3))" },
+  inProgress: { label: "Em andamento", color: "hsl(var(--chart-4))" },
+  notQualified: { label: "Não qualificados", color: "hsl(var(--chart-5))" },
+};
 
 const LeadsCenter = () => {
   const handleOpenFacebookEvents = () => {
@@ -51,6 +99,177 @@ const LeadsCenter = () => {
                 Informe ao Facebook quais leads converteram para receber leads melhores
               </p>
             </div>
+          </div>
+
+          {/* KPIs Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-4">
+                <div className="text-2xl font-bold">{totalLeads}</div>
+                <p className="text-xs text-muted-foreground">Total de Leads (30 dias)</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="text-2xl font-bold text-green-500">{statusDistribution[0].value}</div>
+                <p className="text-xs text-muted-foreground">Convertidos</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="text-2xl font-bold text-primary">{avgConversionRate}%</div>
+                <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="text-2xl font-bold text-yellow-500">{statusDistribution[1].value}</div>
+                <p className="text-xs text-muted-foreground">Em Andamento</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Charts Section */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Conversion Rate Over Time */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Taxa de Conversão ao Longo do Tempo
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Mostra a porcentagem de leads que converteram em cada dia. 
+                      Uma taxa crescente indica que o Facebook está aprendendo.
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+                <CardDescription>Últimos 30 dias - % de leads convertidos</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={leadsData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="date" 
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        unit="%"
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line 
+                        type="monotone" 
+                        dataKey="conversionRate" 
+                        stroke="var(--color-conversionRate)" 
+                        strokeWidth={2}
+                        dot={false}
+                        name="Taxa de Conversão (%)"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            {/* Leads Distribution Pie */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Distribuição de Status
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Mostra como seus leads estão distribuídos por status.
+                      Idealmente você quer mais convertidos e menos não qualificados.
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+                <CardDescription>Visão geral do funil de leads</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={chartConfig} className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {statusDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            {/* Daily Leads Bar Chart */}
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Leads por Dia e Status
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Mostra quantos leads você recebeu por dia e como estão classificados.
+                      Barras verdes crescentes = Facebook aprendendo seu perfil ideal.
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
+                <CardDescription>Volume diário de leads por categoria</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={leadsData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="dayOfWeek" 
+                        tick={{ fontSize: 9 }}
+                        tickLine={false}
+                        axisLine={false}
+                        interval={2}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Legend />
+                      <Bar dataKey="converted" stackId="a" fill="var(--color-converted)" name="Convertidos" />
+                      <Bar dataKey="inProgress" stackId="a" fill="var(--color-inProgress)" name="Em andamento" />
+                      <Bar dataKey="notQualified" stackId="a" fill="var(--color-notQualified)" name="Não qualificados" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Why This Matters */}
