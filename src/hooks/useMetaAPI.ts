@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { metaAPIService, MetaAPIConfig, AdInsights } from '@/services/metaAPI';
+import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight } from '@/services/metaAPI';
 
 export interface MetricData {
   cpc: number;
@@ -26,6 +26,8 @@ export const useMetaAPI = () => {
     clicks: 10084,
     conversions: 323
   });
+  const [campaigns, setCampaigns] = useState<CampaignInsight[]>([]);
+  const [creatives, setCreatives] = useState<CampaignInsight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
@@ -36,31 +38,33 @@ export const useMetaAPI = () => {
     setError(null);
 
     try {
-      // Validar formato básico
       if (!apiConfig.accessToken.trim() || !apiConfig.accountId.trim()) {
         throw new Error('Access Token e Account ID são obrigatórios');
       }
 
-      // Validar token
       console.log('🔑 Validando token...');
       const isTokenValid = await metaAPIService.validateToken(apiConfig.accessToken);
       if (!isTokenValid) {
         throw new Error('Access Token inválido. Verifique se tem as permissões: ads_read, ads_management, business_management');
       }
 
-      // Validar conta
       console.log('🏢 Validando conta...');
       const isAccountValid = await metaAPIService.validateAccount(apiConfig.accessToken, apiConfig.accountId);
       if (!isAccountValid) {
         throw new Error('Account ID inválido ou conta inativa. Use o formato: act_123456789');
       }
 
-      // Buscar dados iniciais
       console.log('📊 Buscando dados iniciais...');
-      const initialData = await metaAPIService.getAdInsights(apiConfig);
+      const [initialData, campaignData, creativeData] = await Promise.all([
+        metaAPIService.getAdInsights(apiConfig),
+        metaAPIService.getCampaignInsights(apiConfig),
+        metaAPIService.getAdCreativeInsights(apiConfig)
+      ]);
       
       setConfig(apiConfig);
       setMetrics(initialData);
+      setCampaigns(campaignData);
+      setCreatives(creativeData);
       setIsConnected(true);
       console.log('✅ Conexão estabelecida com sucesso!');
       return true;
@@ -79,8 +83,14 @@ export const useMetaAPI = () => {
     if (!config || !isConnected) return;
 
     try {
-      const updatedData = await metaAPIService.getAdInsights(config);
+      const [updatedData, campaignData, creativeData] = await Promise.all([
+        metaAPIService.getAdInsights(config),
+        metaAPIService.getCampaignInsights(config),
+        metaAPIService.getAdCreativeInsights(config)
+      ]);
       setMetrics(updatedData);
+      setCampaigns(campaignData);
+      setCreatives(creativeData);
     } catch (err) {
       console.error('Error refreshing metrics:', err);
     }
@@ -100,22 +110,22 @@ export const useMetaAPI = () => {
       clicks: 10084,
       conversions: 323
     });
+    setCampaigns([]);
+    setCreatives([]);
     setError(null);
   }, []);
 
-  // Atualizar métricas em tempo real quando conectado
   useEffect(() => {
     if (!isConnected || !config) return;
-
-    // Buscar dados reais a cada 30 segundos
     const interval = setInterval(refreshMetrics, 30000);
-
     return () => clearInterval(interval);
   }, [isConnected, config, refreshMetrics]);
 
   return {
     isConnected,
     metrics,
+    campaigns,
+    creatives,
     isLoading,
     error,
     connectToMeta,
