@@ -206,8 +206,8 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
     return strategies;
   };
 
-  const strategies = generateScaleStrategy();
   const winnersCount = creatives.filter(c => c.ctr > 2.0 && c.conversionRate > 3.0).length;
+  const strategies = generateScaleStrategy();
 
   // Feedback de conversões
   const handleAddLTV = () => {
