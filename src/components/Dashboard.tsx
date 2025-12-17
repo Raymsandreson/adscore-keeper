@@ -4,6 +4,7 @@ import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
+import { MetricsChart } from "./MetricsChart";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 
@@ -12,7 +13,8 @@ const Dashboard = () => {
     metrics, 
     campaigns, 
     adSets,
-    creatives, 
+    creatives,
+    dailyData,
     dateRange, 
     changeDateRange, 
     isLoading,
@@ -132,6 +134,9 @@ const Dashboard = () => {
 
         {/* Benchmark Reference Table */}
         <BenchmarkTable />
+
+        {/* Metrics Evolution Chart */}
+        <MetricsChart data={dailyData} isLoading={isLoading} />
 
         {/* Segment Analysis */}
         <SegmentAnalysis 
