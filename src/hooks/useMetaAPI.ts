@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight } from '@/services/metaAPI';
+import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight } from '@/services/metaAPI';
 
 export type DateRangeOption = 'today' | 'last_7d' | 'last_30d';
 
@@ -14,6 +14,8 @@ export interface MetricData {
   clicks: number;
   conversions: number;
 }
+
+export type { DailyInsight };
 
 export const useMetaAPI = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -44,18 +46,20 @@ export const useMetaAPI = () => {
     { id: 'ad_2', name: 'Carrossel de Produtos', type: 'creative', cpc: 1.89, ctr: 2.4, cpm: 22.10, conversionRate: 3.2, spend: 980, impressions: 44350, clicks: 1065, conversions: 34 },
     { id: 'ad_3', name: 'Vídeo Testemunhal', type: 'creative', cpc: 1.65, ctr: 3.1, cpm: 19.80, conversionRate: 4.8, spend: 2150, impressions: 108590, clicks: 3366, conversions: 162 },
   ]);
+  const [dailyData, setDailyData] = useState<DailyInsight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
 
   const fetchData = useCallback(async (apiConfig: MetaAPIConfig, range: DateRangeOption) => {
-    const [insightData, campaignData, adSetData, creativeData] = await Promise.all([
+    const [insightData, campaignData, adSetData, creativeData, dailyInsights] = await Promise.all([
       metaAPIService.getAdInsights(apiConfig, range),
       metaAPIService.getCampaignInsights(apiConfig, range),
       metaAPIService.getAdSetInsights(apiConfig, range),
-      metaAPIService.getAdCreativeInsights(apiConfig, range)
+      metaAPIService.getAdCreativeInsights(apiConfig, range),
+      metaAPIService.getDailyInsights(apiConfig, range)
     ]);
-    return { insightData, campaignData, adSetData, creativeData };
+    return { insightData, campaignData, adSetData, creativeData, dailyInsights };
   }, []);
 
   const connectToMeta = useCallback(async (apiConfig: MetaAPIConfig): Promise<boolean> => {
@@ -78,13 +82,14 @@ export const useMetaAPI = () => {
         throw new Error('Account ID inválido ou conta inativa');
       }
 
-      const { insightData, campaignData, adSetData, creativeData } = await fetchData(apiConfig, dateRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(apiConfig, dateRange);
       
       setConfig(apiConfig);
       setMetrics(insightData);
       setCampaigns(campaignData);
       setAdSets(adSetData);
       setCreatives(creativeData);
+      setDailyData(dailyInsights);
       setIsConnected(true);
       return true;
     } catch (err) {
@@ -103,11 +108,12 @@ export const useMetaAPI = () => {
     
     setIsLoading(true);
     try {
-      const { insightData, campaignData, adSetData, creativeData } = await fetchData(config, newRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(config, newRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
       setAdSets(adSetData);
       setCreatives(creativeData);
+      setDailyData(dailyInsights);
     } catch (err) {
       console.error('Error changing date range:', err);
     } finally {
@@ -119,11 +125,12 @@ export const useMetaAPI = () => {
     if (!config || !isConnected) return;
 
     try {
-      const { insightData, campaignData, adSetData, creativeData } = await fetchData(config, dateRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(config, dateRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
       setAdSets(adSetData);
       setCreatives(creativeData);
+      setDailyData(dailyInsights);
     } catch (err) {
       console.error('Error refreshing metrics:', err);
     }
@@ -139,6 +146,7 @@ export const useMetaAPI = () => {
     setCampaigns([]);
     setAdSets([]);
     setCreatives([]);
+    setDailyData([]);
     setError(null);
   }, []);
 
@@ -154,6 +162,7 @@ export const useMetaAPI = () => {
     campaigns,
     adSets,
     creatives,
+    dailyData,
     isLoading,
     error,
     dateRange,
