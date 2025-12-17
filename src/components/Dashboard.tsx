@@ -1,12 +1,14 @@
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
 import { MetricsChart } from "./MetricsChart";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
+import { Link } from "react-router-dom";
 
 const Dashboard = () => {
   const { 
@@ -63,6 +65,12 @@ const Dashboard = () => {
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
           </p>
+          <Link to="/leads">
+            <Button variant="outline" className="mt-2">
+              <Users className="h-4 w-4 mr-2" />
+              Central de Leads (otimização)
+            </Button>
+          </Link>
         </div>
 
         {/* Connection Status */}
