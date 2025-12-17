@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2 } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 
@@ -17,13 +17,14 @@ interface AIsuggestion {
 
 interface SegmentAnalysisProps {
   campaigns: CampaignInsight[];
+  adSets: CampaignInsight[];
   creatives: CampaignInsight[];
   dateRange: DateRangeOption;
   onDateRangeChange: (range: DateRangeOption) => void;
   isLoading?: boolean;
 }
 
-const SegmentAnalysis = ({ campaigns, creatives, dateRange, onDateRangeChange, isLoading }: SegmentAnalysisProps) => {
+const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeChange, isLoading }: SegmentAnalysisProps) => {
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -319,10 +320,14 @@ const SegmentAnalysis = ({ campaigns, creatives, dateRange, onDateRangeChange, i
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="campaigns" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
               Campanhas ({campaigns.length})
+            </TabsTrigger>
+            <TabsTrigger value="adsets" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Conjuntos ({adSets.length})
             </TabsTrigger>
             <TabsTrigger value="creatives" className="flex items-center gap-2">
               <Megaphone className="h-4 w-4" />
@@ -334,6 +339,14 @@ const SegmentAnalysis = ({ campaigns, creatives, dateRange, onDateRangeChange, i
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {campaigns.map((campaign) => (
                 <ItemCard key={campaign.id} item={campaign} />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="adsets" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {adSets.map((adSet) => (
+                <ItemCard key={adSet.id} item={adSet} />
               ))}
             </div>
           </TabsContent>
