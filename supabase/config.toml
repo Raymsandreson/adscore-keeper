@@ -1,0 +1,4 @@
+project_id = "gliigkupoebmlbwyvijp"
+
+[functions.meta-campaign-manager]
+verify_jwt = false

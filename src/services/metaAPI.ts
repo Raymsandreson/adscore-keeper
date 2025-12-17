@@ -35,6 +35,7 @@ export interface CampaignInsight {
   id: string;
   name: string;
   type: 'campaign' | 'adset' | 'creative';
+  status?: 'ACTIVE' | 'PAUSED' | 'DELETED' | 'ARCHIVED';
   cpc: number;
   ctr: number;
   cpm: number;

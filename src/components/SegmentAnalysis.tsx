@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
+import { CampaignControls } from "./CampaignControls";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -22,9 +23,10 @@ interface SegmentAnalysisProps {
   dateRange: DateRangeOption;
   onDateRangeChange: (range: DateRangeOption) => void;
   isLoading?: boolean;
+  onRefresh?: () => void;
 }
 
-const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeChange, isLoading }: SegmentAnalysisProps) => {
+const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeChange, isLoading, onRefresh }: SegmentAnalysisProps) => {
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -161,20 +163,45 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     return colors[status];
   };
 
+  const getEntityType = (item: CampaignInsight): 'campaign' | 'adset' | 'ad' => {
+    if (item.type === 'campaign') return 'campaign';
+    if (item.type === 'adset') return 'adset';
+    return 'ad';
+  };
+
   const ItemCard = ({ item }: { item: CampaignInsight }) => (
     <Card 
-      className="cursor-pointer hover:shadow-md transition-all border-border/50 hover:border-primary/30"
-      onClick={() => setSelectedItem(item)}
+      className="hover:shadow-md transition-all border-border/50 hover:border-primary/30"
     >
       <CardHeader className="pb-2">
-        <div className="flex items-start gap-2">
-          {item.type === 'campaign' ? (
-            <Target className="h-4 w-4 text-primary mt-0.5" />
-          ) : (
-            <Megaphone className="h-4 w-4 text-primary mt-0.5" />
-          )}
-          <CardTitle className="text-sm font-medium leading-tight">{item.name}</CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            {item.type === 'campaign' ? (
+              <Target className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            ) : item.type === 'adset' ? (
+              <Users className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            ) : (
+              <Megaphone className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+            )}
+            <CardTitle className="text-sm font-medium leading-tight truncate">{item.name}</CardTitle>
+          </div>
+          <CampaignControls
+            entityId={item.id}
+            entityType={getEntityType(item)}
+            entityName={item.name}
+            currentStatus={item.status as 'ACTIVE' | 'PAUSED' || 'ACTIVE'}
+            currentBudget={item.spend}
+            onActionComplete={onRefresh}
+          />
         </div>
+        {item.status && (
+          <Badge 
+            variant={item.status === 'ACTIVE' ? 'default' : 'secondary'}
+            className="text-xs w-fit"
+          >
+            {item.status === 'ACTIVE' ? 'Ativo' : 'Pausado'}
+          </Badge>
+        )}
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -208,7 +235,12 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
             <span>{item.conversions} conv.</span>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="w-full text-xs">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full text-xs"
+          onClick={() => setSelectedItem(item)}
+        >
           <Lightbulb className="h-3 w-3 mr-1" />
           Ver Sugestões IA
         </Button>

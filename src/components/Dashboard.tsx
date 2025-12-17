@@ -154,6 +154,7 @@ const Dashboard = () => {
           dateRange={dateRange}
           onDateRangeChange={changeDateRange}
           isLoading={isLoading}
+          onRefresh={refreshMetrics}
         />
 
         {/* Strategy Panel - Estrategista de Escala */}
