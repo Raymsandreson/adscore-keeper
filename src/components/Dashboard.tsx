@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
@@ -8,8 +7,19 @@ import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign } from "lucide-
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 
 const Dashboard = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const { metrics, campaigns, creatives, dateRange, changeDateRange, isLoading } = useMetaAPI();
+  const { 
+    metrics, 
+    campaigns, 
+    creatives, 
+    dateRange, 
+    changeDateRange, 
+    isLoading,
+    isConnected,
+    error,
+    connectToMeta,
+    disconnect,
+    refreshMetrics
+  } = useMetaAPI();
 
   const getPerformanceStatus = (value: number, metric: string) => {
     switch (metric) {
@@ -53,7 +63,12 @@ const Dashboard = () => {
 
         {/* Connection Status */}
         <BMConnection 
-          onConnectionChange={setIsConnected}
+          isConnected={isConnected}
+          isLoading={isLoading}
+          error={error}
+          onConnect={connectToMeta}
+          onDisconnect={disconnect}
+          onRefresh={refreshMetrics}
         />
 
         {/* Metrics Grid */}
@@ -108,7 +123,7 @@ const Dashboard = () => {
             value={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
             icon={DollarSign}
             status="success"
-            benchmark="Gasto acumulado hoje"
+            benchmark="Gasto acumulado no período"
             isConnected={isConnected}
           />
         </div>
