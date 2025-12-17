@@ -4,19 +4,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff, Settings, AlertCircle, RefreshCw } from "lucide-react";
+import { Wifi, WifiOff, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useMetaAPI } from "@/hooks/useMetaAPI";
+import { MetaAPIConfig } from "@/services/metaAPI";
 
 interface BMConnectionProps {
-  onConnectionChange: (connected: boolean) => void;
+  isConnected: boolean;
+  isLoading: boolean;
+  error: string | null;
+  onConnect: (config: MetaAPIConfig) => Promise<boolean>;
+  onDisconnect: () => void;
+  onRefresh: () => Promise<void>;
 }
 
-const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
+const BMConnection = ({ 
+  isConnected, 
+  isLoading, 
+  error, 
+  onConnect, 
+  onDisconnect, 
+  onRefresh 
+}: BMConnectionProps) => {
   const [accessToken, setAccessToken] = useState("");
   const [accountId, setAccountId] = useState("");
   const { toast } = useToast();
-  const { isConnected, isLoading, error, connectToMeta, disconnect, refreshMetrics } = useMetaAPI();
 
   const handleConnect = async () => {
     if (!accessToken.trim() || !accountId.trim()) {
@@ -28,13 +39,12 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
       return;
     }
 
-    const success = await connectToMeta({
+    const success = await onConnect({
       accessToken: accessToken.trim(),
       accountId: accountId.trim()
     });
 
     if (success) {
-      onConnectionChange(true);
       toast({
         title: "✅ Conectado com sucesso!",
         description: "Dados reais do Meta Business Manager sendo coletados",
@@ -49,8 +59,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
   };
 
   const handleDisconnect = () => {
-    disconnect();
-    onConnectionChange(false);
+    onDisconnect();
     setAccessToken("");
     setAccountId("");
     toast({
@@ -60,7 +69,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
   };
 
   const handleRefresh = async () => {
-    await refreshMetrics();
+    await onRefresh();
     toast({
       title: "Dados atualizados",
       description: "Métricas foram atualizadas com sucesso",
@@ -78,17 +87,13 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
                 <div className="absolute -inset-1 bg-success/20 rounded-full"></div>
               </div>
               <span className="text-foreground">Meta Business Manager</span>
-              <Badge className="status-success">
-                Conectado
-              </Badge>
+              <Badge className="status-success">Conectado</Badge>
             </>
           ) : (
             <>
               <WifiOff className="h-6 w-6 text-muted-foreground" />
               <span className="text-foreground">Meta Business Manager</span>
-              <Badge variant="secondary">
-                Desconectado
-              </Badge>
+              <Badge variant="secondary">Desconectado</Badge>
             </>
           )}
         </CardTitle>
@@ -101,7 +106,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
               <div className="text-sm">
                 <strong className="text-foreground">Modo de Demonstração Ativo</strong>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Sistema funcionando com dados simulados realistas. Métricas são atualizadas automaticamente.
+                  Sistema funcionando com dados simulados. Conecte para ver dados reais.
                 </p>
               </div>
             </div>
@@ -141,7 +146,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
               ) : (
                 <span className="flex items-center gap-2">
                   <Wifi className="h-4 w-4" />
-                  Testar Conexão (Demo)
+                  Conectar
                 </span>
               )}
             </Button>
@@ -159,10 +164,10 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium flex items-center gap-2">
                     <div className="w-2 h-2 bg-success rounded-full"></div>
-                    Status: Simulando dados reais da Meta API
+                    Conectado - Dados reais da Meta API
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Dados simulados atualizados a cada 30 segundos
+                    Dados atualizados automaticamente a cada 30 segundos
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -188,7 +193,7 @@ const BMConnection = ({ onConnectionChange }: BMConnectionProps) => {
             </div>
             
             <div className="text-xs text-muted-foreground">
-              <strong>Modo Demonstração:</strong> {accountId} | <strong>Simulação:</strong> Dados realistas atualizados automaticamente
+              <strong>Conta:</strong> {accountId}
             </div>
           </div>
         )}
