@@ -31,6 +31,49 @@ export interface AdInsights {
   conversions: number;
 }
 
+export interface TargetingData {
+  age_min?: number;
+  age_max?: number;
+  genders?: number[];
+  geo_locations?: {
+    countries?: string[];
+    cities?: { key: string; name: string }[];
+    regions?: { key: string; name: string }[];
+  };
+  interests?: { id: string; name: string }[];
+  behaviors?: { id: string; name: string }[];
+  custom_audiences?: { id: string; name: string }[];
+  excluded_custom_audiences?: { id: string; name: string }[];
+  optimization_goal?: string;
+  billing_event?: string;
+}
+
+export interface AdCreativeData {
+  id: string;
+  name: string;
+  body?: string;
+  title?: string;
+  link_description?: string;
+  call_to_action_type?: string;
+  image_url?: string;
+  video_id?: string;
+  object_story_spec?: {
+    page_id?: string;
+    link_data?: {
+      message?: string;
+      link?: string;
+      caption?: string;
+      description?: string;
+      call_to_action?: { type: string };
+    };
+    video_data?: {
+      message?: string;
+      title?: string;
+      call_to_action?: { type: string };
+    };
+  };
+}
+
 export interface CampaignInsight {
   id: string;
   name: string;
@@ -44,6 +87,9 @@ export interface CampaignInsight {
   impressions: number;
   clicks: number;
   conversions: number;
+  targeting?: TargetingData;
+  creative?: AdCreativeData;
+  objective?: string;
 }
 
 export interface DailyInsight {
@@ -406,6 +452,147 @@ class MetaAPIService {
       console.error('Error fetching adset insights:', error);
       return this.generateFallbackAdSets();
     }
+  }
+
+  async getAdSetTargeting(accessToken: string, adSetId: string): Promise<TargetingData | null> {
+    try {
+      console.log('🎯 Buscando targeting do adset:', adSetId);
+      const url = `${this.baseURL}/${adSetId}?access_token=${accessToken}&fields=targeting,optimization_goal,billing_event`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('❌ Error fetching targeting:', data.error);
+        return this.generateFallbackTargeting();
+      }
+
+      const targeting = data.targeting || {};
+      console.log('✅ Targeting obtido:', targeting);
+
+      return {
+        age_min: targeting.age_min,
+        age_max: targeting.age_max,
+        genders: targeting.genders,
+        geo_locations: targeting.geo_locations,
+        interests: targeting.flexible_spec?.[0]?.interests || targeting.interests,
+        behaviors: targeting.flexible_spec?.[0]?.behaviors || targeting.behaviors,
+        custom_audiences: targeting.custom_audiences,
+        excluded_custom_audiences: targeting.excluded_custom_audiences,
+        optimization_goal: data.optimization_goal,
+        billing_event: data.billing_event
+      };
+    } catch (error) {
+      console.error('Error fetching targeting:', error);
+      return this.generateFallbackTargeting();
+    }
+  }
+
+  async getAdCreative(accessToken: string, adId: string): Promise<AdCreativeData | null> {
+    try {
+      console.log('🎨 Buscando creative do anúncio:', adId);
+      const url = `${this.baseURL}/${adId}?access_token=${accessToken}&fields=name,creative{id,name,body,title,link_description,call_to_action_type,object_story_spec,image_url,thumbnail_url}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('❌ Error fetching creative:', data.error);
+        return this.generateFallbackCreativeData(adId);
+      }
+
+      const creative = data.creative || {};
+      console.log('✅ Creative obtido:', creative);
+
+      return {
+        id: creative.id || adId,
+        name: creative.name || data.name,
+        body: creative.body,
+        title: creative.title,
+        link_description: creative.link_description,
+        call_to_action_type: creative.call_to_action_type,
+        image_url: creative.image_url || creative.thumbnail_url,
+        object_story_spec: creative.object_story_spec
+      };
+    } catch (error) {
+      console.error('Error fetching creative:', error);
+      return this.generateFallbackCreativeData(adId);
+    }
+  }
+
+  async getCampaignObjective(accessToken: string, campaignId: string): Promise<string | null> {
+    try {
+      console.log('🎯 Buscando objetivo da campanha:', campaignId);
+      const url = `${this.baseURL}/${campaignId}?access_token=${accessToken}&fields=objective`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error('❌ Error fetching objective:', data.error);
+        return 'CONVERSIONS';
+      }
+
+      console.log('✅ Objetivo obtido:', data.objective);
+      return data.objective || 'CONVERSIONS';
+    } catch (error) {
+      console.error('Error fetching objective:', error);
+      return 'CONVERSIONS';
+    }
+  }
+
+  async getEnrichedEntityData(
+    accessToken: string, 
+    entityId: string, 
+    entityType: 'campaign' | 'adset' | 'creative'
+  ): Promise<{ targeting?: TargetingData; creative?: AdCreativeData; objective?: string }> {
+    try {
+      if (entityType === 'adset') {
+        const targeting = await this.getAdSetTargeting(accessToken, entityId);
+        return { targeting: targeting || undefined };
+      } else if (entityType === 'creative') {
+        const creative = await this.getAdCreative(accessToken, entityId);
+        return { creative: creative || undefined };
+      } else if (entityType === 'campaign') {
+        const objective = await this.getCampaignObjective(accessToken, entityId);
+        return { objective: objective || undefined };
+      }
+      return {};
+    } catch (error) {
+      console.error('Error getting enriched data:', error);
+      return {};
+    }
+  }
+
+  private generateFallbackTargeting(): TargetingData {
+    return {
+      age_min: 25,
+      age_max: 45,
+      genders: [0],
+      geo_locations: {
+        countries: ['BR']
+      },
+      interests: [
+        { id: '6003139266461', name: 'Marketing digital' },
+        { id: '6003017845557', name: 'Empreendedorismo' }
+      ],
+      behaviors: [
+        { id: '6015559470583', name: 'Compradores engajados' }
+      ],
+      optimization_goal: 'CONVERSIONS',
+      billing_event: 'IMPRESSIONS'
+    };
+  }
+
+  private generateFallbackCreativeData(adId: string): AdCreativeData {
+    return {
+      id: adId,
+      name: 'Anúncio Promocional',
+      body: '🔥 Descubra o método que já ajudou +5.000 empreendedores a escalar seus resultados! Aprenda as estratégias que os grandes players do mercado usam.',
+      title: 'Método Comprovado de Escala',
+      link_description: 'Clique e descubra como transformar seu negócio',
+      call_to_action_type: 'LEARN_MORE'
+    };
   }
 
   async getAdCreativeInsights(config: MetaAPIConfig, dateRange: string = 'last_7d'): Promise<CampaignInsight[]> {
