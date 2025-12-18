@@ -6,9 +6,11 @@ import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
 import ActionHistory from "./ActionHistory";
+import AlertSettings from "./AlertSettings";
 import { MetricsChart } from "./MetricsChart";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
+import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
@@ -27,6 +29,13 @@ const Dashboard = () => {
     disconnect,
     refreshMetrics
   } = useMetaAPI();
+
+  const {
+    getThresholds,
+    saveThresholds,
+    requestNotificationPermission,
+    hasNotificationPermission,
+  } = useMetricAlerts(metrics, isConnected);
 
   const getPerformanceStatus = (value: number, metric: string) => {
     switch (metric) {
@@ -82,6 +91,14 @@ const Dashboard = () => {
           onConnect={connectToMeta}
           onDisconnect={disconnect}
           onRefresh={refreshMetrics}
+        />
+
+        {/* Alert Settings */}
+        <AlertSettings
+          getThresholds={getThresholds}
+          saveThresholds={saveThresholds}
+          requestNotificationPermission={requestNotificationPermission}
+          hasNotificationPermission={hasNotificationPermission}
         />
 
         {/* Metrics Grid */}
