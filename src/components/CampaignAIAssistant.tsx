@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   MessageSquare, 
   FileText, 
@@ -68,7 +69,8 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
     title: string;
     body: string;
     linkDescription: string;
-  }>({ title: '', body: '', linkDescription: '' });
+    callToActionType: string;
+  }>({ title: '', body: '', linkDescription: '', callToActionType: '' });
   const [isSavingCreative, setIsSavingCreative] = useState(false);
   
   const { updateCreative } = useCampaignManager();
@@ -99,6 +101,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
           title: data.creative.title || '',
           body: data.creative.body || data.creative.object_story_spec?.link_data?.message || '',
           linkDescription: data.creative.link_description || '',
+          callToActionType: data.creative.call_to_action_type || '',
         });
       }
       console.log('✅ Enriched data loaded:', data);
@@ -113,6 +116,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
         title: enrichedData.creative.title || '',
         body: enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message || '',
         linkDescription: enrichedData.creative.link_description || '',
+        callToActionType: enrichedData.creative.call_to_action_type || '',
       });
     }
     setIsEditingCopy(true);
@@ -125,6 +129,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
         title: enrichedData.creative.title || '',
         body: enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message || '',
         linkDescription: enrichedData.creative.link_description || '',
+        callToActionType: enrichedData.creative.call_to_action_type || '',
       });
     }
   };
@@ -143,6 +148,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
           title: editedCreative.title || undefined,
           body: editedCreative.body || undefined,
           linkDescription: editedCreative.linkDescription || undefined,
+          callToActionType: editedCreative.callToActionType || undefined,
         },
         item.name
       );
@@ -156,6 +162,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
             title: editedCreative.title || prev.creative.title,
             body: editedCreative.body || prev.creative.body,
             link_description: editedCreative.linkDescription || prev.creative.link_description,
+            call_to_action_type: editedCreative.callToActionType || prev.creative.call_to_action_type,
           } : undefined
         }));
         setIsEditingCopy(false);
@@ -636,6 +643,45 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
                           placeholder="Descrição do link"
                           className="text-sm"
                         />
+                      </div>
+
+                      {/* Editable CTA */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <MousePointerClick className="h-3 w-3" />
+                          <span>Call to Action (CTA)</span>
+                        </div>
+                        <Select
+                          value={editedCreative.callToActionType}
+                          onValueChange={(value) => setEditedCreative(prev => ({ ...prev, callToActionType: value }))}
+                        >
+                          <SelectTrigger className="text-sm">
+                            <SelectValue placeholder="Selecione o CTA" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-popover z-50">
+                            <SelectItem value="LEARN_MORE">Saiba Mais</SelectItem>
+                            <SelectItem value="SHOP_NOW">Comprar Agora</SelectItem>
+                            <SelectItem value="SIGN_UP">Cadastre-se</SelectItem>
+                            <SelectItem value="SUBSCRIBE">Assinar</SelectItem>
+                            <SelectItem value="CONTACT_US">Fale Conosco</SelectItem>
+                            <SelectItem value="GET_OFFER">Obter Oferta</SelectItem>
+                            <SelectItem value="GET_QUOTE">Solicitar Orçamento</SelectItem>
+                            <SelectItem value="DOWNLOAD">Baixar</SelectItem>
+                            <SelectItem value="BOOK_TRAVEL">Reservar</SelectItem>
+                            <SelectItem value="WATCH_MORE">Assistir Mais</SelectItem>
+                            <SelectItem value="APPLY_NOW">Candidatar-se</SelectItem>
+                            <SelectItem value="BUY_NOW">Comprar</SelectItem>
+                            <SelectItem value="GET_DIRECTIONS">Ver Direções</SelectItem>
+                            <SelectItem value="MESSAGE_PAGE">Enviar Mensagem</SelectItem>
+                            <SelectItem value="WHATSAPP_MESSAGE">WhatsApp</SelectItem>
+                            <SelectItem value="CALL_NOW">Ligar Agora</SelectItem>
+                            <SelectItem value="INSTALL_APP">Instalar App</SelectItem>
+                            <SelectItem value="USE_APP">Usar App</SelectItem>
+                            <SelectItem value="PLAY_GAME">Jogar</SelectItem>
+                            <SelectItem value="LISTEN_NOW">Ouvir Agora</SelectItem>
+                            <SelectItem value="ORDER_NOW">Pedir Agora</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </>
                   ) : (
