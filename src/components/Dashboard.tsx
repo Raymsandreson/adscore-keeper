@@ -7,6 +7,7 @@ import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
 import ActionHistory from "./ActionHistory";
 import AlertSettings from "./AlertSettings";
+import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
@@ -157,6 +158,9 @@ const Dashboard = () => {
             isConnected={isConnected}
           />
         </div>
+
+        {/* Period Comparison */}
+        <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
 
         {/* Benchmark Reference Table */}
         <BenchmarkTable />
