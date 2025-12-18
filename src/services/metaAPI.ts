@@ -377,6 +377,25 @@ class MetaAPIService {
       const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
       const { since, until } = this.getDateRange(dateRange);
       
+      // First, get campaign statuses
+      const statusUrl = `${this.baseURL}/${cleanAccountId}/campaigns?` +
+        `access_token=${config.accessToken}&` +
+        `fields=id,effective_status&` +
+        `limit=50`;
+      
+      let statusMap: Record<string, string> = {};
+      try {
+        const statusResponse = await fetch(statusUrl);
+        const statusData = await statusResponse.json();
+        if (statusData.data) {
+          statusData.data.forEach((c: any) => {
+            statusMap[c.id] = c.effective_status;
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Não foi possível buscar status das campanhas');
+      }
+      
       const fields = [
         'campaign_name',
         'campaign_id',
@@ -402,7 +421,11 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de campanhas obtidos:', data.data.length);
-        return data.data.map((item: any) => this.parseInsightData(item, 'campaign'));
+        return data.data.map((item: any) => {
+          const insight = this.parseInsightData(item, 'campaign');
+          insight.status = (statusMap[item.campaign_id] as any) || 'ACTIVE';
+          return insight;
+        });
       }
 
       console.log('⚠️ Sem dados de campanha, usando fallback');
@@ -417,6 +440,25 @@ class MetaAPIService {
     try {
       const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
       const { since, until } = this.getDateRange(dateRange);
+      
+      // First, get adset statuses
+      const statusUrl = `${this.baseURL}/${cleanAccountId}/adsets?` +
+        `access_token=${config.accessToken}&` +
+        `fields=id,effective_status&` +
+        `limit=100`;
+      
+      let statusMap: Record<string, string> = {};
+      try {
+        const statusResponse = await fetch(statusUrl);
+        const statusData = await statusResponse.json();
+        if (statusData.data) {
+          statusData.data.forEach((a: any) => {
+            statusMap[a.id] = a.effective_status;
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Não foi possível buscar status dos conjuntos');
+      }
       
       const fields = [
         'adset_name',
@@ -443,7 +485,11 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de conjuntos obtidos:', data.data.length);
-        return data.data.map((item: any) => this.parseInsightData(item, 'adset'));
+        return data.data.map((item: any) => {
+          const insight = this.parseInsightData(item, 'adset');
+          insight.status = (statusMap[item.adset_id] as any) || 'ACTIVE';
+          return insight;
+        });
       }
 
       console.log('⚠️ Sem dados de conjuntos, usando fallback');
@@ -600,6 +646,25 @@ class MetaAPIService {
       const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
       const { since, until } = this.getDateRange(dateRange);
       
+      // First, get ad statuses
+      const statusUrl = `${this.baseURL}/${cleanAccountId}/ads?` +
+        `access_token=${config.accessToken}&` +
+        `fields=id,effective_status&` +
+        `limit=100`;
+      
+      let statusMap: Record<string, string> = {};
+      try {
+        const statusResponse = await fetch(statusUrl);
+        const statusData = await statusResponse.json();
+        if (statusData.data) {
+          statusData.data.forEach((a: any) => {
+            statusMap[a.id] = a.effective_status;
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Não foi possível buscar status dos anúncios');
+      }
+      
       const fields = [
         'ad_name',
         'ad_id',
@@ -625,7 +690,11 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de criativos obtidos:', data.data.length);
-        return data.data.map((item: any) => this.parseInsightData(item, 'creative'));
+        return data.data.map((item: any) => {
+          const insight = this.parseInsightData(item, 'creative');
+          insight.status = (statusMap[item.ad_id] as any) || 'ACTIVE';
+          return insight;
+        });
       }
 
       console.log('⚠️ Sem dados de criativos, usando fallback');

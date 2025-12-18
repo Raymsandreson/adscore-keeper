@@ -51,7 +51,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   const filterByStatus = (items: CampaignInsight[]) => {
     if (statusFilter === 'all') return items;
     return items.filter(item => {
-      const isActive = item.status === 'ACTIVE' || !item.status;
+      const isActive = item.status === 'ACTIVE';
       return statusFilter === 'active' ? isActive : !isActive;
     });
   };
@@ -271,7 +271,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
 
   const ItemCard = ({ item }: { item: CampaignInsight }) => {
     const recommendation = getRecommendation(item);
-    const isActive = item.status === 'ACTIVE' || !item.status;
+    const isActive = item.status === 'ACTIVE';
     const isLoadingThis = actionLoading === item.id;
     const wasJustChanged = recentlyChanged?.id === item.id;
     const changeAction = recentlyChanged?.action;
