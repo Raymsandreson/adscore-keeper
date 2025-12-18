@@ -22,7 +22,10 @@ import {
   Heart,
   Zap,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Type,
+  AlignLeft,
+  MousePointerClick
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CampaignInsight, metaAPIService, TargetingData, AdCreativeData } from "@/services/metaAPI";
@@ -54,6 +57,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
     objective?: string;
   }>({});
   const [showTargeting, setShowTargeting] = useState(false);
+  const [showCreative, setShowCreative] = useState(false);
 
   // Load conversation history and enriched data on mount
   useEffect(() => {
@@ -442,6 +446,97 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
                 <div className="text-center py-4 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
                   Carregando segmentação...
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {/* Creative/Copy Panel */}
+        {(enrichedData.creative || item.type === 'creative') && (
+          <Collapsible open={showCreative} onOpenChange={setShowCreative}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between p-2 h-auto bg-muted/50 hover:bg-muted">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Copy do Anúncio</span>
+                </div>
+                {showCreative ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 space-y-3">
+              {enrichedData.creative ? (
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  {/* Title */}
+                  {enrichedData.creative.title && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Type className="h-3 w-3" />
+                        <span>Título</span>
+                      </div>
+                      <p className="text-sm font-medium bg-gradient-to-r from-primary/10 to-transparent px-2 py-1 rounded">
+                        {enrichedData.creative.title}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Body Text */}
+                  {enrichedData.creative.body && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <AlignLeft className="h-3 w-3" />
+                        <span>Texto Principal</span>
+                      </div>
+                      <p className="text-sm bg-muted/50 px-3 py-2 rounded-lg whitespace-pre-wrap">
+                        {enrichedData.creative.body}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Link Description */}
+                  {enrichedData.creative.link_description && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <FileText className="h-3 w-3" />
+                        <span>Descrição do Link</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground italic px-2">
+                        {enrichedData.creative.link_description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Object Story Spec - Message */}
+                  {enrichedData.creative.object_story_spec?.link_data?.message && !enrichedData.creative.body && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <AlignLeft className="h-3 w-3" />
+                        <span>Mensagem</span>
+                      </div>
+                      <p className="text-sm bg-muted/50 px-3 py-2 rounded-lg whitespace-pre-wrap">
+                        {enrichedData.creative.object_story_spec.link_data.message}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* CTA */}
+                  {enrichedData.creative.call_to_action_type && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <MousePointerClick className="h-3 w-3 text-muted-foreground" />
+                      <Badge className="text-xs bg-primary text-primary-foreground">
+                        {enrichedData.creative.call_to_action_type.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                  Carregando copy do anúncio...
                 </div>
               )}
             </CollapsibleContent>
