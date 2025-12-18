@@ -1,7 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight } from '@/services/metaAPI';
 
-export type DateRangeOption = 'today' | 'last_7d' | 'last_30d';
+export type DateRangeOption = 
+  | 'today' 
+  | 'yesterday'
+  | 'last_7d' 
+  | 'last_15d'
+  | 'last_30d' 
+  | 'last_60d'
+  | 'last_90d'
+  | 'this_month'
+  | 'last_month'
+  | 'this_quarter'
+  | 'this_semester'
+  | 'this_year'
+  | 'custom';
+
+export interface CustomDateRange {
+  since: string;
+  until: string;
+}
 
 export interface MetricData {
   cpc: number;
