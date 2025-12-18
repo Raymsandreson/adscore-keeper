@@ -25,12 +25,17 @@ import {
   ChevronUp,
   Type,
   AlignLeft,
-  MousePointerClick
+  MousePointerClick,
+  Pencil,
+  Save,
+  XCircle
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
 import { CampaignInsight, metaAPIService, TargetingData, AdCreativeData } from "@/services/metaAPI";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useCampaignManager } from "@/hooks/useCampaignManager";
 
 interface Message {
   role: "user" | "assistant";
@@ -58,6 +63,15 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
   }>({});
   const [showTargeting, setShowTargeting] = useState(false);
   const [showCreative, setShowCreative] = useState(false);
+  const [isEditingCopy, setIsEditingCopy] = useState(false);
+  const [editedCreative, setEditedCreative] = useState<{
+    title: string;
+    body: string;
+    linkDescription: string;
+  }>({ title: '', body: '', linkDescription: '' });
+  const [isSavingCreative, setIsSavingCreative] = useState(false);
+  
+  const { updateCreative } = useCampaignManager();
 
   // Load conversation history and enriched data on mount
   useEffect(() => {
@@ -79,9 +93,78 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
         item.type
       );
       setEnrichedData(data);
+      // Initialize edit fields with current creative data
+      if (data.creative) {
+        setEditedCreative({
+          title: data.creative.title || '',
+          body: data.creative.body || data.creative.object_story_spec?.link_data?.message || '',
+          linkDescription: data.creative.link_description || '',
+        });
+      }
       console.log('✅ Enriched data loaded:', data);
     } catch (error) {
       console.error('Error loading enriched data:', error);
+    }
+  };
+
+  const startEditingCopy = () => {
+    if (enrichedData.creative) {
+      setEditedCreative({
+        title: enrichedData.creative.title || '',
+        body: enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message || '',
+        linkDescription: enrichedData.creative.link_description || '',
+      });
+    }
+    setIsEditingCopy(true);
+  };
+
+  const cancelEditingCopy = () => {
+    setIsEditingCopy(false);
+    if (enrichedData.creative) {
+      setEditedCreative({
+        title: enrichedData.creative.title || '',
+        body: enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message || '',
+        linkDescription: enrichedData.creative.link_description || '',
+      });
+    }
+  };
+
+  const saveCreativeChanges = async () => {
+    if (item.type !== 'creative') {
+      toast.error('Só é possível editar copy de anúncios');
+      return;
+    }
+
+    setIsSavingCreative(true);
+    try {
+      const result = await updateCreative(
+        item.id,
+        {
+          title: editedCreative.title || undefined,
+          body: editedCreative.body || undefined,
+          linkDescription: editedCreative.linkDescription || undefined,
+        },
+        item.name
+      );
+
+      if (result.success) {
+        // Update local enriched data
+        setEnrichedData(prev => ({
+          ...prev,
+          creative: prev.creative ? {
+            ...prev.creative,
+            title: editedCreative.title || prev.creative.title,
+            body: editedCreative.body || prev.creative.body,
+            link_description: editedCreative.linkDescription || prev.creative.link_description,
+          } : undefined
+        }));
+        setIsEditingCopy(false);
+      }
+    } catch (error) {
+      console.error('Error saving creative:', error);
+      toast.error('Erro ao salvar alterações');
+    } finally {
+      setIsSavingCreative(false);
     }
   };
 
@@ -471,66 +554,141 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
             <CollapsibleContent className="pt-3 space-y-3">
               {enrichedData.creative ? (
                 <div className="rounded-lg border bg-card p-4 space-y-3">
-                  {/* Title */}
-                  {enrichedData.creative.title && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Type className="h-3 w-3" />
-                        <span>Título</span>
-                      </div>
-                      <p className="text-sm font-medium bg-gradient-to-r from-primary/10 to-transparent px-2 py-1 rounded">
-                        {enrichedData.creative.title}
-                      </p>
+                  {/* Edit/Save buttons */}
+                  {item.type === 'creative' && (
+                    <div className="flex justify-end gap-2">
+                      {isEditingCopy ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={cancelEditingCopy}
+                            disabled={isSavingCreative}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Cancelar
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={saveCreativeChanges}
+                            disabled={isSavingCreative}
+                          >
+                            {isSavingCreative ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4 mr-1" />
+                            )}
+                            Salvar
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={startEditingCopy}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Editar Copy
+                        </Button>
+                      )}
                     </div>
                   )}
 
-                  {/* Body Text */}
-                  {enrichedData.creative.body && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <AlignLeft className="h-3 w-3" />
-                        <span>Texto Principal</span>
+                  {isEditingCopy ? (
+                    <>
+                      {/* Editable Title */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Type className="h-3 w-3" />
+                          <span>Título</span>
+                        </div>
+                        <Input
+                          value={editedCreative.title}
+                          onChange={(e) => setEditedCreative(prev => ({ ...prev, title: e.target.value }))}
+                          placeholder="Título do anúncio"
+                          className="text-sm"
+                        />
                       </div>
-                      <p className="text-sm bg-muted/50 px-3 py-2 rounded-lg whitespace-pre-wrap">
-                        {enrichedData.creative.body}
-                      </p>
-                    </div>
-                  )}
 
-                  {/* Link Description */}
-                  {enrichedData.creative.link_description && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <FileText className="h-3 w-3" />
-                        <span>Descrição do Link</span>
+                      {/* Editable Body Text */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <AlignLeft className="h-3 w-3" />
+                          <span>Texto Principal</span>
+                        </div>
+                        <Textarea
+                          value={editedCreative.body}
+                          onChange={(e) => setEditedCreative(prev => ({ ...prev, body: e.target.value }))}
+                          placeholder="Texto principal do anúncio"
+                          className="text-sm min-h-[100px]"
+                        />
                       </div>
-                      <p className="text-sm text-muted-foreground italic px-2">
-                        {enrichedData.creative.link_description}
-                      </p>
-                    </div>
-                  )}
 
-                  {/* Object Story Spec - Message */}
-                  {enrichedData.creative.object_story_spec?.link_data?.message && !enrichedData.creative.body && (
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <AlignLeft className="h-3 w-3" />
-                        <span>Mensagem</span>
+                      {/* Editable Link Description */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <FileText className="h-3 w-3" />
+                          <span>Descrição do Link</span>
+                        </div>
+                        <Input
+                          value={editedCreative.linkDescription}
+                          onChange={(e) => setEditedCreative(prev => ({ ...prev, linkDescription: e.target.value }))}
+                          placeholder="Descrição do link"
+                          className="text-sm"
+                        />
                       </div>
-                      <p className="text-sm bg-muted/50 px-3 py-2 rounded-lg whitespace-pre-wrap">
-                        {enrichedData.creative.object_story_spec.link_data.message}
-                      </p>
-                    </div>
-                  )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Title */}
+                      {(enrichedData.creative.title || editedCreative.title) && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Type className="h-3 w-3" />
+                            <span>Título</span>
+                          </div>
+                          <p className="text-sm font-medium bg-gradient-to-r from-primary/10 to-transparent px-2 py-1 rounded">
+                            {enrichedData.creative.title}
+                          </p>
+                        </div>
+                      )}
 
-                  {/* CTA */}
-                  {enrichedData.creative.call_to_action_type && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <MousePointerClick className="h-3 w-3 text-muted-foreground" />
-                      <Badge className="text-xs bg-primary text-primary-foreground">
-                        {enrichedData.creative.call_to_action_type.replace(/_/g, ' ')}
-                      </Badge>
-                    </div>
+                      {/* Body Text */}
+                      {(enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message) && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <AlignLeft className="h-3 w-3" />
+                            <span>Texto Principal</span>
+                          </div>
+                          <p className="text-sm bg-muted/50 px-3 py-2 rounded-lg whitespace-pre-wrap">
+                            {enrichedData.creative.body || enrichedData.creative.object_story_spec?.link_data?.message}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Link Description */}
+                      {enrichedData.creative.link_description && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <FileText className="h-3 w-3" />
+                            <span>Descrição do Link</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground italic px-2">
+                            {enrichedData.creative.link_description}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* CTA */}
+                      {enrichedData.creative.call_to_action_type && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <MousePointerClick className="h-3 w-3 text-muted-foreground" />
+                          <Badge className="text-xs bg-primary text-primary-foreground">
+                            {enrichedData.creative.call_to_action_type.replace(/_/g, ' ')}
+                          </Badge>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               ) : (
