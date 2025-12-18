@@ -296,6 +296,17 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
               {recommendation.urgent && (
                 <Badge variant="destructive" className="text-xs">⚠ URGENTE</Badge>
               )}
+              {wasJustChanged && (
+                <Badge 
+                  className={`text-xs animate-scale-in ${
+                    changeAction === 'paused' 
+                      ? 'bg-amber-500 text-white' 
+                      : 'bg-green-500 text-white'
+                  }`}
+                >
+                  {changeAction === 'paused' ? '⏸️ Recém pausado' : '▶️ Recém ativado'}
+                </Badge>
+              )}
             </div>
             <CampaignControls
               entityId={item.id}
