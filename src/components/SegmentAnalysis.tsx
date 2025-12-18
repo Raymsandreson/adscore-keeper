@@ -369,11 +369,11 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
             </Button>
           )}
           
-          {recommendation.action !== 'pause' && !isActive && (
+          {!isActive && (
             <Button 
               variant="default" 
               size="sm" 
-              className="w-full"
+              className="w-full bg-green-600 hover:bg-green-700"
               onClick={() => handleDirectAction(item, 'activate')}
               disabled={isLoadingThis}
             >
