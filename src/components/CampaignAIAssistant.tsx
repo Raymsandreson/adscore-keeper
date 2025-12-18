@@ -18,7 +18,7 @@ import {
   History,
   Trash2
 } from "lucide-react";
-import { CampaignInsight } from "@/services/metaAPI";
+import { CampaignInsight, metaAPIService, TargetingData, AdCreativeData } from "@/services/metaAPI";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -41,11 +41,37 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasStartedQuestions, setHasStartedQuestions] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [enrichedData, setEnrichedData] = useState<{
+    targeting?: TargetingData;
+    creative?: AdCreativeData;
+    objective?: string;
+  }>({});
 
-  // Load conversation history on mount
+  // Load conversation history and enriched data on mount
   useEffect(() => {
     loadConversationHistory();
+    loadEnrichedData();
   }, [item.id]);
+
+  const loadEnrichedData = async () => {
+    const accessToken = localStorage.getItem('meta_access_token');
+    if (!accessToken) {
+      console.log('No access token found, using item data');
+      return;
+    }
+
+    try {
+      const data = await metaAPIService.getEnrichedEntityData(
+        accessToken,
+        item.id,
+        item.type
+      );
+      setEnrichedData(data);
+      console.log('✅ Enriched data loaded:', data);
+    } catch (error) {
+      console.error('Error loading enriched data:', error);
+    }
+  };
 
   const loadConversationHistory = async () => {
     setHistoryLoading(true);
@@ -120,6 +146,11 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
     setIsLoading(true);
 
     try {
+      const campaignDataWithEnrichment = {
+        ...item,
+        ...enrichedData
+      };
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/campaign-ai-assistant`,
         {
@@ -130,7 +161,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
           },
           body: JSON.stringify({
             messages: userMessages,
-            campaignData: item,
+            campaignData: campaignDataWithEnrichment,
             type,
           }),
         }
