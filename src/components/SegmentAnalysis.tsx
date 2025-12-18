@@ -20,6 +20,7 @@ import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
 import CampaignAIAssistant from "./CampaignAIAssistant";
+import { toast } from "@/hooks/use-toast";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -212,7 +213,17 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     const result = await updateStatus(item.id, entityType, 'ACTIVE', item.name);
     setActionLoading(null);
     if (result.success) {
+      toast({
+        title: "✅ Ativado com sucesso",
+        description: `"${item.name}" agora está ativo.`,
+      });
       onRefresh?.();
+    } else {
+      toast({
+        title: "Erro ao ativar",
+        description: "Não foi possível ativar. Tente novamente.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -221,10 +232,21 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     setActionLoading(confirmPause.id);
     const entityType = getEntityType(confirmPause);
     const result = await updateStatus(confirmPause.id, entityType, 'PAUSED', confirmPause.name);
+    const itemName = confirmPause.name;
     setActionLoading(null);
     setConfirmPause(null);
     if (result.success) {
+      toast({
+        title: "⏸️ Pausado com sucesso",
+        description: `"${itemName}" agora está pausado.`,
+      });
       onRefresh?.();
+    } else {
+      toast({
+        title: "Erro ao pausar",
+        description: "Não foi possível pausar. Tente novamente.",
+        variant: "destructive",
+      });
     }
   };
 
