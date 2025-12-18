@@ -4,6 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,13 +16,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users, Pause, Play, Settings2, Sparkles } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar as CalendarIcon, Loader2, Users, Pause, Play, Settings2, Sparkles } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
 import CampaignAIAssistant from "./CampaignAIAssistant";
 import { toast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -550,15 +555,24 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
                 <SelectItem value="paused">⏸️ Pausados</SelectItem>
               </SelectContent>
             </Select>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
             <Select value={dateRange} onValueChange={(value) => onDateRangeChange(value as DateRangeOption)}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="today">Hoje</SelectItem>
+                <SelectItem value="yesterday">Ontem</SelectItem>
                 <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
+                <SelectItem value="last_15d">Últimos 15 dias</SelectItem>
                 <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
+                <SelectItem value="last_60d">Últimos 60 dias</SelectItem>
+                <SelectItem value="last_90d">Últimos 90 dias</SelectItem>
+                <SelectItem value="this_month">Este mês</SelectItem>
+                <SelectItem value="last_month">Mês passado</SelectItem>
+                <SelectItem value="this_quarter">Este trimestre</SelectItem>
+                <SelectItem value="this_semester">Este semestre</SelectItem>
+                <SelectItem value="this_year">Este ano</SelectItem>
               </SelectContent>
             </Select>
             {isLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}

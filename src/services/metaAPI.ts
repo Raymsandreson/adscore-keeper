@@ -183,9 +183,14 @@ class MetaAPIService {
     }
   }
 
-  private getDateRange(range: string = 'last_7d'): { since: string; until: string } {
+  private getDateRange(range: string = 'last_7d', customRange?: { since: string; until: string }): { since: string; until: string } {
     const today = new Date();
     const formatDate = (d: Date) => d.toISOString().split('T')[0];
+    
+    // Se for custom e tiver customRange, usa as datas personalizadas
+    if (range === 'custom' && customRange) {
+      return customRange;
+    }
     
     switch (range) {
       case 'today':
@@ -198,10 +203,40 @@ class MetaAPIService {
         const last7 = new Date(today);
         last7.setDate(last7.getDate() - 7);
         return { since: formatDate(last7), until: formatDate(today) };
+      case 'last_15d':
+        const last15 = new Date(today);
+        last15.setDate(last15.getDate() - 15);
+        return { since: formatDate(last15), until: formatDate(today) };
       case 'last_30d':
         const last30 = new Date(today);
         last30.setDate(last30.getDate() - 30);
         return { since: formatDate(last30), until: formatDate(today) };
+      case 'last_60d':
+        const last60 = new Date(today);
+        last60.setDate(last60.getDate() - 60);
+        return { since: formatDate(last60), until: formatDate(today) };
+      case 'last_90d':
+        const last90 = new Date(today);
+        last90.setDate(last90.getDate() - 90);
+        return { since: formatDate(last90), until: formatDate(today) };
+      case 'this_month':
+        const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        return { since: formatDate(thisMonthStart), until: formatDate(today) };
+      case 'last_month':
+        const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+        return { since: formatDate(lastMonthStart), until: formatDate(lastMonthEnd) };
+      case 'this_quarter':
+        const currentQuarter = Math.floor(today.getMonth() / 3);
+        const quarterStart = new Date(today.getFullYear(), currentQuarter * 3, 1);
+        return { since: formatDate(quarterStart), until: formatDate(today) };
+      case 'this_semester':
+        const currentSemester = Math.floor(today.getMonth() / 6);
+        const semesterStart = new Date(today.getFullYear(), currentSemester * 6, 1);
+        return { since: formatDate(semesterStart), until: formatDate(today) };
+      case 'this_year':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        return { since: formatDate(yearStart), until: formatDate(today) };
       default:
         const defaultDate = new Date(today);
         defaultDate.setDate(defaultDate.getDate() - 7);
@@ -274,7 +309,56 @@ class MetaAPIService {
   }
 
   private generateFallbackDailyData(dateRange: string): DailyInsight[] {
-    const days = dateRange === 'last_30d' ? 30 : dateRange === 'today' ? 1 : 7;
+    let days: number;
+    const today = new Date();
+    
+    switch (dateRange) {
+      case 'today':
+        days = 1;
+        break;
+      case 'yesterday':
+        days = 1;
+        break;
+      case 'last_7d':
+        days = 7;
+        break;
+      case 'last_15d':
+        days = 15;
+        break;
+      case 'last_30d':
+        days = 30;
+        break;
+      case 'last_60d':
+        days = 60;
+        break;
+      case 'last_90d':
+        days = 90;
+        break;
+      case 'this_month':
+        days = today.getDate();
+        break;
+      case 'last_month':
+        const lastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        days = lastMonth.getDate();
+        break;
+      case 'this_quarter':
+        const currentQuarter = Math.floor(today.getMonth() / 3);
+        const quarterStart = new Date(today.getFullYear(), currentQuarter * 3, 1);
+        days = Math.ceil((today.getTime() - quarterStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        break;
+      case 'this_semester':
+        const currentSemester = Math.floor(today.getMonth() / 6);
+        const semesterStart = new Date(today.getFullYear(), currentSemester * 6, 1);
+        days = Math.ceil((today.getTime() - semesterStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        break;
+      case 'this_year':
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        days = Math.ceil((today.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        break;
+      default:
+        days = 7;
+    }
+    
     const data: DailyInsight[] = [];
     
     for (let i = days - 1; i >= 0; i--) {
