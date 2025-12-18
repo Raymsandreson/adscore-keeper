@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CampaignAction {
   action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate';
@@ -11,6 +12,15 @@ interface CampaignAction {
   bidAmount?: number;
   bidStrategy?: string;
   adAccountId?: string;
+}
+
+interface LogActionParams {
+  entityId: string;
+  entityType: 'campaign' | 'adset' | 'ad';
+  entityName?: string;
+  action: 'pause' | 'activate' | 'update_budget' | 'update_bid' | 'duplicate';
+  oldValue?: string;
+  newValue?: string;
 }
 
 export const useCampaignManager = () => {
@@ -36,6 +46,23 @@ export const useCampaignManager = () => {
       return selected?.adAccountId || null;
     }
     return localStorage.getItem('meta_ad_account_id');
+  };
+
+  const logAction = async (params: LogActionParams) => {
+    try {
+      const adAccountId = getAdAccountId();
+      await supabase.from('campaign_action_history').insert({
+        entity_id: params.entityId,
+        entity_type: params.entityType,
+        entity_name: params.entityName || null,
+        action: params.action,
+        old_value: params.oldValue || null,
+        new_value: params.newValue || null,
+        ad_account_id: adAccountId,
+      });
+    } catch (error) {
+      console.error('Error logging action:', error);
+    }
   };
 
   const executeAction = async (params: Omit<CampaignAction, 'accessToken'>) => {
@@ -76,9 +103,22 @@ export const useCampaignManager = () => {
     }
   };
 
-  const updateStatus = async (entityId: string, entityType: 'campaign' | 'adset' | 'ad', status: 'ACTIVE' | 'PAUSED') => {
+  const updateStatus = async (
+    entityId: string, 
+    entityType: 'campaign' | 'adset' | 'ad', 
+    status: 'ACTIVE' | 'PAUSED',
+    entityName?: string
+  ) => {
     const result = await executeAction({ action: 'update_status', entityId, entityType, status });
     if (result.success) {
+      const action = status === 'PAUSED' ? 'pause' : 'activate';
+      await logAction({
+        entityId,
+        entityType,
+        entityName,
+        action,
+        newValue: status,
+      });
       toast.success(`${entityType === 'campaign' ? 'Campanha' : entityType === 'adset' ? 'Conjunto' : 'Anúncio'} ${status === 'PAUSED' ? 'pausado' : 'ativado'} com sucesso!`);
     } else {
       toast.error(`Erro: ${result.error}`);
@@ -90,7 +130,9 @@ export const useCampaignManager = () => {
     entityId: string, 
     entityType: 'campaign' | 'adset', 
     dailyBudget?: number, 
-    lifetimeBudget?: number
+    lifetimeBudget?: number,
+    entityName?: string,
+    oldBudget?: number
   ) => {
     const result = await executeAction({ 
       action: 'update_budget', 
@@ -100,6 +142,16 @@ export const useCampaignManager = () => {
       lifetimeBudget 
     });
     if (result.success) {
+      const newValue = dailyBudget ? `R$ ${dailyBudget}/dia` : `R$ ${lifetimeBudget} total`;
+      const oldValue = oldBudget ? `R$ ${oldBudget}` : undefined;
+      await logAction({
+        entityId,
+        entityType,
+        entityName,
+        action: 'update_budget',
+        oldValue,
+        newValue,
+      });
       toast.success('Orçamento atualizado com sucesso!');
     } else {
       toast.error(`Erro: ${result.error}`);
@@ -107,7 +159,13 @@ export const useCampaignManager = () => {
     return result;
   };
 
-  const updateBid = async (entityId: string, bidAmount?: number, bidStrategy?: string) => {
+  const updateBid = async (
+    entityId: string, 
+    bidAmount?: number, 
+    bidStrategy?: string,
+    entityName?: string,
+    oldBid?: number
+  ) => {
     const result = await executeAction({ 
       action: 'update_bid', 
       entityId, 
@@ -116,6 +174,16 @@ export const useCampaignManager = () => {
       bidStrategy 
     });
     if (result.success) {
+      const newValue = bidAmount ? `R$ ${bidAmount}` : bidStrategy;
+      const oldValue = oldBid ? `R$ ${oldBid}` : undefined;
+      await logAction({
+        entityId,
+        entityType: 'adset',
+        entityName,
+        action: 'update_bid',
+        oldValue,
+        newValue,
+      });
       toast.success('Lance atualizado com sucesso!');
     } else {
       toast.error(`Erro: ${result.error}`);
@@ -123,13 +191,24 @@ export const useCampaignManager = () => {
     return result;
   };
 
-  const duplicate = async (entityId: string, entityType: 'campaign' | 'adset' | 'ad') => {
+  const duplicate = async (
+    entityId: string, 
+    entityType: 'campaign' | 'adset' | 'ad',
+    entityName?: string
+  ) => {
     const result = await executeAction({ 
       action: 'duplicate', 
       entityId, 
       entityType 
     });
     if (result.success) {
+      await logAction({
+        entityId,
+        entityType,
+        entityName,
+        action: 'duplicate',
+        newValue: result.data?.newId || 'Novo ID',
+      });
       toast.success(`${entityType === 'campaign' ? 'Campanha' : entityType === 'adset' ? 'Conjunto' : 'Anúncio'} duplicado com sucesso!`);
     } else {
       toast.error(`Erro: ${result.error}`);

@@ -207,7 +207,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     }
     setActionLoading(item.id);
     const entityType = getEntityType(item);
-    const result = await updateStatus(item.id, entityType, 'ACTIVE');
+    const result = await updateStatus(item.id, entityType, 'ACTIVE', item.name);
     setActionLoading(null);
     if (result.success) {
       onRefresh?.();
@@ -218,7 +218,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     if (!confirmPause) return;
     setActionLoading(confirmPause.id);
     const entityType = getEntityType(confirmPause);
-    const result = await updateStatus(confirmPause.id, entityType, 'PAUSED');
+    const result = await updateStatus(confirmPause.id, entityType, 'PAUSED', confirmPause.name);
     setActionLoading(null);
     setConfirmPause(null);
     if (result.success) {
