@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   ArrowLeft, 
@@ -14,7 +15,8 @@ import {
   FileSpreadsheet,
   ExternalLink,
   Info,
-  Zap
+  Zap,
+  MessageSquare
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -22,6 +24,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarC
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import LeadManager from "@/components/LeadManager";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -101,36 +104,60 @@ const LeadsCenter = () => {
             </div>
           </div>
 
-          {/* KPIs Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold">{totalLeads}</div>
-                <p className="text-xs text-muted-foreground">Total de Leads (30 dias)</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-green-500">{statusDistribution[0].value}</div>
-                <p className="text-xs text-muted-foreground">Convertidos</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-primary">{avgConversionRate}%</div>
-                <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-yellow-500">{statusDistribution[1].value}</div>
-                <p className="text-xs text-muted-foreground">Em Andamento</p>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Tabs for Lead Management and Analytics */}
+          <Tabs defaultValue="leads" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
+              <TabsTrigger value="leads" className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Leads WhatsApp
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Análises
+              </TabsTrigger>
+              <TabsTrigger value="facebook" className="flex items-center gap-2">
+                <ExternalLink className="h-4 w-4" />
+                Integrar Facebook
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Charts Section */}
-          <div className="grid md:grid-cols-2 gap-6">
+            {/* Lead Manager Tab */}
+            <TabsContent value="leads">
+              <LeadManager />
+            </TabsContent>
+
+            {/* Analytics Tab */}
+            <TabsContent value="analytics" className="space-y-6">
+              {/* KPIs Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold">{totalLeads}</div>
+                    <p className="text-xs text-muted-foreground">Total de Leads (simulado)</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-green-500">{statusDistribution[0].value}</div>
+                    <p className="text-xs text-muted-foreground">Convertidos</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-primary">{avgConversionRate}%</div>
+                    <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-yellow-500">{statusDistribution[1].value}</div>
+                    <p className="text-xs text-muted-foreground">Em Andamento</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts Section */}
+              <div className="grid md:grid-cols-2 gap-6">
             {/* Conversion Rate Over Time */}
             <Card>
               <CardHeader>
@@ -582,6 +609,20 @@ const LeadsCenter = () => {
               </div>
             </CardContent>
           </Card>
+            </TabsContent>
+
+            {/* Facebook Integration Tab */}
+            <TabsContent value="facebook" className="space-y-6">
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="pt-6">
+                  <p className="text-sm text-muted-foreground">
+                    Esta aba contém instruções para integrar com o Facebook Events Manager e Central de Leads.
+                    Volte para a aba "Leads WhatsApp" para gerenciar seus leads reais.
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </TooltipProvider>

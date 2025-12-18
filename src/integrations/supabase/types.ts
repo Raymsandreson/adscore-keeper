@@ -83,6 +83,75 @@ export type Database = {
         }
         Relationships: []
       }
+      leads: {
+        Row: {
+          ad_account_id: string | null
+          ad_spend_at_conversion: number | null
+          adset_id: string | null
+          adset_name: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          conversion_value: number | null
+          converted_at: string | null
+          created_at: string
+          creative_id: string | null
+          creative_name: string | null
+          id: string
+          lead_email: string | null
+          lead_name: string | null
+          lead_phone: string | null
+          notes: string | null
+          qualified_at: string | null
+          source: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          ad_spend_at_conversion?: number | null
+          adset_id?: string | null
+          adset_name?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          conversion_value?: number | null
+          converted_at?: string | null
+          created_at?: string
+          creative_id?: string | null
+          creative_name?: string | null
+          id?: string
+          lead_email?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          notes?: string | null
+          qualified_at?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          ad_spend_at_conversion?: number | null
+          adset_id?: string | null
+          adset_name?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          conversion_value?: number | null
+          converted_at?: string | null
+          created_at?: string
+          creative_id?: string | null
+          creative_name?: string | null
+          id?: string
+          lead_email?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          notes?: string | null
+          qualified_at?: string | null
+          source?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

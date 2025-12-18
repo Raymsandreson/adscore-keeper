@@ -33,12 +33,21 @@ import {
 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 
+// Constantes para critérios de análise
+const ANALYSIS_CRITERIA = {
+  minImpressions: 5000, // Mínimo de impressões para decidir pausar
+  minDaysActive: 3, // Mínimo de dias ativo para analisar
+  minSpendForDecision: 100, // Gasto mínimo antes de decisão
+};
+
 interface StrategyPanelProps {
   campaigns: CampaignInsight[];
   adSets: CampaignInsight[];
   creatives: CampaignInsight[];
   totalSpend: number;
   totalConversions: number;
+  convertedLeadsCount?: number; // Leads realmente convertidos (do CRM)
+  costPerConvertedLead?: number; // Custo por lead convertido real
 }
 
 interface LTVData {
@@ -53,7 +62,7 @@ interface ConversionFeedback {
   value: number;
 }
 
-const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversions }: StrategyPanelProps) => {
+const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversions, convertedLeadsCount, costPerConvertedLead }: StrategyPanelProps) => {
   const { toast } = useToast();
   const [ltvData, setLtvData] = useState<LTVData>({ averageLTV: 0, totalRevenue: 0, convertedLeads: 0 });
   const [newLTV, setNewLTV] = useState("");
@@ -271,12 +280,19 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
     const cpaEstimate = item.conversions > 0 ? item.spend / item.conversions : item.spend;
     const targetCPA = ltvData.averageLTV > 0 ? ltvData.averageLTV * 0.3 : 50; // 30% do LTV ou R$50 padrão
     
+    // Usar custo por lead convertido real se disponível
+    const realCostPerLead = costPerConvertedLead || cpaEstimate;
+    
     // Classificação de performance
     let status: 'scale' | 'maintain' | 'optimize' | 'pause' = 'maintain';
     let budgetAction: string;
     let budgetAmount: string;
     let reason: string;
     let urgency: 'high' | 'medium' | 'low' = 'medium';
+
+    // NOVOS CRITÉRIOS: Verificar impressões e tempo mínimo antes de pausar
+    const hasMinimumData = item.impressions >= ANALYSIS_CRITERIA.minImpressions;
+    const hasMinimumSpend = item.spend >= ANALYSIS_CRITERIA.minSpendForDecision;
 
     // Regras de decisão baseadas em métricas
     if (item.ctr >= 2.0 && item.conversionRate >= 3.0 && item.cpc <= 2.0) {
@@ -293,26 +309,34 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
       budgetAmount = `R$${item.spend.toFixed(0)} (atual)`;
       reason = 'Performance boa. Manter budget e monitorar por mais 48h.';
       urgency = 'low';
-    } else if (item.impressions < 500) {
-      // Pouco dado - aguardar
+    } else if (item.impressions < ANALYSIS_CRITERIA.minImpressions) {
+      // NOVO CRITÉRIO: Pouco dado - aguardar até atingir mínimo de impressões
       status = 'maintain';
       budgetAction = 'Aguardar dados';
-      budgetAmount = `Manter R$${item.spend.toFixed(0)} até 500+ impressões`;
-      reason = `Apenas ${item.impressions} impressões. Dados insuficientes para decisão.`;
+      const impressionsNeeded = ANALYSIS_CRITERIA.minImpressions - item.impressions;
+      budgetAmount = `Manter R$${item.spend.toFixed(0)} até ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')}+ impressões`;
+      reason = `Apenas ${item.impressions.toLocaleString('pt-BR')} impressões. Faltam ${impressionsNeeded.toLocaleString('pt-BR')} para análise confiável (mín. ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')}).`;
       urgency = 'low';
-    } else if (item.ctr < 1.0 && item.spend > 100) {
-      // CTR muito baixo com gasto alto - pausar
+    } else if (!hasMinimumData || !hasMinimumSpend) {
+      // Dados insuficientes para decisão de pausar
+      status = 'maintain';
+      budgetAction = 'Continuar monitorando';
+      budgetAmount = `R$${item.spend.toFixed(0)} (atual)`;
+      reason = `Dados insuficientes. Aguarde mín. ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')} impressões e R$${ANALYSIS_CRITERIA.minSpendForDecision} de gasto.`;
+      urgency = 'low';
+    } else if (item.ctr < 1.0 && hasMinimumData && hasMinimumSpend) {
+      // CTR muito baixo COM dados suficientes - pausar
       status = 'pause';
       budgetAction = 'PAUSAR';
       budgetAmount = 'R$0 - Parar imediatamente';
-      reason = `CTR de ${item.ctr.toFixed(2)}% muito baixo. Queimando budget sem engajamento.`;
+      reason = `CTR de ${item.ctr.toFixed(2)}% muito baixo após ${item.impressions.toLocaleString('pt-BR')} impressões. Dados suficientes para decisão.`;
       urgency = 'high';
-    } else if (item.conversionRate < 1.0 && item.spend > 200) {
-      // Conversão muito baixa com gasto alto - pausar
+    } else if (item.conversionRate < 1.0 && hasMinimumData && hasMinimumSpend) {
+      // Conversão muito baixa COM dados suficientes - pausar
       status = 'pause';
       budgetAction = 'PAUSAR';
       budgetAmount = 'R$0 - Parar imediatamente';
-      reason = `Conversão de ${item.conversionRate.toFixed(2)}% muito baixa. Não está gerando resultados.`;
+      reason = `Conversão de ${item.conversionRate.toFixed(2)}% muito baixa com ${item.impressions.toLocaleString('pt-BR')} impressões. Não está gerando resultados.`;
       urgency = 'high';
     } else if (item.ctr < 1.5 || item.conversionRate < 2.0) {
       // Performance abaixo - otimizar ou reduzir
@@ -337,7 +361,14 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
         cpaEstimate,
         targetCPA,
         maxDailyBudget,
-        stopLossAmount
+        stopLossAmount,
+        realCostPerLead,
+      },
+      criteria: {
+        minImpressions: ANALYSIS_CRITERIA.minImpressions,
+        currentImpressions: item.impressions,
+        hasMinimumData,
+        hasMinimumSpend,
       }
     };
   };
