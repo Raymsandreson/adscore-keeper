@@ -16,8 +16,15 @@ import {
   Target,
   X,
   History,
-  Trash2
+  Trash2,
+  Users,
+  MapPin,
+  Heart,
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CampaignInsight, metaAPIService, TargetingData, AdCreativeData } from "@/services/metaAPI";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +53,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
     creative?: AdCreativeData;
     objective?: string;
   }>({});
+  const [showTargeting, setShowTargeting] = useState(false);
 
   // Load conversation history and enriched data on mount
   useEffect(() => {
@@ -315,6 +323,130 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
             Gasto: R${item.spend.toFixed(0)}
           </Badge>
         </div>
+
+        {/* Targeting Panel */}
+        {(enrichedData.targeting || item.type === 'adset') && (
+          <Collapsible open={showTargeting} onOpenChange={setShowTargeting}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between p-2 h-auto bg-muted/50 hover:bg-muted">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Segmentação Atual</span>
+                </div>
+                {showTargeting ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-3 space-y-3">
+              {enrichedData.targeting ? (
+                <>
+                  {/* Demographics */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Users className="h-3 w-3" />
+                      <span>Demográfico</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {enrichedData.targeting.age_min && enrichedData.targeting.age_max && (
+                        <Badge variant="secondary" className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/20">
+                          {enrichedData.targeting.age_min}-{enrichedData.targeting.age_max} anos
+                        </Badge>
+                      )}
+                      {enrichedData.targeting.genders?.map((g) => (
+                        <Badge key={g} variant="secondary" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/20">
+                          {g === 0 ? 'Todos' : g === 1 ? 'Masculino' : 'Feminino'}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  {(enrichedData.targeting.geo_locations?.countries || enrichedData.targeting.geo_locations?.cities) && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3" />
+                        <span>Localização</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {enrichedData.targeting.geo_locations.countries?.map((country) => (
+                          <Badge key={country} variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                            {country}
+                          </Badge>
+                        ))}
+                        {enrichedData.targeting.geo_locations.cities?.slice(0, 5).map((city) => (
+                          <Badge key={city.key} variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                            {city.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Interests */}
+                  {enrichedData.targeting.interests && enrichedData.targeting.interests.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Heart className="h-3 w-3" />
+                        <span>Interesses ({enrichedData.targeting.interests.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {enrichedData.targeting.interests.slice(0, 8).map((interest) => (
+                          <Badge key={interest.id} variant="secondary" className="text-xs bg-pink-500/10 text-pink-600 border-pink-500/20">
+                            {interest.name}
+                          </Badge>
+                        ))}
+                        {enrichedData.targeting.interests.length > 8 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{enrichedData.targeting.interests.length - 8}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Behaviors */}
+                  {enrichedData.targeting.behaviors && enrichedData.targeting.behaviors.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Zap className="h-3 w-3" />
+                        <span>Comportamentos ({enrichedData.targeting.behaviors.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {enrichedData.targeting.behaviors.slice(0, 5).map((behavior) => (
+                          <Badge key={behavior.id} variant="secondary" className="text-xs bg-orange-500/10 text-orange-600 border-orange-500/20">
+                            {behavior.name}
+                          </Badge>
+                        ))}
+                        {enrichedData.targeting.behaviors.length > 5 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{enrichedData.targeting.behaviors.length - 5}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Optimization Goal */}
+                  {enrichedData.targeting.optimization_goal && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Badge className="text-xs bg-primary/10 text-primary border-primary/20">
+                        Otimização: {enrichedData.targeting.optimization_goal.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-4 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                  Carregando segmentação...
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         {historyLoading ? (
           <div className="flex items-center justify-center py-8">
