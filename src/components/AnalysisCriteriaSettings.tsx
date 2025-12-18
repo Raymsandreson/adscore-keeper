@@ -383,6 +383,122 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
               </div>
             </CardContent>
           </Card>
+
+          {/* Taxas de Abandono */}
+          <Card className="md:col-span-2">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Taxas de Abandono do Funil
+              </CardTitle>
+              <CardDescription>
+                Configure as metas e taxas esperadas de abandono em formulários e WhatsApp
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Formulários */}
+                <div className="space-y-4">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    📋 Formulários de Lead
+                  </h4>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="expectedFormAbandonmentRate">Taxa de Abandono Esperada (%)</Label>
+                      <Tooltip>
+                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Benchmark: 70% dos usuários abandonam formulários antes de completar. Use para estimar leads reais.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      id="expectedFormAbandonmentRate"
+                      type="number"
+                      value={editedCriteria.expectedFormAbandonmentRate}
+                      onChange={(e) => handleChange('expectedFormAbandonmentRate', parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="targetFormCompletionRate">Meta de Conclusão (%)</Label>
+                      <Tooltip>
+                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Sua meta de taxa de conclusão de formulário. Acima de 40% é excelente.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      id="targetFormCompletionRate"
+                      type="number"
+                      value={editedCriteria.targetFormCompletionRate}
+                      onChange={(e) => handleChange('targetFormCompletionRate', parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-muted/30 rounded-lg text-sm">
+                    <p className="text-muted-foreground">
+                      Estimativa: de cada <strong>100 cliques</strong>, espere 
+                      <strong className="text-primary"> ~{100 - editedCriteria.expectedFormAbandonmentRate} leads</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* WhatsApp */}
+                <div className="space-y-4">
+                  <h4 className="font-medium text-sm flex items-center gap-2">
+                    💬 WhatsApp
+                  </h4>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="expectedWhatsAppAbandonmentRate">Taxa de Abandono Esperada (%)</Label>
+                      <Tooltip>
+                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Percentual de pessoas que clicam no WhatsApp mas não enviam mensagem. Benchmark: 30-50%.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      id="expectedWhatsAppAbandonmentRate"
+                      type="number"
+                      value={editedCriteria.expectedWhatsAppAbandonmentRate}
+                      onChange={(e) => handleChange('expectedWhatsAppAbandonmentRate', parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="targetWhatsAppResponseRate">Meta de Resposta (%)</Label>
+                      <Tooltip>
+                        <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Sua meta de taxa de resposta no WhatsApp. Acima de 70% é excelente.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      id="targetWhatsAppResponseRate"
+                      type="number"
+                      value={editedCriteria.targetWhatsAppResponseRate}
+                      onChange={(e) => handleChange('targetWhatsAppResponseRate', parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="p-3 bg-muted/30 rounded-lg text-sm">
+                    <p className="text-muted-foreground">
+                      Estimativa: de cada <strong>100 cliques</strong>, espere 
+                      <strong className="text-primary"> ~{100 - editedCriteria.expectedWhatsAppAbandonmentRate} mensagens</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </TooltipProvider>

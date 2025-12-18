@@ -19,9 +19,26 @@ export interface AnalysisCriteria {
   teamDailyLeadCapacity: number; // Quantos leads a equipe consegue atender por dia
   teamSize: number; // Tamanho da equipe
   avgLeadHandlingTime: number; // Tempo médio para atender um lead (minutos)
+
+  // Taxas de abandono do funil
+  expectedFormAbandonmentRate: number; // % esperado de abandono no formulário
+  expectedWhatsAppAbandonmentRate: number; // % esperado de abandono no WhatsApp (clica mas não envia msg)
+  targetFormCompletionRate: number; // Meta de taxa de conclusão do formulário
+  targetWhatsAppResponseRate: number; // Meta de taxa de resposta no WhatsApp
+}
+
+// Dados de abandono rastreados
+export interface AbandonmentData {
+  totalClicks: number;
+  formStarts: number;
+  formCompletions: number;
+  whatsappClicks: number;
+  whatsappMessagesReceived: number;
+  period: 'today' | 'last_7d' | 'last_30d';
 }
 
 const STORAGE_KEY = 'analysis_criteria';
+const ABANDONMENT_STORAGE_KEY = 'abandonment_data';
 
 const DEFAULT_CRITERIA: AnalysisCriteria = {
   minImpressions: 5000,
@@ -38,6 +55,21 @@ const DEFAULT_CRITERIA: AnalysisCriteria = {
   teamDailyLeadCapacity: 20,
   teamSize: 1,
   avgLeadHandlingTime: 30,
+
+  // Taxas de abandono padrão baseadas em benchmarks do mercado
+  expectedFormAbandonmentRate: 70, // 70% abandonam formulários
+  expectedWhatsAppAbandonmentRate: 40, // 40% clicam mas não enviam mensagem
+  targetFormCompletionRate: 40, // Meta: 40% completam
+  targetWhatsAppResponseRate: 70, // Meta: 70% enviam mensagem
+};
+
+const DEFAULT_ABANDONMENT: AbandonmentData = {
+  totalClicks: 0,
+  formStarts: 0,
+  formCompletions: 0,
+  whatsappClicks: 0,
+  whatsappMessagesReceived: 0,
+  period: 'last_7d',
 };
 
 export const useAnalysisCriteria = () => {
@@ -160,6 +192,101 @@ export const useAnalysisCriteria = () => {
     };
   }, [criteria.saturationDropThreshold]);
 
+  // Calcular taxas de abandono
+  const calculateAbandonmentRates = useCallback((data: AbandonmentData) => {
+    const formAbandonmentRate = data.formStarts > 0 
+      ? ((data.formStarts - data.formCompletions) / data.formStarts) * 100 
+      : 0;
+    
+    const formCompletionRate = data.formStarts > 0 
+      ? (data.formCompletions / data.formStarts) * 100 
+      : 0;
+
+    const whatsappAbandonmentRate = data.whatsappClicks > 0 
+      ? ((data.whatsappClicks - data.whatsappMessagesReceived) / data.whatsappClicks) * 100 
+      : 0;
+    
+    const whatsappResponseRate = data.whatsappClicks > 0 
+      ? (data.whatsappMessagesReceived / data.whatsappClicks) * 100 
+      : 0;
+
+    const overallClickToLeadRate = data.totalClicks > 0 
+      ? ((data.formCompletions + data.whatsappMessagesReceived) / data.totalClicks) * 100 
+      : 0;
+
+    // Comparar com metas
+    const formPerformance = formCompletionRate >= criteria.targetFormCompletionRate 
+      ? 'good' 
+      : formCompletionRate >= criteria.targetFormCompletionRate * 0.7 
+        ? 'warning' 
+        : 'bad';
+
+    const whatsappPerformance = whatsappResponseRate >= criteria.targetWhatsAppResponseRate 
+      ? 'good' 
+      : whatsappResponseRate >= criteria.targetWhatsAppResponseRate * 0.7 
+        ? 'warning' 
+        : 'bad';
+
+    return {
+      formAbandonmentRate,
+      formCompletionRate,
+      whatsappAbandonmentRate,
+      whatsappResponseRate,
+      overallClickToLeadRate,
+      formPerformance,
+      whatsappPerformance,
+      recommendations: generateAbandonmentRecommendations(
+        formCompletionRate, 
+        whatsappResponseRate,
+        criteria.targetFormCompletionRate,
+        criteria.targetWhatsAppResponseRate
+      ),
+    };
+  }, [criteria.targetFormCompletionRate, criteria.targetWhatsAppResponseRate]);
+
+  // Gerar recomendações baseadas nas taxas
+  const generateAbandonmentRecommendations = (
+    formRate: number, 
+    whatsappRate: number,
+    targetForm: number,
+    targetWhatsapp: number
+  ): string[] => {
+    const recommendations: string[] = [];
+
+    if (formRate < targetForm * 0.5) {
+      recommendations.push('Taxa de conclusão de formulário muito baixa. Simplifique o formulário (menos campos).');
+      recommendations.push('Revise o copy do formulário e adicione indicadores de progresso.');
+    } else if (formRate < targetForm) {
+      recommendations.push('Considere reduzir campos do formulário ou dividir em etapas.');
+    }
+
+    if (whatsappRate < targetWhatsapp * 0.5) {
+      recommendations.push('Muitos cliques no WhatsApp sem mensagem. Verifique se o link está funcionando.');
+      recommendations.push('Adicione uma mensagem pré-preenchida para facilitar o primeiro contato.');
+    } else if (whatsappRate < targetWhatsapp) {
+      recommendations.push('Melhore o CTA que leva ao WhatsApp - seja mais específico sobre o que o usuário vai receber.');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('Taxas de conversão dentro da meta! Continue monitorando.');
+    }
+
+    return recommendations;
+  };
+
+  // Estimar leads reais baseado em cliques e taxa de abandono
+  const estimateActualLeads = useCallback((
+    totalClicks: number, 
+    isWhatsApp: boolean = false
+  ) => {
+    const abandonmentRate = isWhatsApp 
+      ? criteria.expectedWhatsAppAbandonmentRate 
+      : criteria.expectedFormAbandonmentRate;
+    
+    const conversionRate = (100 - abandonmentRate) / 100;
+    return Math.floor(totalClicks * conversionRate);
+  }, [criteria.expectedFormAbandonmentRate, criteria.expectedWhatsAppAbandonmentRate]);
+
   return {
     criteria,
     saveCriteria,
@@ -168,6 +295,9 @@ export const useAnalysisCriteria = () => {
     getMaxDailyLeads,
     checkTeamCapacity,
     detectSaturation,
+    calculateAbandonmentRates,
+    estimateActualLeads,
     DEFAULT_CRITERIA,
+    DEFAULT_ABANDONMENT,
   };
 };
