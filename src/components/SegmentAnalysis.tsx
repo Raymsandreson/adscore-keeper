@@ -44,6 +44,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmPause, setConfirmPause] = useState<CampaignInsight | null>(null);
   const [aiAssistantItem, setAiAssistantItem] = useState<CampaignInsight | null>(null);
+  const [recentlyChanged, setRecentlyChanged] = useState<{ id: string; action: 'paused' | 'activated' } | null>(null);
   const { updateStatus } = useCampaignManager();
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -213,6 +214,8 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     const result = await updateStatus(item.id, entityType, 'ACTIVE', item.name);
     setActionLoading(null);
     if (result.success) {
+      setRecentlyChanged({ id: item.id, action: 'activated' });
+      setTimeout(() => setRecentlyChanged(null), 2000);
       toast({
         title: "✅ Ativado com sucesso",
         description: `"${item.name}" agora está ativo.`,
@@ -233,9 +236,12 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     const entityType = getEntityType(confirmPause);
     const result = await updateStatus(confirmPause.id, entityType, 'PAUSED', confirmPause.name);
     const itemName = confirmPause.name;
+    const itemId = confirmPause.id;
     setActionLoading(null);
     setConfirmPause(null);
     if (result.success) {
+      setRecentlyChanged({ id: itemId, action: 'paused' });
+      setTimeout(() => setRecentlyChanged(null), 2000);
       toast({
         title: "⏸️ Pausado com sucesso",
         description: `"${itemName}" agora está pausado.`,
@@ -254,11 +260,19 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     const recommendation = getRecommendation(item);
     const isActive = item.status === 'ACTIVE' || !item.status;
     const isLoadingThis = actionLoading === item.id;
+    const wasJustChanged = recentlyChanged?.id === item.id;
+    const changeAction = recentlyChanged?.action;
     
     return (
       <Card 
-        className={`hover:shadow-md transition-all border-border/50 hover:border-primary/30 ${
+        className={`hover:shadow-md transition-all duration-500 border-border/50 hover:border-primary/30 ${
           recommendation.urgent ? 'border-destructive/50 bg-destructive/5' : ''
+        } ${wasJustChanged && changeAction === 'paused' 
+          ? 'animate-scale-in ring-2 ring-amber-500 bg-amber-50/50 dark:bg-amber-950/30' 
+          : ''
+        } ${wasJustChanged && changeAction === 'activated' 
+          ? 'animate-scale-in ring-2 ring-green-500 bg-green-50/50 dark:bg-green-950/30' 
+          : ''
         }`}
       >
         <CardHeader className="pb-2">
