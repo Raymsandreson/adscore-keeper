@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -29,16 +29,13 @@ import {
   Scale,
   TrendingDown,
   CircleDollarSign,
-  ExternalLink
+  ExternalLink,
+  Settings,
+  Flame
 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
-
-// Constantes para critérios de análise
-const ANALYSIS_CRITERIA = {
-  minImpressions: 5000, // Mínimo de impressões para decidir pausar
-  minDaysActive: 3, // Mínimo de dias ativo para analisar
-  minSpendForDecision: 100, // Gasto mínimo antes de decisão
-};
+import { useAnalysisCriteria } from "@/hooks/useAnalysisCriteria";
+import AnalysisCriteriaSettings from "@/components/AnalysisCriteriaSettings";
 
 interface StrategyPanelProps {
   campaigns: CampaignInsight[];
@@ -46,8 +43,14 @@ interface StrategyPanelProps {
   creatives: CampaignInsight[];
   totalSpend: number;
   totalConversions: number;
-  convertedLeadsCount?: number; // Leads realmente convertidos (do CRM)
-  costPerConvertedLead?: number; // Custo por lead convertido real
+  convertedLeadsCount?: number;
+  costPerConvertedLead?: number;
+  dailyLeadsCount?: number; // Leads recebidos hoje
+  previousPeriodMetrics?: { // Métricas do período anterior para detectar saturação
+    ctr: number;
+    cpc: number;
+    conversionRate: number;
+  };
 }
 
 interface LTVData {
@@ -62,13 +65,40 @@ interface ConversionFeedback {
   value: number;
 }
 
-const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversions, convertedLeadsCount, costPerConvertedLead }: StrategyPanelProps) => {
+const StrategyPanel = ({ 
+  campaigns, 
+  adSets, 
+  creatives, 
+  totalSpend, 
+  totalConversions, 
+  convertedLeadsCount, 
+  costPerConvertedLead,
+  dailyLeadsCount = 0,
+  previousPeriodMetrics 
+}: StrategyPanelProps) => {
   const { toast } = useToast();
+  const { criteria, checkTeamCapacity, detectSaturation, getMaxDailyLeads } = useAnalysisCriteria();
   const [ltvData, setLtvData] = useState<LTVData>({ averageLTV: 0, totalRevenue: 0, convertedLeads: 0 });
   const [newLTV, setNewLTV] = useState("");
   const [newLeadValue, setNewLeadValue] = useState("");
   const [monthlyBudget, setMonthlyBudget] = useState<number>(0);
   const [budgetInput, setBudgetInput] = useState("");
+
+  // Verificar capacidade da equipe
+  const teamCapacity = useMemo(() => checkTeamCapacity(dailyLeadsCount), [checkTeamCapacity, dailyLeadsCount]);
+  const maxDailyLeads = useMemo(() => getMaxDailyLeads(), [getMaxDailyLeads]);
+
+  // Detectar saturação geral
+  const currentMetrics = useMemo(() => ({
+    ctr: campaigns.length > 0 ? campaigns.reduce((acc, c) => acc + c.ctr, 0) / campaigns.length : 0,
+    cpc: campaigns.length > 0 ? campaigns.reduce((acc, c) => acc + c.cpc, 0) / campaigns.length : 0,
+    conversionRate: campaigns.length > 0 ? campaigns.reduce((acc, c) => acc + c.conversionRate, 0) / campaigns.length : 0,
+  }), [campaigns]);
+
+  const saturationStatus = useMemo(
+    () => detectSaturation(currentMetrics, previousPeriodMetrics || null),
+    [detectSaturation, currentMetrics, previousPeriodMetrics]
+  );
 
   // Calcular métricas gerais
   const avgCTR = campaigns.length > 0 
@@ -290,55 +320,55 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
     let reason: string;
     let urgency: 'high' | 'medium' | 'low' = 'medium';
 
-    // NOVOS CRITÉRIOS: Verificar impressões e tempo mínimo antes de pausar
-    const hasMinimumData = item.impressions >= ANALYSIS_CRITERIA.minImpressions;
-    const hasMinimumSpend = item.spend >= ANALYSIS_CRITERIA.minSpendForDecision;
+    // Usar critérios configuráveis
+    const hasMinimumData = item.impressions >= criteria.minImpressions;
+    const hasMinimumSpend = item.spend >= criteria.minSpendForDecision;
 
     // Regras de decisão baseadas em métricas
-    if (item.ctr >= 2.0 && item.conversionRate >= 3.0 && item.cpc <= 2.0) {
+    if (item.ctr >= 2.0 && item.conversionRate >= 3.0 && item.cpc <= criteria.maxCPC) {
       // Top performer - escalar
       status = 'scale';
       budgetAction = 'Aumentar investimento';
       budgetAmount = `+20-30% a cada 3 dias (de R$${item.spend.toFixed(0)} para R$${(item.spend * 1.25).toFixed(0)})`;
       reason = 'Performance excelente em todas as métricas. Escalar gradualmente.';
       urgency = 'high';
-    } else if (item.ctr >= 1.5 && item.conversionRate >= 2.0) {
+    } else if (item.ctr >= criteria.minCTR && item.conversionRate >= criteria.minConversionRate) {
       // Bom performer - manter e otimizar
       status = 'maintain';
       budgetAction = 'Manter investimento';
       budgetAmount = `R$${item.spend.toFixed(0)} (atual)`;
       reason = 'Performance boa. Manter budget e monitorar por mais 48h.';
       urgency = 'low';
-    } else if (item.impressions < ANALYSIS_CRITERIA.minImpressions) {
-      // NOVO CRITÉRIO: Pouco dado - aguardar até atingir mínimo de impressões
+    } else if (item.impressions < criteria.minImpressions) {
+      // Pouco dado - aguardar até atingir mínimo de impressões
       status = 'maintain';
       budgetAction = 'Aguardar dados';
-      const impressionsNeeded = ANALYSIS_CRITERIA.minImpressions - item.impressions;
-      budgetAmount = `Manter R$${item.spend.toFixed(0)} até ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')}+ impressões`;
-      reason = `Apenas ${item.impressions.toLocaleString('pt-BR')} impressões. Faltam ${impressionsNeeded.toLocaleString('pt-BR')} para análise confiável (mín. ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')}).`;
+      const impressionsNeeded = criteria.minImpressions - item.impressions;
+      budgetAmount = `Manter R$${item.spend.toFixed(0)} até ${criteria.minImpressions.toLocaleString('pt-BR')}+ impressões`;
+      reason = `Apenas ${item.impressions.toLocaleString('pt-BR')} impressões. Faltam ${impressionsNeeded.toLocaleString('pt-BR')} para análise confiável (mín. ${criteria.minImpressions.toLocaleString('pt-BR')}).`;
       urgency = 'low';
     } else if (!hasMinimumData || !hasMinimumSpend) {
       // Dados insuficientes para decisão de pausar
       status = 'maintain';
       budgetAction = 'Continuar monitorando';
       budgetAmount = `R$${item.spend.toFixed(0)} (atual)`;
-      reason = `Dados insuficientes. Aguarde mín. ${ANALYSIS_CRITERIA.minImpressions.toLocaleString('pt-BR')} impressões e R$${ANALYSIS_CRITERIA.minSpendForDecision} de gasto.`;
+      reason = `Dados insuficientes. Aguarde mín. ${criteria.minImpressions.toLocaleString('pt-BR')} impressões e R$${criteria.minSpendForDecision} de gasto.`;
       urgency = 'low';
-    } else if (item.ctr < 1.0 && hasMinimumData && hasMinimumSpend) {
+    } else if (item.ctr < criteria.minCTR && hasMinimumData && hasMinimumSpend) {
       // CTR muito baixo COM dados suficientes - pausar
       status = 'pause';
       budgetAction = 'PAUSAR';
       budgetAmount = 'R$0 - Parar imediatamente';
-      reason = `CTR de ${item.ctr.toFixed(2)}% muito baixo após ${item.impressions.toLocaleString('pt-BR')} impressões. Dados suficientes para decisão.`;
+      reason = `CTR de ${item.ctr.toFixed(2)}% abaixo do mínimo (${criteria.minCTR}%) após ${item.impressions.toLocaleString('pt-BR')} impressões.`;
       urgency = 'high';
-    } else if (item.conversionRate < 1.0 && hasMinimumData && hasMinimumSpend) {
+    } else if (item.conversionRate < criteria.minConversionRate && hasMinimumData && hasMinimumSpend) {
       // Conversão muito baixa COM dados suficientes - pausar
       status = 'pause';
       budgetAction = 'PAUSAR';
       budgetAmount = 'R$0 - Parar imediatamente';
-      reason = `Conversão de ${item.conversionRate.toFixed(2)}% muito baixa com ${item.impressions.toLocaleString('pt-BR')} impressões. Não está gerando resultados.`;
+      reason = `Conversão de ${item.conversionRate.toFixed(2)}% abaixo do mínimo (${criteria.minConversionRate}%) com ${item.impressions.toLocaleString('pt-BR')} impressões.`;
       urgency = 'high';
-    } else if (item.ctr < 1.5 || item.conversionRate < 2.0) {
+    } else if (item.ctr < criteria.minCTR * 1.5 || item.conversionRate < criteria.minConversionRate) {
       // Performance abaixo - otimizar ou reduzir
       status = 'optimize';
       budgetAction = 'Reduzir ou otimizar';
@@ -348,7 +378,7 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
     }
 
     // Calcular limites de gasto recomendados
-    const maxDailyBudget = targetCPA * 3; // 3x CPA alvo por dia
+    const maxDailyBudgetCalc = targetCPA * 3; // 3x CPA alvo por dia
     const stopLossAmount = targetCPA * 2; // Parar após gastar 2x CPA sem conversão
 
     return {
@@ -360,12 +390,12 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
       metrics: {
         cpaEstimate,
         targetCPA,
-        maxDailyBudget,
+        maxDailyBudget: maxDailyBudgetCalc,
         stopLossAmount,
         realCostPerLead,
       },
       criteria: {
-        minImpressions: ANALYSIS_CRITERIA.minImpressions,
+        minImpressions: criteria.minImpressions,
         currentImpressions: item.impressions,
         hasMinimumData,
         hasMinimumSpend,
@@ -414,10 +444,14 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="budget" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-4">
+          <TabsList className="grid w-full grid-cols-6 mb-4">
             <TabsTrigger value="budget" className="text-xs">
               <CircleDollarSign className="h-3 w-3 mr-1" />
               Investimento
+            </TabsTrigger>
+            <TabsTrigger value="saturation" className="text-xs">
+              <Flame className="h-3 w-3 mr-1" />
+              Saturação
             </TabsTrigger>
             <TabsTrigger value="creatives" className="text-xs">
               <Layers className="h-3 w-3 mr-1" />
@@ -431,11 +465,140 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
               <DollarSign className="h-3 w-3 mr-1" />
               Faturamento
             </TabsTrigger>
-            <TabsTrigger value="feedback" className="text-xs">
-              <RefreshCcw className="h-3 w-3 mr-1" />
-              Facebook
+            <TabsTrigger value="settings" className="text-xs">
+              <Settings className="h-3 w-3 mr-1" />
+              Critérios
             </TabsTrigger>
           </TabsList>
+
+          {/* Aba de Saturação e Capacidade */}
+          <TabsContent value="saturation" className="space-y-4">
+            {/* Status de Saturação */}
+            <Card className={`border-2 ${saturationStatus.isSaturated ? 'border-orange-500 bg-orange-50 dark:bg-orange-950/20' : 'border-border'}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Flame className={`h-4 w-4 ${saturationStatus.isSaturated ? 'text-orange-500' : 'text-muted-foreground'}`} />
+                  Detecção de Saturação de Público
+                  {saturationStatus.isSaturated && (
+                    <Badge className="bg-orange-500">Possível Saturação</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Compara métricas atuais com período anterior para identificar queda de performance
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {previousPeriodMetrics ? (
+                  <div className="space-y-4">
+                    {saturationStatus.isSaturated ? (
+                      <div className="flex items-start gap-3 p-3 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                        <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-orange-700 dark:text-orange-400">Sinais de saturação detectados:</p>
+                          <ul className="mt-1 text-sm text-muted-foreground list-disc list-inside">
+                            {saturationStatus.indicators.map((indicator, i) => (
+                              <li key={i}>{indicator}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-2 text-sm font-medium">{saturationStatus.recommendation}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/30 rounded-lg">
+                        <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-green-700 dark:text-green-400">Sem sinais de saturação</p>
+                          <p className="text-sm text-muted-foreground">As métricas estão estáveis ou melhorando comparado ao período anterior.</p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <div className="text-xs text-muted-foreground">CTR Atual</div>
+                        <div className="text-lg font-bold">{currentMetrics.ctr.toFixed(2)}%</div>
+                        <div className="text-xs text-muted-foreground">Anterior: {previousPeriodMetrics.ctr.toFixed(2)}%</div>
+                      </div>
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <div className="text-xs text-muted-foreground">CPC Atual</div>
+                        <div className="text-lg font-bold">R$ {currentMetrics.cpc.toFixed(2)}</div>
+                        <div className="text-xs text-muted-foreground">Anterior: R$ {previousPeriodMetrics.cpc.toFixed(2)}</div>
+                      </div>
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        <div className="text-xs text-muted-foreground">Conversão Atual</div>
+                        <div className="text-lg font-bold">{currentMetrics.conversionRate.toFixed(2)}%</div>
+                        <div className="text-xs text-muted-foreground">Anterior: {previousPeriodMetrics.conversionRate.toFixed(2)}%</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <p>Dados de período anterior não disponíveis.</p>
+                    <p className="text-sm">A detecção de saturação requer dados históricos para comparação.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Capacidade da Equipe */}
+            <Card className={`border-2 ${teamCapacity.status === 'overloaded' ? 'border-red-500 bg-red-50 dark:bg-red-950/20' : 'border-border'}`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Capacidade da Equipe Comercial
+                  {teamCapacity.status === 'overloaded' && (
+                    <Badge variant="destructive">Sobrecarregado</Badge>
+                  )}
+                  {teamCapacity.status === 'high' && (
+                    <Badge className="bg-yellow-500">Alto</Badge>
+                  )}
+                  {teamCapacity.status === 'healthy' && (
+                    <Badge className="bg-green-500">Saudável</Badge>
+                  )}
+                  {teamCapacity.status === 'underutilized' && (
+                    <Badge variant="secondary">Subutilizado</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Leads hoje: <strong>{dailyLeadsCount}</strong></span>
+                  <span>Capacidade máx: <strong>{maxDailyLeads}/dia</strong></span>
+                </div>
+                
+                {/* Progress bar */}
+                <div className="relative h-4 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className={`absolute left-0 top-0 h-full rounded-full transition-all ${
+                      teamCapacity.status === 'overloaded' ? 'bg-red-500' :
+                      teamCapacity.status === 'high' ? 'bg-yellow-500' :
+                      teamCapacity.status === 'healthy' ? 'bg-green-500' : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${Math.min(teamCapacity.usagePercent, 100)}%` }}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium">
+                    {teamCapacity.usagePercent.toFixed(0)}%
+                  </span>
+                </div>
+                
+                <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg">
+                  {teamCapacity.status === 'overloaded' ? (
+                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-medium">{teamCapacity.message}</p>
+                    <p className="text-sm text-muted-foreground">{teamCapacity.recommendation}</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Configure o tamanho da equipe e tempo de atendimento na aba "Critérios"
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Aba de Investimento - Recomendações de Investimento */}
           <TabsContent value="budget" className="space-y-4">
@@ -1205,6 +1368,11 @@ const StrategyPanel = ({ campaigns, adSets, creatives, totalSpend, totalConversi
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Aba de Configurações de Critérios */}
+          <TabsContent value="settings" className="space-y-4">
+            <AnalysisCriteriaSettings currentDailyLeads={dailyLeadsCount} />
           </TabsContent>
         </Tabs>
       </CardContent>
