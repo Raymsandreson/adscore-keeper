@@ -4,6 +4,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users, Pause, Play, Settings2 } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
@@ -30,6 +40,7 @@ interface SegmentAnalysisProps {
 const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeChange, isLoading, onRefresh }: SegmentAnalysisProps) => {
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [confirmPause, setConfirmPause] = useState<CampaignInsight | null>(null);
   const { updateStatus } = useCampaignManager();
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -190,10 +201,26 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   };
 
   const handleDirectAction = async (item: CampaignInsight, action: 'pause' | 'activate') => {
+    if (action === 'pause') {
+      setConfirmPause(item);
+      return;
+    }
     setActionLoading(item.id);
     const entityType = getEntityType(item);
-    const result = await updateStatus(item.id, entityType, action === 'pause' ? 'PAUSED' : 'ACTIVE');
+    const result = await updateStatus(item.id, entityType, 'ACTIVE');
     setActionLoading(null);
+    if (result.success) {
+      onRefresh?.();
+    }
+  };
+
+  const handleConfirmPause = async () => {
+    if (!confirmPause) return;
+    setActionLoading(confirmPause.id);
+    const entityType = getEntityType(confirmPause);
+    const result = await updateStatus(confirmPause.id, entityType, 'PAUSED');
+    setActionLoading(null);
+    setConfirmPause(null);
     if (result.success) {
       onRefresh?.();
     }
@@ -496,6 +523,32 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={!!confirmPause} onOpenChange={() => setConfirmPause(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar pausa</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja pausar "{confirmPause?.name}"? 
+              Esta ação irá parar a veiculação de anúncios imediatamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmPause}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {actionLoading === confirmPause?.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Pause className="h-4 w-4 mr-2" />
+              )}
+              Pausar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };
