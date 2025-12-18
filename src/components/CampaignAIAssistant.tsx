@@ -29,7 +29,9 @@ import {
   MousePointerClick,
   Pencil,
   Save,
-  XCircle
+  XCircle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -37,6 +39,7 @@ import { CampaignInsight, metaAPIService, TargetingData, AdCreativeData } from "
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
+import { AdFeedPreview } from "./AdFeedPreview";
 
 interface Message {
   role: "user" | "assistant";
@@ -72,6 +75,7 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
     callToActionType: string;
   }>({ title: '', body: '', linkDescription: '', callToActionType: '' });
   const [isSavingCreative, setIsSavingCreative] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   
   const { updateCreative } = useCampaignManager();
 
@@ -561,43 +565,74 @@ const CampaignAIAssistant = ({ item, onClose }: CampaignAIAssistantProps) => {
             <CollapsibleContent className="pt-3 space-y-3">
               {enrichedData.creative ? (
                 <div className="rounded-lg border bg-card p-4 space-y-3">
-                  {/* Edit/Save buttons */}
+                  {/* Action buttons */}
                   {item.type === 'creative' && (
-                    <div className="flex justify-end gap-2">
-                      {isEditingCopy ? (
-                        <>
+                    <div className="flex justify-between gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowPreview(!showPreview)}
+                      >
+                        {showPreview ? (
+                          <>
+                            <EyeOff className="h-4 w-4 mr-1" />
+                            Ocultar Preview
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 mr-1" />
+                            Ver Preview
+                          </>
+                        )}
+                      </Button>
+                      <div className="flex gap-2">
+                        {isEditingCopy ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={cancelEditingCopy}
+                              disabled={isSavingCreative}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" />
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={saveCreativeChanges}
+                              disabled={isSavingCreative}
+                            >
+                              {isSavingCreative ? (
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4 mr-1" />
+                              )}
+                              Salvar
+                            </Button>
+                          </>
+                        ) : (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            onClick={cancelEditingCopy}
-                            disabled={isSavingCreative}
+                            onClick={startEditingCopy}
                           >
-                            <XCircle className="h-4 w-4 mr-1" />
-                            Cancelar
+                            <Pencil className="h-4 w-4 mr-1" />
+                            Editar Copy
                           </Button>
-                          <Button
-                            size="sm"
-                            onClick={saveCreativeChanges}
-                            disabled={isSavingCreative}
-                          >
-                            {isSavingCreative ? (
-                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4 mr-1" />
-                            )}
-                            Salvar
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={startEditingCopy}
-                        >
-                          <Pencil className="h-4 w-4 mr-1" />
-                          Editar Copy
-                        </Button>
-                      )}
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Preview Panel */}
+                  {showPreview && (
+                    <div className="border-t pt-4 mt-2">
+                      <AdFeedPreview 
+                        creative={enrichedData.creative}
+                        pageName={item.name.split(' - ')[0] || "Sua Página"}
+                        isEditing={isEditingCopy}
+                        editedCreative={editedCreative}
+                      />
                     </div>
                   )}
 
