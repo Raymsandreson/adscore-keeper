@@ -5,6 +5,7 @@ import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
+import ActionHistory from "./ActionHistory";
 import { MetricsChart } from "./MetricsChart";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
@@ -165,6 +166,9 @@ const Dashboard = () => {
           totalSpend={metrics.spend}
           totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
         />
+
+        {/* Action History */}
+        <ActionHistory />
       </div>
     </div>
   );
