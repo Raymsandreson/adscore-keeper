@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_conversation_history: {
+        Row: {
+          ad_account_id: string | null
+          content: string
+          created_at: string
+          entity_id: string
+          entity_name: string | null
+          entity_type: string
+          id: string
+          role: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          content: string
+          created_at?: string
+          entity_id: string
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          role: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          content?: string
+          created_at?: string
+          entity_id?: string
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
       campaign_action_history: {
         Row: {
           action: string
