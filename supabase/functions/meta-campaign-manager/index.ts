@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface CampaignRequest {
-  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate';
+  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative';
   accessToken: string;
   entityId: string; // campaign_id, adset_id, or ad_id
   entityType: 'campaign' | 'adset' | 'ad';
@@ -20,6 +20,13 @@ interface CampaignRequest {
   bidStrategy?: string;
   // For duplicate
   adAccountId?: string;
+  // For update_creative
+  creativeData?: {
+    title?: string;
+    body?: string;
+    linkDescription?: string;
+    callToActionType?: string;
+  };
 }
 
 serve(async (req) => {
@@ -53,6 +60,9 @@ serve(async (req) => {
         break;
       case 'duplicate':
         result = await duplicateEntity(accessToken, entityId, entityType, body.adAccountId!);
+        break;
+      case 'update_creative':
+        result = await updateCreative(accessToken, entityId, body.creativeData!);
         break;
       default:
         return new Response(
@@ -244,4 +254,103 @@ async function duplicateEntity(
   }
 
   throw new Error('Invalid entity type for duplication');
+}
+
+async function updateCreative(
+  accessToken: string,
+  adId: string,
+  creativeData: {
+    title?: string;
+    body?: string;
+    linkDescription?: string;
+    callToActionType?: string;
+  }
+) {
+  console.log('Updating creative for ad:', adId, creativeData);
+  
+  // First, get the current ad to find the creative ID
+  const adUrl = `https://graph.facebook.com/v21.0/${adId}?fields=creative{id}&access_token=${accessToken}`;
+  const adResponse = await fetch(adUrl);
+  const adData = await adResponse.json();
+  
+  if (adData.error) {
+    throw new Error(adData.error.message || 'Failed to get ad creative');
+  }
+  
+  const creativeId = adData.creative?.id;
+  if (!creativeId) {
+    throw new Error('Creative ID not found for this ad');
+  }
+  
+  console.log('Found creative ID:', creativeId);
+  
+  // Get current creative data to preserve unchanged fields
+  const creativeUrl = `https://graph.facebook.com/v21.0/${creativeId}?fields=object_story_spec,name&access_token=${accessToken}`;
+  const creativeResponse = await fetch(creativeUrl);
+  const currentCreative = await creativeResponse.json();
+  
+  if (currentCreative.error) {
+    throw new Error(currentCreative.error.message || 'Failed to get creative details');
+  }
+  
+  console.log('Current creative:', JSON.stringify(currentCreative, null, 2));
+  
+  // Build updated object_story_spec
+  const objectStorySpec = currentCreative.object_story_spec || {};
+  
+  if (objectStorySpec.link_data) {
+    if (creativeData.body !== undefined) {
+      objectStorySpec.link_data.message = creativeData.body;
+    }
+    if (creativeData.title !== undefined) {
+      objectStorySpec.link_data.name = creativeData.title;
+    }
+    if (creativeData.linkDescription !== undefined) {
+      objectStorySpec.link_data.description = creativeData.linkDescription;
+    }
+    if (creativeData.callToActionType !== undefined) {
+      objectStorySpec.link_data.call_to_action = {
+        type: creativeData.callToActionType
+      };
+    }
+  } else if (objectStorySpec.video_data) {
+    if (creativeData.body !== undefined) {
+      objectStorySpec.video_data.message = creativeData.body;
+    }
+    if (creativeData.title !== undefined) {
+      objectStorySpec.video_data.title = creativeData.title;
+    }
+    if (creativeData.callToActionType !== undefined) {
+      objectStorySpec.video_data.call_to_action = {
+        type: creativeData.callToActionType
+      };
+    }
+  }
+  
+  // Update the creative
+  const updateUrl = `https://graph.facebook.com/v21.0/${creativeId}`;
+  const updateResponse = await fetch(updateUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      access_token: accessToken,
+      object_story_spec: JSON.stringify(objectStorySpec),
+    }),
+  });
+  
+  const updateData = await updateResponse.json();
+  
+  if (updateData.error) {
+    console.error('Error updating creative:', updateData.error);
+    throw new Error(updateData.error.message || 'Failed to update creative');
+  }
+  
+  console.log('Creative updated successfully:', updateData);
+  
+  return { 
+    adId, 
+    creativeId, 
+    updatedFields: creativeData,
+    ...updateData 
+  };
 }

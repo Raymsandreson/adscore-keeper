@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CampaignAction {
-  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate';
+  action: 'update_status' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative';
   entityId: string;
   entityType: 'campaign' | 'adset' | 'ad';
   status?: 'ACTIVE' | 'PAUSED';
@@ -12,13 +12,19 @@ interface CampaignAction {
   bidAmount?: number;
   bidStrategy?: string;
   adAccountId?: string;
+  creativeData?: {
+    title?: string;
+    body?: string;
+    linkDescription?: string;
+    callToActionType?: string;
+  };
 }
 
 interface LogActionParams {
   entityId: string;
   entityType: 'campaign' | 'adset' | 'ad';
   entityName?: string;
-  action: 'pause' | 'activate' | 'update_budget' | 'update_bid' | 'duplicate';
+  action: 'pause' | 'activate' | 'update_budget' | 'update_bid' | 'duplicate' | 'update_creative';
   oldValue?: string;
   newValue?: string;
 }
@@ -216,11 +222,44 @@ export const useCampaignManager = () => {
     return result;
   };
 
+  const updateCreative = async (
+    adId: string,
+    creativeData: {
+      title?: string;
+      body?: string;
+      linkDescription?: string;
+      callToActionType?: string;
+    },
+    entityName?: string
+  ) => {
+    const result = await executeAction({
+      action: 'update_creative',
+      entityId: adId,
+      entityType: 'ad',
+      creativeData,
+    });
+    if (result.success) {
+      const updatedFields = Object.keys(creativeData).filter(k => creativeData[k as keyof typeof creativeData] !== undefined);
+      await logAction({
+        entityId: adId,
+        entityType: 'ad',
+        entityName,
+        action: 'update_creative',
+        newValue: `Campos atualizados: ${updatedFields.join(', ')}`,
+      });
+      toast.success('Copy do anúncio atualizado com sucesso!');
+    } else {
+      toast.error(`Erro: ${result.error}`);
+    }
+    return result;
+  };
+
   return {
     isLoading,
     updateStatus,
     updateBudget,
     updateBid,
     duplicate,
+    updateCreative,
   };
 };
