@@ -14,11 +14,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users, Pause, Play, Settings2 } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar, Loader2, Users, Pause, Play, Settings2, Sparkles } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
 import { useCampaignManager } from "@/hooks/useCampaignManager";
+import CampaignAIAssistant from "./CampaignAIAssistant";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -41,6 +42,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   const [selectedItem, setSelectedItem] = useState<CampaignInsight | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmPause, setConfirmPause] = useState<CampaignInsight | null>(null);
+  const [aiAssistantItem, setAiAssistantItem] = useState<CampaignInsight | null>(null);
   const { updateStatus } = useCampaignManager();
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
@@ -368,6 +370,17 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
               Ver Sugestões
             </Button>
           )}
+
+          {/* AI Assistant Button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full border-primary/50 text-primary hover:bg-primary/10 mt-2"
+            onClick={() => setAiAssistantItem(item)}
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Assistente IA
+          </Button>
         </CardContent>
       </Card>
     );
@@ -520,6 +533,15 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
         {selectedItem && (
           <div className="mt-6">
             <SuggestionPanel item={selectedItem} />
+          </div>
+        )}
+
+        {aiAssistantItem && (
+          <div className="mt-6">
+            <CampaignAIAssistant 
+              item={aiAssistantItem} 
+              onClose={() => setAiAssistantItem(null)} 
+            />
           </div>
         )}
       </CardContent>
