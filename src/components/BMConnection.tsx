@@ -52,7 +52,12 @@ const BMConnection = ({
         const accounts = JSON.parse(saved);
         setSavedAccounts(accounts);
         if (accounts.length > 0 && !showNewForm) {
-          setSelectedAccountId(accounts[0].id);
+          const firstAccount = accounts[0];
+          setSelectedAccountId(firstAccount.id);
+          // IMPORTANTE: também preencher os campos de credenciais
+          setAccessToken(firstAccount.accessToken);
+          setAccountId(firstAccount.accountId);
+          setAccountName(firstAccount.name);
         }
       } catch (e) {
         console.error("Error loading saved accounts:", e);
