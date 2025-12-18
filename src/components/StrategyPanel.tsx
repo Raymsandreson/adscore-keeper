@@ -36,6 +36,7 @@ import {
 import { CampaignInsight } from "@/services/metaAPI";
 import { useAnalysisCriteria } from "@/hooks/useAnalysisCriteria";
 import AnalysisCriteriaSettings from "@/components/AnalysisCriteriaSettings";
+import AbandonmentTracker from "@/components/AbandonmentTracker";
 
 interface StrategyPanelProps {
   campaigns: CampaignInsight[];
@@ -444,10 +445,14 @@ const StrategyPanel = ({
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="budget" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-4">
+          <TabsList className="grid w-full grid-cols-7 mb-4">
             <TabsTrigger value="budget" className="text-xs">
               <CircleDollarSign className="h-3 w-3 mr-1" />
               Investimento
+            </TabsTrigger>
+            <TabsTrigger value="abandonment" className="text-xs">
+              <TrendingDown className="h-3 w-3 mr-1" />
+              Abandono
             </TabsTrigger>
             <TabsTrigger value="saturation" className="text-xs">
               <Flame className="h-3 w-3 mr-1" />
@@ -470,6 +475,14 @@ const StrategyPanel = ({
               Critérios
             </TabsTrigger>
           </TabsList>
+
+          {/* Aba de Taxas de Abandono */}
+          <TabsContent value="abandonment" className="space-y-4">
+            <AbandonmentTracker 
+              totalClicks={campaigns.reduce((acc, c) => acc + c.clicks, 0)}
+              totalSpend={totalSpend}
+            />
+          </TabsContent>
 
           {/* Aba de Saturação e Capacidade */}
           <TabsContent value="saturation" className="space-y-4">
