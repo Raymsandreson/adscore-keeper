@@ -45,7 +45,20 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   const [confirmPause, setConfirmPause] = useState<CampaignInsight | null>(null);
   const [aiAssistantItem, setAiAssistantItem] = useState<CampaignInsight | null>(null);
   const [recentlyChanged, setRecentlyChanged] = useState<{ id: string; action: 'paused' | 'activated' } | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused'>('all');
   const { updateStatus } = useCampaignManager();
+
+  const filterByStatus = (items: CampaignInsight[]) => {
+    if (statusFilter === 'all') return items;
+    return items.filter(item => {
+      const isActive = item.status === 'ACTIVE' || !item.status;
+      return statusFilter === 'active' ? isActive : !isActive;
+    });
+  };
+
+  const filteredCampaigns = filterByStatus(campaigns);
+  const filteredAdSets = filterByStatus(adSets);
+  const filteredCreatives = filterByStatus(creatives);
 
   const generateAISuggestions = (item: CampaignInsight): AIsuggestion[] => {
     const suggestions: AIsuggestion[] = [];
@@ -317,12 +330,19 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
               onActionComplete={onRefresh}
             />
           </div>
-          <CardTitle className="text-sm font-medium leading-tight mt-2">{item.name}</CardTitle>
-          {item.status && (
-            <p className="text-xs text-muted-foreground">
-              Status: {item.status === 'ACTIVE' ? 'Ativo' : 'Pausado'}
-            </p>
-          )}
+          <div className="flex items-center gap-2 mt-2">
+            <CardTitle className="text-sm font-medium leading-tight">{item.name}</CardTitle>
+          </div>
+          <Badge 
+            variant="outline" 
+            className={`text-xs mt-1 ${
+              isActive 
+                ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700' 
+                : 'bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600'
+            }`}
+          >
+            {isActive ? '🟢 Ativo' : '⏸️ Pausado'}
+          </Badge>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
@@ -519,7 +539,17 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
               Selecione uma campanha ou criativo para ver sugestões de otimização da IA
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'active' | 'paused')}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">🟢 Ativos</SelectItem>
+                <SelectItem value="paused">⏸️ Pausados</SelectItem>
+              </SelectContent>
+            </Select>
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <Select value={dateRange} onValueChange={(value) => onDateRangeChange(value as DateRangeOption)}>
               <SelectTrigger className="w-[140px]">
@@ -540,39 +570,54 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
           <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
-              Campanhas ({campaigns.length})
+              Campanhas ({filteredCampaigns.length})
             </TabsTrigger>
             <TabsTrigger value="adsets" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Conjuntos ({adSets.length})
+              Conjuntos ({filteredAdSets.length})
             </TabsTrigger>
             <TabsTrigger value="creatives" className="flex items-center gap-2">
               <Megaphone className="h-4 w-4" />
-              Criativos ({creatives.length})
+              Criativos ({filteredCreatives.length})
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="campaigns" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {campaigns.map((campaign) => (
+              {filteredCampaigns.map((campaign) => (
                 <ItemCard key={campaign.id} item={campaign} />
               ))}
+              {filteredCampaigns.length === 0 && (
+                <p className="text-sm text-muted-foreground col-span-full text-center py-8">
+                  Nenhuma campanha {statusFilter === 'active' ? 'ativa' : statusFilter === 'paused' ? 'pausada' : ''} encontrada.
+                </p>
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="adsets" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {adSets.map((adSet) => (
+              {filteredAdSets.map((adSet) => (
                 <ItemCard key={adSet.id} item={adSet} />
               ))}
+              {filteredAdSets.length === 0 && (
+                <p className="text-sm text-muted-foreground col-span-full text-center py-8">
+                  Nenhum conjunto {statusFilter === 'active' ? 'ativo' : statusFilter === 'paused' ? 'pausado' : ''} encontrado.
+                </p>
+              )}
             </div>
           </TabsContent>
 
           <TabsContent value="creatives" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {creatives.map((creative) => (
+              {filteredCreatives.map((creative) => (
                 <ItemCard key={creative.id} item={creative} />
               ))}
+              {filteredCreatives.length === 0 && (
+                <p className="text-sm text-muted-foreground col-span-full text-center py-8">
+                  Nenhum criativo {statusFilter === 'active' ? 'ativo' : statusFilter === 'paused' ? 'pausado' : ''} encontrado.
+                </p>
+              )}
             </div>
           </TabsContent>
         </Tabs>
