@@ -146,7 +146,10 @@ const BMConnection = ({
   };
 
   const handleConnect = async () => {
-    if (!accessToken.trim() || !accountId.trim()) {
+    const trimmedToken = accessToken.trim();
+    const trimmedAccountId = accountId.trim();
+
+    if (!trimmedToken || !trimmedAccountId) {
       toast({
         title: "Campos obrigatórios",
         description: "Preencha o Access Token e Account ID",
@@ -155,9 +158,29 @@ const BMConnection = ({
       return;
     }
 
+    // Validar formato do token - tokens Meta começam com 'EAA'
+    if (!trimmedToken.startsWith('EAA')) {
+      toast({
+        title: "Token inválido",
+        description: "O Access Token deve começar com 'EAA'. Verifique se você copiou o token corretamente do Facebook.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validar tamanho mínimo do token (tokens Meta são longos)
+    if (trimmedToken.length < 50) {
+      toast({
+        title: "Token muito curto",
+        description: "O Access Token parece estar incompleto. Tokens Meta geralmente têm mais de 150 caracteres.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const success = await onConnect({
-      accessToken: accessToken.trim(),
-      accountId: accountId.trim()
+      accessToken: trimmedToken,
+      accountId: trimmedAccountId
     });
 
     if (success) {
