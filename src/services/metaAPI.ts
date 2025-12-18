@@ -421,9 +421,13 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de campanhas obtidos:', data.data.length);
+        console.log('📋 Status map:', Object.keys(statusMap).length, 'campanhas com status');
         return data.data.map((item: any) => {
           const insight = this.parseInsightData(item, 'campaign');
-          insight.status = (statusMap[item.campaign_id] as any) || 'ACTIVE';
+          const effectiveStatus = statusMap[item.campaign_id] || 'PAUSED';
+          // Se não está ACTIVE, considera pausado
+          insight.status = (effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED') as any;
+          console.log(`Campaign ${item.campaign_name}: status = ${effectiveStatus} -> ${insight.status}`);
           return insight;
         });
       }
@@ -487,7 +491,9 @@ class MetaAPIService {
         console.log('✅ Dados de conjuntos obtidos:', data.data.length);
         return data.data.map((item: any) => {
           const insight = this.parseInsightData(item, 'adset');
-          insight.status = (statusMap[item.adset_id] as any) || 'ACTIVE';
+          const effectiveStatus = statusMap[item.adset_id] || 'PAUSED';
+          // CAMPAIGN_PAUSED também significa pausado
+          insight.status = (effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED') as any;
           return insight;
         });
       }
@@ -692,7 +698,8 @@ class MetaAPIService {
         console.log('✅ Dados de criativos obtidos:', data.data.length);
         return data.data.map((item: any) => {
           const insight = this.parseInsightData(item, 'creative');
-          insight.status = (statusMap[item.ad_id] as any) || 'ACTIVE';
+          const effectiveStatus = statusMap[item.ad_id] || 'PAUSED';
+          insight.status = (effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED') as any;
           return insight;
         });
       }
