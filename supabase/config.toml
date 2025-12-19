@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.sync-lead-status]
 verify_jwt = false
+
+[functions.facebook-capi]
+verify_jwt = false
