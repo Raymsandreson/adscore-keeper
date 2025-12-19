@@ -2,3 +2,9 @@ project_id = "gliigkupoebmlbwyvijp"
 
 [functions.meta-campaign-manager]
 verify_jwt = false
+
+[functions.campaign-ai-assistant]
+verify_jwt = false
+
+[functions.sync-lead-status]
+verify_jwt = false
