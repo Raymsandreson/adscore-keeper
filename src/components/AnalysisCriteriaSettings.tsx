@@ -36,9 +36,20 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
     setEditedCriteria(criteria);
   }, [criteria]);
 
-  const handleChange = (field: keyof AnalysisCriteria, value: number) => {
-    setEditedCriteria(prev => ({ ...prev, [field]: value }));
-    setHasChanges(true);
+  const handleChange = (field: keyof AnalysisCriteria, value: string, isFloat: boolean = false) => {
+    // Permitir campo vazio durante edição
+    if (value === '') {
+      setEditedCriteria(prev => ({ ...prev, [field]: 0 }));
+      setHasChanges(true);
+      return;
+    }
+    
+    // Validar entrada numérica
+    const numValue = isFloat ? parseFloat(value) : parseInt(value);
+    if (!isNaN(numValue) && numValue >= 0) {
+      setEditedCriteria(prev => ({ ...prev, [field]: numValue }));
+      setHasChanges(true);
+    }
   };
 
   const handleSave = () => {
@@ -167,9 +178,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="minImpressions"
-                  type="number"
-                  value={editedCriteria.minImpressions}
-                  onChange={(e) => handleChange('minImpressions', parseInt(e.target.value) || 0)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.minImpressions || ''}
+                  onChange={(e) => handleChange('minImpressions', e.target.value)}
                 />
               </div>
 
@@ -185,9 +197,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="minDaysActive"
-                  type="number"
-                  value={editedCriteria.minDaysActive}
-                  onChange={(e) => handleChange('minDaysActive', parseInt(e.target.value) || 0)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.minDaysActive || ''}
+                  onChange={(e) => handleChange('minDaysActive', e.target.value)}
                 />
               </div>
 
@@ -203,9 +216,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="minSpendForDecision"
-                  type="number"
-                  value={editedCriteria.minSpendForDecision}
-                  onChange={(e) => handleChange('minSpendForDecision', parseInt(e.target.value) || 0)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.minSpendForDecision || ''}
+                  onChange={(e) => handleChange('minSpendForDecision', e.target.value)}
                 />
               </div>
             </CardContent>
@@ -235,10 +249,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="minCTR"
-                  type="number"
-                  step="0.1"
-                  value={editedCriteria.minCTR}
-                  onChange={(e) => handleChange('minCTR', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={editedCriteria.minCTR || ''}
+                  onChange={(e) => handleChange('minCTR', e.target.value, true)}
                 />
               </div>
 
@@ -254,10 +268,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="minConversionRate"
-                  type="number"
-                  step="0.1"
-                  value={editedCriteria.minConversionRate}
-                  onChange={(e) => handleChange('minConversionRate', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={editedCriteria.minConversionRate || ''}
+                  onChange={(e) => handleChange('minConversionRate', e.target.value, true)}
                 />
               </div>
 
@@ -273,10 +287,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="maxCPC"
-                  type="number"
-                  step="0.1"
-                  value={editedCriteria.maxCPC}
-                  onChange={(e) => handleChange('maxCPC', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  inputMode="decimal"
+                  value={editedCriteria.maxCPC || ''}
+                  onChange={(e) => handleChange('maxCPC', e.target.value, true)}
                 />
               </div>
             </CardContent>
@@ -306,9 +320,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="saturationDropThreshold"
-                  type="number"
-                  value={editedCriteria.saturationDropThreshold}
-                  onChange={(e) => handleChange('saturationDropThreshold', parseInt(e.target.value) || 0)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.saturationDropThreshold || ''}
+                  onChange={(e) => handleChange('saturationDropThreshold', e.target.value)}
                 />
               </div>
 
@@ -324,9 +339,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="saturationPeriodDays"
-                  type="number"
-                  value={editedCriteria.saturationPeriodDays}
-                  onChange={(e) => handleChange('saturationPeriodDays', parseInt(e.target.value) || 0)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.saturationPeriodDays || ''}
+                  onChange={(e) => handleChange('saturationPeriodDays', e.target.value)}
                 />
               </div>
             </CardContent>
@@ -356,9 +372,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="teamSize"
-                  type="number"
-                  value={editedCriteria.teamSize}
-                  onChange={(e) => handleChange('teamSize', parseInt(e.target.value) || 1)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.teamSize || ''}
+                  onChange={(e) => handleChange('teamSize', e.target.value)}
                 />
               </div>
 
@@ -374,9 +391,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 </div>
                 <Input
                   id="avgLeadHandlingTime"
-                  type="number"
-                  value={editedCriteria.avgLeadHandlingTime}
-                  onChange={(e) => handleChange('avgLeadHandlingTime', parseInt(e.target.value) || 1)}
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.avgLeadHandlingTime || ''}
+                  onChange={(e) => handleChange('avgLeadHandlingTime', e.target.value)}
                 />
               </div>
 
@@ -423,9 +441,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                     </div>
                     <Input
                       id="expectedFormAbandonmentRate"
-                      type="number"
-                      value={editedCriteria.expectedFormAbandonmentRate}
-                      onChange={(e) => handleChange('expectedFormAbandonmentRate', parseInt(e.target.value) || 0)}
+                      type="text"
+                      inputMode="numeric"
+                      value={editedCriteria.expectedFormAbandonmentRate || ''}
+                      onChange={(e) => handleChange('expectedFormAbandonmentRate', e.target.value)}
                     />
                   </div>
 
@@ -441,9 +460,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                     </div>
                     <Input
                       id="targetFormCompletionRate"
-                      type="number"
-                      value={editedCriteria.targetFormCompletionRate}
-                      onChange={(e) => handleChange('targetFormCompletionRate', parseInt(e.target.value) || 0)}
+                      type="text"
+                      inputMode="numeric"
+                      value={editedCriteria.targetFormCompletionRate || ''}
+                      onChange={(e) => handleChange('targetFormCompletionRate', e.target.value)}
                     />
                   </div>
 
@@ -473,9 +493,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                     </div>
                     <Input
                       id="expectedWhatsAppAbandonmentRate"
-                      type="number"
-                      value={editedCriteria.expectedWhatsAppAbandonmentRate}
-                      onChange={(e) => handleChange('expectedWhatsAppAbandonmentRate', parseInt(e.target.value) || 0)}
+                      type="text"
+                      inputMode="numeric"
+                      value={editedCriteria.expectedWhatsAppAbandonmentRate || ''}
+                      onChange={(e) => handleChange('expectedWhatsAppAbandonmentRate', e.target.value)}
                     />
                   </div>
 
@@ -491,9 +512,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                     </div>
                     <Input
                       id="targetWhatsAppResponseRate"
-                      type="number"
-                      value={editedCriteria.targetWhatsAppResponseRate}
-                      onChange={(e) => handleChange('targetWhatsAppResponseRate', parseInt(e.target.value) || 0)}
+                      type="text"
+                      inputMode="numeric"
+                      value={editedCriteria.targetWhatsAppResponseRate || ''}
+                      onChange={(e) => handleChange('targetWhatsAppResponseRate', e.target.value)}
                     />
                   </div>
 
