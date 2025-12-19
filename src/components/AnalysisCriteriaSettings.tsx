@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,11 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
   const [editedCriteria, setEditedCriteria] = useState<AnalysisCriteria>(criteria);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Sincronizar editedCriteria quando criteria carrega do localStorage
+  useEffect(() => {
+    setEditedCriteria(criteria);
+  }, [criteria]);
+
   const handleChange = (field: keyof AnalysisCriteria, value: number) => {
     setEditedCriteria(prev => ({ ...prev, [field]: value }));
     setHasChanges(true);
@@ -50,7 +55,10 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
   };
 
   const teamCapacity = checkTeamCapacity(currentDailyLeads);
-  const maxDailyLeads = getMaxDailyLeads();
+  const savedMaxDailyLeads = getMaxDailyLeads();
+  
+  // Calcular capacidade com valores editados (não salvos) para preview em tempo real
+  const editedMaxDailyLeads = Math.floor((8 * 60) / editedCriteria.avgLeadHandlingTime) * editedCriteria.teamSize;
 
   const getCapacityColor = (status: string) => {
     switch (status) {
@@ -105,7 +113,7 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Leads hoje: {currentDailyLeads}</span>
-              <span className="text-sm text-muted-foreground">Capacidade máx: {maxDailyLeads}/dia</span>
+              <span className="text-sm text-muted-foreground">Capacidade máx: {savedMaxDailyLeads}/dia</span>
             </div>
             
             {/* Progress bar */}
@@ -376,7 +384,7 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
 
               <div className="p-3 bg-muted/50 rounded-lg">
                 <div className="text-sm font-medium">Capacidade Calculada</div>
-                <div className="text-2xl font-bold text-primary">{maxDailyLeads} leads/dia</div>
+                <div className="text-2xl font-bold text-primary">{editedMaxDailyLeads} leads/dia</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Com {editedCriteria.teamSize} pessoa(s) e {editedCriteria.avgLeadHandlingTime} min por lead
                 </p>
