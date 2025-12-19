@@ -130,7 +130,7 @@ export const useLeads = (adAccountId?: string) => {
     });
   };
 
-  const addLead = async (lead: Partial<Lead>) => {
+  const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
       const { data, error } = await supabase
         .from('leads')
@@ -153,9 +153,9 @@ export const useLeads = (adAccountId?: string) => {
         name: newLead.lead_name || undefined,
         campaignName: newLead.campaign_name || undefined,
         value: newLead.conversion_value || 0,
-      }).then(result => {
+      }, testEventCode).then(result => {
         if (result.success) {
-          console.log('CAPI: Lead event sent');
+          console.log('CAPI: Lead event sent', testEventCode ? '(test mode)' : '');
         } else {
           console.warn('CAPI: Failed to send lead event', result.error);
         }

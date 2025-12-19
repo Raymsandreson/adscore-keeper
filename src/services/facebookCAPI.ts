@@ -88,7 +88,7 @@ class FacebookCAPIService {
     name?: string;
     campaignName?: string;
     value?: number;
-  }): Promise<CAPIResponse> {
+  }, testEventCode?: string): Promise<CAPIResponse> {
     const nameParts = leadData.name?.split(' ') || [];
     
     return this.sendEvent({
@@ -105,7 +105,7 @@ class FacebookCAPIService {
         contentName: leadData.campaignName,
         value: leadData.value,
       },
-    });
+    }, testEventCode);
   }
 
   async sendQualifiedLeadEvent(leadData: {

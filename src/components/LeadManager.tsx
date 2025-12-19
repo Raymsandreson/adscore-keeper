@@ -60,6 +60,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     notes: '',
     ad_spend_at_conversion: 0,
   });
+  const [testEventCode, setTestEventCode] = useState('');
 
   const handleAddLead = async () => {
     if (!newLead.lead_name && !newLead.lead_phone) {
@@ -70,7 +71,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       ...newLead,
       source: 'whatsapp',
       status: 'new',
-    });
+    }, testEventCode || undefined);
 
     setNewLead({
       lead_name: '',
@@ -297,6 +298,17 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                         value={newLead.ad_spend_at_conversion}
                         onChange={(e) => setNewLead({ ...newLead, ad_spend_at_conversion: parseFloat(e.target.value) || 0 })}
                       />
+                    </div>
+                    <div>
+                      <Label>Código de Teste (Facebook Events Manager)</Label>
+                      <Input
+                        placeholder="TEST12345"
+                        value={testEventCode}
+                        onChange={(e) => setTestEventCode(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Encontre em Events Manager → Test Events → Código de Teste
+                      </p>
                     </div>
                     <div>
                       <Label>Observações</Label>
