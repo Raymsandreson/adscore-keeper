@@ -357,7 +357,7 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
             {recommendation.action === 'monitor' && 'Performance estável. Continue monitorando.'}
           </p>
           
-          <div className="grid grid-cols-4 gap-2 text-xs text-center">
+          <div className="grid grid-cols-3 gap-2 text-xs text-center">
             <div>
               <p className="text-muted-foreground">CTR</p>
               <p className={`font-semibold ${item.ctr < 1.5 ? 'text-destructive' : item.ctr > 2.5 ? 'text-green-600' : 'text-foreground'}`}>
@@ -373,6 +373,19 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
             <div>
               <p className="text-muted-foreground">Gasto</p>
               <p className="font-semibold">R${item.spend.toFixed(0)}</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-2 text-xs text-center pt-2 border-t border-border/50">
+            <div>
+              <p className="text-muted-foreground">Impressões</p>
+              <p className="font-semibold">{item.impressions?.toLocaleString('pt-BR') || '0'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Conversões</p>
+              <p className={`font-semibold ${item.conversions > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                {item.conversions || 0}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground">CPA</p>
