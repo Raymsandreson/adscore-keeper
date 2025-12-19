@@ -69,6 +69,11 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   const [testEventCode, setTestEventCode] = useState('');
 
   const handleImportFacebookLeads = async () => {
+    if (!adAccountId) {
+      toast.error('Ad Account ID não configurado. Vá em Configurações para conectar sua conta do Meta.');
+      return;
+    }
+
     setIsImporting(true);
     try {
       const { data, error } = await supabase.functions.invoke('fetch-facebook-leads', {
