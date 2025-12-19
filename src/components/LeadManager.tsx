@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,7 +28,9 @@ import {
   TableIcon,
   Download,
   Loader2,
-  Facebook
+  Facebook,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -54,9 +56,12 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads } = useLeads(adAccountId);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<'pipeline' | 'table'>('pipeline');
   const [isImporting, setIsImporting] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<any[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [newLead, setNewLead] = useState({
     lead_name: '',
     lead_phone: '',
@@ -99,6 +104,129 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       toast.error('Erro ao importar leads');
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+          toast.error('O arquivo CSV precisa ter pelo menos uma linha de dados além do cabeçalho');
+          return;
+        }
+
+        // Parse header
+        const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        
+        // Find column indices - support multiple column name variations
+        const findColumn = (names: string[]) => {
+          return header.findIndex(h => names.some(n => h.includes(n)));
+        };
+
+        const nameIdx = findColumn(['full_name', 'full name', 'nome', 'name', 'lead_name']);
+        const emailIdx = findColumn(['email', 'e-mail', 'lead_email']);
+        const phoneIdx = findColumn(['phone', 'phone_number', 'telefone', 'lead_phone', 'whatsapp']);
+        const campaignIdx = findColumn(['campaign', 'campanha', 'campaign_name']);
+        const adsetIdx = findColumn(['adset', 'ad set', 'conjunto', 'adset_name']);
+        const leadIdIdx = findColumn(['lead_id', 'facebook_lead_id', 'id']);
+
+        // Parse data rows
+        const parsedLeads = lines.slice(1).map(line => {
+          // Handle CSV with quoted values
+          const values: string[] = [];
+          let current = '';
+          let inQuotes = false;
+          
+          for (const char of line) {
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              values.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          values.push(current.trim());
+
+          return {
+            lead_name: nameIdx >= 0 ? values[nameIdx]?.replace(/"/g, '') : '',
+            lead_email: emailIdx >= 0 ? values[emailIdx]?.replace(/"/g, '') : '',
+            lead_phone: phoneIdx >= 0 ? values[phoneIdx]?.replace(/"/g, '') : '',
+            campaign_name: campaignIdx >= 0 ? values[campaignIdx]?.replace(/"/g, '') : '',
+            adset_name: adsetIdx >= 0 ? values[adsetIdx]?.replace(/"/g, '') : '',
+            facebook_lead_id: leadIdIdx >= 0 ? values[leadIdIdx]?.replace(/"/g, '') : '',
+          };
+        }).filter(lead => lead.lead_name || lead.lead_email || lead.lead_phone);
+
+        if (parsedLeads.length === 0) {
+          toast.error('Nenhum lead válido encontrado no arquivo. Verifique as colunas.');
+          return;
+        }
+
+        setCsvPreview(parsedLeads);
+        setIsImportDialogOpen(true);
+        toast.success(`${parsedLeads.length} leads encontrados no arquivo`);
+      } catch (error) {
+        console.error('Error parsing CSV:', error);
+        toast.error('Erro ao processar o arquivo CSV');
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleImportCSV = async () => {
+    if (csvPreview.length === 0) return;
+
+    setIsImporting(true);
+    let imported = 0;
+    let errors = 0;
+
+    for (const lead of csvPreview) {
+      try {
+        const { error } = await supabase
+          .from('leads')
+          .insert({
+            ...lead,
+            ad_account_id: adAccountId,
+            source: 'facebook',
+            status: 'new',
+            sync_status: 'synced',
+          });
+
+        if (error) {
+          console.error('Error inserting lead:', error);
+          errors++;
+        } else {
+          imported++;
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        errors++;
+      }
+    }
+
+    setIsImporting(false);
+    setCsvPreview([]);
+    setIsImportDialogOpen(false);
+    fetchLeads();
+
+    if (errors > 0) {
+      toast.warning(`Importação concluída: ${imported} leads importados, ${errors} erros`);
+    } else {
+      toast.success(`${imported} leads importados com sucesso!`);
     }
   };
 
@@ -268,18 +396,21 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                 </Button>
               </div>
 
+              {/* CSV Import */}
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                ref={fileInputRef}
+                className="hidden"
+              />
               <Button
                 variant="outline"
-                onClick={handleImportFacebookLeads}
-                disabled={isImporting}
+                onClick={() => fileInputRef.current?.click()}
                 className="gap-2"
               >
-                {isImporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Facebook className="h-4 w-4" />
-                )}
-                {isImporting ? 'Importando...' : 'Importar do Facebook'}
+                <FileSpreadsheet className="h-4 w-4" />
+                Importar CSV
               </Button>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -379,6 +510,72 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                     </Button>
                     <Button onClick={handleAddLead}>
                       Adicionar
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* CSV Import Preview Dialog */}
+              <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <FileSpreadsheet className="h-5 w-5" />
+                      Importar Leads do CSV
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="flex-1 overflow-auto">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {csvPreview.length} leads encontrados. Confira os dados antes de importar:
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nome</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Campanha</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {csvPreview.slice(0, 10).map((lead, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{lead.lead_name || '—'}</TableCell>
+                            <TableCell>{lead.lead_email || '—'}</TableCell>
+                            <TableCell>{lead.lead_phone || '—'}</TableCell>
+                            <TableCell>{lead.campaign_name || '—'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {csvPreview.length > 10 && (
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        ...e mais {csvPreview.length - 10} leads
+                      </p>
+                    )}
+                  </div>
+                  <DialogFooter className="mt-4">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setIsImportDialogOpen(false);
+                        setCsvPreview([]);
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleImportCSV} disabled={isImporting}>
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Importando...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Importar {csvPreview.length} leads
+                        </>
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
