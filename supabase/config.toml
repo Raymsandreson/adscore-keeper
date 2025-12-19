@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.facebook-capi]
 verify_jwt = false
+
+[functions.fetch-facebook-leads]
+verify_jwt = false

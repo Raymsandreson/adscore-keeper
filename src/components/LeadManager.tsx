@@ -25,8 +25,13 @@ import {
   Target,
   AlertCircle,
   LayoutGrid,
-  TableIcon
+  TableIcon,
+  Download,
+  Loader2,
+  Facebook
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
@@ -47,10 +52,11 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 };
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
-  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus } = useLeads(adAccountId);
+  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads } = useLeads(adAccountId);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [viewMode, setViewMode] = useState<'pipeline' | 'table'>('pipeline');
+  const [isImporting, setIsImporting] = useState(false);
   const [newLead, setNewLead] = useState({
     lead_name: '',
     lead_phone: '',
@@ -61,6 +67,35 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     ad_spend_at_conversion: 0,
   });
   const [testEventCode, setTestEventCode] = useState('');
+
+  const handleImportFacebookLeads = async () => {
+    setIsImporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-facebook-leads', {
+        body: { adAccountId }
+      });
+
+      if (error) {
+        console.error('Error importing leads:', error);
+        toast.error('Erro ao importar leads do Facebook');
+        return;
+      }
+
+      if (data.error) {
+        console.error('API error:', data.error);
+        toast.error(`Erro: ${data.error}`);
+        return;
+      }
+
+      toast.success(`Importação concluída! ${data.imported} novos leads, ${data.duplicates} já existentes.`);
+      fetchLeads();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Erro ao importar leads');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handleAddLead = async () => {
     if (!newLead.lead_name && !newLead.lead_phone) {
@@ -227,6 +262,20 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                   Tabela
                 </Button>
               </div>
+
+              <Button
+                variant="outline"
+                onClick={handleImportFacebookLeads}
+                disabled={isImporting}
+                className="gap-2"
+              >
+                {isImporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Facebook className="h-4 w-4" />
+                )}
+                {isImporting ? 'Importando...' : 'Importar do Facebook'}
+              </Button>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
