@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar as CalendarIcon, Loader2, Users, Pause, Play, Settings2, Sparkles } from "lucide-react";
+import { Lightbulb, TrendingDown, TrendingUp, Target, Megaphone, X, Calendar as CalendarIcon, Loader2, Users, Pause, Play, Settings2, Sparkles, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX } from "lucide-react";
 import { CampaignInsight } from "@/services/metaAPI";
 import { DateRangeOption } from "@/hooks/useMetaAPI";
 import { CampaignControls } from "./CampaignControls";
@@ -26,6 +26,7 @@ import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { useLeads, Lead } from "@/hooks/useLeads";
 
 interface AIsuggestion {
   type: 'critical' | 'warning' | 'opportunity';
@@ -52,6 +53,30 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
   const [recentlyChanged, setRecentlyChanged] = useState<{ id: string; action: 'paused' | 'activated' } | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused'>('all');
   const { updateStatus } = useCampaignManager();
+  const { leads } = useLeads();
+
+  // Helper function to get lead stats for a specific entity
+  const getLeadStatsForEntity = (entityType: 'campaign' | 'adset' | 'ad', entityId: string) => {
+    let filteredLeads: Lead[] = [];
+    
+    if (entityType === 'campaign') {
+      filteredLeads = leads.filter(l => l.campaign_id === entityId);
+    } else if (entityType === 'adset') {
+      filteredLeads = leads.filter(l => l.adset_id === entityId);
+    } else {
+      filteredLeads = leads.filter(l => l.creative_id === entityId);
+    }
+
+    return {
+      total: filteredLeads.length,
+      new: filteredLeads.filter(l => l.status === 'new').length,
+      contacted: filteredLeads.filter(l => l.status === 'contacted').length,
+      qualified: filteredLeads.filter(l => l.status === 'qualified').length,
+      notQualified: filteredLeads.filter(l => l.status === 'not_qualified').length,
+      converted: filteredLeads.filter(l => l.status === 'converted').length,
+      lost: filteredLeads.filter(l => l.status === 'lost').length,
+    };
+  };
 
   const filterByStatus = (items: CampaignInsight[]) => {
     if (statusFilter === 'all') return items;
@@ -280,6 +305,8 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
     const isLoadingThis = actionLoading === item.id;
     const wasJustChanged = recentlyChanged?.id === item.id;
     const changeAction = recentlyChanged?.action;
+    const entityType = getEntityType(item);
+    const leadStats = getLeadStatsForEntity(entityType, item.id);
     
     return (
       <Card 
@@ -392,6 +419,42 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
               <p className="font-semibold">R${item.conversions > 0 ? (item.spend / item.conversions).toFixed(0) : '0'}</p>
             </div>
           </div>
+
+          {/* Lead Pipeline Summary */}
+          {leadStats.total > 0 && (
+            <div className="pt-3 border-t border-border/50">
+              <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                Pipeline de Leads ({leadStats.total})
+              </p>
+              <div className="grid grid-cols-6 gap-1 text-xs text-center">
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded p-1" title="Em análise">
+                  <UserPlus className="h-3 w-3 mx-auto text-blue-600 mb-0.5" />
+                  <p className="font-semibold text-blue-700 dark:text-blue-400">{leadStats.new}</p>
+                </div>
+                <div className="bg-yellow-50 dark:bg-yellow-950/30 rounded p-1" title="Contatado">
+                  <Phone className="h-3 w-3 mx-auto text-yellow-600 mb-0.5" />
+                  <p className="font-semibold text-yellow-700 dark:text-yellow-400">{leadStats.contacted}</p>
+                </div>
+                <div className="bg-green-50 dark:bg-green-950/30 rounded p-1" title="Qualificado">
+                  <CheckCircle className="h-3 w-3 mx-auto text-green-600 mb-0.5" />
+                  <p className="font-semibold text-green-700 dark:text-green-400">{leadStats.qualified}</p>
+                </div>
+                <div className="bg-gray-50 dark:bg-gray-800/30 rounded p-1" title="Desqualificado">
+                  <XCircle className="h-3 w-3 mx-auto text-gray-500 mb-0.5" />
+                  <p className="font-semibold text-gray-600 dark:text-gray-400">{leadStats.notQualified}</p>
+                </div>
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded p-1" title="Convertido">
+                  <Trophy className="h-3 w-3 mx-auto text-emerald-600 mb-0.5" />
+                  <p className="font-semibold text-emerald-700 dark:text-emerald-400">{leadStats.converted}</p>
+                </div>
+                <div className="bg-red-50 dark:bg-red-950/30 rounded p-1" title="Perdido">
+                  <UserX className="h-3 w-3 mx-auto text-red-600 mb-0.5" />
+                  <p className="font-semibold text-red-700 dark:text-red-400">{leadStats.lost}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Direct Action Button */}
           {recommendation.action === 'pause' && isActive && (
