@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wifi, WifiOff, AlertCircle, RefreshCw, Save, Trash2, Plus } from "lucide-react";
+import { Wifi, WifiOff, AlertCircle, RefreshCw, Save, Trash2, Plus, Clock, CheckCircle2, XCircle, Key, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { MetaAPIConfig } from "@/services/metaAPI";
 
@@ -14,6 +14,17 @@ interface SavedAccount {
   name: string;
   accessToken: string;
   accountId: string;
+}
+
+interface TokenInfo {
+  isValid: boolean;
+  expiresAt: Date | null;
+  isExpired: boolean;
+  daysUntilExpiry: number | null;
+  scopes: string[];
+  appId: string | null;
+  userId: string | null;
+  type: 'short-lived' | 'long-lived' | 'unknown';
 }
 
 interface BMConnectionProps {
@@ -42,6 +53,9 @@ const BMConnection = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [showNewForm, setShowNewForm] = useState(false);
   const [connectedAccountName, setConnectedAccountName] = useState("");
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
+  const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [connectedTokenInfo, setConnectedTokenInfo] = useState<TokenInfo | null>(null);
   const { toast } = useToast();
 
   // Carregar contas salvas do localStorage
@@ -54,7 +68,6 @@ const BMConnection = ({
         if (accounts.length > 0 && !showNewForm) {
           const firstAccount = accounts[0];
           setSelectedAccountId(firstAccount.id);
-          // IMPORTANTE: também preencher os campos de credenciais
           setAccessToken(firstAccount.accessToken);
           setAccountId(firstAccount.accountId);
           setAccountName(firstAccount.name);
@@ -64,6 +77,88 @@ const BMConnection = ({
       }
     }
   }, []);
+
+  // Validar token quando o token mudar
+  const validateToken = async (token: string) => {
+    if (!token || token.length < 50) {
+      setTokenInfo(null);
+      return null;
+    }
+
+    setIsValidatingToken(true);
+    try {
+      // Debug token para verificar validade e informações
+      const response = await fetch(
+        `https://graph.facebook.com/debug_token?input_token=${token}&access_token=${token}`
+      );
+      const data = await response.json();
+
+      if (data.error) {
+        const info: TokenInfo = {
+          isValid: false,
+          expiresAt: null,
+          isExpired: true,
+          daysUntilExpiry: null,
+          scopes: [],
+          appId: null,
+          userId: null,
+          type: 'unknown'
+        };
+        setTokenInfo(info);
+        return info;
+      }
+
+      const tokenData = data.data;
+      const expiresAt = tokenData.expires_at ? new Date(tokenData.expires_at * 1000) : null;
+      const now = new Date();
+      const isExpired = tokenData.is_valid === false || (expiresAt && expiresAt < now);
+      
+      let daysUntilExpiry: number | null = null;
+      if (expiresAt && !isExpired) {
+        daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      }
+
+      // Determinar tipo de token (short-lived = ~1-2h, long-lived = ~60 days)
+      let tokenType: 'short-lived' | 'long-lived' | 'unknown' = 'unknown';
+      if (daysUntilExpiry !== null) {
+        if (daysUntilExpiry <= 1) {
+          tokenType = 'short-lived';
+        } else if (daysUntilExpiry > 1) {
+          tokenType = 'long-lived';
+        }
+      }
+
+      const info: TokenInfo = {
+        isValid: tokenData.is_valid && !isExpired,
+        expiresAt,
+        isExpired: isExpired || false,
+        daysUntilExpiry,
+        scopes: tokenData.scopes || [],
+        appId: tokenData.app_id || null,
+        userId: tokenData.user_id || null,
+        type: tokenType
+      };
+
+      setTokenInfo(info);
+      return info;
+    } catch (error) {
+      console.error("Error validating token:", error);
+      const info: TokenInfo = {
+        isValid: false,
+        expiresAt: null,
+        isExpired: true,
+        daysUntilExpiry: null,
+        scopes: [],
+        appId: null,
+        userId: null,
+        type: 'unknown'
+      };
+      setTokenInfo(info);
+      return info;
+    } finally {
+      setIsValidatingToken(false);
+    }
+  };
 
   // Salvar no localStorage quando muda
   const saveToStorage = (accounts: SavedAccount[]) => {
@@ -78,6 +173,7 @@ const BMConnection = ({
       setAccessToken("");
       setAccountId("");
       setAccountName("");
+      setTokenInfo(null);
     } else {
       setShowNewForm(false);
       setSelectedAccountId(id);
@@ -86,6 +182,8 @@ const BMConnection = ({
         setAccessToken(account.accessToken);
         setAccountId(account.accountId);
         setAccountName(account.name);
+        // Validar token da conta selecionada
+        validateToken(account.accessToken);
       }
     }
   };
@@ -131,11 +229,13 @@ const BMConnection = ({
         setAccessToken("");
         setAccountId("");
         setAccountName("");
+        setTokenInfo(null);
       } else {
         const firstAccount = updated[0];
         setAccessToken(firstAccount.accessToken);
         setAccountId(firstAccount.accountId);
         setAccountName(firstAccount.name);
+        validateToken(firstAccount.accessToken);
       }
     }
     
@@ -143,6 +243,40 @@ const BMConnection = ({
       title: "Conta removida",
       description: `"${account?.name}" foi removida`,
     });
+  };
+
+  const handleValidateToken = async () => {
+    if (!accessToken.trim()) {
+      toast({
+        title: "Token vazio",
+        description: "Digite um Access Token para validar",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const info = await validateToken(accessToken.trim());
+    
+    if (info?.isValid) {
+      toast({
+        title: "✅ Token válido",
+        description: info.daysUntilExpiry 
+          ? `Token expira em ${info.daysUntilExpiry} dias`
+          : "Token válido sem data de expiração definida",
+      });
+    } else if (info?.isExpired) {
+      toast({
+        title: "❌ Token expirado",
+        description: "Este token já expirou. Gere um novo token.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "❌ Token inválido",
+        description: "Não foi possível validar o token. Verifique se está correto.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleConnect = async () => {
@@ -158,7 +292,7 @@ const BMConnection = ({
       return;
     }
 
-    // Validar formato do token - tokens Meta começam com 'EAA'
+    // Validar formato do token
     if (!trimmedToken.startsWith('EAA')) {
       toast({
         title: "Token inválido",
@@ -168,7 +302,6 @@ const BMConnection = ({
       return;
     }
 
-    // Validar tamanho mínimo do token (tokens Meta são longos)
     if (trimmedToken.length < 50) {
       toast({
         title: "Token muito curto",
@@ -176,6 +309,25 @@ const BMConnection = ({
         variant: "destructive",
       });
       return;
+    }
+
+    // Validar token antes de conectar
+    const validationInfo = await validateToken(trimmedToken);
+    
+    if (validationInfo?.isExpired) {
+      toast({
+        title: "❌ Token expirado",
+        description: "Este token já expirou. Por favor, gere um novo token no Meta Business Suite.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!validationInfo?.isValid) {
+      toast({
+        title: "⚠️ Token possivelmente inválido",
+        description: "Não foi possível confirmar a validade do token. Tentando conectar mesmo assim...",
+      });
     }
 
     const success = await onConnect({
@@ -186,10 +338,21 @@ const BMConnection = ({
     if (success) {
       const name = accountName || savedAccounts.find(a => a.id === selectedAccountId)?.name || accountId;
       setConnectedAccountName(name);
-      toast({
-        title: "✅ Conectado com sucesso!",
-        description: "Dados reais do Meta Business Manager sendo coletados",
-      });
+      setConnectedTokenInfo(validationInfo);
+      
+      // Mostrar alerta se token estiver próximo de expirar
+      if (validationInfo?.daysUntilExpiry !== null && validationInfo.daysUntilExpiry <= 7) {
+        toast({
+          title: "⚠️ Token próximo de expirar",
+          description: `Seu token expira em ${validationInfo.daysUntilExpiry} dias. Considere gerar um novo token de longa duração.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "✅ Conectado com sucesso!",
+          description: "Dados reais do Meta Business Manager sendo coletados",
+        });
+      }
     } else {
       toast({
         title: "❌ Erro na conexão",
@@ -202,6 +365,7 @@ const BMConnection = ({
   const handleDisconnect = () => {
     onDisconnect();
     setConnectedAccountName("");
+    setConnectedTokenInfo(null);
     toast({
       title: "Desconectado",
       description: "Conexão com Meta Business Manager encerrada",
@@ -216,6 +380,61 @@ const BMConnection = ({
     });
   };
 
+  const openTokenGenerator = () => {
+    window.open('https://developers.facebook.com/tools/explorer/', '_blank');
+  };
+
+  const openLongLivedTokenGuide = () => {
+    window.open('https://developers.facebook.com/docs/facebook-login/guides/access-tokens/get-long-lived', '_blank');
+  };
+
+  const getTokenStatusBadge = (info: TokenInfo | null) => {
+    if (!info) return null;
+
+    if (info.isExpired) {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <XCircle className="h-3 w-3" />
+          Expirado
+        </Badge>
+      );
+    }
+
+    if (!info.isValid) {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <XCircle className="h-3 w-3" />
+          Inválido
+        </Badge>
+      );
+    }
+
+    if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 3) {
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <Clock className="h-3 w-3" />
+          Expira em {info.daysUntilExpiry}d
+        </Badge>
+      );
+    }
+
+    if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 7) {
+      return (
+        <Badge className="bg-warning text-warning-foreground gap-1">
+          <Clock className="h-3 w-3" />
+          Expira em {info.daysUntilExpiry}d
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge className="bg-success text-success-foreground gap-1">
+        <CheckCircle2 className="h-3 w-3" />
+        Válido {info.daysUntilExpiry ? `(${info.daysUntilExpiry}d)` : ''}
+      </Badge>
+    );
+  };
+
   return (
     <Card className="bg-gradient-card border-border shadow-card-custom">
       <CardHeader>
@@ -228,6 +447,7 @@ const BMConnection = ({
               </div>
               <span className="text-foreground">Meta Business Manager</span>
               <Badge className="status-success">Conectado</Badge>
+              {connectedTokenInfo && getTokenStatusBadge(connectedTokenInfo)}
             </>
           ) : (
             <>
@@ -249,6 +469,30 @@ const BMConnection = ({
                   Sistema funcionando com dados simulados. Conecte para ver dados reais.
                 </p>
               </div>
+            </div>
+
+            {/* Botões de ajuda para tokens */}
+            <div className="flex gap-2 flex-wrap">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={openTokenGenerator}
+                className="gap-2"
+              >
+                <Key className="h-4 w-4" />
+                Gerar Token
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={openLongLivedTokenGuide}
+                className="gap-2"
+              >
+                <Clock className="h-4 w-4" />
+                Token Longa Duração
+                <ExternalLink className="h-3 w-3" />
+              </Button>
             </div>
 
             {/* Seleção de conta salva */}
@@ -291,6 +535,70 @@ const BMConnection = ({
               </div>
             )}
 
+            {/* Status do token da conta selecionada */}
+            {tokenInfo && !showNewForm && selectedAccountId && (
+              <div className={`p-3 rounded-lg border ${
+                tokenInfo.isExpired || !tokenInfo.isValid 
+                  ? 'bg-destructive/10 border-destructive/20' 
+                  : tokenInfo.daysUntilExpiry && tokenInfo.daysUntilExpiry <= 7
+                    ? 'bg-warning/10 border-warning/20'
+                    : 'bg-success/10 border-success/20'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {tokenInfo.isExpired || !tokenInfo.isValid ? (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    ) : tokenInfo.daysUntilExpiry && tokenInfo.daysUntilExpiry <= 7 ? (
+                      <Clock className="h-4 w-4 text-warning" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-success" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {tokenInfo.isExpired 
+                        ? 'Token expirado' 
+                        : !tokenInfo.isValid 
+                          ? 'Token inválido'
+                          : `Token válido`}
+                    </span>
+                  </div>
+                  {getTokenStatusBadge(tokenInfo)}
+                </div>
+                
+                {tokenInfo.expiresAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {tokenInfo.isExpired 
+                      ? `Expirou em ${tokenInfo.expiresAt.toLocaleDateString('pt-BR')}`
+                      : `Expira em ${tokenInfo.expiresAt.toLocaleDateString('pt-BR')} às ${tokenInfo.expiresAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                    }
+                  </p>
+                )}
+                
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline" className="text-xs">
+                    {tokenInfo.type === 'long-lived' ? 'Longa duração' : tokenInfo.type === 'short-lived' ? 'Curta duração' : 'Tipo desconhecido'}
+                  </Badge>
+                  {tokenInfo.scopes.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {tokenInfo.scopes.length} permissões
+                    </span>
+                  )}
+                </div>
+
+                {(tokenInfo.isExpired || !tokenInfo.isValid) && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={openTokenGenerator}
+                    className="mt-2 gap-2 w-full"
+                  >
+                    <Key className="h-4 w-4" />
+                    Gerar Novo Token
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Formulário de nova conta ou edição */}
             {(showNewForm || savedAccounts.length === 0) && (
               <div className="space-y-4 p-4 border border-dashed border-primary/30 rounded-lg bg-primary/5">
@@ -325,13 +633,37 @@ const BMConnection = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="token">Access Token</Label>
-                    <Input
-                      id="token"
-                      type="password"
-                      placeholder="EAAG..."
-                      value={accessToken}
-                      onChange={(e) => setAccessToken(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="token"
+                        type="password"
+                        placeholder="EAAG..."
+                        value={accessToken}
+                        onChange={(e) => {
+                          setAccessToken(e.target.value);
+                          setTokenInfo(null);
+                        }}
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={handleValidateToken}
+                        disabled={isValidatingToken || !accessToken.trim()}
+                        title="Validar token"
+                      >
+                        {isValidatingToken ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    {tokenInfo && (
+                      <div className="flex items-center gap-2 mt-1">
+                        {getTokenStatusBadge(tokenInfo)}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="account">Account ID</Label>
@@ -372,7 +704,7 @@ const BMConnection = ({
             
             <Button 
               onClick={handleConnect}
-              disabled={isLoading || (!accessToken.trim() || !accountId.trim())}
+              disabled={isLoading || (!accessToken.trim() || !accountId.trim()) || (tokenInfo?.isExpired)}
               className="w-full bg-gradient-primary hover:shadow-card-hover transition-all duration-200"
             >
               {isLoading ? (
@@ -428,6 +760,40 @@ const BMConnection = ({
                 </div>
               </div>
             </div>
+
+            {/* Info do token conectado */}
+            {connectedTokenInfo && (
+              <div className={`p-3 rounded-lg border ${
+                connectedTokenInfo.daysUntilExpiry && connectedTokenInfo.daysUntilExpiry <= 7
+                  ? 'bg-warning/10 border-warning/20'
+                  : 'bg-muted/50 border-border'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Status do Token</span>
+                  </div>
+                  {getTokenStatusBadge(connectedTokenInfo)}
+                </div>
+                {connectedTokenInfo.expiresAt && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Expira em {connectedTokenInfo.expiresAt.toLocaleDateString('pt-BR')}
+                  </p>
+                )}
+                {connectedTokenInfo.daysUntilExpiry && connectedTokenInfo.daysUntilExpiry <= 7 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={openTokenGenerator}
+                    className="mt-2 gap-2"
+                  >
+                    <Key className="h-4 w-4" />
+                    Renovar Token
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            )}
             
             <div className="text-xs text-muted-foreground space-y-1">
               <div><strong>Conta:</strong> {connectedAccountName || accountName || "Conta conectada"}</div>
