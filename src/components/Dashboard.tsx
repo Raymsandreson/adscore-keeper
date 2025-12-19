@@ -1,5 +1,6 @@
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
@@ -10,9 +11,10 @@ import AlertSettings from "./AlertSettings";
 import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
 import { PlacementMetrics } from "./PlacementMetrics";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
+import { useLeads } from "@/hooks/useLeads";
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
@@ -32,6 +34,8 @@ const Dashboard = () => {
     disconnect,
     refreshMetrics
   } = useMetaAPI();
+
+  const { stats: leadStats, loading: leadsLoading } = useLeads();
 
   const {
     getThresholds,
@@ -85,6 +89,102 @@ const Dashboard = () => {
             </Button>
           </Link>
         </div>
+
+        {/* Pipeline de Leads - Resumo */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                Central de Leads
+              </CardTitle>
+              <Link to="/leads">
+                <Button variant="outline" size="sm">
+                  Ver todos
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {leadsLoading ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground">
+                Carregando leads...
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserPlus className="h-4 w-4 text-blue-600" />
+                    <span className="text-xs text-blue-600 font-medium">Em análise</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{leadStats.new}</p>
+                </div>
+                
+                <div className="bg-yellow-50 dark:bg-yellow-950/30 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Phone className="h-4 w-4 text-yellow-600" />
+                    <span className="text-xs text-yellow-600 font-medium">Contatado</span>
+                  </div>
+                  <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">{leadStats.contacted}</p>
+                </div>
+                
+                <div className="bg-green-50 dark:bg-green-950/30 rounded-lg p-3 border border-green-200 dark:border-green-800">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-xs text-green-600 font-medium">Qualificado</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-700 dark:text-green-400">{leadStats.qualified}</p>
+                </div>
+                
+                <div className="bg-gray-50 dark:bg-gray-800/30 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center gap-2 mb-1">
+                    <XCircle className="h-4 w-4 text-gray-500" />
+                    <span className="text-xs text-gray-500 font-medium">Desqualificado</span>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-600 dark:text-gray-400">{leadStats.notQualified}</p>
+                </div>
+                
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Trophy className="h-4 w-4 text-emerald-600" />
+                    <span className="text-xs text-emerald-600 font-medium">Convertido</span>
+                  </div>
+                  <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{leadStats.converted}</p>
+                </div>
+                
+                <div className="bg-red-50 dark:bg-red-950/30 rounded-lg p-3 border border-red-200 dark:border-red-800">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserX className="h-4 w-4 text-red-600" />
+                    <span className="text-xs text-red-600 font-medium">Perdido</span>
+                  </div>
+                  <p className="text-2xl font-bold text-red-700 dark:text-red-400">{leadStats.lost}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Stats Summary */}
+            {!leadsLoading && leadStats.total > 0 && (
+              <div className="mt-4 pt-4 border-t border-border/50 flex flex-wrap gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Total:</span>
+                  <Badge variant="secondary">{leadStats.total} leads</Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Taxa de conversão:</span>
+                  <Badge variant={leadStats.conversionRate > 10 ? "default" : "secondary"} className={leadStats.conversionRate > 10 ? "bg-green-500" : ""}>
+                    {leadStats.conversionRate.toFixed(1)}%
+                  </Badge>
+                </div>
+                {leadStats.totalRevenue > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Receita:</span>
+                    <Badge className="bg-emerald-500">R$ {leadStats.totalRevenue.toLocaleString('pt-BR')}</Badge>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Connection Status */}
         <BMConnection 
