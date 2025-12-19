@@ -159,9 +159,26 @@ class MetaAPIService {
     }
   }
 
-  async validateAccount(accessToken: string, accountId: string): Promise<boolean> {
+  async validateAccount(accessToken: string, accountId: string): Promise<{ valid: boolean; error?: string; accountName?: string }> {
     try {
-      const cleanAccountId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
+      // Limpar o account ID - remover espaços e garantir formato correto
+      let cleanAccountId = accountId.trim();
+      
+      // Remover "act_" se já existir e adicionar novamente para garantir consistência
+      if (cleanAccountId.startsWith('act_')) {
+        cleanAccountId = cleanAccountId.substring(4);
+      }
+      
+      // Verificar se é apenas números
+      if (!/^\d+$/.test(cleanAccountId)) {
+        console.error('❌ Account ID deve conter apenas números:', cleanAccountId);
+        return { 
+          valid: false, 
+          error: 'O Account ID deve conter apenas números. Exemplo: 123456789 ou act_123456789' 
+        };
+      }
+      
+      cleanAccountId = `act_${cleanAccountId}`;
       console.log('🔍 Validando conta:', cleanAccountId);
       
       const response = await fetch(
@@ -180,21 +197,68 @@ class MetaAPIService {
       
       if (data.error) {
         console.error('❌ Account validation error:', data.error);
+        
+        // Erros específicos do Facebook
+        if (data.error.code === 100) {
+          return { 
+            valid: false, 
+            error: 'Account ID não encontrado. Verifique se o número está correto.' 
+          };
+        }
+        if (data.error.code === 190) {
+          return { 
+            valid: false, 
+            error: 'Token inválido ou expirado. Gere um novo token.' 
+          };
+        }
+        if (data.error.code === 10 || data.error.code === 200) {
+          return { 
+            valid: false, 
+            error: 'Sem permissão para acessar esta conta. Verifique se o token tem permissão ads_read.' 
+          };
+        }
+        if (data.error.code === 17) {
+          return { 
+            valid: false, 
+            error: 'Limite de requisições atingido. Aguarde alguns minutos.' 
+          };
+        }
+        
         // Se for erro de CORS, permitir continuar
         if (response.status === 0) {
           console.warn('⚠️ Erro de CORS detectado. Usando dados simulados.');
-          return true;
+          return { valid: true, accountName: 'Conta (CORS)' };
         }
-        return false;
+        
+        return { 
+          valid: false, 
+          error: data.error.message || 'Erro ao validar conta' 
+        };
+      }
+      
+      // account_status: 1 = ACTIVE, 2 = DISABLED, 3 = UNSETTLED, 7 = PENDING_RISK_REVIEW, 8 = PENDING_SETTLEMENT, 9 = IN_GRACE_PERIOD, 100 = PENDING_CLOSURE, 101 = CLOSED, 201 = ANY_ACTIVE, 202 = ANY_CLOSED
+      const validStatuses = [1, 7, 9]; // ACTIVE, PENDING_RISK_REVIEW, IN_GRACE_PERIOD
+      
+      if (!validStatuses.includes(data.account_status)) {
+        const statusMessages: Record<number, string> = {
+          2: 'Conta desabilitada',
+          3: 'Conta com pagamento pendente',
+          100: 'Conta pendente de fechamento',
+          101: 'Conta fechada'
+        };
+        return { 
+          valid: false, 
+          error: statusMessages[data.account_status] || `Conta com status inválido: ${data.account_status}` 
+        };
       }
       
       console.log('✅ Conta válida:', data.name, 'Status:', data.account_status);
-      return data.account_status === 1; // Active account
+      return { valid: true, accountName: data.name };
     } catch (error) {
       console.error('❌ Account validation failed (CORS?):', error);
       // Em caso de erro de CORS, permitir continuar com dados simulados
       console.warn('⚠️ Usando dados simulados devido a limitações de CORS');
-      return true;
+      return { valid: true, accountName: 'Conta (simulada)' };
     }
   }
 

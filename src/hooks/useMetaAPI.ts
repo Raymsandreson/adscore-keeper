@@ -97,9 +97,9 @@ export const useMetaAPI = () => {
         throw new Error('Access Token inválido');
       }
 
-      const isAccountValid = await metaAPIService.validateAccount(apiConfig.accessToken, apiConfig.accountId);
-      if (!isAccountValid) {
-        throw new Error('Account ID inválido ou conta inativa');
+      const accountValidation = await metaAPIService.validateAccount(apiConfig.accessToken, apiConfig.accountId);
+      if (!accountValidation.valid) {
+        throw new Error(accountValidation.error || 'Account ID inválido ou conta inativa');
       }
 
       const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(apiConfig, dateRange);
