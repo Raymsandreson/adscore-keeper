@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost';
+export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
 
 export interface Lead {
   id: string;
@@ -25,6 +26,9 @@ export interface Lead {
   converted_at: string | null;
   created_at: string;
   updated_at: string;
+  facebook_lead_id: string | null;
+  sync_status: SyncStatus;
+  last_sync_at: string | null;
 }
 
 export interface LeadStats {
@@ -204,6 +208,96 @@ export const useLeads = (adAccountId?: string) => {
     return updateLead(id, updates);
   };
 
+  // Sincronizar status do lead com o Facebook
+  const syncLeadWithFacebook = async (leadId: string, status: LeadStatus, accessToken?: string) => {
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) {
+      console.error('Lead não encontrado');
+      return { success: false, error: 'Lead não encontrado' };
+    }
+
+    if (!lead.facebook_lead_id) {
+      console.log('Lead sem Facebook Lead ID, não sincronizando');
+      return { success: false, error: 'Lead sem Facebook Lead ID', code: 'NO_FACEBOOK_LEAD_ID' };
+    }
+
+    if (!accessToken) {
+      console.log('Access token não fornecido');
+      return { success: false, error: 'Access token não configurado', code: 'NO_ACCESS_TOKEN' };
+    }
+
+    try {
+      // Atualiza status local para "syncing"
+      await supabase
+        .from('leads')
+        .update({ sync_status: 'syncing' })
+        .eq('id', leadId);
+
+      const { data, error } = await supabase.functions.invoke('sync-lead-status', {
+        body: {
+          leadId,
+          facebookLeadId: lead.facebook_lead_id,
+          status,
+          accessToken
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        // Atualiza status de sincronização
+        await supabase
+          .from('leads')
+          .update({ 
+            sync_status: 'synced',
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', leadId);
+
+        toast.success('Status sincronizado com o Facebook');
+        fetchLeads();
+        return { success: true };
+      } else {
+        await supabase
+          .from('leads')
+          .update({ sync_status: 'error' })
+          .eq('id', leadId);
+
+        return { success: false, error: data.error, code: data.code };
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar com Facebook:', error);
+      
+      await supabase
+        .from('leads')
+        .update({ sync_status: 'error' })
+        .eq('id', leadId);
+
+      return { success: false, error: 'Erro ao sincronizar' };
+    }
+  };
+
+  // Atualiza status e sincroniza com Facebook
+  const updateLeadStatusAndSync = async (
+    id: string, 
+    status: LeadStatus, 
+    conversionValue?: number,
+    accessToken?: string
+  ) => {
+    // Primeiro atualiza localmente
+    const result = await updateLeadStatus(id, status, conversionValue);
+    
+    // Depois tenta sincronizar com Facebook (se tiver token)
+    if (accessToken) {
+      const syncResult = await syncLeadWithFacebook(id, status, accessToken);
+      if (!syncResult.success && syncResult.code !== 'NO_FACEBOOK_LEAD_ID') {
+        toast.warning('Status atualizado localmente, mas falha ao sincronizar com Facebook');
+      }
+    }
+    
+    return result;
+  };
+
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
@@ -217,5 +311,7 @@ export const useLeads = (adAccountId?: string) => {
     updateLead,
     deleteLead,
     updateLeadStatus,
+    updateLeadStatusAndSync,
+    syncLeadWithFacebook,
   };
 };
