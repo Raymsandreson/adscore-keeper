@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { facebookCAPI } from '@/services/facebookCAPI';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
@@ -142,9 +143,27 @@ export const useLeads = (adAccountId?: string) => {
 
       if (error) throw error;
 
+      const newLead = data as Lead;
+
+      // Send Lead event to Facebook CAPI
+      facebookCAPI.sendLeadEvent({
+        leadId: newLead.id,
+        email: newLead.lead_email || undefined,
+        phone: newLead.lead_phone || undefined,
+        name: newLead.lead_name || undefined,
+        campaignName: newLead.campaign_name || undefined,
+        value: newLead.conversion_value || 0,
+      }).then(result => {
+        if (result.success) {
+          console.log('CAPI: Lead event sent');
+        } else {
+          console.warn('CAPI: Failed to send lead event', result.error);
+        }
+      });
+
       toast.success('Lead adicionado com sucesso');
       fetchLeads();
-      return data as Lead;
+      return newLead;
     } catch (error) {
       console.error('Error adding lead:', error);
       toast.error('Erro ao adicionar lead');
@@ -172,9 +191,44 @@ export const useLeads = (adAccountId?: string) => {
 
       if (error) throw error;
 
+      const updatedLead = data as Lead;
+
+      // Send CAPI events based on status change
+      if (updates.status === 'qualified') {
+        facebookCAPI.sendQualifiedLeadEvent({
+          leadId: id,
+          email: updatedLead.lead_email || undefined,
+          phone: updatedLead.lead_phone || undefined,
+          name: updatedLead.lead_name || undefined,
+          value: updatedLead.conversion_value || 0,
+        }).then(result => {
+          if (result.success) {
+            console.log('CAPI: Qualified lead event sent');
+          } else {
+            console.warn('CAPI: Failed to send qualified event', result.error);
+          }
+        });
+      }
+
+      if (updates.status === 'converted') {
+        facebookCAPI.sendPurchaseEvent({
+          leadId: id,
+          email: updatedLead.lead_email || undefined,
+          phone: updatedLead.lead_phone || undefined,
+          name: updatedLead.lead_name || undefined,
+          value: updatedLead.conversion_value || 0,
+        }).then(result => {
+          if (result.success) {
+            console.log('CAPI: Purchase event sent');
+          } else {
+            console.warn('CAPI: Failed to send purchase event', result.error);
+          }
+        });
+      }
+
       toast.success('Lead atualizado com sucesso');
       fetchLeads();
-      return data as Lead;
+      return updatedLead;
     } catch (error) {
       console.error('Error updating lead:', error);
       toast.error('Erro ao atualizar lead');
