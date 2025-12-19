@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight } from '@/services/metaAPI';
+import { metaAPIService, MetaAPIConfig, AdInsights, CampaignInsight, DailyInsight, PlacementInsight } from '@/services/metaAPI';
 
 export type DateRangeOption = 
   | 'today' 
@@ -33,7 +33,7 @@ export interface MetricData {
   conversions: number;
 }
 
-export type { DailyInsight };
+export type { DailyInsight, PlacementInsight };
 
 export const useMetaAPI = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -65,19 +65,21 @@ export const useMetaAPI = () => {
     { id: 'ad_3', name: 'Vídeo Testemunhal', type: 'creative', cpc: 1.65, ctr: 3.1, cpm: 19.80, conversionRate: 4.8, spend: 2150, impressions: 108590, clicks: 3366, conversions: 162 },
   ]);
   const [dailyData, setDailyData] = useState<DailyInsight[]>([]);
+  const [placementData, setPlacementData] = useState<PlacementInsight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<MetaAPIConfig | null>(null);
 
   const fetchData = useCallback(async (apiConfig: MetaAPIConfig, range: DateRangeOption) => {
-    const [insightData, campaignData, adSetData, creativeData, dailyInsights] = await Promise.all([
+    const [insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights] = await Promise.all([
       metaAPIService.getAdInsights(apiConfig, range),
       metaAPIService.getCampaignInsights(apiConfig, range),
       metaAPIService.getAdSetInsights(apiConfig, range),
       metaAPIService.getAdCreativeInsights(apiConfig, range),
-      metaAPIService.getDailyInsights(apiConfig, range)
+      metaAPIService.getDailyInsights(apiConfig, range),
+      metaAPIService.getPlacementInsights(apiConfig, range)
     ]);
-    return { insightData, campaignData, adSetData, creativeData, dailyInsights };
+    return { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights };
   }, []);
 
   const connectToMeta = useCallback(async (apiConfig: MetaAPIConfig): Promise<boolean> => {
@@ -100,7 +102,7 @@ export const useMetaAPI = () => {
         throw new Error('Account ID inválido ou conta inativa');
       }
 
-      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(apiConfig, dateRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(apiConfig, dateRange);
       
       setConfig(apiConfig);
       setMetrics(insightData);
@@ -108,6 +110,7 @@ export const useMetaAPI = () => {
       setAdSets(adSetData);
       setCreatives(creativeData);
       setDailyData(dailyInsights);
+      setPlacementData(placementInsights);
       setIsConnected(true);
       return true;
     } catch (err) {
@@ -126,12 +129,13 @@ export const useMetaAPI = () => {
     
     setIsLoading(true);
     try {
-      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(config, newRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(config, newRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
       setAdSets(adSetData);
       setCreatives(creativeData);
       setDailyData(dailyInsights);
+      setPlacementData(placementInsights);
     } catch (err) {
       console.error('Error changing date range:', err);
     } finally {
@@ -143,12 +147,13 @@ export const useMetaAPI = () => {
     if (!config || !isConnected) return;
 
     try {
-      const { insightData, campaignData, adSetData, creativeData, dailyInsights } = await fetchData(config, dateRange);
+      const { insightData, campaignData, adSetData, creativeData, dailyInsights, placementInsights } = await fetchData(config, dateRange);
       setMetrics(insightData);
       setCampaigns(campaignData);
       setAdSets(adSetData);
       setCreatives(creativeData);
       setDailyData(dailyInsights);
+      setPlacementData(placementInsights);
     } catch (err) {
       console.error('Error refreshing metrics:', err);
     }
@@ -165,6 +170,7 @@ export const useMetaAPI = () => {
     setAdSets([]);
     setCreatives([]);
     setDailyData([]);
+    setPlacementData([]);
     setError(null);
   }, []);
 
@@ -181,6 +187,7 @@ export const useMetaAPI = () => {
     adSets,
     creatives,
     dailyData,
+    placementData,
     isLoading,
     error,
     dateRange,
