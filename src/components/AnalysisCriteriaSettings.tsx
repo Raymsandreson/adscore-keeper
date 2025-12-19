@@ -69,7 +69,7 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
   const savedMaxDailyLeads = getMaxDailyLeads();
   
   // Calcular capacidade com valores editados (não salvos) para preview em tempo real
-  const editedMaxDailyLeads = Math.floor((8 * 60) / editedCriteria.avgLeadHandlingTime) * editedCriteria.teamSize;
+  const editedMaxDailyLeads = Math.floor((editedCriteria.workHoursPerDay * 60) / editedCriteria.avgLeadHandlingTime) * editedCriteria.teamSize;
 
   const getCapacityColor = (status: string) => {
     switch (status) {
@@ -398,13 +398,32 @@ const AnalysisCriteriaSettings = ({ currentDailyLeads = 0 }: AnalysisCriteriaSet
                 />
               </div>
 
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="workHoursPerDay">Horas de Trabalho/Dia</Label>
+                  <Tooltip>
+                    <TooltipTrigger><HelpCircle className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Quantas horas úteis por dia a equipe comercial tem disponível para atender leads.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  id="workHoursPerDay"
+                  type="text"
+                  inputMode="numeric"
+                  value={editedCriteria.workHoursPerDay || ''}
+                  onChange={(e) => handleChange('workHoursPerDay', e.target.value)}
+                />
+              </div>
+
               <Separator />
 
               <div className="p-3 bg-muted/50 rounded-lg">
                 <div className="text-sm font-medium">Capacidade Calculada</div>
                 <div className="text-2xl font-bold text-primary">{editedMaxDailyLeads} leads/dia</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Com {editedCriteria.teamSize} pessoa(s) e {editedCriteria.avgLeadHandlingTime} min por lead
+                  Com {editedCriteria.teamSize} pessoa(s), {editedCriteria.workHoursPerDay}h/dia e {editedCriteria.avgLeadHandlingTime} min por lead
                 </p>
               </div>
             </CardContent>

@@ -19,6 +19,7 @@ export interface AnalysisCriteria {
   teamDailyLeadCapacity: number; // Quantos leads a equipe consegue atender por dia
   teamSize: number; // Tamanho da equipe
   avgLeadHandlingTime: number; // Tempo médio para atender um lead (minutos)
+  workHoursPerDay: number; // Horas de trabalho por dia
 
   // Taxas de abandono do funil
   expectedFormAbandonmentRate: number; // % esperado de abandono no formulário
@@ -55,6 +56,7 @@ const DEFAULT_CRITERIA: AnalysisCriteria = {
   teamDailyLeadCapacity: 20,
   teamSize: 1,
   avgLeadHandlingTime: 30,
+  workHoursPerDay: 8,
 
   // Taxas de abandono padrão baseadas em benchmarks do mercado
   expectedFormAbandonmentRate: 70, // 70% abandonam formulários
@@ -105,11 +107,10 @@ export const useAnalysisCriteria = () => {
 
   // Calcular capacidade diária máxima de leads
   const getMaxDailyLeads = useCallback(() => {
-    const hoursPerDay = 8;
-    const minutesPerDay = hoursPerDay * 60;
+    const minutesPerDay = criteria.workHoursPerDay * 60;
     const leadsPerPerson = Math.floor(minutesPerDay / criteria.avgLeadHandlingTime);
     return leadsPerPerson * criteria.teamSize;
-  }, [criteria.avgLeadHandlingTime, criteria.teamSize]);
+  }, [criteria.avgLeadHandlingTime, criteria.teamSize, criteria.workHoursPerDay]);
 
   // Verificar se equipe está sobrecarregada
   const checkTeamCapacity = useCallback((currentDailyLeads: number) => {
