@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,8 +23,12 @@ import {
   Trash2,
   Edit2,
   MessageSquare,
+  Cloud,
+  CloudOff,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
-import { Lead, LeadStatus } from '@/hooks/useLeads';
+import { Lead, LeadStatus, SyncStatus } from '@/hooks/useLeads';
 
 interface LeadsPipelineProps {
   leads: Lead[];
@@ -125,8 +130,9 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPi
   }
 
   return (
-    <>
-      <div className="flex gap-4 overflow-x-auto pb-4">
+    <TooltipProvider>
+      <>
+        <div className="flex gap-4 overflow-x-auto pb-4">
         {columns.map((column) => {
           const columnLeads = getLeadsByStatus(column.id);
           const isDropTarget = dragOverColumn === column.id;
@@ -252,8 +258,35 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPi
                                 </div>
                               )}
 
-                              <div className="mt-2 text-xs text-muted-foreground">
-                                {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                              {/* Sync Status & Date */}
+                              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
+                                {lead.facebook_lead_id && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="flex items-center gap-1">
+                                        {lead.sync_status === 'synced' && (
+                                          <Cloud className="h-3 w-3 text-green-500" />
+                                        )}
+                                        {lead.sync_status === 'syncing' && (
+                                          <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
+                                        )}
+                                        {lead.sync_status === 'error' && (
+                                          <AlertCircle className="h-3 w-3 text-red-500" />
+                                        )}
+                                        {lead.sync_status === 'local' && (
+                                          <CloudOff className="h-3 w-3 text-muted-foreground" />
+                                        )}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {lead.sync_status === 'synced' && 'Sincronizado com Facebook'}
+                                      {lead.sync_status === 'syncing' && 'Sincronizando...'}
+                                      {lead.sync_status === 'error' && 'Erro na sincronização'}
+                                      {lead.sync_status === 'local' && 'Aguardando sincronização'}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -296,7 +329,8 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPi
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+      </>
+    </TooltipProvider>
   );
 };
 

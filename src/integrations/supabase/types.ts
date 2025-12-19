@@ -96,7 +96,9 @@ export type Database = {
           created_at: string
           creative_id: string | null
           creative_name: string | null
+          facebook_lead_id: string | null
           id: string
+          last_sync_at: string | null
           lead_email: string | null
           lead_name: string | null
           lead_phone: string | null
@@ -104,6 +106,7 @@ export type Database = {
           qualified_at: string | null
           source: string | null
           status: string | null
+          sync_status: string | null
           updated_at: string
         }
         Insert: {
@@ -118,7 +121,9 @@ export type Database = {
           created_at?: string
           creative_id?: string | null
           creative_name?: string | null
+          facebook_lead_id?: string | null
           id?: string
+          last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
@@ -126,6 +131,7 @@ export type Database = {
           qualified_at?: string | null
           source?: string | null
           status?: string | null
+          sync_status?: string | null
           updated_at?: string
         }
         Update: {
@@ -140,7 +146,9 @@ export type Database = {
           created_at?: string
           creative_id?: string | null
           creative_name?: string | null
+          facebook_lead_id?: string | null
           id?: string
+          last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
@@ -148,6 +156,7 @@ export type Database = {
           qualified_at?: string | null
           source?: string | null
           status?: string | null
+          sync_status?: string | null
           updated_at?: string
         }
         Relationships: []
