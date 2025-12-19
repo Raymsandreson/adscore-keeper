@@ -9,6 +9,7 @@ import ActionHistory from "./ActionHistory";
 import AlertSettings from "./AlertSettings";
 import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
+import { PlacementMetrics } from "./PlacementMetrics";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
@@ -21,6 +22,7 @@ const Dashboard = () => {
     adSets,
     creatives,
     dailyData,
+    placementData,
     dateRange, 
     changeDateRange, 
     isLoading,
@@ -167,6 +169,9 @@ const Dashboard = () => {
 
         {/* Metrics Evolution Chart */}
         <MetricsChart data={dailyData} isLoading={isLoading} />
+
+        {/* Placement Metrics */}
+        <PlacementMetrics placementData={placementData} />
 
         {/* Segment Analysis */}
         <SegmentAnalysis 
