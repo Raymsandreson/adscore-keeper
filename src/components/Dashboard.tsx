@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import MetricCard from "./MetricCard";
-import BenchmarkTable from "./BenchmarkTable";
+
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
 import StrategyPanel from "./StrategyPanel";
@@ -294,9 +294,6 @@ const Dashboard = () => {
         {proMode && (
           <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
         )}
-
-        {/* Benchmark Reference Table - PRO ONLY */}
-        {proMode && <BenchmarkTable />}
 
         {/* Metrics Evolution Chart - PRO ONLY */}
         {proMode && <MetricsChart data={dailyData} isLoading={isLoading} />}
