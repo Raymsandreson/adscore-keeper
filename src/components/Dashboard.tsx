@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import MetricCard from "./MetricCard";
 import BenchmarkTable from "./BenchmarkTable";
 import BMConnection from "./BMConnection";
@@ -11,13 +14,15 @@ import AlertSettings from "./AlertSettings";
 import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
 import { PlacementMetrics } from "./PlacementMetrics";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
+  const [proMode, setProMode] = useState(false);
+  
   const { 
     metrics, 
     campaigns, 
@@ -82,12 +87,29 @@ const Dashboard = () => {
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
           </p>
-          <Link to="/leads">
-            <Button variant="outline" className="mt-2">
-              <Users className="h-4 w-4 mr-2" />
-              Central de Leads (otimização)
-            </Button>
-          </Link>
+          
+          {/* Mode Toggle */}
+          <div className="flex items-center justify-center gap-4 pt-2">
+            <Link to="/leads">
+              <Button variant="outline" size="sm">
+                <Users className="h-4 w-4 mr-2" />
+                Central de Leads
+              </Button>
+            </Link>
+            
+            <div className="flex items-center gap-2 bg-muted/50 rounded-full px-4 py-2 border border-border/50">
+              <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="pro-mode" className="text-sm font-medium cursor-pointer">
+                {proMode ? 'Modo Pro' : 'Modo Simples'}
+              </Label>
+              <Switch
+                id="pro-mode"
+                checked={proMode}
+                onCheckedChange={setProMode}
+              />
+              <Sparkles className={`h-4 w-4 ${proMode ? 'text-primary' : 'text-muted-foreground'}`} />
+            </div>
+          </div>
         </div>
 
         {/* Pipeline de Leads - Resumo */}
@@ -196,16 +218,18 @@ const Dashboard = () => {
           onRefresh={refreshMetrics}
         />
 
-        {/* Alert Settings */}
-        <AlertSettings
-          getThresholds={getThresholds}
-          saveThresholds={saveThresholds}
-          requestNotificationPermission={requestNotificationPermission}
-          hasNotificationPermission={hasNotificationPermission}
-        />
+        {/* Alert Settings - PRO ONLY */}
+        {proMode && (
+          <AlertSettings
+            getThresholds={getThresholds}
+            saveThresholds={saveThresholds}
+            requestNotificationPermission={requestNotificationPermission}
+            hasNotificationPermission={hasNotificationPermission}
+          />
+        )}
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Metrics Grid - ALWAYS VISIBLE but simplified in Simple mode */}
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${proMode ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-6`}>
           <MetricCard
             title="CPC - Custo por Clique"
             value={`R$ ${metrics.cpc.toFixed(2)}`}
@@ -225,29 +249,11 @@ const Dashboard = () => {
           />
           
           <MetricCard
-            title="CPM - Custo por Mil"
-            value={`R$ ${metrics.cpm.toFixed(2)}`}
-            icon={Eye}
-            status={getPerformanceStatus(metrics.cpm, 'cpm')}
-            benchmark="R$ 5-20 (bom) | R$ 30+ (ruim)"
-            isConnected={isConnected}
-          />
-          
-          <MetricCard
             title="Taxa de Conversão"
             value={`${metrics.conversionRate.toFixed(1)}%`}
             icon={TrendingUp}
             status={getPerformanceStatus(metrics.conversionRate, 'conversionRate')}
             benchmark="3%+ E-com | 10-20% Leads"
-            isConnected={isConnected}
-          />
-          
-          <MetricCard
-            title="Taxa de Gancho (3s)"
-            value={`${metrics.hookRate.toFixed(0)}%`}
-            icon={Play}
-            status={getPerformanceStatus(metrics.hookRate, 'hookRate')}
-            benchmark="30%+ (bom) | 20% (ruim)"
             isConnected={isConnected}
           />
           
@@ -259,21 +265,46 @@ const Dashboard = () => {
             benchmark="Gasto acumulado no período"
             isConnected={isConnected}
           />
+          
+          {/* PRO ONLY Metrics */}
+          {proMode && (
+            <>
+              <MetricCard
+                title="CPM - Custo por Mil"
+                value={`R$ ${metrics.cpm.toFixed(2)}`}
+                icon={Eye}
+                status={getPerformanceStatus(metrics.cpm, 'cpm')}
+                benchmark="R$ 5-20 (bom) | R$ 30+ (ruim)"
+                isConnected={isConnected}
+              />
+              
+              <MetricCard
+                title="Taxa de Gancho (3s)"
+                value={`${metrics.hookRate.toFixed(0)}%`}
+                icon={Play}
+                status={getPerformanceStatus(metrics.hookRate, 'hookRate')}
+                benchmark="30%+ (bom) | 20% (ruim)"
+                isConnected={isConnected}
+              />
+            </>
+          )}
         </div>
 
-        {/* Period Comparison */}
-        <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
+        {/* Period Comparison - PRO ONLY */}
+        {proMode && (
+          <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
+        )}
 
-        {/* Benchmark Reference Table */}
-        <BenchmarkTable />
+        {/* Benchmark Reference Table - PRO ONLY */}
+        {proMode && <BenchmarkTable />}
 
-        {/* Metrics Evolution Chart */}
-        <MetricsChart data={dailyData} isLoading={isLoading} />
+        {/* Metrics Evolution Chart - PRO ONLY */}
+        {proMode && <MetricsChart data={dailyData} isLoading={isLoading} />}
 
-        {/* Placement Metrics */}
-        <PlacementMetrics placementData={placementData} />
+        {/* Placement Metrics - PRO ONLY */}
+        {proMode && <PlacementMetrics placementData={placementData} />}
 
-        {/* Segment Analysis */}
+        {/* Segment Analysis - ALWAYS VISIBLE */}
         <SegmentAnalysis 
           campaigns={campaigns} 
           adSets={adSets}
@@ -284,17 +315,19 @@ const Dashboard = () => {
           onRefresh={refreshMetrics}
         />
 
-        {/* Strategy Panel - Estrategista de Escala */}
-        <StrategyPanel
-          campaigns={campaigns}
-          adSets={adSets}
-          creatives={creatives}
-          totalSpend={metrics.spend}
-          totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
-        />
+        {/* Strategy Panel - PRO ONLY */}
+        {proMode && (
+          <StrategyPanel
+            campaigns={campaigns}
+            adSets={adSets}
+            creatives={creatives}
+            totalSpend={metrics.spend}
+            totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
+          />
+        )}
 
-        {/* Action History */}
-        <ActionHistory />
+        {/* Action History - PRO ONLY */}
+        {proMode && <ActionHistory />}
       </div>
     </div>
   );
