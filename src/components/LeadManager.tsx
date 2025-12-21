@@ -75,7 +75,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
 
   const handleImportFacebookLeads = async () => {
     if (!adAccountId) {
-      toast.error('Ad Account ID não configurado. Vá em Configurações para conectar sua conta do Meta.');
+      toast.error('Para importar leads do Facebook, conecte sua conta Meta no Dashboard (Modo Pro → Conectar Business Manager).');
       return;
     }
 
@@ -87,21 +87,29 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
 
       if (error) {
         console.error('Error importing leads:', error);
-        toast.error('Erro ao importar leads do Facebook');
+        toast.error('Erro ao importar leads do Facebook. Verifique se o token tem permissão "leads_retrieval".');
         return;
       }
 
       if (data.error) {
         console.error('API error:', data.error);
-        toast.error(`Erro: ${data.error}`);
+        if (data.error.includes('permission') || data.error.includes('Permission')) {
+          toast.error('Sem permissão para acessar leads. Verifique se o token tem as permissões: leads_retrieval, pages_read_engagement');
+        } else {
+          toast.error(`Erro: ${data.error}`);
+        }
         return;
       }
 
-      toast.success(`Importação concluída! ${data.imported} novos leads, ${data.duplicates} já existentes.`);
+      if (data.imported === 0 && data.duplicates === 0) {
+        toast.info('Nenhum lead novo encontrado. Verifique se você tem formulários de lead ativos nas campanhas.');
+      } else {
+        toast.success(`Importação concluída! ${data.imported} novos leads, ${data.duplicates} já existentes.`);
+      }
       fetchLeads();
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Erro ao importar leads');
+      toast.error('Erro ao importar leads. Verifique sua conexão com o Facebook.');
     } finally {
       setIsImporting(false);
     }
@@ -395,6 +403,21 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                   Tabela
                 </Button>
               </div>
+
+              {/* Facebook Import */}
+              <Button
+                variant="outline"
+                onClick={handleImportFacebookLeads}
+                disabled={isImporting}
+                className="gap-2"
+              >
+                {isImporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Facebook className="h-4 w-4" />
+                )}
+                {isImporting ? 'Importando...' : 'Importar do Facebook'}
+              </Button>
 
               {/* CSV Import */}
               <input
