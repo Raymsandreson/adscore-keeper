@@ -356,7 +356,17 @@ const Dashboard = () => {
 
           {/* Tab: Metas e Prazos */}
           <TabsContent value="goals" className="mt-6">
-            <GoalsManager />
+            <GoalsManager 
+              currentMetrics={{
+                conversions: metrics.conversions,
+                revenue: leadStats.totalRevenue,
+                leads: leadStats.total,
+                cpc: metrics.cpc,
+                ctr: metrics.ctr,
+                spend: metrics.spend,
+              }}
+              autoSync={isConnected}
+            />
           </TabsContent>
         </Tabs>
       </div>
