@@ -25,7 +25,8 @@ import {
   Eye,
   CheckCircle,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from "lucide-react";
 
 export interface Goal {
@@ -45,11 +46,13 @@ interface GoalsManagerProps {
     leads?: number;
     conversions?: number;
     revenue?: number;
+    spend?: number;
     followers?: number;
     engagement?: number;
     cpc?: number;
     ctr?: number;
   };
+  autoSync?: boolean;
 }
 
 const GOAL_TYPES = [
@@ -63,10 +66,11 @@ const GOAL_TYPES = [
   { value: 'custom', label: 'Personalizado', icon: Target, unit: '' },
 ];
 
-const GoalsManager = ({ currentMetrics }: GoalsManagerProps) => {
+const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) => {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -96,6 +100,67 @@ const GoalsManager = ({ currentMetrics }: GoalsManagerProps) => {
       localStorage.setItem('marketing_goals', JSON.stringify(goals));
     }
   }, [goals]);
+
+  // Auto-sync goals with real metrics
+  useEffect(() => {
+    if (!autoSync || !currentMetrics) return;
+
+    setGoals(prevGoals => {
+      let hasChanges = false;
+      const updatedGoals = prevGoals.map(goal => {
+        let newValue = goal.currentValue;
+        
+        switch (goal.type) {
+          case 'leads':
+            if (currentMetrics.leads !== undefined) {
+              newValue = currentMetrics.leads;
+            }
+            break;
+          case 'conversions':
+            if (currentMetrics.conversions !== undefined) {
+              newValue = currentMetrics.conversions;
+            }
+            break;
+          case 'revenue':
+            if (currentMetrics.revenue !== undefined) {
+              newValue = currentMetrics.revenue;
+            }
+            break;
+          case 'cpc':
+            if (currentMetrics.cpc !== undefined) {
+              newValue = currentMetrics.cpc;
+            }
+            break;
+          case 'ctr':
+            if (currentMetrics.ctr !== undefined) {
+              newValue = currentMetrics.ctr;
+            }
+            break;
+          case 'followers':
+            if (currentMetrics.followers !== undefined) {
+              newValue = currentMetrics.followers;
+            }
+            break;
+          case 'engagement':
+            if (currentMetrics.engagement !== undefined) {
+              newValue = currentMetrics.engagement;
+            }
+            break;
+        }
+        
+        if (newValue !== goal.currentValue) {
+          hasChanges = true;
+          return { ...goal, currentValue: newValue };
+        }
+        return goal;
+      });
+
+      if (hasChanges) {
+        setLastSyncTime(new Date());
+      }
+      return hasChanges ? updatedGoals : prevGoals;
+    });
+  }, [currentMetrics, autoSync]);
 
   const resetForm = () => {
     setTitle('');
@@ -197,13 +262,34 @@ const GoalsManager = ({ currentMetrics }: GoalsManagerProps) => {
     return statusOrder[getStatus(a)] - statusOrder[getStatus(b)];
   });
 
+  const hasSyncableMetrics = currentMetrics && (
+    currentMetrics.leads !== undefined ||
+    currentMetrics.conversions !== undefined ||
+    currentMetrics.revenue !== undefined ||
+    currentMetrics.cpc !== undefined ||
+    currentMetrics.ctr !== undefined
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold">Metas e Prazos</h2>
-          <p className="text-muted-foreground">Defina e acompanhe suas metas de marketing</p>
+          <div className="flex items-center gap-2">
+            <p className="text-muted-foreground">Defina e acompanhe suas metas de marketing</p>
+            {autoSync && hasSyncableMetrics && (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Sincronizado
+              </Badge>
+            )}
+          </div>
+          {lastSyncTime && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Última sincronização: {format(lastSyncTime, "HH:mm:ss", { locale: ptBR })}
+            </p>
+          )}
         </div>
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
