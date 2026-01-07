@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetricCard from "./MetricCard";
 
 import BMConnection from "./BMConnection";
@@ -14,7 +15,8 @@ import AlertSettings from "./AlertSettings";
 import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
 import { PlacementMetrics } from "./PlacementMetrics";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard } from "lucide-react";
+import OrganicMetrics from "./OrganicMetrics";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -218,113 +220,135 @@ const Dashboard = () => {
           onRefresh={refreshMetrics}
         />
 
-        {/* Alert Settings - PRO ONLY */}
-        {proMode && (
-          <AlertSettings
-            getThresholds={getThresholds}
-            saveThresholds={saveThresholds}
-            requestNotificationPermission={requestNotificationPermission}
-            hasNotificationPermission={hasNotificationPermission}
-          />
-        )}
+        {/* Tabs: Tráfego Pago / Público Orgânico */}
+        <Tabs defaultValue="paid" className="w-full">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+            <TabsTrigger value="paid" className="gap-2">
+              <Megaphone className="h-4 w-4" />
+              Tráfego Pago
+            </TabsTrigger>
+            <TabsTrigger value="organic" className="gap-2">
+              <Heart className="h-4 w-4" />
+              Público Orgânico
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Metrics Grid - ALWAYS VISIBLE but simplified in Simple mode */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 ${proMode ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-6`}>
-          <MetricCard
-            title="CPC - Custo por Clique"
-            value={`R$ ${metrics.cpc.toFixed(2)}`}
-            icon={MousePointer}
-            status={getPerformanceStatus(metrics.cpc, 'cpc')}
-            benchmark="Até R$ 1,50 (bom) | R$ 3,00+ (ruim)"
-            isConnected={isConnected}
-          />
-          
-          <MetricCard
-            title="CTR - Taxa de Cliques"
-            value={`${metrics.ctr.toFixed(1)}%`}
-            icon={Target}
-            status={getPerformanceStatus(metrics.ctr, 'ctr')}
-            benchmark="2%+ (bom) | 1% (ruim)"
-            isConnected={isConnected}
-          />
-          
-          <MetricCard
-            title="Taxa de Conversão"
-            value={`${metrics.conversionRate.toFixed(1)}%`}
-            icon={TrendingUp}
-            status={getPerformanceStatus(metrics.conversionRate, 'conversionRate')}
-            benchmark="3%+ E-com | 10-20% Leads"
-            isConnected={isConnected}
-          />
-          
-          <MetricCard
-            title="Gasto Total"
-            value={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-            icon={DollarSign}
-            status="success"
-            benchmark="Gasto acumulado no período"
-            isConnected={isConnected}
-          />
-          
-          {/* PRO ONLY Metrics */}
-          {proMode && (
-            <>
+          {/* Tab: Tráfego Pago */}
+          <TabsContent value="paid" className="space-y-8 mt-6">
+            {/* Alert Settings - PRO ONLY */}
+            {proMode && (
+              <AlertSettings
+                getThresholds={getThresholds}
+                saveThresholds={saveThresholds}
+                requestNotificationPermission={requestNotificationPermission}
+                hasNotificationPermission={hasNotificationPermission}
+              />
+            )}
+
+            {/* Metrics Grid - ALWAYS VISIBLE but simplified in Simple mode */}
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${proMode ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-6`}>
               <MetricCard
-                title="CPM - Custo por Mil"
-                value={`R$ ${metrics.cpm.toFixed(2)}`}
-                icon={Eye}
-                status={getPerformanceStatus(metrics.cpm, 'cpm')}
-                benchmark="R$ 5-20 (bom) | R$ 30+ (ruim)"
+                title="CPC - Custo por Clique"
+                value={`R$ ${metrics.cpc.toFixed(2)}`}
+                icon={MousePointer}
+                status={getPerformanceStatus(metrics.cpc, 'cpc')}
+                benchmark="Até R$ 1,50 (bom) | R$ 3,00+ (ruim)"
                 isConnected={isConnected}
               />
               
               <MetricCard
-                title="Taxa de Gancho (3s)"
-                value={`${metrics.hookRate.toFixed(0)}%`}
-                icon={Play}
-                status={getPerformanceStatus(metrics.hookRate, 'hookRate')}
-                benchmark="30%+ (bom) | 20% (ruim)"
+                title="CTR - Taxa de Cliques"
+                value={`${metrics.ctr.toFixed(1)}%`}
+                icon={Target}
+                status={getPerformanceStatus(metrics.ctr, 'ctr')}
+                benchmark="2%+ (bom) | 1% (ruim)"
                 isConnected={isConnected}
               />
-            </>
-          )}
-        </div>
+              
+              <MetricCard
+                title="Taxa de Conversão"
+                value={`${metrics.conversionRate.toFixed(1)}%`}
+                icon={TrendingUp}
+                status={getPerformanceStatus(metrics.conversionRate, 'conversionRate')}
+                benchmark="3%+ E-com | 10-20% Leads"
+                isConnected={isConnected}
+              />
+              
+              <MetricCard
+                title="Gasto Total"
+                value={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                icon={DollarSign}
+                status="success"
+                benchmark="Gasto acumulado no período"
+                isConnected={isConnected}
+              />
+              
+              {/* PRO ONLY Metrics */}
+              {proMode && (
+                <>
+                  <MetricCard
+                    title="CPM - Custo por Mil"
+                    value={`R$ ${metrics.cpm.toFixed(2)}`}
+                    icon={Eye}
+                    status={getPerformanceStatus(metrics.cpm, 'cpm')}
+                    benchmark="R$ 5-20 (bom) | R$ 30+ (ruim)"
+                    isConnected={isConnected}
+                  />
+                  
+                  <MetricCard
+                    title="Taxa de Gancho (3s)"
+                    value={`${metrics.hookRate.toFixed(0)}%`}
+                    icon={Play}
+                    status={getPerformanceStatus(metrics.hookRate, 'hookRate')}
+                    benchmark="30%+ (bom) | 20% (ruim)"
+                    isConnected={isConnected}
+                  />
+                </>
+              )}
+            </div>
 
-        {/* Period Comparison - PRO ONLY */}
-        {proMode && (
-          <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
-        )}
+            {/* Period Comparison - PRO ONLY */}
+            {proMode && (
+              <PeriodComparison currentMetrics={metrics} isConnected={isConnected} />
+            )}
 
-        {/* Metrics Evolution Chart - PRO ONLY */}
-        {proMode && <MetricsChart data={dailyData} isLoading={isLoading} />}
+            {/* Metrics Evolution Chart - PRO ONLY */}
+            {proMode && <MetricsChart data={dailyData} isLoading={isLoading} />}
 
-        {/* Placement Metrics - PRO ONLY */}
-        {proMode && <PlacementMetrics placementData={placementData} />}
+            {/* Placement Metrics - PRO ONLY */}
+            {proMode && <PlacementMetrics placementData={placementData} />}
 
-        {/* Segment Analysis - ALWAYS VISIBLE */}
-        <SegmentAnalysis 
-          campaigns={campaigns} 
-          adSets={adSets}
-          creatives={creatives} 
-          dateRange={dateRange}
-          onDateRangeChange={changeDateRange}
-          isLoading={isLoading}
-          onRefresh={refreshMetrics}
-        />
+            {/* Segment Analysis - ALWAYS VISIBLE */}
+            <SegmentAnalysis 
+              campaigns={campaigns} 
+              adSets={adSets}
+              creatives={creatives} 
+              dateRange={dateRange}
+              onDateRangeChange={changeDateRange}
+              isLoading={isLoading}
+              onRefresh={refreshMetrics}
+            />
 
-        {/* Strategy Panel - PRO ONLY */}
-        {proMode && (
-          <StrategyPanel
-            campaigns={campaigns}
-            adSets={adSets}
-            creatives={creatives}
-            totalSpend={metrics.spend}
-            totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
-          />
-        )}
+            {/* Strategy Panel - PRO ONLY */}
+            {proMode && (
+              <StrategyPanel
+                campaigns={campaigns}
+                adSets={adSets}
+                creatives={creatives}
+                totalSpend={metrics.spend}
+                totalConversions={campaigns.reduce((acc, c) => acc + c.conversions, 0)}
+              />
+            )}
 
-        {/* Action History - PRO ONLY */}
-        {proMode && <ActionHistory />}
+            {/* Action History - PRO ONLY */}
+            {proMode && <ActionHistory />}
+          </TabsContent>
+
+          {/* Tab: Público Orgânico */}
+          <TabsContent value="organic" className="mt-6">
+            <OrganicMetrics isConnected={isConnected} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
