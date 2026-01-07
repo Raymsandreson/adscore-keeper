@@ -14,7 +14,10 @@ import {
   Megaphone,
   ChevronDown,
   ChevronUp,
-  CalendarDays
+  CalendarDays,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus
 } from "lucide-react";
 import { CampaignInsight, DailyInsight } from "@/hooks/useMetaAPI";
 import { 
@@ -29,7 +32,7 @@ import {
   Line,
   CartesianGrid
 } from "recharts";
-import { format, subDays, startOfMonth, startOfQuarter, startOfYear, isWithinInterval, parseISO } from "date-fns";
+import { format, subDays, startOfMonth, startOfQuarter, startOfYear, isWithinInterval, parseISO, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
@@ -92,10 +95,49 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
     });
   }, [dailyData, period, dateRange]);
 
+  // Calculate previous period data for comparison
+  const previousPeriodData = useMemo(() => {
+    const currentRange = getDateRangeFromPeriod(period);
+    const periodLength = differenceInDays(currentRange.to, currentRange.from) + 1;
+    const previousRange = {
+      from: subDays(currentRange.from, periodLength),
+      to: subDays(currentRange.from, 1)
+    };
+    
+    return dailyData.filter(day => {
+      const dayDate = parseISO(day.date);
+      return isWithinInterval(dayDate, { start: previousRange.from, end: previousRange.to });
+    });
+  }, [dailyData, period, dateRange]);
+
   // Calculate filtered total spend
   const filteredTotalSpend = useMemo(() => {
     return filteredDailyData.reduce((sum, day) => sum + day.spend, 0);
   }, [filteredDailyData]);
+
+  // Calculate previous period total spend
+  const previousTotalSpend = useMemo(() => {
+    return previousPeriodData.reduce((sum, day) => sum + day.spend, 0);
+  }, [previousPeriodData]);
+
+  // Calculate previous period conversions
+  const previousTotalConversions = useMemo(() => {
+    return previousPeriodData.reduce((sum, day) => sum + day.conversions, 0);
+  }, [previousPeriodData]);
+
+  // Calculate current period conversions
+  const currentTotalConversions = useMemo(() => {
+    return filteredDailyData.reduce((sum, day) => sum + day.conversions, 0);
+  }, [filteredDailyData]);
+
+  // Calculate percentage change
+  const spendChange = previousTotalSpend > 0 
+    ? ((filteredTotalSpend - previousTotalSpend) / previousTotalSpend) * 100 
+    : 0;
+
+  const conversionsChange = previousTotalConversions > 0 
+    ? ((currentTotalConversions - previousTotalConversions) / previousTotalConversions) * 100 
+    : 0;
 
   // Sort campaigns by spend (descending)
   const sortedCampaigns = [...campaigns].sort((a, b) => b.spend - a.spend);
@@ -283,6 +325,64 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
               </Popover>
             )}
           </div>
+
+          {/* Period Comparison Card */}
+          {previousPeriodData.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 p-4 rounded-lg bg-muted/20 border border-border/50">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Período Atual</p>
+                <p className="font-bold text-lg">{formatCurrency(filteredTotalSpend)}</p>
+                <p className="text-xs text-muted-foreground">{currentTotalConversions} conversões</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Período Anterior</p>
+                <p className="font-bold text-lg text-muted-foreground">{formatCurrency(previousTotalSpend)}</p>
+                <p className="text-xs text-muted-foreground">{previousTotalConversions} conversões</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Variação Gasto</p>
+                <div className="flex items-center gap-1">
+                  {spendChange > 0 ? (
+                    <ArrowUpRight className="h-4 w-4 text-red-500" />
+                  ) : spendChange < 0 ? (
+                    <ArrowDownRight className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Minus className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className={cn(
+                    "font-bold text-lg",
+                    spendChange > 0 ? "text-red-500" : spendChange < 0 ? "text-green-500" : "text-muted-foreground"
+                  )}>
+                    {spendChange > 0 ? "+" : ""}{spendChange.toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {spendChange > 0 ? "Aumento" : spendChange < 0 ? "Redução" : "Estável"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Variação Conv.</p>
+                <div className="flex items-center gap-1">
+                  {conversionsChange > 0 ? (
+                    <ArrowUpRight className="h-4 w-4 text-green-500" />
+                  ) : conversionsChange < 0 ? (
+                    <ArrowDownRight className="h-4 w-4 text-red-500" />
+                  ) : (
+                    <Minus className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className={cn(
+                    "font-bold text-lg",
+                    conversionsChange > 0 ? "text-green-500" : conversionsChange < 0 ? "text-red-500" : "text-muted-foreground"
+                  )}>
+                    {conversionsChange > 0 ? "+" : ""}{conversionsChange.toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {conversionsChange > 0 ? "Aumento" : conversionsChange < 0 ? "Redução" : "Estável"}
+                </p>
+              </div>
+            </div>
+          )}
 
           <Tabs defaultValue="campaigns" className="w-full">
             <TabsList className="grid w-full max-w-xs grid-cols-2 mb-4">
