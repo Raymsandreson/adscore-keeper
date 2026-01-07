@@ -1,4 +1,6 @@
 // Meta Business API Service
+import { logApiCall, logMetaConnection } from '@/utils/debugLogger';
+
 export interface MetaAPIConfig {
   accessToken: string;
   accountId: string;
@@ -125,6 +127,7 @@ class MetaAPIService {
   async validateToken(accessToken: string): Promise<boolean> {
     try {
       console.log('🔍 Validando token...', accessToken.substring(0, 10) + '...');
+      logApiCall('graph.facebook.com/me', 'GET', true, { action: 'validateToken' });
       
       // ATENÇÃO: Requisições diretas para Graph API podem ser bloqueadas por CORS
       // Em produção, isso deve ser feito através de um backend/proxy
@@ -141,6 +144,7 @@ class MetaAPIService {
       
       if (data.error) {
         console.error('❌ Token validation error:', data.error);
+        logMetaConnection(false, { error: data.error, stage: 'validateToken' });
         // Se for erro de CORS, retornar true para continuar com dados simulados
         if (data.error.type === 'OAuthException' || response.status === 0) {
           console.warn('⚠️ Erro de CORS detectado. Usando dados simulados.');
@@ -150,9 +154,11 @@ class MetaAPIService {
       }
       
       console.log('✅ Token válido para:', data.name || data.id);
+      logMetaConnection(true, { userId: data.id, userName: data.name });
       return !!data.id;
     } catch (error) {
       console.error('❌ Token validation failed (CORS?):', error);
+      logMetaConnection(false, { error: String(error), stage: 'validateToken' });
       // Em caso de erro de CORS, permitir continuar com dados simulados
       console.warn('⚠️ Usando dados simulados devido a limitações de CORS');
       return true;
