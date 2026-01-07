@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -9,7 +13,8 @@ import {
   Calendar,
   Megaphone,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  CalendarDays
 } from "lucide-react";
 import { CampaignInsight, DailyInsight } from "@/hooks/useMetaAPI";
 import { 
@@ -24,6 +29,12 @@ import {
   Line,
   CartesianGrid
 } from "recharts";
+import { format, subDays, startOfMonth, startOfQuarter, startOfYear, isWithinInterval, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { DateRange } from "react-day-picker";
+
+type PeriodOption = 'last_7d' | 'last_15d' | 'last_30d' | 'this_month' | 'this_quarter' | 'this_year' | 'custom';
 
 interface SpendBreakdownProps {
   campaigns: CampaignInsight[];
@@ -34,22 +45,74 @@ interface SpendBreakdownProps {
 
 const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: SpendBreakdownProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [period, setPeriod] = useState<PeriodOption>('last_7d');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  const periodOptions: { value: PeriodOption; label: string }[] = [
+    { value: 'last_7d', label: 'Últimos 7 dias' },
+    { value: 'last_15d', label: 'Últimos 15 dias' },
+    { value: 'last_30d', label: 'Últimos 30 dias' },
+    { value: 'this_month', label: 'Este mês' },
+    { value: 'this_quarter', label: 'Este trimestre' },
+    { value: 'this_year', label: 'Este ano' },
+    { value: 'custom', label: 'Personalizado' },
+  ];
+
+  const getDateRangeFromPeriod = (p: PeriodOption): { from: Date; to: Date } => {
+    const today = new Date();
+    switch (p) {
+      case 'last_7d':
+        return { from: subDays(today, 7), to: today };
+      case 'last_15d':
+        return { from: subDays(today, 15), to: today };
+      case 'last_30d':
+        return { from: subDays(today, 30), to: today };
+      case 'this_month':
+        return { from: startOfMonth(today), to: today };
+      case 'this_quarter':
+        return { from: startOfQuarter(today), to: today };
+      case 'this_year':
+        return { from: startOfYear(today), to: today };
+      case 'custom':
+        return dateRange?.from && dateRange?.to 
+          ? { from: dateRange.from, to: dateRange.to }
+          : { from: subDays(today, 7), to: today };
+      default:
+        return { from: subDays(today, 7), to: today };
+    }
+  };
+
+  // Filter daily data based on selected period
+  const filteredDailyData = useMemo(() => {
+    const range = getDateRangeFromPeriod(period);
+    return dailyData.filter(day => {
+      const dayDate = parseISO(day.date);
+      return isWithinInterval(dayDate, { start: range.from, end: range.to });
+    });
+  }, [dailyData, period, dateRange]);
+
+  // Calculate filtered total spend
+  const filteredTotalSpend = useMemo(() => {
+    return filteredDailyData.reduce((sum, day) => sum + day.spend, 0);
+  }, [filteredDailyData]);
 
   // Sort campaigns by spend (descending)
   const sortedCampaigns = [...campaigns].sort((a, b) => b.spend - a.spend);
   
-  // Calculate campaign percentages
+  // Calculate campaign percentages (using filtered total when available)
+  const displayTotalSpend = filteredDailyData.length > 0 ? filteredTotalSpend : totalSpend;
   const campaignData = sortedCampaigns.map(campaign => ({
     name: campaign.name.length > 25 ? campaign.name.substring(0, 25) + '...' : campaign.name,
     fullName: campaign.name,
     spend: campaign.spend,
-    percentage: totalSpend > 0 ? (campaign.spend / totalSpend) * 100 : 0,
+    percentage: displayTotalSpend > 0 ? (campaign.spend / displayTotalSpend) * 100 : 0,
     conversions: campaign.conversions,
     cpa: campaign.conversions > 0 ? campaign.spend / campaign.conversions : 0
   }));
 
-  // Format daily data for chart
-  const dailyChartData = dailyData.map(day => ({
+  // Format daily data for chart (filtered)
+  const dailyChartData = filteredDailyData.map(day => ({
     date: new Date(day.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
     fullDate: day.date,
     spend: day.spend,
@@ -57,15 +120,36 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
   }));
 
   // Calculate daily average
-  const dailyAverage = dailyData.length > 0 
-    ? dailyData.reduce((sum, day) => sum + day.spend, 0) / dailyData.length 
+  const dailyAverage = filteredDailyData.length > 0 
+    ? filteredDailyData.reduce((sum, day) => sum + day.spend, 0) / filteredDailyData.length 
     : 0;
+
+  const handlePeriodChange = (value: PeriodOption) => {
+    setPeriod(value);
+    if (value === 'custom') {
+      setIsCalendarOpen(true);
+    }
+  };
+
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (range?.from && range?.to) {
+      setIsCalendarOpen(false);
+    }
+  };
+
+  const getPeriodLabel = () => {
+    if (period === 'custom' && dateRange?.from && dateRange?.to) {
+      return `${format(dateRange.from, 'dd/MM', { locale: ptBR })} - ${format(dateRange.to, 'dd/MM', { locale: ptBR })}`;
+    }
+    return periodOptions.find(p => p.value === period)?.label || 'Selecionar período';
+  };
 
   // Get trend (compare last 3 days vs first 3 days)
   const getTrend = () => {
-    if (dailyData.length < 6) return null;
-    const firstHalf = dailyData.slice(0, 3).reduce((sum, d) => sum + d.spend, 0) / 3;
-    const lastHalf = dailyData.slice(-3).reduce((sum, d) => sum + d.spend, 0) / 3;
+    if (filteredDailyData.length < 6) return null;
+    const firstHalf = filteredDailyData.slice(0, 3).reduce((sum, d) => sum + d.spend, 0) / 3;
+    const lastHalf = filteredDailyData.slice(-3).reduce((sum, d) => sum + d.spend, 0) / 3;
     const change = ((lastHalf - firstHalf) / firstHalf) * 100;
     return { change, direction: change >= 0 ? 'up' : 'down' };
   };
@@ -108,7 +192,7 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
             <div>
               <CardTitle className="text-lg">Gasto Total</CardTitle>
               <p className="text-2xl font-bold text-foreground">
-                {formatCurrency(totalSpend)}
+                {formatCurrency(displayTotalSpend)}
               </p>
             </div>
           </div>
@@ -142,6 +226,64 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
 
       {isExpanded && (
         <CardContent className="pt-0">
+          {/* Period Filter */}
+          <div className="flex items-center gap-2 mb-4" onClick={(e) => e.stopPropagation()}>
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <Select value={period} onValueChange={(v) => handlePeriodChange(v as PeriodOption)}>
+              <SelectTrigger className="w-[180px] h-8 text-sm">
+                <SelectValue placeholder="Selecionar período" />
+              </SelectTrigger>
+              <SelectContent>
+                {periodOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            {period === 'custom' && (
+              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 justify-start text-left font-normal text-sm",
+                      !dateRange && "text-muted-foreground"
+                    )}
+                  >
+                    <Calendar className="mr-2 h-3.5 w-3.5" />
+                    {dateRange?.from ? (
+                      dateRange.to ? (
+                        <>
+                          {format(dateRange.from, "dd/MM/yy", { locale: ptBR })} -{" "}
+                          {format(dateRange.to, "dd/MM/yy", { locale: ptBR })}
+                        </>
+                      ) : (
+                        format(dateRange.from, "dd/MM/yy", { locale: ptBR })
+                      )
+                    ) : (
+                      <span>Selecionar datas</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={handleDateRangeSelect}
+                    numberOfMonths={2}
+                    locale={ptBR}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+
           <Tabs defaultValue="campaigns" className="w-full">
             <TabsList className="grid w-full max-w-xs grid-cols-2 mb-4">
               <TabsTrigger value="campaigns" className="gap-1.5 text-sm">
@@ -228,7 +370,7 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
                     </div>
                     <div className="p-3 rounded-lg bg-muted/30">
                       <p className="text-xs text-muted-foreground mb-1">Dias analisados</p>
-                      <p className="font-bold text-lg">{dailyData.length} dias</p>
+                      <p className="font-bold text-lg">{filteredDailyData.length} dias</p>
                     </div>
                   </div>
 
