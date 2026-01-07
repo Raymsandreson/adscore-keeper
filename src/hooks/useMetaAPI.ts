@@ -33,7 +33,7 @@ export interface MetricData {
   conversions: number;
 }
 
-export type { DailyInsight, PlacementInsight };
+export type { CampaignInsight, DailyInsight, PlacementInsight };
 
 export const useMetaAPI = () => {
   const [isConnected, setIsConnected] = useState(false);
