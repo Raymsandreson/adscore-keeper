@@ -16,7 +16,8 @@ import PeriodComparison from "./PeriodComparison";
 import { MetricsChart } from "./MetricsChart";
 import { PlacementMetrics } from "./PlacementMetrics";
 import OrganicMetrics from "./OrganicMetrics";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart } from "lucide-react";
+import GoalsManager from "./GoalsManager";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -220,16 +221,20 @@ const Dashboard = () => {
           onRefresh={refreshMetrics}
         />
 
-        {/* Tabs: Tráfego Pago / Público Orgânico */}
+        {/* Tabs: Tráfego Pago / Público Orgânico / Metas */}
         <Tabs defaultValue="paid" className="w-full">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+          <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3">
             <TabsTrigger value="paid" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Tráfego Pago
             </TabsTrigger>
             <TabsTrigger value="organic" className="gap-2">
               <Heart className="h-4 w-4" />
-              Público Orgânico
+              Orgânico
+            </TabsTrigger>
+            <TabsTrigger value="goals" className="gap-2">
+              <Flag className="h-4 w-4" />
+              Metas
             </TabsTrigger>
           </TabsList>
 
@@ -347,6 +352,11 @@ const Dashboard = () => {
           {/* Tab: Público Orgânico */}
           <TabsContent value="organic" className="mt-6">
             <OrganicMetrics isConnected={isConnected} />
+          </TabsContent>
+
+          {/* Tab: Metas e Prazos */}
+          <TabsContent value="goals" className="mt-6">
+            <GoalsManager />
           </TabsContent>
         </Tabs>
       </div>
