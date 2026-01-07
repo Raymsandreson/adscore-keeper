@@ -130,6 +130,15 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
     return filteredDailyData.reduce((sum, day) => sum + day.conversions, 0);
   }, [filteredDailyData]);
 
+  // Calculate CPA for current and previous period
+  const currentCPA = currentTotalConversions > 0 
+    ? filteredTotalSpend / currentTotalConversions 
+    : 0;
+
+  const previousCPA = previousTotalConversions > 0 
+    ? previousTotalSpend / previousTotalConversions 
+    : 0;
+
   // Calculate percentage change
   const spendChange = previousTotalSpend > 0 
     ? ((filteredTotalSpend - previousTotalSpend) / previousTotalSpend) * 100 
@@ -137,6 +146,10 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
 
   const conversionsChange = previousTotalConversions > 0 
     ? ((currentTotalConversions - previousTotalConversions) / previousTotalConversions) * 100 
+    : 0;
+
+  const cpaChange = previousCPA > 0 
+    ? ((currentCPA - previousCPA) / previousCPA) * 100 
     : 0;
 
   // Sort campaigns by spend (descending)
@@ -328,16 +341,16 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
 
           {/* Period Comparison Card */}
           {previousPeriodData.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 p-4 rounded-lg bg-muted/20 border border-border/50">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 p-4 rounded-lg bg-muted/20 border border-border/50">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Período Atual</p>
                 <p className="font-bold text-lg">{formatCurrency(filteredTotalSpend)}</p>
-                <p className="text-xs text-muted-foreground">{currentTotalConversions} conversões</p>
+                <p className="text-xs text-muted-foreground">{currentTotalConversions} conv. • CPA {formatCurrency(currentCPA)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Período Anterior</p>
                 <p className="font-bold text-lg text-muted-foreground">{formatCurrency(previousTotalSpend)}</p>
-                <p className="text-xs text-muted-foreground">{previousTotalConversions} conversões</p>
+                <p className="text-xs text-muted-foreground">{previousTotalConversions} conv. • CPA {formatCurrency(previousCPA)}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Variação Gasto</p>
@@ -379,6 +392,27 @@ const SpendBreakdown = ({ campaigns, dailyData, totalSpend, isConnected }: Spend
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {conversionsChange > 0 ? "Aumento" : conversionsChange < 0 ? "Redução" : "Estável"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Variação CPA</p>
+                <div className="flex items-center gap-1">
+                  {cpaChange > 0 ? (
+                    <ArrowUpRight className="h-4 w-4 text-red-500" />
+                  ) : cpaChange < 0 ? (
+                    <ArrowDownRight className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Minus className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className={cn(
+                    "font-bold text-lg",
+                    cpaChange > 0 ? "text-red-500" : cpaChange < 0 ? "text-green-500" : "text-muted-foreground"
+                  )}>
+                    {cpaChange > 0 ? "+" : ""}{cpaChange.toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {cpaChange > 0 ? "Aumento" : cpaChange < 0 ? "Redução" : "Estável"}
                 </p>
               </div>
             </div>
