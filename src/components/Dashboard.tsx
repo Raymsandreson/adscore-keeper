@@ -17,6 +17,7 @@ import { MetricsChart } from "./MetricsChart";
 import { PlacementMetrics } from "./PlacementMetrics";
 import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
+import SpendBreakdown from "./SpendBreakdown";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
@@ -279,14 +280,15 @@ const Dashboard = () => {
                 isConnected={isConnected}
               />
               
-              <MetricCard
-                title="Gasto Total"
-                value={`R$ ${metrics.spend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
-                icon={DollarSign}
-                status="success"
-                benchmark="Gasto acumulado no período"
-                isConnected={isConnected}
-              />
+              {/* Spend Breakdown - Replaces simple MetricCard */}
+              <div className="md:col-span-2 lg:col-span-1">
+                <SpendBreakdown
+                  campaigns={campaigns}
+                  dailyData={dailyData}
+                  totalSpend={metrics.spend}
+                  isConnected={isConnected}
+                />
+              </div>
               
               {/* PRO ONLY Metrics */}
               {proMode && (
