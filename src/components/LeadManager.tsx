@@ -33,15 +33,27 @@ import {
   Upload,
   FileSpreadsheet,
   Calendar,
-  PlayCircle
+  PlayCircle,
+  Filter,
+  X
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+const daysOfWeek = [
+  { value: 0, label: 'Domingo', short: 'Dom' },
+  { value: 1, label: 'Segunda-feira', short: 'Seg' },
+  { value: 2, label: 'Terça-feira', short: 'Ter' },
+  { value: 3, label: 'Quarta-feira', short: 'Qua' },
+  { value: 4, label: 'Quinta-feira', short: 'Qui' },
+  { value: 5, label: 'Sexta-feira', short: 'Sex' },
+  { value: 6, label: 'Sábado', short: 'Sáb' },
+];
 
 interface LeadManagerProps {
   adAccountId?: string;
@@ -79,6 +91,25 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     ad_spend_at_conversion: 0,
   });
   const [testEventCode, setTestEventCode] = useState('');
+  const [dayOfWeekFilter, setDayOfWeekFilter] = useState<number | null>(null);
+
+  // Calculate leads by day of week
+  const leadsByDayOfWeek = leads.reduce((acc, lead) => {
+    const dayIndex = getDay(new Date(lead.created_at));
+    acc[dayIndex] = (acc[dayIndex] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>);
+
+  // Find best day
+  const bestDay = Object.entries(leadsByDayOfWeek).reduce(
+    (best, [day, count]) => (count > best.count ? { day: parseInt(day), count } : best),
+    { day: -1, count: 0 }
+  );
+
+  // Filter leads by day of week
+  const filteredLeads = dayOfWeekFilter !== null
+    ? leads.filter(lead => getDay(new Date(lead.created_at)) === dayOfWeekFilter)
+    : leads;
 
   const handleImportFacebookLeads = async () => {
     if (!adAccountId) {
@@ -377,6 +408,74 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
         </CardContent>
       </Card>
 
+      {/* Day of Week Analysis */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calendar className="h-4 w-4" />
+            Leads por Dia da Semana
+          </CardTitle>
+          <CardDescription>
+            Identifique os melhores dias para receber leads
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button
+              variant={dayOfWeekFilter === null ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setDayOfWeekFilter(null)}
+              className="gap-1"
+            >
+              {dayOfWeekFilter === null && <X className="h-3 w-3" />}
+              Todos
+            </Button>
+            {daysOfWeek.map((day) => {
+              const count = leadsByDayOfWeek[day.value] || 0;
+              const isBest = day.value === bestDay.day && count > 0;
+              return (
+                <Button
+                  key={day.value}
+                  variant={dayOfWeekFilter === day.value ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDayOfWeekFilter(dayOfWeekFilter === day.value ? null : day.value)}
+                  className={`gap-1 ${isBest ? 'border-green-500 bg-green-500/10' : ''}`}
+                >
+                  <span>{day.short}</span>
+                  <Badge variant="secondary" className={`ml-1 ${isBest ? 'bg-green-500 text-white' : ''}`}>
+                    {count}
+                  </Badge>
+                  {isBest && <span className="text-green-500">🏆</span>}
+                </Button>
+              );
+            })}
+          </div>
+          {bestDay.day >= 0 && (
+            <div className="text-sm text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-500" />
+              <span>
+                Melhor dia: <strong className="text-foreground">{daysOfWeek[bestDay.day].label}</strong> com{' '}
+                <strong className="text-green-500">{bestDay.count}</strong> leads (
+                {((bestDay.count / leads.length) * 100).toFixed(1)}%)
+              </span>
+            </div>
+          )}
+          {dayOfWeekFilter !== null && (
+            <div className="mt-2 text-sm flex items-center gap-2">
+              <Filter className="h-4 w-4 text-primary" />
+              <span>
+                Filtrando por <strong>{daysOfWeek[dayOfWeekFilter].label}</strong>:{' '}
+                <strong className="text-primary">{filteredLeads.length}</strong> leads
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setDayOfWeekFilter(null)} className="h-6 px-2">
+                <X className="h-3 w-3" />
+                Limpar
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Leads Section */}
       <Card>
         <CardHeader>
@@ -637,7 +736,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
         <CardContent>
           {viewMode === 'pipeline' ? (
             <LeadsPipeline
-              leads={leads}
+              leads={filteredLeads}
               loading={loading}
               onStatusChange={handleStatusChange}
               onDeleteLead={handleDeleteLead}
@@ -646,12 +745,14 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
             <>
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">Carregando leads...</div>
-              ) : leads.length === 0 ? (
+              ) : filteredLeads.length === 0 ? (
                 <div className="text-center py-8">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">Nenhum lead registrado ainda</p>
+                  <p className="text-muted-foreground">
+                    {dayOfWeekFilter !== null ? 'Nenhum lead encontrado para este dia da semana' : 'Nenhum lead registrado ainda'}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Adicione leads do WhatsApp para calcular seu custo real por conversão
+                    {dayOfWeekFilter !== null ? 'Tente remover o filtro para ver todos os leads' : 'Adicione leads do WhatsApp para calcular seu custo real por conversão'}
                   </p>
                 </div>
               ) : (
@@ -671,7 +772,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {leads.map((lead) => (
+                      {filteredLeads.map((lead) => (
                         <TableRow key={lead.id}>
                           <TableCell>
                             <div className="font-medium">{lead.lead_name || 'Sem nome'}</div>
