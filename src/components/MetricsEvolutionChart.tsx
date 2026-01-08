@@ -5,9 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
-import { TrendingUp, DollarSign, MousePointer, Users, Calendar as CalendarIcon } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, isWithinInterval, addDays, subDays } from 'date-fns';
+import { TrendingUp, DollarSign, MousePointer, Users, Calendar as CalendarIcon, GitCompare, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, isWithinInterval, addDays, subDays, subMonths, subWeeks, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
@@ -45,6 +47,7 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
   const [period, setPeriod] = useState<PeriodType>('day');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [compareEnabled, setCompareEnabled] = useState(false);
 
   const aggregatedData = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -226,6 +229,121 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
     }
   }, [data, period, dateRange]);
 
+  // Calculate previous period data for comparison
+  const comparisonData = useMemo(() => {
+    if (!compareEnabled || !data || data.length === 0) return null;
+
+    const sortedData = [...data].sort((a, b) => 
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    const firstDate = new Date(sortedData[0].date + 'T12:00:00');
+    const lastDate = new Date(sortedData[sortedData.length - 1].date + 'T12:00:00');
+    const periodDays = differenceInDays(lastDate, firstDate) + 1;
+
+    // Get previous period range
+    const prevEnd = subDays(firstDate, 1);
+    const prevStart = subDays(prevEnd, periodDays - 1);
+
+    const prevData = sortedData.filter(d => {
+      const date = new Date(d.date + 'T12:00:00');
+      return isWithinInterval(date, { start: prevStart, end: prevEnd });
+    });
+
+    if (prevData.length === 0) return null;
+
+    // Calculate totals for current period
+    const currentTotals = {
+      cpc: aggregatedData.reduce((acc: number, d: any) => acc + (d?.cpc || 0), 0) / aggregatedData.length,
+      ctr: aggregatedData.reduce((acc: number, d: any) => acc + (d?.ctr || 0), 0) / aggregatedData.length,
+      cpm: aggregatedData.reduce((acc: number, d: any) => acc + (d?.cpm || 0), 0) / aggregatedData.length,
+      spend: aggregatedData.reduce((acc: number, d: any) => acc + (d?.spend || 0), 0),
+      impressions: aggregatedData.reduce((acc: number, d: any) => acc + (d?.impressions || 0), 0),
+      clicks: aggregatedData.reduce((acc: number, d: any) => acc + (d?.clicks || 0), 0),
+      conversions: aggregatedData.reduce((acc: number, d: any) => acc + (d?.conversions || 0), 0),
+      conversionRate: aggregatedData.reduce((acc: number, d: any) => acc + (d?.conversionRate || 0), 0) / aggregatedData.length,
+    };
+
+    // Calculate totals for previous period
+    const prevTotals = {
+      cpc: prevData.reduce((acc, d) => acc + d.cpc, 0) / prevData.length,
+      ctr: prevData.reduce((acc, d) => acc + d.ctr, 0) / prevData.length,
+      cpm: prevData.reduce((acc, d) => acc + d.cpm, 0) / prevData.length,
+      spend: prevData.reduce((acc, d) => acc + d.spend, 0),
+      impressions: prevData.reduce((acc, d) => acc + d.impressions, 0),
+      clicks: prevData.reduce((acc, d) => acc + d.clicks, 0),
+      conversions: prevData.reduce((acc, d) => acc + d.conversions, 0),
+      conversionRate: prevData.reduce((acc, d) => acc + d.conversionRate, 0) / prevData.length,
+    };
+
+    // Calculate percentage changes
+    const calcChange = (current: number, prev: number) => {
+      if (prev === 0) return current > 0 ? 100 : 0;
+      return ((current - prev) / prev) * 100;
+    };
+
+    return {
+      prevStart,
+      prevEnd,
+      prevTotals,
+      currentTotals,
+      changes: {
+        cpc: calcChange(currentTotals.cpc, prevTotals.cpc),
+        ctr: calcChange(currentTotals.ctr, prevTotals.ctr),
+        cpm: calcChange(currentTotals.cpm, prevTotals.cpm),
+        spend: calcChange(currentTotals.spend, prevTotals.spend),
+        impressions: calcChange(currentTotals.impressions, prevTotals.impressions),
+        clicks: calcChange(currentTotals.clicks, prevTotals.clicks),
+        conversions: calcChange(currentTotals.conversions, prevTotals.conversions),
+        conversionRate: calcChange(currentTotals.conversionRate, prevTotals.conversionRate),
+      },
+    };
+  }, [compareEnabled, data, aggregatedData]);
+
+  // Create merged data for side-by-side comparison charts
+  const mergedComparisonData = useMemo(() => {
+    if (!comparisonData) return null;
+
+    const metrics = ['CPC', 'CTR', 'CPM', 'Gasto', 'Impressões', 'Cliques', 'Conversões', 'Taxa Conv.'];
+    const currentValues = [
+      comparisonData.currentTotals.cpc,
+      comparisonData.currentTotals.ctr,
+      comparisonData.currentTotals.cpm,
+      comparisonData.currentTotals.spend,
+      comparisonData.currentTotals.impressions,
+      comparisonData.currentTotals.clicks,
+      comparisonData.currentTotals.conversions,
+      comparisonData.currentTotals.conversionRate,
+    ];
+    const prevValues = [
+      comparisonData.prevTotals.cpc,
+      comparisonData.prevTotals.ctr,
+      comparisonData.prevTotals.cpm,
+      comparisonData.prevTotals.spend,
+      comparisonData.prevTotals.impressions,
+      comparisonData.prevTotals.clicks,
+      comparisonData.prevTotals.conversions,
+      comparisonData.prevTotals.conversionRate,
+    ];
+    const changes = [
+      comparisonData.changes.cpc,
+      comparisonData.changes.ctr,
+      comparisonData.changes.cpm,
+      comparisonData.changes.spend,
+      comparisonData.changes.impressions,
+      comparisonData.changes.clicks,
+      comparisonData.changes.conversions,
+      comparisonData.changes.conversionRate,
+    ];
+
+    return metrics.map((metric, i) => ({
+      metric,
+      current: currentValues[i],
+      previous: prevValues[i],
+      change: changes[i],
+    }));
+  }, [comparisonData]);
+
   const handlePeriodChange = (value: string) => {
     setPeriod(value as PeriodType);
     if (value === 'custom') {
@@ -236,6 +354,33 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
   const formatCurrency = (value: number) => `R$ ${value.toFixed(2)}`;
   const formatPercent = (value: number) => `${value.toFixed(2)}%`;
   const formatNumber = (value: number) => value.toLocaleString('pt-BR');
+
+  const ChangeIndicator = ({ change, inverted = false }: { change: number; inverted?: boolean }) => {
+    const isPositive = inverted ? change < 0 : change > 0;
+    const isNeutral = Math.abs(change) < 0.5;
+    
+    if (isNeutral) {
+      return (
+        <Badge variant="secondary" className="text-xs gap-1">
+          <Minus className="h-3 w-3" />
+          {Math.abs(change).toFixed(1)}%
+        </Badge>
+      );
+    }
+    
+    return (
+      <Badge 
+        variant="secondary" 
+        className={cn(
+          "text-xs gap-1",
+          isPositive ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+        )}
+      >
+        {isPositive ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+        {Math.abs(change).toFixed(1)}%
+      </Badge>
+    );
+  };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -350,15 +495,78 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
                 </PopoverContent>
               </Popover>
             )}
+
+            <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
+              <GitCompare className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Comparar</span>
+              <Switch
+                checked={compareEnabled}
+                onCheckedChange={setCompareEnabled}
+              />
+            </div>
           </div>
         </div>
         
-        <p className="text-sm text-muted-foreground mt-2">
-          Visualização: {getPeriodLabel()} • {aggregatedData.length} período{aggregatedData.length !== 1 ? 's' : ''}
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
+          <p className="text-sm text-muted-foreground">
+            Visualização: {getPeriodLabel()} • {aggregatedData.length} período{aggregatedData.length !== 1 ? 's' : ''}
+          </p>
+          {compareEnabled && comparisonData && (
+            <Badge variant="outline" className="text-xs gap-1 w-fit">
+              <GitCompare className="h-3 w-3" />
+              vs {format(comparisonData.prevStart, 'dd/MM', { locale: ptBR })} - {format(comparisonData.prevEnd, 'dd/MM', { locale: ptBR })}
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       
       <CardContent>
+        {/* Comparison Summary Cards */}
+        {compareEnabled && comparisonData && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">CPC</span>
+                <ChangeIndicator change={comparisonData.changes.cpc} inverted />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.cpc)}</span>
+                <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.cpc)}</span>
+              </div>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">CTR</span>
+                <ChangeIndicator change={comparisonData.changes.ctr} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{formatPercent(comparisonData.currentTotals.ctr)}</span>
+                <span className="text-xs text-muted-foreground">vs {formatPercent(comparisonData.prevTotals.ctr)}</span>
+              </div>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Conversões</span>
+                <ChangeIndicator change={comparisonData.changes.conversions} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{formatNumber(comparisonData.currentTotals.conversions)}</span>
+                <span className="text-xs text-muted-foreground">vs {formatNumber(comparisonData.prevTotals.conversions)}</span>
+              </div>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">Gasto</span>
+                <ChangeIndicator change={comparisonData.changes.spend} inverted />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.spend)}</span>
+                <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.spend)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Tabs defaultValue="custos" className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-6">
             <TabsTrigger value="custos" className="flex items-center gap-1">
