@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
-import type { PostTag, PostStatus } from "@/types/editorial";
+import type { PostTag, PostStatus, ChecklistItemStatus, ChecklistStatusConfig } from "@/types/editorial";
+import { defaultChecklistStatusConfig } from "@/types/editorial";
 
 interface StatusConfig {
   label: string;
@@ -25,9 +26,19 @@ const defaultTags: PostTag[] = [
 export function useEditorialSettings() {
   const [statusConfig, setStatusConfig] = useState<Record<PostStatus, StatusConfig>>(defaultStatusConfig);
   const [tags, setTags] = useState<PostTag[]>(defaultTags);
+  const [checklistStatusConfig, setChecklistStatusConfig] = useState<Record<ChecklistItemStatus, ChecklistStatusConfig>>(
+    defaultChecklistStatusConfig
+  );
 
   const updateStatusLabel = useCallback((status: PostStatus, label: string) => {
     setStatusConfig(prev => ({
+      ...prev,
+      [status]: { ...prev[status], label },
+    }));
+  }, []);
+
+  const updateChecklistStatusLabel = useCallback((status: ChecklistItemStatus, label: string) => {
+    setChecklistStatusConfig(prev => ({
       ...prev,
       [status]: { ...prev[status], label },
     }));
@@ -56,7 +67,9 @@ export function useEditorialSettings() {
   return {
     statusConfig,
     tags,
+    checklistStatusConfig,
     updateStatusLabel,
+    updateChecklistStatusLabel,
     addTag,
     updateTag,
     deleteTag,

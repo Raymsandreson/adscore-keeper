@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, X, Pencil, Check } from "lucide-react";
+import { Plus, X, Pencil, Check, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PostTag, PostStatus } from "@/types/editorial";
+import type { PostTag, PostStatus, ChecklistItemStatus, ChecklistStatusConfig } from "@/types/editorial";
 
 interface StatusConfig {
   label: string;
@@ -23,13 +23,16 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   statusConfig: Record<PostStatus, StatusConfig>;
   tags: PostTag[];
+  checklistStatusConfig: Record<ChecklistItemStatus, ChecklistStatusConfig>;
   onUpdateStatusLabel: (status: PostStatus, label: string) => void;
+  onUpdateChecklistStatusLabel: (status: ChecklistItemStatus, label: string) => void;
   onAddTag: (label: string, color: string) => void;
   onUpdateTag: (id: string, updates: Partial<PostTag>) => void;
   onDeleteTag: (id: string) => void;
 }
 
 const statusKeys: PostStatus[] = ["draft", "scheduled", "published", "failed"];
+const checklistStatusKeys: ChecklistItemStatus[] = ["completed", "pending", "delayed", "edited", "awaiting_validation"];
 const availableColors = [
   "bg-blue-500",
   "bg-purple-500",
@@ -48,16 +51,20 @@ export function SettingsDialog({
   onOpenChange,
   statusConfig,
   tags,
+  checklistStatusConfig,
   onUpdateStatusLabel,
+  onUpdateChecklistStatusLabel,
   onAddTag,
   onUpdateTag,
   onDeleteTag,
 }: SettingsDialogProps) {
   const [editingStatus, setEditingStatus] = useState<PostStatus | null>(null);
+  const [editingChecklistStatus, setEditingChecklistStatus] = useState<ChecklistItemStatus | null>(null);
   const [editingTag, setEditingTag] = useState<string | null>(null);
   const [newTagLabel, setNewTagLabel] = useState("");
   const [newTagColor, setNewTagColor] = useState("bg-blue-500");
   const [tempStatusLabel, setTempStatusLabel] = useState("");
+  const [tempChecklistStatusLabel, setTempChecklistStatusLabel] = useState("");
   const [tempTagLabel, setTempTagLabel] = useState("");
 
   const handleStartEditStatus = (status: PostStatus) => {
@@ -71,6 +78,19 @@ export function SettingsDialog({
     }
     setEditingStatus(null);
     setTempStatusLabel("");
+  };
+
+  const handleStartEditChecklistStatus = (status: ChecklistItemStatus) => {
+    setEditingChecklistStatus(status);
+    setTempChecklistStatusLabel(checklistStatusConfig[status].label);
+  };
+
+  const handleSaveChecklistStatus = () => {
+    if (editingChecklistStatus && tempChecklistStatusLabel.trim()) {
+      onUpdateChecklistStatusLabel(editingChecklistStatus, tempChecklistStatusLabel.trim());
+    }
+    setEditingChecklistStatus(null);
+    setTempChecklistStatusLabel("");
   };
 
   const handleStartEditTag = (tag: PostTag) => {
@@ -102,8 +122,9 @@ export function SettingsDialog({
         </DialogHeader>
 
         <Tabs defaultValue="status" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="status">Status</TabsTrigger>
+            <TabsTrigger value="checklist">Checklist</TabsTrigger>
             <TabsTrigger value="tags">Etiquetas</TabsTrigger>
           </TabsList>
 
@@ -151,6 +172,51 @@ export function SettingsDialog({
                   )}
                 </div>
               ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="checklist" className="space-y-4 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Edite os nomes dos status de checklist
+            </p>
+            <div className="space-y-2">
+              {checklistStatusKeys.map(status => {
+                const config = checklistStatusConfig[status];
+                return (
+                  <div
+                    key={status}
+                    className="flex items-center gap-2 p-2 rounded-lg border border-border/50"
+                  >
+                    <span className={cn("w-3 h-3 rounded-full", config?.color)} />
+                    {editingChecklistStatus === status ? (
+                      <>
+                        <Input
+                          value={tempChecklistStatusLabel}
+                          onChange={(e) => setTempChecklistStatusLabel(e.target.value)}
+                          className="flex-1 h-8"
+                          autoFocus
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveChecklistStatus()}
+                        />
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={handleSaveChecklistStatus}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm">{config?.label}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleStartEditChecklistStatus(status)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </TabsContent>
 
