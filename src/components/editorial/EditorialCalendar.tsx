@@ -1,14 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { 
   ChevronLeft, 
   ChevronRight, 
   Plus,
-  Instagram,
-  Facebook,
-  Filter
+  Filter,
+  GripVertical
 } from "lucide-react";
 import { 
   format, 
@@ -33,52 +33,17 @@ import {
 } from "@/components/ui/select";
 import { PostDialog } from "./PostDialog";
 import { PostDetailSheet } from "./PostDetailSheet";
+import { PlatformIcon } from "./PlatformIcon";
+import { ThemeSettings } from "./ThemeSettings";
+import type { Post, Platform, PostStatus } from "@/types/editorial";
+import { platformConfig, statusConfig } from "@/types/editorial";
 
-export interface Post {
-  id: string;
-  title: string;
-  description?: string;
-  platform: "instagram" | "facebook";
-  status: "draft" | "scheduled" | "published" | "failed";
-  scheduled_date: Date;
-  scheduled_time: string;
-  content_type: "image" | "video" | "carousel" | "reels" | "story";
-  assigned_to?: string;
-  hashtags?: string[];
-  notes?: string;
-  engagement_likes?: number;
-  engagement_comments?: number;
-  engagement_shares?: number;
-  engagement_reach?: number;
-}
-
-const statusColors = {
-  draft: "bg-muted text-muted-foreground",
-  scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  published: "bg-green-500/20 text-green-400 border-green-500/30",
-  failed: "bg-red-500/20 text-red-400 border-red-500/30",
-};
-
-const statusLabels = {
-  draft: "Rascunho",
-  scheduled: "Agendado",
-  published: "Publicado",
-  failed: "Falhou",
-};
-
-const platformIcons = {
-  instagram: Instagram,
-  facebook: Facebook,
-};
-
-const platformColors = {
-  instagram: "text-pink-500",
-  facebook: "text-blue-500",
-};
+// Re-export Post type for backward compatibility
+export type { Post } from "@/types/editorial";
 
 interface EditorialCalendarProps {
   posts: Post[];
-  onAddPost: (post: Partial<Post>) => void;
+  onAddPost: (post: Partial<Post>) => Post;
   onUpdatePost: (postId: string, post: Partial<Post>) => void;
   onDeletePost: (postId: string) => void;
 }
@@ -90,6 +55,9 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [activePlatformTab, setActivePlatformTab] = useState<string>("all");
+  const [draggedPost, setDraggedPost] = useState<Post | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -100,25 +68,35 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
 
   const filteredPosts = useMemo(() => {
     return posts.filter(post => {
+      if (activePlatformTab !== "all" && post.platform !== activePlatformTab) return false;
       if (platformFilter !== "all" && post.platform !== platformFilter) return false;
       if (statusFilter !== "all" && post.status !== statusFilter) return false;
       return true;
     });
-  }, [posts, platformFilter, statusFilter]);
+  }, [posts, platformFilter, statusFilter, activePlatformTab]);
 
-  const getPostsForDay = (day: Date) => {
+  const getPostsForDay = useCallback((day: Date) => {
     return filteredPosts.filter(post => isSameDay(post.scheduled_date, day));
-  };
+  }, [filteredPosts]);
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
-  const handlePostClick = (post: Post) => {
+  const handlePostClick = (post: Post, e: React.MouseEvent) => {
+    e.stopPropagation();
     setSelectedPost(post);
     setIsDetailSheetOpen(true);
   };
 
+  const handleDayClick = (day: Date) => {
+    if (!isSameMonth(day, currentDate)) return;
+    setSelectedDate(day);
+    setSelectedPost({ scheduled_date: day } as Post);
+    setIsPostDialogOpen(true);
+  };
+
   const handleNewPost = (date?: Date) => {
+    setSelectedDate(date || null);
     setSelectedPost(date ? { scheduled_date: date } as Post : null);
     setIsPostDialogOpen(true);
   };
@@ -131,12 +109,37 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
     }
     setIsPostDialogOpen(false);
     setSelectedPost(null);
+    setSelectedDate(null);
   };
 
   const handleDeletePost = (postId: string) => {
     onDeletePost(postId);
     setIsDetailSheetOpen(false);
     setSelectedPost(null);
+  };
+
+  // Drag and Drop handlers
+  const handleDragStart = (e: React.DragEvent, post: Post) => {
+    setDraggedPost(post);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", post.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetDate: Date) => {
+    e.preventDefault();
+    if (draggedPost && !isSameDay(draggedPost.scheduled_date, targetDate)) {
+      onUpdatePost(draggedPost.id, { scheduled_date: targetDate });
+    }
+    setDraggedPost(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPost(null);
   };
 
   // Calculate stats
@@ -154,6 +157,8 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
     };
   }, [posts, currentDate]);
 
+  const platforms: Platform[] = ["instagram", "tiktok", "facebook", "kwai", "youtube"];
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
@@ -167,7 +172,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         <Card className="bg-card/50 backdrop-blur border-border/50">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">Publicados</p>
-            <p className="text-2xl font-bold text-green-400">{stats.published}</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.published}</p>
           </CardContent>
         </Card>
         <Card className="bg-card/50 backdrop-blur border-border/50">
@@ -184,137 +189,155 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         </Card>
       </div>
 
-      {/* Calendar Card */}
-      <Card className="bg-card/50 backdrop-blur border-border/50">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <div className="flex items-center gap-4">
-            <CardTitle className="text-xl">Calendário Editorial</CardTitle>
+      {/* Platform Tabs */}
+      <Tabs value={activePlatformTab} onValueChange={setActivePlatformTab} className="w-full">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <TabsList className="bg-muted/50">
+            <TabsTrigger value="all" className="gap-2">
+              Todas
+            </TabsTrigger>
+            {platforms.map(platform => (
+              <TabsTrigger key={platform} value={platform} className="gap-2">
+                <PlatformIcon platform={platform} className="h-4 w-4" />
+                <span className="hidden sm:inline">{platformConfig[platform].label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <ThemeSettings />
+        </div>
+
+        {/* Calendar Card */}
+        <Card className="bg-card/50 backdrop-blur border-border/50 mt-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div className="flex items-center gap-4">
+              <CardTitle className="text-xl">Calendário Editorial</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" onClick={handlePrevMonth}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-lg font-medium min-w-[180px] text-center capitalize">
+                  {format(currentDate, "MMMM yyyy", { locale: ptBR })}
+                </span>
+                <Button variant="ghost" size="icon" onClick={handleNextMonth}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={handlePrevMonth}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-lg font-medium min-w-[180px] text-center capitalize">
-                {format(currentDate, "MMMM yyyy", { locale: ptBR })}
-              </span>
-              <Button variant="ghost" size="icon" onClick={handleNextMonth}>
-                <ChevronRight className="h-4 w-4" />
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="draft">Rascunho</SelectItem>
+                  <SelectItem value="scheduled">Agendado</SelectItem>
+                  <SelectItem value="published">Publicado</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => handleNewPost()} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Nova Atividade
               </Button>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <Select value={platformFilter} onValueChange={setPlatformFilter}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Plataforma" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="instagram">Instagram</SelectItem>
-                <SelectItem value="facebook">Facebook</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="draft">Rascunho</SelectItem>
-                <SelectItem value="scheduled">Agendado</SelectItem>
-                <SelectItem value="published">Publicado</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={() => handleNewPost()} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Novo Post
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Day names header */}
-          <div className="grid grid-cols-7 gap-1 mb-2">
-            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(day => (
-              <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
-                {day}
-              </div>
-            ))}
-          </div>
+          </CardHeader>
+          <CardContent>
+            {/* Day names header */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(day => (
+                <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
 
-          {/* Calendar grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {days.map((day, idx) => {
-              const dayPosts = getPostsForDay(day);
-              const isCurrentMonth = isSameMonth(day, currentDate);
-              const isToday = isSameDay(day, new Date(2026, 0, 8)); // Mock "today"
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day, idx) => {
+                const dayPosts = getPostsForDay(day);
+                const isCurrentMonth = isSameMonth(day, currentDate);
+                const isToday = isSameDay(day, new Date(2026, 0, 8));
 
-              return (
-                <div
-                  key={idx}
-                  className={cn(
-                    "min-h-[120px] p-2 rounded-lg border border-border/30 transition-colors",
-                    isCurrentMonth ? "bg-background/50" : "bg-muted/20 opacity-50",
-                    isToday && "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={cn(
-                      "text-sm font-medium",
-                      isToday && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center"
-                    )}>
-                      {format(day, "d")}
-                    </span>
-                    {isCurrentMonth && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-5 w-5 opacity-0 hover:opacity-100 transition-opacity"
-                        onClick={() => handleNewPost(day)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => handleDayClick(day)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, day)}
+                    className={cn(
+                      "min-h-[120px] p-2 rounded-lg border border-border/30 transition-colors cursor-pointer",
+                      isCurrentMonth ? "bg-background/50 hover:bg-muted/50" : "bg-muted/20 opacity-50",
+                      isToday && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+                      draggedPost && isCurrentMonth && "hover:bg-primary/10"
                     )}
-                  </div>
-                  <div className="space-y-1">
-                    {dayPosts.slice(0, 3).map(post => {
-                      const PlatformIcon = platformIcons[post.platform];
-                      return (
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={cn(
+                        "text-sm font-medium",
+                        isToday && "bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center"
+                      )}>
+                        {format(day, "d")}
+                      </span>
+                      {isCurrentMonth && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-5 w-5 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNewPost(day);
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      {dayPosts.map(post => (
                         <div
                           key={post.id}
-                          onClick={() => handlePostClick(post)}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, post)}
+                          onDragEnd={handleDragEnd}
+                          onClick={(e) => handlePostClick(post, e)}
                           className={cn(
-                            "text-xs p-1.5 rounded cursor-pointer transition-all hover:scale-[1.02]",
-                            statusColors[post.status]
+                            "text-xs p-1.5 rounded cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] group/post",
+                            statusConfig[post.status].className
                           )}
                         >
                           <div className="flex items-center gap-1">
-                            <PlatformIcon className={cn("h-3 w-3", platformColors[post.platform])} />
+                            <GripVertical className="h-3 w-3 opacity-0 group-hover/post:opacity-50" />
+                            <PlatformIcon platform={post.platform} className="h-3 w-3" />
                             <span className="truncate flex-1">{post.title}</span>
                           </div>
+                          {post.tags && post.tags.length > 0 && (
+                            <div className="flex gap-0.5 mt-0.5 ml-4">
+                              {post.tags.slice(0, 2).map(tag => (
+                                <span key={tag.id} className={cn("w-2 h-2 rounded-full", tag.color)} />
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                    {dayPosts.length > 3 && (
-                      <div className="text-xs text-muted-foreground text-center">
-                        +{dayPosts.length - 3} mais
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30">
-            <span className="text-sm text-muted-foreground">Legenda:</span>
-            {Object.entries(statusLabels).map(([key, label]) => (
-              <Badge key={key} variant="outline" className={statusColors[key as keyof typeof statusColors]}>
-                {label}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            {/* Legend */}
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30 flex-wrap">
+              <span className="text-sm text-muted-foreground">Legenda:</span>
+              {Object.entries(statusConfig).map(([key, config]) => (
+                <Badge key={key} variant="outline" className={config.className}>
+                  {config.label}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </Tabs>
 
       {/* Dialogs */}
       <PostDialog
@@ -322,6 +345,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         onOpenChange={setIsPostDialogOpen}
         post={selectedPost}
         onSave={handleSavePost}
+        defaultPlatform={activePlatformTab !== "all" ? activePlatformTab as Platform : undefined}
       />
 
       <PostDetailSheet

@@ -25,78 +25,87 @@ import {
 } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Instagram, Facebook } from "lucide-react";
+import { CalendarIcon, X, Link as LinkIcon, FileIcon, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Post } from "./EditorialCalendar";
+import { PlatformIcon } from "./PlatformIcon";
+import type { Post, Platform, ContentType, PostTag, PostFile } from "@/types/editorial";
+import { platformConfig, contentTypeConfig, defaultTags } from "@/types/editorial";
 
 interface PostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   post: Post | null;
   onSave: (post: Partial<Post>) => void;
+  defaultPlatform?: Platform;
 }
 
-const contentTypes = [
-  { value: "image", label: "Imagem" },
-  { value: "video", label: "Vídeo" },
-  { value: "carousel", label: "Carrossel" },
-  { value: "reels", label: "Reels" },
-  { value: "story", label: "Story" },
-];
+interface FormData {
+  title: string;
+  description: string;
+  platform: Platform;
+  content_type: ContentType;
+  scheduled_date: Date;
+  scheduled_time: string;
+  assigned_to: string;
+  hashtags: string[];
+  notes: string;
+  links: string[];
+  tags: PostTag[];
+}
 
-export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps) {
-  const [formData, setFormData] = useState<{
-    title: string;
-    description: string;
-    platform: "instagram" | "facebook";
-    content_type: "image" | "video" | "carousel" | "reels" | "story";
-    scheduled_date: Date;
-    scheduled_time: string;
-    assigned_to: string;
-    hashtags: string[];
-    notes: string;
-  }>({
+export function PostDialog({ open, onOpenChange, post, onSave, defaultPlatform }: PostDialogProps) {
+  const [formData, setFormData] = useState<FormData>({
     title: "",
     description: "",
-    platform: "instagram",
+    platform: defaultPlatform || "instagram",
     content_type: "image",
     scheduled_date: new Date(),
     scheduled_time: "10:00",
     assigned_to: "",
     hashtags: [],
     notes: "",
+    links: [],
+    tags: [],
   });
 
   const [hashtagInput, setHashtagInput] = useState("");
+  const [linkInput, setLinkInput] = useState("");
+  const [availableTags, setAvailableTags] = useState<PostTag[]>(defaultTags);
+  const [newTagLabel, setNewTagLabel] = useState("");
 
   useEffect(() => {
     if (post) {
       setFormData({
         title: post.title || "",
         description: post.description || "",
-        platform: post.platform || "instagram",
+        platform: post.platform || defaultPlatform || "instagram",
         content_type: post.content_type || "image",
         scheduled_date: post.scheduled_date || new Date(),
         scheduled_time: post.scheduled_time || "10:00",
         assigned_to: post.assigned_to || "",
         hashtags: post.hashtags || [],
         notes: post.notes || "",
+        links: post.links || [],
+        tags: post.tags || [],
       });
     } else {
       setFormData({
         title: "",
         description: "",
-        platform: "instagram",
+        platform: defaultPlatform || "instagram",
         content_type: "image",
         scheduled_date: new Date(),
         scheduled_time: "10:00",
         assigned_to: "",
         hashtags: [],
         notes: "",
+        links: [],
+        tags: [],
       });
     }
     setHashtagInput("");
-  }, [post, open]);
+    setLinkInput("");
+  }, [post, open, defaultPlatform]);
 
   const handleAddHashtag = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === ",") {
@@ -119,17 +128,71 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
     }));
   };
 
+  const handleAddLink = () => {
+    if (linkInput.trim()) {
+      setFormData(prev => ({
+        ...prev,
+        links: [...prev.links, linkInput.trim()],
+      }));
+      setLinkInput("");
+    }
+  };
+
+  const handleRemoveLink = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      links: prev.links.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleToggleTag = (tag: PostTag) => {
+    setFormData(prev => {
+      const exists = prev.tags.some(t => t.id === tag.id);
+      if (exists) {
+        return { ...prev, tags: prev.tags.filter(t => t.id !== tag.id) };
+      } else {
+        return { ...prev, tags: [...prev.tags, tag] };
+      }
+    });
+  };
+
+  const handleAddNewTag = () => {
+    if (newTagLabel.trim()) {
+      const colors = ["bg-blue-500", "bg-purple-500", "bg-pink-500", "bg-orange-500", "bg-green-500", "bg-yellow-500", "bg-red-500", "bg-cyan-500"];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      const newTag: PostTag = {
+        id: String(Date.now()),
+        label: newTagLabel.trim(),
+        color: randomColor,
+      };
+      setAvailableTags(prev => [...prev, newTag]);
+      setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag] }));
+      setNewTagLabel("");
+    }
+  };
+
+  const handleDeleteTag = (tagId: string) => {
+    setAvailableTags(prev => prev.filter(t => t.id !== tagId));
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.filter(t => t.id !== tagId),
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
   };
+
+  const platforms: Platform[] = ["instagram", "tiktok", "facebook", "kwai", "youtube"];
+  const contentTypes: ContentType[] = ["image", "video", "carousel", "reels", "story", "shorts", "live"];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {post?.id ? "Editar Post" : "Novo Post"}
+            {post?.id ? "Editar Atividade" : "Nova Atividade"}
           </DialogTitle>
         </DialogHeader>
 
@@ -141,7 +204,7 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
                 id="title"
                 value={formData.title}
                 onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Título do post"
+                placeholder="Título da atividade"
                 required
               />
             </div>
@@ -163,7 +226,7 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
               id="description"
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Descreva o conteúdo do post..."
+              placeholder="Descreva o conteúdo..."
               rows={3}
             />
           </div>
@@ -173,7 +236,7 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
               <Label>Plataforma</Label>
               <Select
                 value={formData.platform}
-                onValueChange={(value: "instagram" | "facebook") => 
+                onValueChange={(value: Platform) => 
                   setFormData(prev => ({ ...prev, platform: value }))
                 }
               >
@@ -181,18 +244,14 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="instagram">
-                    <div className="flex items-center gap-2">
-                      <Instagram className="h-4 w-4 text-pink-500" />
-                      Instagram
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="facebook">
-                    <div className="flex items-center gap-2">
-                      <Facebook className="h-4 w-4 text-blue-500" />
-                      Facebook
-                    </div>
-                  </SelectItem>
+                  {platforms.map(platform => (
+                    <SelectItem key={platform} value={platform}>
+                      <div className="flex items-center gap-2">
+                        <PlatformIcon platform={platform} className="h-4 w-4" />
+                        {platformConfig[platform].label}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -201,7 +260,7 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
               <Label>Tipo de Conteúdo</Label>
               <Select
                 value={formData.content_type}
-                onValueChange={(value: "image" | "video" | "carousel" | "reels" | "story") => 
+                onValueChange={(value: ContentType) => 
                   setFormData(prev => ({ ...prev, content_type: value }))
                 }
               >
@@ -210,8 +269,8 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
                 </SelectTrigger>
                 <SelectContent>
                   {contentTypes.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                    <SelectItem key={type} value={type}>
+                      {contentTypeConfig[type]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -262,6 +321,87 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
             </div>
           </div>
 
+          {/* Tags Section */}
+          <div className="space-y-2">
+            <Label>Etiquetas</Label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {availableTags.map(tag => {
+                const isSelected = formData.tags.some(t => t.id === tag.id);
+                return (
+                  <div key={tag.id} className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleTag(tag)}
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs text-white transition-all",
+                        tag.color,
+                        isSelected ? "ring-2 ring-offset-2 ring-primary" : "opacity-60 hover:opacity-100"
+                      )}
+                    >
+                      {tag.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTag(tag.id)}
+                      className="text-muted-foreground hover:text-destructive p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newTagLabel}
+                onChange={(e) => setNewTagLabel(e.target.value)}
+                placeholder="Nova etiqueta..."
+                className="flex-1"
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddNewTag())}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={handleAddNewTag}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Links Section */}
+          <div className="space-y-2">
+            <Label>Links</Label>
+            <div className="space-y-2 mb-2">
+              {formData.links.map((link, index) => (
+                <div key={index} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                  <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                  <a href={link} target="_blank" rel="noopener noreferrer" className="text-sm text-primary flex-1 truncate hover:underline">
+                    {link}
+                  </a>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => handleRemoveLink(index)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                placeholder="https://..."
+                className="flex-1"
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddLink())}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={handleAddLink}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Hashtags */}
           <div className="space-y-2">
             <Label htmlFor="hashtags">Hashtags</Label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -306,7 +446,7 @@ export function PostDialog({ open, onOpenChange, post, onSave }: PostDialogProps
               Cancelar
             </Button>
             <Button type="submit">
-              {post?.id ? "Salvar Alterações" : "Criar Post"}
+              {post?.id ? "Salvar Alterações" : "Criar Atividade"}
             </Button>
           </DialogFooter>
         </form>

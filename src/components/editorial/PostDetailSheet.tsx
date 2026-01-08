@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { 
-  Instagram, 
-  Facebook, 
   Calendar, 
   Clock, 
   User, 
@@ -21,12 +19,16 @@ import {
   Share2,
   Pencil,
   Trash2,
-  TrendingUp
+  TrendingUp,
+  Link as LinkIcon,
+  ExternalLink
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import type { Post } from "./EditorialCalendar";
+import { PlatformIcon } from "./PlatformIcon";
+import type { Post } from "@/types/editorial";
+import { statusConfig, contentTypeConfig, platformConfig } from "@/types/editorial";
 
 interface PostDetailSheetProps {
   open: boolean;
@@ -36,42 +38,9 @@ interface PostDetailSheetProps {
   onDelete: (id: string) => void;
 }
 
-const statusColors = {
-  draft: "bg-muted text-muted-foreground",
-  scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  published: "bg-green-500/20 text-green-400 border-green-500/30",
-  failed: "bg-red-500/20 text-red-400 border-red-500/30",
-};
-
-const statusLabels = {
-  draft: "Rascunho",
-  scheduled: "Agendado",
-  published: "Publicado",
-  failed: "Falhou",
-};
-
-const contentTypeLabels: Record<string, string> = {
-  image: "Imagem",
-  video: "Vídeo",
-  carousel: "Carrossel",
-  reels: "Reels",
-  story: "Story",
-};
-
-const platformIcons = {
-  instagram: Instagram,
-  facebook: Facebook,
-};
-
-const platformColors = {
-  instagram: "text-pink-500",
-  facebook: "text-blue-500",
-};
-
 export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: PostDetailSheetProps) {
   if (!post) return null;
 
-  const PlatformIcon = platformIcons[post.platform];
   const hasEngagement = post.engagement_likes || post.engagement_comments || post.engagement_shares || post.engagement_reach;
 
   const engagementRate = hasEngagement && post.engagement_reach
@@ -83,21 +52,38 @@ export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: 
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <div className="flex items-center gap-2">
-            <PlatformIcon className={cn("h-5 w-5", platformColors[post.platform])} />
+            <PlatformIcon platform={post.platform} className="h-5 w-5" />
             <SheetTitle className="text-left">{post.title}</SheetTitle>
           </div>
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* Status and Type */}
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={statusColors[post.status]}>
-              {statusLabels[post.status]}
+          {/* Status, Type and Platform */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className={statusConfig[post.status].className}>
+              {statusConfig[post.status].label}
             </Badge>
             <Badge variant="secondary">
-              {contentTypeLabels[post.content_type] || post.content_type}
+              {contentTypeConfig[post.content_type] || post.content_type}
+            </Badge>
+            <Badge variant="outline" className={platformConfig[post.platform].bgColor}>
+              {platformConfig[post.platform].label}
             </Badge>
           </div>
+
+          {/* Tags */}
+          {post.tags && post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {post.tags.map(tag => (
+                <span
+                  key={tag.id}
+                  className={cn("px-2 py-1 rounded-full text-xs text-white", tag.color)}
+                >
+                  {tag.label}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Description */}
           {post.description && (
@@ -139,6 +125,30 @@ export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: 
             </div>
           )}
 
+          {/* Links */}
+          {post.links && post.links.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Links</span>
+              </div>
+              <div className="space-y-1">
+                {post.links.map((link, index) => (
+                  <a
+                    key={index}
+                    href={link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg text-sm text-primary hover:bg-muted transition-colors"
+                  >
+                    <span className="truncate flex-1">{link}</span>
+                    <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Hashtags */}
           {post.hashtags && post.hashtags.length > 0 && (
             <div className="space-y-2">
@@ -156,6 +166,14 @@ export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: 
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Notes */}
+          {post.notes && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-muted-foreground">Observações</h4>
+              <p className="text-sm p-3 bg-muted/50 rounded-lg">{post.notes}</p>
             </div>
           )}
 
@@ -234,7 +252,7 @@ export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: 
           </Button>
           <Button onClick={onEdit} className="gap-2 flex-1">
             <Pencil className="h-4 w-4" />
-            Editar Post
+            Editar Atividade
           </Button>
         </SheetFooter>
       </SheetContent>
