@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import type { Post } from "@/components/editorial/EditorialCalendar";
+import type { Post, Platform } from "@/types/editorial";
 
 // Mock data for demonstration
 const initialMockPosts: Post[] = [
@@ -14,6 +14,7 @@ const initialMockPosts: Post[] = [
     content_type: "carousel",
     assigned_to: "Maria Silva",
     hashtags: ["novacoleção", "verão2026", "sustentável"],
+    tags: [{ id: "1", label: "Post", color: "bg-blue-500" }],
     engagement_likes: 1250,
     engagement_comments: 89,
     engagement_shares: 45,
@@ -23,13 +24,14 @@ const initialMockPosts: Post[] = [
     id: "2",
     title: "Dicas de Styling",
     description: "Vídeo com 5 formas de usar a peça coringa",
-    platform: "instagram",
+    platform: "tiktok",
     status: "scheduled",
     scheduled_date: new Date(2026, 0, 8),
     scheduled_time: "18:00",
-    content_type: "reels",
+    content_type: "video",
     assigned_to: "João Costa",
     hashtags: ["styling", "moda", "dicas"],
+    tags: [{ id: "3", label: "Reels", color: "bg-pink-500" }],
   },
   {
     id: "3",
@@ -52,6 +54,7 @@ const initialMockPosts: Post[] = [
     scheduled_time: "09:00",
     content_type: "image",
     assigned_to: "Maria Silva",
+    tags: [{ id: "4", label: "Campanha", color: "bg-orange-500" }],
     engagement_likes: 890,
     engagement_comments: 120,
     engagement_shares: 234,
@@ -61,22 +64,22 @@ const initialMockPosts: Post[] = [
     id: "5",
     title: "Live de Lançamento",
     description: "Live com influencer parceira para lançamento",
-    platform: "instagram",
+    platform: "youtube",
     status: "scheduled",
     scheduled_date: new Date(2026, 0, 15),
     scheduled_time: "20:00",
-    content_type: "video",
+    content_type: "live",
     assigned_to: "João Costa",
   },
   {
     id: "6",
     title: "Depoimento Cliente",
     description: "Post com depoimento de cliente satisfeita",
-    platform: "facebook",
+    platform: "kwai",
     status: "draft",
     scheduled_date: new Date(2026, 0, 12),
     scheduled_time: "11:00",
-    content_type: "image",
+    content_type: "video",
     assigned_to: "Ana Oliveira",
   },
 ];
@@ -97,6 +100,8 @@ export function useEditorialPosts() {
       assigned_to: postData.assigned_to,
       hashtags: postData.hashtags,
       notes: postData.notes,
+      links: postData.links,
+      tags: postData.tags,
     };
     setPosts(prev => [...prev, newPost]);
     return newPost;
