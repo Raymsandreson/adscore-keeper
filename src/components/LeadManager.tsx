@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Plus, 
   Users, 
@@ -30,13 +31,17 @@ import {
   Loader2,
   Facebook,
   Upload,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar,
+  PlayCircle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
+import { format, differenceInDays } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface LeadManagerProps {
   adAccountId?: string;
@@ -68,6 +73,8 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     lead_email: '',
     campaign_id: '',
     campaign_name: '',
+    ad_name: '',
+    ad_start_date: '',
     notes: '',
     ad_spend_at_conversion: 0,
   });
@@ -255,6 +262,8 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       lead_email: '',
       campaign_id: '',
       campaign_name: '',
+      ad_name: '',
+      ad_start_date: '',
       notes: '',
       ad_spend_at_conversion: 0,
     });
@@ -499,6 +508,25 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                       </Select>
                     </div>
                     <div>
+                      <Label>Nome do Anúncio</Label>
+                      <Input
+                        placeholder="Ex: Campanha Verão 2024 - Carrossel"
+                        value={newLead.ad_name}
+                        onChange={(e) => setNewLead({ ...newLead, ad_name: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>Data de Início do Anúncio</Label>
+                      <Input
+                        type="date"
+                        value={newLead.ad_start_date}
+                        onChange={(e) => setNewLead({ ...newLead, ad_start_date: e.target.value })}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Quando o anúncio começou a rodar
+                      </p>
+                    </div>
+                    <div>
                       <Label>Gasto em Ads (estimado)</Label>
                       <Input
                         type="number"
@@ -633,10 +661,12 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                       <TableRow>
                         <TableHead>Lead</TableHead>
                         <TableHead>Contato</TableHead>
-                        <TableHead>Campanha</TableHead>
+                        <TableHead>Campanha / Anúncio</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Valor</TableHead>
-                        <TableHead>Data</TableHead>
+                        <TableHead>Data / Horário</TableHead>
+                        <TableHead>Dia da Semana</TableHead>
+                        <TableHead>Anúncio Ativo</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -668,7 +698,14 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="text-xs">{lead.campaign_name || '—'}</span>
+                            <div className="space-y-1">
+                              <span className="text-xs">{lead.campaign_name || '—'}</span>
+                              {lead.ad_name && (
+                                <div className="text-xs text-muted-foreground">
+                                  📢 {lead.ad_name}
+                                </div>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Select
@@ -707,9 +744,53 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                             )}
                           </TableCell>
                           <TableCell>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(lead.created_at).toLocaleDateString('pt-BR')}
-                            </span>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="space-y-1">
+                                    <div className="text-xs font-medium">
+                                      {format(new Date(lead.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {format(new Date(lead.created_at), 'HH:mm', { locale: ptBR })}
+                                    </div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Lead chegou em {format(new Date(lead.created_at), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {format(new Date(lead.created_at), 'EEEE', { locale: ptBR })}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {lead.ad_start_date ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="space-y-1">
+                                      <div className="text-xs flex items-center gap-1">
+                                        <PlayCircle className="h-3 w-3 text-green-500" />
+                                        {format(new Date(lead.ad_start_date), 'dd/MM/yyyy', { locale: ptBR })}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {differenceInDays(new Date(lead.created_at), new Date(lead.ad_start_date))} dias ativo
+                                      </div>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Anúncio iniciou em {format(new Date(lead.ad_start_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button

@@ -86,7 +86,9 @@ export type Database = {
       leads: {
         Row: {
           ad_account_id: string | null
+          ad_name: string | null
           ad_spend_at_conversion: number | null
+          ad_start_date: string | null
           adset_id: string | null
           adset_name: string | null
           campaign_id: string | null
@@ -111,7 +113,9 @@ export type Database = {
         }
         Insert: {
           ad_account_id?: string | null
+          ad_name?: string | null
           ad_spend_at_conversion?: number | null
+          ad_start_date?: string | null
           adset_id?: string | null
           adset_name?: string | null
           campaign_id?: string | null
@@ -136,7 +140,9 @@ export type Database = {
         }
         Update: {
           ad_account_id?: string | null
+          ad_name?: string | null
           ad_spend_at_conversion?: number | null
+          ad_start_date?: string | null
           adset_id?: string | null
           adset_name?: string | null
           campaign_id?: string | null
