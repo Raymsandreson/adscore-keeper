@@ -60,15 +60,19 @@ export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: 
         <div className="mt-6 space-y-6">
           {/* Status, Type and Platform */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className={statusConfig[post.status].className}>
-              {statusConfig[post.status].label}
-            </Badge>
+            {statusConfig[post.status] && (
+              <Badge variant="outline" className={statusConfig[post.status].className}>
+                {statusConfig[post.status].label}
+              </Badge>
+            )}
             <Badge variant="secondary">
               {contentTypeConfig[post.content_type] || post.content_type}
             </Badge>
-            <Badge variant="outline" className={platformConfig[post.platform].bgColor}>
-              {platformConfig[post.platform].label}
-            </Badge>
+            {platformConfig[post.platform] && (
+              <Badge variant="outline" className={platformConfig[post.platform].bgColor}>
+                {platformConfig[post.platform].label}
+              </Badge>
+            )}
           </div>
 
           {/* Tags */}
