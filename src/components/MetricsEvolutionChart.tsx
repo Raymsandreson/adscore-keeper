@@ -300,48 +300,79 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
     };
   }, [compareEnabled, data, aggregatedData]);
 
-  // Create merged data for side-by-side comparison charts
-  const mergedComparisonData = useMemo(() => {
-    if (!comparisonData) return null;
+  // Create side-by-side comparison chart data
+  const sideBySidePerformanceData = useMemo(() => {
+    if (!comparisonData) return [];
 
-    const metrics = ['CPC', 'CTR', 'CPM', 'Gasto', 'Impressões', 'Cliques', 'Conversões', 'Taxa Conv.'];
-    const currentValues = [
-      comparisonData.currentTotals.cpc,
-      comparisonData.currentTotals.ctr,
-      comparisonData.currentTotals.cpm,
-      comparisonData.currentTotals.spend,
-      comparisonData.currentTotals.impressions,
-      comparisonData.currentTotals.clicks,
-      comparisonData.currentTotals.conversions,
-      comparisonData.currentTotals.conversionRate,
+    return [
+      {
+        metric: 'CPC',
+        atual: Number(comparisonData.currentTotals.cpc.toFixed(2)),
+        anterior: Number(comparisonData.prevTotals.cpc.toFixed(2)),
+        change: comparisonData.changes.cpc,
+        type: 'currency',
+        inverted: true,
+      },
+      {
+        metric: 'CTR',
+        atual: Number(comparisonData.currentTotals.ctr.toFixed(2)),
+        anterior: Number(comparisonData.prevTotals.ctr.toFixed(2)),
+        change: comparisonData.changes.ctr,
+        type: 'percent',
+        inverted: false,
+      },
+      {
+        metric: 'CPM',
+        atual: Number(comparisonData.currentTotals.cpm.toFixed(2)),
+        anterior: Number(comparisonData.prevTotals.cpm.toFixed(2)),
+        change: comparisonData.changes.cpm,
+        type: 'currency',
+        inverted: true,
+      },
+      {
+        metric: 'Taxa Conv.',
+        atual: Number(comparisonData.currentTotals.conversionRate.toFixed(2)),
+        anterior: Number(comparisonData.prevTotals.conversionRate.toFixed(2)),
+        change: comparisonData.changes.conversionRate,
+        type: 'percent',
+        inverted: false,
+      },
     ];
-    const prevValues = [
-      comparisonData.prevTotals.cpc,
-      comparisonData.prevTotals.ctr,
-      comparisonData.prevTotals.cpm,
-      comparisonData.prevTotals.spend,
-      comparisonData.prevTotals.impressions,
-      comparisonData.prevTotals.clicks,
-      comparisonData.prevTotals.conversions,
-      comparisonData.prevTotals.conversionRate,
-    ];
-    const changes = [
-      comparisonData.changes.cpc,
-      comparisonData.changes.ctr,
-      comparisonData.changes.cpm,
-      comparisonData.changes.spend,
-      comparisonData.changes.impressions,
-      comparisonData.changes.clicks,
-      comparisonData.changes.conversions,
-      comparisonData.changes.conversionRate,
-    ];
+  }, [comparisonData]);
 
-    return metrics.map((metric, i) => ({
-      metric,
-      current: currentValues[i],
-      previous: prevValues[i],
-      change: changes[i],
-    }));
+  const sideBySideVolumeData = useMemo(() => {
+    if (!comparisonData) return [];
+
+    return [
+      {
+        metric: 'Gasto',
+        atual: Number(comparisonData.currentTotals.spend.toFixed(2)),
+        anterior: Number(comparisonData.prevTotals.spend.toFixed(2)),
+        change: comparisonData.changes.spend,
+        type: 'currency',
+      },
+      {
+        metric: 'Impressões',
+        atual: comparisonData.currentTotals.impressions,
+        anterior: comparisonData.prevTotals.impressions,
+        change: comparisonData.changes.impressions,
+        type: 'number',
+      },
+      {
+        metric: 'Cliques',
+        atual: comparisonData.currentTotals.clicks,
+        anterior: comparisonData.prevTotals.clicks,
+        change: comparisonData.changes.clicks,
+        type: 'number',
+      },
+      {
+        metric: 'Conversões',
+        atual: comparisonData.currentTotals.conversions,
+        anterior: comparisonData.prevTotals.conversions,
+        change: comparisonData.changes.conversions,
+        type: 'number',
+      },
+    ];
   }, [comparisonData]);
 
   const handlePeriodChange = (value: string) => {
@@ -521,47 +552,165 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
       </CardHeader>
       
       <CardContent>
-        {/* Comparison Summary Cards */}
+        {/* Side-by-Side Comparison Charts */}
         {compareEnabled && comparisonData && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <div className="bg-muted/50 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">CPC</span>
-                <ChangeIndicator change={comparisonData.changes.cpc} inverted />
+          <div className="space-y-6 mb-6">
+            {/* Side-by-Side Bar Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Performance Metrics Chart */}
+              <div className="bg-muted/30 rounded-lg p-4">
+                <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-primary" />
+                  Performance - Atual vs Anterior
+                </h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={sideBySidePerformanceData} layout="vertical" barGap={4}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={true} vertical={false} />
+                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis 
+                      type="category" 
+                      dataKey="metric" 
+                      width={80} 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip 
+                      formatter={(value: number, name: string, props: any) => {
+                        const item = props.payload;
+                        if (item.type === 'currency') return formatCurrency(value);
+                        if (item.type === 'percent') return formatPercent(value);
+                        return formatNumber(value);
+                      }}
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--popover))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar 
+                      dataKey="atual" 
+                      name="Período Atual" 
+                      fill="#3b82f6"
+                      radius={[0, 4, 4, 0]}
+                      barSize={16}
+                    />
+                    <Bar 
+                      dataKey="anterior" 
+                      name="Período Anterior" 
+                      fill="#64748b"
+                      radius={[0, 4, 4, 0]}
+                      barSize={16}
+                      opacity={0.7}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.cpc)}</span>
-                <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.cpc)}</span>
+
+              {/* Volume Metrics Chart */}
+              <div className="bg-muted/30 rounded-lg p-4">
+                <h4 className="text-sm font-medium mb-4 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  Volume - Atual vs Anterior
+                </h4>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={sideBySideVolumeData} layout="vertical" barGap={4}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={true} vertical={false} />
+                    <XAxis 
+                      type="number" 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      tickFormatter={(value) => {
+                        if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                        if (value >= 1000) return `${(value / 1000).toFixed(0)}k`;
+                        return value.toString();
+                      }}
+                    />
+                    <YAxis 
+                      type="category" 
+                      dataKey="metric" 
+                      width={80} 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip 
+                      formatter={(value: number, name: string, props: any) => {
+                        const item = props.payload;
+                        if (item.type === 'currency') return formatCurrency(value);
+                        return formatNumber(value);
+                      }}
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--popover))', 
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Bar 
+                      dataKey="atual" 
+                      name="Período Atual" 
+                      fill="#10b981"
+                      radius={[0, 4, 4, 0]}
+                      barSize={16}
+                    />
+                    <Bar 
+                      dataKey="anterior" 
+                      name="Período Anterior" 
+                      fill="#64748b"
+                      radius={[0, 4, 4, 0]}
+                      barSize={16}
+                      opacity={0.7}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="bg-muted/50 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">CTR</span>
-                <ChangeIndicator change={comparisonData.changes.ctr} />
+
+            {/* Comparison Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">CPC</span>
+                  <ChangeIndicator change={comparisonData.changes.cpc} inverted />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.cpc)}</span>
+                  <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.cpc)}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{formatPercent(comparisonData.currentTotals.ctr)}</span>
-                <span className="text-xs text-muted-foreground">vs {formatPercent(comparisonData.prevTotals.ctr)}</span>
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">CTR</span>
+                  <ChangeIndicator change={comparisonData.changes.ctr} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{formatPercent(comparisonData.currentTotals.ctr)}</span>
+                  <span className="text-xs text-muted-foreground">vs {formatPercent(comparisonData.prevTotals.ctr)}</span>
+                </div>
               </div>
-            </div>
-            <div className="bg-muted/50 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">Conversões</span>
-                <ChangeIndicator change={comparisonData.changes.conversions} />
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">Conversões</span>
+                  <ChangeIndicator change={comparisonData.changes.conversions} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{formatNumber(comparisonData.currentTotals.conversions)}</span>
+                  <span className="text-xs text-muted-foreground">vs {formatNumber(comparisonData.prevTotals.conversions)}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{formatNumber(comparisonData.currentTotals.conversions)}</span>
-                <span className="text-xs text-muted-foreground">vs {formatNumber(comparisonData.prevTotals.conversions)}</span>
-              </div>
-            </div>
-            <div className="bg-muted/50 rounded-lg p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">Gasto</span>
-                <ChangeIndicator change={comparisonData.changes.spend} inverted />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.spend)}</span>
-                <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.spend)}</span>
+              <div className="bg-muted/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">Gasto</span>
+                  <ChangeIndicator change={comparisonData.changes.spend} inverted />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{formatCurrency(comparisonData.currentTotals.spend)}</span>
+                  <span className="text-xs text-muted-foreground">vs {formatCurrency(comparisonData.prevTotals.spend)}</span>
+                </div>
               </div>
             </div>
           </div>
