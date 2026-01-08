@@ -15,6 +15,8 @@ export interface Lead {
   adset_name: string | null;
   creative_id: string | null;
   creative_name: string | null;
+  ad_name: string | null;
+  ad_start_date: string | null;
   lead_name: string | null;
   lead_phone: string | null;
   lead_email: string | null;
