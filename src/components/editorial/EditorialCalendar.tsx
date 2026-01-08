@@ -34,7 +34,7 @@ import {
 import { PostDialog } from "./PostDialog";
 import { PostDetailSheet } from "./PostDetailSheet";
 import { PlatformIcon } from "./PlatformIcon";
-import { ThemeSettings } from "./ThemeSettings";
+
 import type { Post, Platform, PostStatus } from "@/types/editorial";
 import { platformConfig, statusConfig } from "@/types/editorial";
 
@@ -203,7 +203,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
               </TabsTrigger>
             ))}
           </TabsList>
-          <ThemeSettings />
+          
         </div>
 
         {/* Calendar Card */}
