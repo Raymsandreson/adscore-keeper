@@ -63,7 +63,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
-  const { statusConfig, tags, updateStatusLabel, addTag, updateTag, deleteTag } = useEditorialSettings();
+  const { statusConfig, tags, checklistStatusConfig, updateStatusLabel, updateChecklistStatusLabel, addTag, updateTag, deleteTag } = useEditorialSettings();
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -356,6 +356,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         onSave={handleSavePost}
         defaultPlatform={activePlatformTab !== "all" ? activePlatformTab as Platform : undefined}
         availableTags={tags}
+        checklistStatusConfig={checklistStatusConfig}
         onAddTag={addTag}
         onUpdateTag={updateTag}
         onDeleteTag={deleteTag}
@@ -378,7 +379,9 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         onOpenChange={setIsSettingsOpen}
         statusConfig={statusConfig}
         tags={tags}
+        checklistStatusConfig={checklistStatusConfig}
         onUpdateStatusLabel={updateStatusLabel}
+        onUpdateChecklistStatusLabel={updateChecklistStatusLabel}
         onAddTag={addTag}
         onUpdateTag={updateTag}
         onDeleteTag={deleteTag}

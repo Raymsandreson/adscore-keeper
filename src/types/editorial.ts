@@ -1,6 +1,7 @@
 export type Platform = "instagram" | "tiktok" | "facebook" | "kwai" | "youtube";
 export type PostStatus = "draft" | "scheduled" | "published" | "failed";
 export type ContentType = "image" | "video" | "carousel" | "reels" | "story" | "shorts" | "live";
+export type ChecklistItemStatus = "completed" | "pending" | "delayed" | "edited" | "awaiting_validation";
 
 export interface PostTag {
   id: string;
@@ -13,6 +14,18 @@ export interface PostFile {
   name: string;
   url: string;
   type: "image" | "video" | "document";
+}
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  status: ChecklistItemStatus;
+  completed_at?: Date;
+}
+
+export interface ChecklistStatusConfig {
+  label: string;
+  color: string;
 }
 
 export interface Post {
@@ -30,11 +43,20 @@ export interface Post {
   links?: string[];
   files?: PostFile[];
   tags?: PostTag[];
+  checklist?: ChecklistItem[];
   engagement_likes?: number;
   engagement_comments?: number;
   engagement_shares?: number;
   engagement_reach?: number;
 }
+
+export const defaultChecklistStatusConfig: Record<ChecklistItemStatus, ChecklistStatusConfig> = {
+  completed: { label: "Concluído", color: "bg-green-500" },
+  pending: { label: "Pendente", color: "bg-yellow-500" },
+  delayed: { label: "Atrasado", color: "bg-red-500" },
+  edited: { label: "Editado", color: "bg-blue-500" },
+  awaiting_validation: { label: "Aguardando Validação", color: "bg-purple-500" },
+};
 
 export const platformConfig: Record<Platform, { label: string; color: string; bgColor: string }> = {
   instagram: { label: "Instagram", color: "text-pink-500", bgColor: "bg-pink-500/20" },

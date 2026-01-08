@@ -23,13 +23,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, X, Link as LinkIcon, FileIcon, Plus, Trash2 } from "lucide-react";
+import { CalendarIcon, X, Link as LinkIcon, FileIcon, Plus, Trash2, ChevronDown, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "./PlatformIcon";
-import type { Post, Platform, ContentType, PostTag, PostFile } from "@/types/editorial";
-import { platformConfig, contentTypeConfig, defaultTags } from "@/types/editorial";
+import { PostChecklist } from "./PostChecklist";
+import type { Post, Platform, ContentType, PostTag, PostFile, ChecklistItem, ChecklistItemStatus, ChecklistStatusConfig } from "@/types/editorial";
+import { platformConfig, contentTypeConfig, defaultTags, defaultChecklistStatusConfig } from "@/types/editorial";
 
 interface PostDialogProps {
   open: boolean;
@@ -38,6 +40,7 @@ interface PostDialogProps {
   onSave: (post: Partial<Post>) => void;
   defaultPlatform?: Platform;
   availableTags?: PostTag[];
+  checklistStatusConfig?: Record<ChecklistItemStatus, ChecklistStatusConfig>;
   onAddTag?: (label: string, color: string) => PostTag;
   onUpdateTag?: (id: string, updates: Partial<PostTag>) => void;
   onDeleteTag?: (id: string) => void;
@@ -55,6 +58,7 @@ interface FormData {
   notes: string;
   links: string[];
   tags: PostTag[];
+  checklist: ChecklistItem[];
 }
 
 export function PostDialog({ 
@@ -64,6 +68,7 @@ export function PostDialog({
   onSave, 
   defaultPlatform,
   availableTags: externalTags,
+  checklistStatusConfig = defaultChecklistStatusConfig,
   onAddTag: externalAddTag,
   onUpdateTag: externalUpdateTag,
   onDeleteTag: externalDeleteTag,
@@ -80,12 +85,14 @@ export function PostDialog({
     notes: "",
     links: [],
     tags: [],
+    checklist: [],
   });
 
   const [hashtagInput, setHashtagInput] = useState("");
   const [linkInput, setLinkInput] = useState("");
   const [localTags, setLocalTags] = useState<PostTag[]>(defaultTags);
   const [newTagLabel, setNewTagLabel] = useState("");
+  const [isChecklistOpen, setIsChecklistOpen] = useState(true);
 
   // Use external tags if provided, otherwise use local state
   const availableTags = externalTags || localTags;
@@ -105,6 +112,7 @@ export function PostDialog({
         notes: post.notes || "",
         links: post.links || [],
         tags: post.tags || [],
+        checklist: post.checklist || [],
       });
     } else {
       setFormData({
@@ -119,6 +127,7 @@ export function PostDialog({
         notes: "",
         links: [],
         tags: [],
+        checklist: [],
       });
     }
     setHashtagInput("");
@@ -457,6 +466,35 @@ export function PostDialog({
               placeholder="Digite e pressione Enter para adicionar"
             />
           </div>
+
+          {/* Checklist Section */}
+          <Collapsible open={isChecklistOpen} onOpenChange={setIsChecklistOpen}>
+            <CollapsibleTrigger asChild>
+              <Button 
+                variant="ghost" 
+                type="button"
+                className="w-full flex items-center justify-between p-2 h-auto"
+              >
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  <Label className="cursor-pointer">Checklist de Atividades</Label>
+                  {formData.checklist.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({formData.checklist.filter(i => i.status === "completed").length}/{formData.checklist.length})
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", isChecklistOpen && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <PostChecklist
+                checklist={formData.checklist}
+                onChange={(checklist) => setFormData(prev => ({ ...prev, checklist }))}
+                checklistStatusConfig={checklistStatusConfig}
+              />
+            </CollapsibleContent>
+          </Collapsible>
 
           <div className="space-y-2">
             <Label htmlFor="notes">Observações</Label>
