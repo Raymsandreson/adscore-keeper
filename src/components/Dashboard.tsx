@@ -18,7 +18,7 @@ import { PlacementMetrics } from "./PlacementMetrics";
 import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -98,6 +98,13 @@ const Dashboard = () => {
               <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
                 Central de Leads
+              </Button>
+            </Link>
+            
+            <Link to="/editorial">
+              <Button variant="outline" size="sm">
+                <CalendarDays className="h-4 w-4 mr-2" />
+                Calendário Editorial
               </Button>
             </Link>
             
