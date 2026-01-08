@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -15,18 +14,15 @@ import {
 } from "recharts";
 import { 
   TrendingUp, 
-  TrendingDown, 
-  Instagram, 
-  Facebook,
   Zap,
   ArrowUpRight,
   ArrowDownRight,
   Equal
 } from "lucide-react";
 import { format, subDays, isSameDay } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import type { Post } from "./EditorialCalendar";
+import type { Post, Platform } from "@/types/editorial";
+import { PlatformIcon } from "./PlatformIcon";
 
 interface CorrelationData {
   date: string;
@@ -37,7 +33,7 @@ interface CorrelationData {
   organicReach: number;
   hasPost: boolean;
   postTitle?: string;
-  postPlatform?: "instagram" | "facebook";
+  postPlatform?: Platform;
 }
 
 interface OrganicPaidCorrelationProps {
@@ -138,13 +134,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return (
     <div className="bg-popover border border-border rounded-lg p-3 shadow-lg">
       <p className="font-medium text-sm mb-2">{label}</p>
-      {data.hasPost && (
+      {data.hasPost && data.postPlatform && (
         <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border">
-          {data.postPlatform === "instagram" ? (
-            <Instagram className="h-4 w-4 text-pink-500" />
-          ) : (
-            <Facebook className="h-4 w-4 text-blue-500" />
-          )}
+          <PlatformIcon platform={data.postPlatform} className="h-4 w-4" />
           <span className="text-xs text-primary">{data.postTitle}</span>
         </div>
       )}
