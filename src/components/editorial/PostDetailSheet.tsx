@@ -27,8 +27,13 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { PlatformIcon } from "./PlatformIcon";
-import type { Post } from "@/types/editorial";
-import { statusConfig, contentTypeConfig, platformConfig } from "@/types/editorial";
+import type { Post, PostStatus } from "@/types/editorial";
+import { statusConfig as defaultStatusConfig, contentTypeConfig, platformConfig } from "@/types/editorial";
+
+interface StatusConfig {
+  label: string;
+  className: string;
+}
 
 interface PostDetailSheetProps {
   open: boolean;
@@ -36,9 +41,20 @@ interface PostDetailSheetProps {
   post: Post | null;
   onEdit: () => void;
   onDelete: (id: string) => void;
+  statusConfig?: Record<PostStatus, StatusConfig>;
 }
 
-export function PostDetailSheet({ open, onOpenChange, post, onEdit, onDelete }: PostDetailSheetProps) {
+export function PostDetailSheet({ 
+  open, 
+  onOpenChange, 
+  post, 
+  onEdit, 
+  onDelete,
+  statusConfig: externalStatusConfig 
+}: PostDetailSheetProps) {
+  if (!post) return null;
+
+  const statusConfig = externalStatusConfig || defaultStatusConfig;
   if (!post) return null;
 
   const hasEngagement = post.engagement_likes || post.engagement_comments || post.engagement_shares || post.engagement_reach;

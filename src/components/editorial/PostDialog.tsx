@@ -37,6 +37,10 @@ interface PostDialogProps {
   post: Post | null;
   onSave: (post: Partial<Post>) => void;
   defaultPlatform?: Platform;
+  availableTags?: PostTag[];
+  onAddTag?: (label: string, color: string) => PostTag;
+  onUpdateTag?: (id: string, updates: Partial<PostTag>) => void;
+  onDeleteTag?: (id: string) => void;
 }
 
 interface FormData {
@@ -53,7 +57,17 @@ interface FormData {
   tags: PostTag[];
 }
 
-export function PostDialog({ open, onOpenChange, post, onSave, defaultPlatform }: PostDialogProps) {
+export function PostDialog({ 
+  open, 
+  onOpenChange, 
+  post, 
+  onSave, 
+  defaultPlatform,
+  availableTags: externalTags,
+  onAddTag: externalAddTag,
+  onUpdateTag: externalUpdateTag,
+  onDeleteTag: externalDeleteTag,
+}: PostDialogProps) {
   const [formData, setFormData] = useState<FormData>({
     title: "",
     description: "",
@@ -70,8 +84,12 @@ export function PostDialog({ open, onOpenChange, post, onSave, defaultPlatform }
 
   const [hashtagInput, setHashtagInput] = useState("");
   const [linkInput, setLinkInput] = useState("");
-  const [availableTags, setAvailableTags] = useState<PostTag[]>(defaultTags);
+  const [localTags, setLocalTags] = useState<PostTag[]>(defaultTags);
   const [newTagLabel, setNewTagLabel] = useState("");
+
+  // Use external tags if provided, otherwise use local state
+  const availableTags = externalTags || localTags;
+  const setAvailableTags = externalTags ? undefined : setLocalTags;
 
   useEffect(() => {
     if (post) {
@@ -160,19 +178,29 @@ export function PostDialog({ open, onOpenChange, post, onSave, defaultPlatform }
     if (newTagLabel.trim()) {
       const colors = ["bg-blue-500", "bg-purple-500", "bg-pink-500", "bg-orange-500", "bg-green-500", "bg-yellow-500", "bg-red-500", "bg-cyan-500"];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      const newTag: PostTag = {
-        id: String(Date.now()),
-        label: newTagLabel.trim(),
-        color: randomColor,
-      };
-      setAvailableTags(prev => [...prev, newTag]);
-      setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag] }));
+      
+      if (externalAddTag) {
+        const newTag = externalAddTag(newTagLabel.trim(), randomColor);
+        setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag] }));
+      } else {
+        const newTag: PostTag = {
+          id: String(Date.now()),
+          label: newTagLabel.trim(),
+          color: randomColor,
+        };
+        setLocalTags(prev => [...prev, newTag]);
+        setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag] }));
+      }
       setNewTagLabel("");
     }
   };
 
   const handleDeleteTag = (tagId: string) => {
-    setAvailableTags(prev => prev.filter(t => t.id !== tagId));
+    if (externalDeleteTag) {
+      externalDeleteTag(tagId);
+    } else {
+      setLocalTags(prev => prev.filter(t => t.id !== tagId));
+    }
     setFormData(prev => ({
       ...prev,
       tags: prev.tags.filter(t => t.id !== tagId),

@@ -8,7 +8,8 @@ import {
   ChevronRight, 
   Plus,
   Filter,
-  GripVertical
+  GripVertical,
+  Settings
 } from "lucide-react";
 import { 
   format, 
@@ -34,9 +35,11 @@ import {
 import { PostDialog } from "./PostDialog";
 import { PostDetailSheet } from "./PostDetailSheet";
 import { PlatformIcon } from "./PlatformIcon";
+import { SettingsDialog } from "./SettingsDialog";
+import { useEditorialSettings } from "@/hooks/useEditorialSettings";
 
-import type { Post, Platform, PostStatus } from "@/types/editorial";
-import { platformConfig, statusConfig } from "@/types/editorial";
+import type { Post, Platform, PostStatus, PostTag } from "@/types/editorial";
+import { platformConfig } from "@/types/editorial";
 
 // Re-export Post type for backward compatibility
 export type { Post } from "@/types/editorial";
@@ -53,11 +56,14 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activePlatformTab, setActivePlatformTab] = useState<string>("all");
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  
+  const { statusConfig, tags, updateStatusLabel, addTag, updateTag, deleteTag } = useEditorialSettings();
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -240,6 +246,9 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                 <Plus className="h-4 w-4" />
                 Nova Atividade
               </Button>
+              <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)}>
+                <Settings className="h-4 w-4" />
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -303,7 +312,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                           onClick={(e) => handlePostClick(post, e)}
                           className={cn(
                             "text-xs p-1.5 rounded cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] group/post",
-                            statusConfig[post.status].className
+                            statusConfig[post.status]?.className
                           )}
                         >
                           <div className="flex items-center gap-1">
@@ -330,8 +339,8 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
             <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30 flex-wrap">
               <span className="text-sm text-muted-foreground">Legenda:</span>
               {Object.entries(statusConfig).map(([key, config]) => (
-                <Badge key={key} variant="outline" className={config.className}>
-                  {config.label}
+                <Badge key={key} variant="outline" className={config?.className}>
+                  {config?.label}
                 </Badge>
               ))}
             </div>
@@ -346,17 +355,33 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
         post={selectedPost}
         onSave={handleSavePost}
         defaultPlatform={activePlatformTab !== "all" ? activePlatformTab as Platform : undefined}
+        availableTags={tags}
+        onAddTag={addTag}
+        onUpdateTag={updateTag}
+        onDeleteTag={deleteTag}
       />
 
       <PostDetailSheet
         open={isDetailSheetOpen}
         onOpenChange={setIsDetailSheetOpen}
         post={selectedPost}
+        statusConfig={statusConfig}
         onEdit={() => {
           setIsDetailSheetOpen(false);
           setIsPostDialogOpen(true);
         }}
         onDelete={handleDeletePost}
+      />
+
+      <SettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        statusConfig={statusConfig}
+        tags={tags}
+        onUpdateStatusLabel={updateStatusLabel}
+        onAddTag={addTag}
+        onUpdateTag={updateTag}
+        onDeleteTag={deleteTag}
       />
     </div>
   );
