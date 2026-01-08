@@ -37,6 +37,11 @@ function KwaiIcon({ className }: { className?: string }) {
 
 export function PlatformIcon({ platform, className }: PlatformIconProps) {
   const config = platformConfig[platform];
+  
+  if (!config) {
+    return null;
+  }
+  
   const baseClassName = cn(config.color, className);
 
   switch (platform) {
