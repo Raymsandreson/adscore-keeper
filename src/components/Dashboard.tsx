@@ -13,7 +13,7 @@ import StrategyPanel from "./StrategyPanel";
 import ActionHistory from "./ActionHistory";
 import AlertSettings from "./AlertSettings";
 import PeriodComparison from "./PeriodComparison";
-import { MetricsChart } from "./MetricsChart";
+import { MetricsEvolutionChart } from "./MetricsEvolutionChart";
 import { PlacementMetrics } from "./PlacementMetrics";
 import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
@@ -320,7 +320,7 @@ const Dashboard = () => {
             )}
 
             {/* Metrics Evolution Chart - PRO ONLY */}
-            {proMode && <MetricsChart data={dailyData} isLoading={isLoading} />}
+            {proMode && <MetricsEvolutionChart data={dailyData} isLoading={isLoading} />}
 
             {/* Placement Metrics - PRO ONLY */}
             {proMode && <PlacementMetrics placementData={placementData} />}
