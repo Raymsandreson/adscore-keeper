@@ -52,86 +52,6 @@ export interface Post {
   engagement_reach?: number;
 }
 
-// Mock data for demonstration
-const mockPosts: Post[] = [
-  {
-    id: "1",
-    title: "Lançamento Nova Coleção",
-    description: "Post sobre a nova coleção de verão com foco em sustentabilidade",
-    platform: "instagram",
-    status: "published",
-    scheduled_date: new Date(2026, 0, 5),
-    scheduled_time: "10:00",
-    content_type: "carousel",
-    assigned_to: "Maria Silva",
-    hashtags: ["novacoleção", "verão2026", "sustentável"],
-    engagement_likes: 1250,
-    engagement_comments: 89,
-    engagement_shares: 45,
-    engagement_reach: 15000,
-  },
-  {
-    id: "2",
-    title: "Dicas de Styling",
-    description: "Vídeo com 5 formas de usar a peça coringa",
-    platform: "instagram",
-    status: "scheduled",
-    scheduled_date: new Date(2026, 0, 8),
-    scheduled_time: "18:00",
-    content_type: "reels",
-    assigned_to: "João Costa",
-    hashtags: ["styling", "moda", "dicas"],
-  },
-  {
-    id: "3",
-    title: "Bastidores da Produção",
-    description: "Story mostrando o processo de criação",
-    platform: "instagram",
-    status: "draft",
-    scheduled_date: new Date(2026, 0, 10),
-    scheduled_time: "14:00",
-    content_type: "story",
-    assigned_to: "Ana Oliveira",
-  },
-  {
-    id: "4",
-    title: "Promoção de Janeiro",
-    description: "Anúncio da promoção especial de janeiro",
-    platform: "facebook",
-    status: "published",
-    scheduled_date: new Date(2026, 0, 3),
-    scheduled_time: "09:00",
-    content_type: "image",
-    assigned_to: "Maria Silva",
-    engagement_likes: 890,
-    engagement_comments: 120,
-    engagement_shares: 234,
-    engagement_reach: 25000,
-  },
-  {
-    id: "5",
-    title: "Live de Lançamento",
-    description: "Live com influencer parceira para lançamento",
-    platform: "instagram",
-    status: "scheduled",
-    scheduled_date: new Date(2026, 0, 15),
-    scheduled_time: "20:00",
-    content_type: "video",
-    assigned_to: "João Costa",
-  },
-  {
-    id: "6",
-    title: "Depoimento Cliente",
-    description: "Post com depoimento de cliente satisfeita",
-    platform: "facebook",
-    status: "draft",
-    scheduled_date: new Date(2026, 0, 12),
-    scheduled_time: "11:00",
-    content_type: "image",
-    assigned_to: "Ana Oliveira",
-  },
-];
-
 const statusColors = {
   draft: "bg-muted text-muted-foreground",
   scheduled: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -156,14 +76,20 @@ const platformColors = {
   facebook: "text-blue-500",
 };
 
-export function EditorialCalendar() {
+interface EditorialCalendarProps {
+  posts: Post[];
+  onAddPost: (post: Partial<Post>) => void;
+  onUpdatePost: (postId: string, post: Partial<Post>) => void;
+  onDeletePost: (postId: string) => void;
+}
+
+export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost }: EditorialCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [posts, setPosts] = useState(mockPosts);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
@@ -199,21 +125,16 @@ export function EditorialCalendar() {
 
   const handleSavePost = (postData: Partial<Post>) => {
     if (selectedPost?.id) {
-      setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, ...postData } : p));
+      onUpdatePost(selectedPost.id, postData);
     } else {
-      const newPost = {
-        ...postData,
-        id: String(Date.now()),
-        status: "draft" as const,
-      } as Post;
-      setPosts(prev => [...prev, newPost]);
+      onAddPost(postData);
     }
     setIsPostDialogOpen(false);
     setSelectedPost(null);
   };
 
   const handleDeletePost = (postId: string) => {
-    setPosts(prev => prev.filter(p => p.id !== postId));
+    onDeletePost(postId);
     setIsDetailSheetOpen(false);
     setSelectedPost(null);
   };
