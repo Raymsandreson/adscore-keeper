@@ -220,15 +220,24 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error fetching organic insights:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check if it's a permissions error
+    const isPermissionError = errorMessage.includes('pages_read_engagement') || 
+                              errorMessage.includes('permission') ||
+                              errorMessage.includes('OAuthException');
     
     return new Response(
       JSON.stringify({
-        success: true,
+        success: false,
         simulated: true,
-        insights: generateSimulatedInsights(),
-        dailyData: generateSimulatedDailyData(),
-        error: error instanceof Error ? error.message : 'Unknown error',
-        message: 'Erro ao buscar dados reais. Exibindo dados simulados.'
+        insights: null,
+        dailyData: [],
+        error: errorMessage,
+        isPermissionError,
+        message: isPermissionError 
+          ? 'Token sem permissões necessárias. Verifique se o token tem: pages_read_engagement, read_insights, pages_show_list'
+          : 'Erro ao buscar dados reais.'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

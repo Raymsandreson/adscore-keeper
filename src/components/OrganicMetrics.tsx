@@ -61,10 +61,12 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const [error, setError] = useState<string | null>(null);
   const [isRealData, setIsRealData] = useState(false);
   const [platform, setPlatform] = useState<string>('');
+  const [isPermissionError, setIsPermissionError] = useState(false);
 
   const fetchOrganicInsights = async () => {
     setIsLoading(true);
     setError(null);
+    setIsPermissionError(false);
 
     try {
       console.log('🔄 Buscando insights orgânicos via edge function...');
@@ -80,7 +82,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
       console.log('📊 Dados recebidos:', data);
 
-      if (data.success) {
+      if (data.success && data.insights) {
         setInsights(data.insights);
         setDailyData(data.dailyData.map((d: any) => ({
           ...d,
@@ -92,6 +94,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         if (data.simulated && data.message) {
           console.warn('⚠️', data.message);
         }
+      } else {
+        // API returned error or no data
+        setInsights(null);
+        setIsRealData(false);
+        setIsPermissionError(data.isPermissionError || false);
+        setError(data.message || data.error || 'Erro ao buscar dados');
+        console.error('API Error:', data.error);
       }
       
     } catch (err) {
@@ -144,12 +153,38 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
   if (!insights) {
     return (
-      <Card className="border-border/50">
+      <Card className={isPermissionError ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30" : "border-border/50"}>
         <CardContent className="py-12 text-center">
-          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">
-            Conecte sua página do Facebook/Instagram para ver métricas orgânicas.
-          </p>
+          <AlertCircle className={`h-12 w-12 mx-auto mb-4 ${isPermissionError ? 'text-red-500' : 'text-muted-foreground'}`} />
+          {isPermissionError ? (
+            <>
+              <p className="text-lg font-medium text-red-800 dark:text-red-200 mb-2">
+                Token sem permissões necessárias
+              </p>
+              <p className="text-sm text-red-700 dark:text-red-300 max-w-md mx-auto">
+                O token de acesso do Facebook não tem as permissões necessárias para buscar insights da página. 
+                É necessário ter: <code className="bg-red-100 dark:bg-red-900 px-1 rounded">pages_read_engagement</code>,{' '}
+                <code className="bg-red-100 dark:bg-red-900 px-1 rounded">read_insights</code> e{' '}
+                <code className="bg-red-100 dark:bg-red-900 px-1 rounded">pages_show_list</code>.
+              </p>
+              <Button variant="outline" size="sm" onClick={fetchOrganicInsights} className="mt-4">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar Novamente
+              </Button>
+            </>
+          ) : error ? (
+            <>
+              <p className="text-muted-foreground mb-2">{error}</p>
+              <Button variant="outline" size="sm" onClick={fetchOrganicInsights} className="mt-2">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar Novamente
+              </Button>
+            </>
+          ) : (
+            <p className="text-muted-foreground">
+              Conecte sua página do Facebook/Instagram para ver métricas orgânicas.
+            </p>
+          )}
         </CardContent>
       </Card>
     );
