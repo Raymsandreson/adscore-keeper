@@ -13,7 +13,8 @@ import {
   TrendingDown,
   Eye,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import {
   ChartConfig,
@@ -22,6 +23,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface OrganicInsights {
   totalFollowers: number;
@@ -57,87 +59,44 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const [dailyData, setDailyData] = useState<DailyOrganicData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Gerar dados simulados para demonstração
-  const generateSimulatedData = () => {
-    const baseFollowers = Math.floor(Math.random() * 50000) + 10000;
-    const newFollowers = Math.floor(Math.random() * 500) + 50;
-    
-    const simulatedInsights: OrganicInsights = {
-      totalFollowers: baseFollowers,
-      newFollowers: newFollowers,
-      followerChange: ((newFollowers / baseFollowers) * 100),
-      reach: Math.floor(Math.random() * 100000) + 20000,
-      impressions: Math.floor(Math.random() * 200000) + 50000,
-      engagementRate: Math.random() * 5 + 1,
-      likes: Math.floor(Math.random() * 5000) + 500,
-      comments: Math.floor(Math.random() * 500) + 50,
-      shares: Math.floor(Math.random() * 200) + 20,
-      saves: Math.floor(Math.random() * 300) + 30,
-      profileViews: Math.floor(Math.random() * 2000) + 200,
-      websiteClicks: Math.floor(Math.random() * 500) + 50
-    };
-
-    const daily: DailyOrganicData[] = [];
-    let cumulativeFollowers = baseFollowers - newFollowers;
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dailyNew = Math.floor(Math.random() * 100) + 10;
-      cumulativeFollowers += dailyNew;
-      
-      daily.push({
-        date: date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' }),
-        followers: cumulativeFollowers,
-        newFollowers: dailyNew,
-        reach: Math.floor(Math.random() * 15000) + 3000,
-        engagement: Math.random() * 5 + 1
-      });
-    }
-
-    return { insights: simulatedInsights, daily };
-  };
+  const [isRealData, setIsRealData] = useState(false);
+  const [platform, setPlatform] = useState<string>('');
 
   const fetchOrganicInsights = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Se tiver pageId e accessToken, tenta buscar da API real
-      if (pageId && accessToken) {
-        const response = await fetch(
-          `https://graph.facebook.com/v18.0/${pageId}/insights?` +
-          `metric=page_fans,page_fan_adds,page_impressions,page_engaged_users,page_post_engagements&` +
-          `period=day&` +
-          `access_token=${accessToken}`
-        );
-        
-        const data = await response.json();
-        
-        if (data.error) {
-          console.warn('API error, using simulated data:', data.error);
-          const { insights, daily } = generateSimulatedData();
-          setInsights(insights);
-          setDailyData(daily);
-          return;
-        }
+      console.log('🔄 Buscando insights orgânicos via edge function...');
+      
+      const { data, error: fetchError } = await supabase.functions.invoke('fetch-organic-insights', {
+        body: { pageId, accessToken }
+      });
 
-        // Processar dados reais da API
-        // ... (processamento seria aqui)
+      if (fetchError) {
+        console.error('Edge function error:', fetchError);
+        throw new Error(fetchError.message);
       }
 
-      // Usar dados simulados para demonstração
-      const { insights, daily } = generateSimulatedData();
-      setInsights(insights);
-      setDailyData(daily);
+      console.log('📊 Dados recebidos:', data);
+
+      if (data.success) {
+        setInsights(data.insights);
+        setDailyData(data.dailyData.map((d: any) => ({
+          ...d,
+          date: new Date(d.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })
+        })));
+        setIsRealData(!data.simulated);
+        setPlatform(data.platform || 'facebook');
+        
+        if (data.simulated && data.message) {
+          console.warn('⚠️', data.message);
+        }
+      }
       
     } catch (err) {
       console.error('Error fetching organic insights:', err);
-      // Em caso de erro, usar dados simulados
-      const { insights, daily } = generateSimulatedData();
-      setInsights(insights);
-      setDailyData(daily);
+      setError(err instanceof Error ? err.message : 'Erro ao buscar dados');
     } finally {
       setIsLoading(false);
     }
@@ -385,8 +344,24 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         </CardContent>
       </Card>
 
-      {/* Nota informativa */}
-      {!pageId && (
+      {/* Status da conexão */}
+      {isRealData ? (
+        <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                  Dados Reais do {platform === 'facebook' ? 'Facebook' : 'Instagram'}
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                  Os dados exibidos são obtidos diretamente da API do Meta.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
         <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30">
           <CardContent className="py-4">
             <div className="flex items-start gap-3">
@@ -396,8 +371,10 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   Dados de Demonstração
                 </p>
                 <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                  Para ver dados reais, conecte sua página do Facebook/Instagram nas configurações.
-                  Você precisará de um token com permissão <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">pages_read_engagement</code>.
+                  Para ver dados reais, configure <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">FACEBOOK_PAGE_ID</code> e{' '}
+                  <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">FACEBOOK_CAPI_ACCESS_TOKEN</code> nas secrets do backend.
+                  O token precisa ter permissões <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">pages_read_engagement</code> e{' '}
+                  <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">read_insights</code>.
                 </p>
               </div>
             </div>
