@@ -18,6 +18,13 @@ interface OrganicInsights {
   saves: number;
   profileViews: number;
   websiteClicks: number;
+  // Stories metrics (Instagram only)
+  storiesViews: number;
+  storiesReplies: number;
+  storiesExits: number;
+  storiesReach: number;
+  // Video views
+  videoViews: number;
 }
 
 interface DailyOrganicData {
@@ -215,11 +222,11 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
       console.warn('Could not fetch daily Instagram data:', e);
     }
 
-    // Fetch media engagement
-    let likes = 0, comments = 0, shares = 0, saves = 0;
+    // Fetch media engagement (posts, reels, carousels)
+    let likes = 0, comments = 0, shares = 0, saves = 0, videoViews = 0;
     try {
       const mediaResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${igAccountId}/media?fields=like_count,comments_count,insights.metric(saved,shares)&limit=25&access_token=${accessToken}`
+        `https://graph.facebook.com/v18.0/${igAccountId}/media?fields=media_type,like_count,comments_count,insights.metric(saved,shares,video_views,plays)&limit=25&access_token=${accessToken}`
       );
       const mediaData = await mediaResponse.json();
 
@@ -231,12 +238,55 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
             for (const insight of media.insights.data) {
               if (insight.name === 'saved') saves += insight.values?.[0]?.value || 0;
               if (insight.name === 'shares') shares += insight.values?.[0]?.value || 0;
+              if (insight.name === 'video_views' || insight.name === 'plays') {
+                videoViews += insight.values?.[0]?.value || 0;
+              }
             }
           }
         }
       }
     } catch (e) {
       console.warn('Could not fetch media insights:', e);
+    }
+
+    // Fetch Stories metrics
+    let storiesViews = 0, storiesReplies = 0, storiesExits = 0, storiesReach = 0;
+    try {
+      // Get recent stories
+      const storiesResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${igAccountId}/stories?fields=id,media_type,timestamp&access_token=${accessToken}`
+      );
+      const storiesData = await storiesResponse.json();
+
+      if (storiesData.data && storiesData.data.length > 0) {
+        console.log(`Found ${storiesData.data.length} stories`);
+        
+        // Fetch insights for each story
+        for (const story of storiesData.data) {
+          try {
+            const storyInsightsResponse = await fetch(
+              `https://graph.facebook.com/v18.0/${story.id}/insights?metric=impressions,reach,replies,exits&access_token=${accessToken}`
+            );
+            const storyInsights = await storyInsightsResponse.json();
+
+            if (storyInsights.data) {
+              for (const metric of storyInsights.data) {
+                const value = metric.values?.[0]?.value || 0;
+                switch (metric.name) {
+                  case 'impressions': storiesViews += value; break;
+                  case 'reach': storiesReach += value; break;
+                  case 'replies': storiesReplies += value; break;
+                  case 'exits': storiesExits += value; break;
+                }
+              }
+            }
+          } catch (storyErr) {
+            console.warn('Could not fetch story insights for:', story.id, storyErr);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch stories:', e);
     }
 
     const engagementRate = totalFollowers > 0 ? ((likes + comments + saves + shares) / totalFollowers) * 100 : 0;
@@ -258,7 +308,12 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
         shares,
         saves,
         profileViews,
-        websiteClicks
+        websiteClicks,
+        storiesViews,
+        storiesReplies,
+        storiesExits,
+        storiesReach,
+        videoViews
       },
       dailyData: dailyData.length > 0 ? dailyData : generateSimulatedDailyData()
     };
@@ -404,7 +459,12 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
         shares,
         saves: 0,
         profileViews,
-        websiteClicks
+        websiteClicks,
+        storiesViews: 0,
+        storiesReplies: 0,
+        storiesExits: 0,
+        storiesReach: 0,
+        videoViews: 0
       },
       dailyData: dailyData.length > 0 ? dailyData : generateSimulatedDailyData()
     };
@@ -430,7 +490,12 @@ function generateSimulatedInsights(): OrganicInsights {
     shares: Math.floor(Math.random() * 20) + 2,
     saves: Math.floor(Math.random() * 30) + 3,
     profileViews: Math.floor(Math.random() * 200) + 20,
-    websiteClicks: Math.floor(Math.random() * 50) + 5
+    websiteClicks: Math.floor(Math.random() * 50) + 5,
+    storiesViews: Math.floor(Math.random() * 1000) + 100,
+    storiesReplies: Math.floor(Math.random() * 15) + 1,
+    storiesExits: Math.floor(Math.random() * 50) + 5,
+    storiesReach: Math.floor(Math.random() * 800) + 80,
+    videoViews: Math.floor(Math.random() * 2000) + 200
   };
 }
 

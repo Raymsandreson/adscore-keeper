@@ -16,7 +16,11 @@ import {
   AlertCircle,
   CheckCircle2,
   Instagram,
-  Facebook
+  Facebook,
+  Play,
+  Bookmark,
+  LogOut,
+  Reply
 } from "lucide-react";
 import {
   ChartConfig,
@@ -40,6 +44,13 @@ export interface OrganicInsights {
   saves: number;
   profileViews: number;
   websiteClicks: number;
+  // Stories metrics (Instagram only)
+  storiesViews: number;
+  storiesReplies: number;
+  storiesExits: number;
+  storiesReach: number;
+  // Video views
+  videoViews: number;
 }
 
 export interface DailyOrganicData {
@@ -355,7 +366,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             <CardTitle className="text-lg">Detalhes de Engajamento (7 dias)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
               <div className="text-center p-4 bg-muted/30 rounded-lg">
                 <Heart className="h-6 w-6 mx-auto mb-2 text-red-500" />
                 <p className="text-2xl font-bold">{insights.likes.toLocaleString('pt-BR')}</p>
@@ -376,11 +387,17 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               
               {isInstagram && (
                 <div className="text-center p-4 bg-muted/30 rounded-lg">
-                  <svg className="h-6 w-6 mx-auto mb-2 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                  </svg>
+                  <Bookmark className="h-6 w-6 mx-auto mb-2 text-purple-500" />
                   <p className="text-2xl font-bold">{insights.saves.toLocaleString('pt-BR')}</p>
                   <p className="text-xs text-muted-foreground">Salvos</p>
+                </div>
+              )}
+
+              {isInstagram && (
+                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <Play className="h-6 w-6 mx-auto mb-2 text-orange-500" />
+                  <p className="text-2xl font-bold">{insights.videoViews.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Visualizações de Vídeo</p>
                 </div>
               )}
               
@@ -402,6 +419,78 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             </div>
           </CardContent>
         </Card>
+
+        {/* Instagram Stories Metrics */}
+        {isInstagram && (insights.storiesViews > 0 || insights.storiesReach > 0 || insights.storiesReplies > 0) && (
+          <Card className="border-border/50 bg-gradient-to-br from-pink-500/5 to-purple-500/5">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 flex items-center justify-center">
+                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                  </svg>
+                </div>
+                Stories do Instagram
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <Eye className="h-6 w-6 mx-auto mb-2 text-pink-500" />
+                  <p className="text-2xl font-bold">{insights.storiesViews.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Visualizações</p>
+                </div>
+                
+                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <Users className="h-6 w-6 mx-auto mb-2 text-purple-500" />
+                  <p className="text-2xl font-bold">{insights.storiesReach.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Alcance</p>
+                </div>
+                
+                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <Reply className="h-6 w-6 mx-auto mb-2 text-blue-500" />
+                  <p className="text-2xl font-bold">{insights.storiesReplies.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Respostas</p>
+                </div>
+                
+                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <LogOut className="h-6 w-6 mx-auto mb-2 text-red-400" />
+                  <p className="text-2xl font-bold">{insights.storiesExits.toLocaleString('pt-BR')}</p>
+                  <p className="text-xs text-muted-foreground">Saídas</p>
+                </div>
+              </div>
+              
+              {insights.storiesViews > 0 && insights.storiesExits > 0 && (
+                <div className="mt-4 p-3 bg-muted/20 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Taxa de Retenção: </span>
+                    {((1 - (insights.storiesExits / insights.storiesViews)) * 100).toFixed(1)}% 
+                    dos espectadores assistiram até o final
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show placeholder if no stories data */}
+        {isInstagram && insights.storiesViews === 0 && insights.storiesReach === 0 && (
+          <Card className="border-border/50 border-dashed">
+            <CardContent className="py-8 text-center">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 flex items-center justify-center mx-auto mb-4 opacity-50">
+                <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+              </div>
+              <p className="text-muted-foreground text-sm">
+                Nenhum Story publicado recentemente ou sem dados disponíveis.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Stories expiram após 24h - métricas aparecem quando há stories ativos.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   };
