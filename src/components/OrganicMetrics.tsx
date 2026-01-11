@@ -409,6 +409,162 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const instagramData = platforms.find(p => p.platform === 'instagram');
   const facebookData = platforms.find(p => p.platform === 'facebook');
 
+  const renderComparisonCard = () => {
+    if (!instagramData || !facebookData) return null;
+
+    const compareMetrics = [
+      {
+        label: 'Seguidores',
+        icon: Users,
+        instagram: instagramData.insights.totalFollowers,
+        facebook: facebookData.insights.totalFollowers,
+        format: (v: number) => v.toLocaleString('pt-BR')
+      },
+      {
+        label: 'Novos (7d)',
+        icon: UserPlus,
+        instagram: instagramData.insights.newFollowers,
+        facebook: facebookData.insights.newFollowers,
+        format: (v: number) => `+${v.toLocaleString('pt-BR')}`,
+        colorClass: 'text-green-600'
+      },
+      {
+        label: 'Alcance',
+        icon: Eye,
+        instagram: instagramData.insights.reach,
+        facebook: facebookData.insights.reach,
+        format: (v: number) => v.toLocaleString('pt-BR')
+      },
+      {
+        label: 'Engajamento',
+        icon: Heart,
+        instagram: instagramData.insights.engagementRate,
+        facebook: facebookData.insights.engagementRate,
+        format: (v: number) => `${v.toFixed(2)}%`
+      },
+      {
+        label: 'Curtidas',
+        icon: Heart,
+        instagram: instagramData.insights.likes,
+        facebook: facebookData.insights.likes,
+        format: (v: number) => v.toLocaleString('pt-BR')
+      },
+      {
+        label: 'Comentários',
+        icon: MessageCircle,
+        instagram: instagramData.insights.comments,
+        facebook: facebookData.insights.comments,
+        format: (v: number) => v.toLocaleString('pt-BR')
+      }
+    ];
+
+    return (
+      <Card className="border-border/50 bg-gradient-to-br from-background to-muted/20">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Comparativo de Plataformas
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left py-3 px-2 text-sm font-medium text-muted-foreground">Métrica</th>
+                  <th className="text-center py-3 px-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <Instagram className="h-5 w-5 text-pink-500" />
+                      <span className="text-sm font-medium">Instagram</span>
+                    </div>
+                  </th>
+                  <th className="text-center py-3 px-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <Facebook className="h-5 w-5 text-blue-600" />
+                      <span className="text-sm font-medium">Facebook</span>
+                    </div>
+                  </th>
+                  <th className="text-center py-3 px-2 text-sm font-medium text-muted-foreground">Diferença</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compareMetrics.map((metric, index) => {
+                  const diff = metric.instagram - metric.facebook;
+                  const diffPercent = metric.facebook > 0 ? ((diff / metric.facebook) * 100) : 0;
+                  const IconComponent = metric.icon;
+                  
+                  return (
+                    <tr key={index} className="border-b border-border/30 last:border-0">
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <IconComponent className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{metric.label}</span>
+                        </div>
+                      </td>
+                      <td className={`text-center py-3 px-2 font-semibold ${metric.colorClass || ''}`}>
+                        {metric.format(metric.instagram)}
+                      </td>
+                      <td className={`text-center py-3 px-2 font-semibold ${metric.colorClass || ''}`}>
+                        {metric.format(metric.facebook)}
+                      </td>
+                      <td className="text-center py-3 px-2">
+                        {diff !== 0 && (
+                          <Badge 
+                            variant="secondary" 
+                            className={diff > 0 
+                              ? "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300" 
+                              : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                            }
+                          >
+                            {diff > 0 ? (
+                              <><Instagram className="h-3 w-3 mr-1" /> +{Math.abs(diffPercent).toFixed(0)}%</>
+                            ) : (
+                              <><Facebook className="h-3 w-3 mr-1" /> +{Math.abs(diffPercent).toFixed(0)}%</>
+                            )}
+                          </Badge>
+                        )}
+                        {diff === 0 && <span className="text-muted-foreground text-xs">Igual</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-4 mt-6">
+            <div className="p-4 rounded-lg bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-200/50 dark:border-pink-800/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Instagram className="h-5 w-5 text-pink-500" />
+                <span className="font-medium text-sm">{instagramData.accountName}</span>
+              </div>
+              <p className="text-2xl font-bold">{instagramData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-muted-foreground">seguidores</p>
+            </div>
+            <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-200/50 dark:border-blue-800/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Facebook className="h-5 w-5 text-blue-600" />
+                <span className="font-medium text-sm">{facebookData.accountName}</span>
+              </div>
+              <p className="text-2xl font-bold">{facebookData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-muted-foreground">seguidores</p>
+            </div>
+          </div>
+
+          {/* Total Combined */}
+          <div className="mt-4 p-4 rounded-lg bg-muted/30 text-center">
+            <p className="text-sm text-muted-foreground mb-1">Total Combinado</p>
+            <p className="text-3xl font-bold text-primary">
+              {(instagramData.insights.totalFollowers + facebookData.insights.totalFollowers).toLocaleString('pt-BR')}
+            </p>
+            <p className="text-xs text-muted-foreground">seguidores nas duas plataformas</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -422,6 +578,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           Atualizar
         </Button>
       </div>
+
+      {/* Comparison Card - Only show if both platforms available */}
+      {renderComparisonCard()}
 
       {/* Platform Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
