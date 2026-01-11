@@ -48,7 +48,7 @@ serve(async (req) => {
   }
 
   try {
-    const accessToken = Deno.env.get('FACEBOOK_CAPI_ACCESS_TOKEN');
+    const accessToken = Deno.env.get('FACEBOOK_PAGE_TOKEN');
     const pageId = Deno.env.get('FACEBOOK_PAGE_ID');
 
     if (!accessToken || !pageId) {
@@ -73,7 +73,7 @@ serve(async (req) => {
               dailyData: generateSimulatedDailyData()
             }
           ],
-          message: 'Dados simulados - Configure FACEBOOK_PAGE_ID e FACEBOOK_CAPI_ACCESS_TOKEN'
+          message: 'Dados simulados - Configure FACEBOOK_PAGE_ID e FACEBOOK_PAGE_TOKEN'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
