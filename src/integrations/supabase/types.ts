@@ -83,6 +83,207 @@ export type Database = {
         }
         Relationships: []
       }
+      engagement_daily_stats: {
+        Row: {
+          ad_account_id: string | null
+          comments_received: number | null
+          comments_sent: number | null
+          created_at: string
+          engagement_rate: number | null
+          id: string
+          impressions: number | null
+          likes_given: number | null
+          likes_received: number | null
+          new_followers: number | null
+          platform: string
+          reach: number | null
+          replies_sent: number | null
+          stat_date: string
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          comments_received?: number | null
+          comments_sent?: number | null
+          created_at?: string
+          engagement_rate?: number | null
+          id?: string
+          impressions?: number | null
+          likes_given?: number | null
+          likes_received?: number | null
+          new_followers?: number | null
+          platform?: string
+          reach?: number | null
+          replies_sent?: number | null
+          stat_date?: string
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          comments_received?: number | null
+          comments_sent?: number | null
+          created_at?: string
+          engagement_rate?: number | null
+          id?: string
+          impressions?: number | null
+          likes_given?: number | null
+          likes_received?: number | null
+          new_followers?: number | null
+          platform?: string
+          reach?: number | null
+          replies_sent?: number | null
+          stat_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_goals: {
+        Row: {
+          ad_account_id: string | null
+          created_at: string
+          current_value: number | null
+          end_date: string | null
+          goal_type: string
+          id: string
+          is_active: boolean | null
+          period: string
+          platform: string
+          start_date: string
+          target_value: number
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          created_at?: string
+          current_value?: number | null
+          end_date?: string | null
+          goal_type: string
+          id?: string
+          is_active?: boolean | null
+          period?: string
+          platform?: string
+          start_date?: string
+          target_value: number
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          created_at?: string
+          current_value?: number | null
+          end_date?: string | null
+          goal_type?: string
+          id?: string
+          is_active?: boolean | null
+          period?: string
+          platform?: string
+          start_date?: string
+          target_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      instagram_auto_replies: {
+        Row: {
+          ad_account_id: string | null
+          created_at: string
+          delay_seconds: number | null
+          id: string
+          is_active: boolean | null
+          last_reply_at: string | null
+          max_replies_per_hour: number | null
+          name: string
+          platform: string
+          replies_count: number | null
+          reply_templates: string[]
+          trigger_keywords: string[] | null
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          created_at?: string
+          delay_seconds?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_reply_at?: string | null
+          max_replies_per_hour?: number | null
+          name: string
+          platform?: string
+          replies_count?: number | null
+          reply_templates: string[]
+          trigger_keywords?: string[] | null
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          created_at?: string
+          delay_seconds?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_reply_at?: string | null
+          max_replies_per_hour?: number | null
+          name?: string
+          platform?: string
+          replies_count?: number | null
+          reply_templates?: string[]
+          trigger_keywords?: string[] | null
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      instagram_comments: {
+        Row: {
+          ad_account_id: string | null
+          author_id: string | null
+          author_username: string | null
+          comment_id: string | null
+          comment_text: string | null
+          comment_type: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          parent_comment_id: string | null
+          platform: string
+          post_id: string | null
+          post_url: string | null
+          replied_at: string | null
+        }
+        Insert: {
+          ad_account_id?: string | null
+          author_id?: string | null
+          author_username?: string | null
+          comment_id?: string | null
+          comment_text?: string | null
+          comment_type: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          parent_comment_id?: string | null
+          platform?: string
+          post_id?: string | null
+          post_url?: string | null
+          replied_at?: string | null
+        }
+        Update: {
+          ad_account_id?: string | null
+          author_id?: string | null
+          author_username?: string | null
+          comment_id?: string | null
+          comment_text?: string | null
+          comment_type?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          parent_comment_id?: string | null
+          platform?: string
+          post_id?: string | null
+          post_url?: string | null
+          replied_at?: string | null
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           ad_account_id: string | null

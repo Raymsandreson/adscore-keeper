@@ -18,7 +18,8 @@ import { PlacementMetrics } from "./PlacementMetrics";
 import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays } from "lucide-react";
+import InstagramAutomation from "./instagram/InstagramAutomation";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -231,7 +232,7 @@ const Dashboard = () => {
 
         {/* Tabs: Tráfego Pago / Público Orgânico / Metas */}
         <Tabs defaultValue="paid" className="w-full">
-          <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3">
+          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4">
             <TabsTrigger value="paid" className="gap-2">
               <Megaphone className="h-4 w-4" />
               Tráfego Pago
@@ -239,6 +240,10 @@ const Dashboard = () => {
             <TabsTrigger value="organic" className="gap-2">
               <Heart className="h-4 w-4" />
               Orgânico
+            </TabsTrigger>
+            <TabsTrigger value="automation" className="gap-2">
+              <Bot className="h-4 w-4" />
+              Automação
             </TabsTrigger>
             <TabsTrigger value="goals" className="gap-2">
               <Flag className="h-4 w-4" />
@@ -361,6 +366,11 @@ const Dashboard = () => {
           {/* Tab: Público Orgânico */}
           <TabsContent value="organic" className="mt-6">
             <OrganicMetrics isConnected={isConnected} />
+          </TabsContent>
+
+          {/* Tab: Automação Instagram */}
+          <TabsContent value="automation" className="mt-6">
+            <InstagramAutomation isConnected={isConnected} />
           </TabsContent>
 
           {/* Tab: Metas e Prazos */}
