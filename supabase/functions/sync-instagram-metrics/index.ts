@@ -64,11 +64,19 @@ serve(async (req) => {
 
     // Use global META_ACCESS_TOKEN if account doesn't have its own token
     const accessToken = account.access_token === 'USE_GLOBAL_TOKEN' 
-      ? Deno.env.get('META_ACCESS_TOKEN')! 
+      ? Deno.env.get('META_ACCESS_TOKEN') 
       : account.access_token;
+    
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({ error: 'No access token available. Configure META_ACCESS_TOKEN.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     const instagramId = account.instagram_id;
 
-    // Fetch user info
+    // Fetch user info using the Instagram Business Account ID
     const userResponse = await fetch(
       `https://graph.facebook.com/v18.0/${instagramId}?fields=id,username,followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`
     );

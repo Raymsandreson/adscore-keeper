@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { 
   Dialog,
@@ -43,6 +41,17 @@ interface InstagramAccount {
   created_at: string;
 }
 
+interface AvailableAccount {
+  page_id: string;
+  page_name: string;
+  instagram_id: string;
+  username: string;
+  profile_picture_url: string;
+  followers_count: number;
+  follows_count: number;
+  media_count: number;
+}
+
 interface AccountMetrics {
   followers: number;
   reach: number;
@@ -53,13 +62,12 @@ interface AccountMetrics {
 
 export const InstagramAccountsManager = () => {
   const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
+  const [availableAccounts, setAvailableAccounts] = useState<AvailableAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newAccount, setNewAccount] = useState({
-    username: '',
-  });
-  const [addingAccount, setAddingAccount] = useState(false);
+  const [addingAccount, setAddingAccount] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAccounts();
@@ -86,29 +94,59 @@ export const InstagramAccountsManager = () => {
     setLoading(false);
   };
 
-  const addAccount = async () => {
-    if (!newAccount.username) {
-      toast.error('Preencha o usuário do Instagram');
-      return;
+  const fetchAvailableAccounts = async () => {
+    setLoadingAvailable(true);
+    try {
+      const response = await supabase.functions.invoke('list-instagram-accounts');
+      
+      if (response.error) {
+        console.error('Error fetching available accounts:', response.error);
+        toast.error('Erro ao buscar contas', { 
+          description: 'Verifique se o META_ACCESS_TOKEN está configurado corretamente.' 
+        });
+      } else if (response.data?.accounts) {
+        // Filter out accounts that are already connected
+        const connectedIds = accounts.map(a => a.instagram_id);
+        const available = response.data.accounts.filter(
+          (a: AvailableAccount) => !connectedIds.includes(a.instagram_id)
+        );
+        setAvailableAccounts(available);
+        
+        if (available.length === 0 && response.data.accounts.length > 0) {
+          toast.info('Todas as contas já estão conectadas');
+        } else if (response.data.accounts.length === 0) {
+          toast.warning('Nenhuma conta encontrada', {
+            description: 'Certifique-se de que o token Meta tem acesso a páginas com Instagram Business.'
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      toast.error('Erro ao buscar contas disponíveis');
     }
+    setLoadingAvailable(false);
+  };
 
-    const username = newAccount.username.replace('@', '').trim();
-    
-    if (!username) {
-      toast.error('Usuário inválido');
-      return;
-    }
+  const openDialog = () => {
+    setDialogOpen(true);
+    fetchAvailableAccounts();
+  };
 
-    setAddingAccount(true);
+  const addAccount = async (availableAccount: AvailableAccount) => {
+    setAddingAccount(availableAccount.instagram_id);
 
     try {
       const { data, error } = await supabase
         .from('instagram_accounts' as any)
         .insert({
-          account_name: `@${username}`,
-          instagram_id: username,
+          account_name: `@${availableAccount.username}`,
+          instagram_id: availableAccount.instagram_id,
           access_token: 'USE_GLOBAL_TOKEN',
           is_active: true,
+          followers_count: availableAccount.followers_count,
+          following_count: availableAccount.follows_count,
+          media_count: availableAccount.media_count,
+          profile_picture_url: availableAccount.profile_picture_url,
         })
         .select()
         .single();
@@ -117,16 +155,18 @@ export const InstagramAccountsManager = () => {
         toast.error('Erro ao adicionar conta', { description: error.message });
       } else {
         const newAccountData = data as unknown as InstagramAccount;
-        toast.success('Conta adicionada com sucesso!');
+        toast.success(`@${availableAccount.username} conectado com sucesso!`);
         setAccounts([newAccountData, ...accounts]);
-        setNewAccount({ username: '' });
-        setDialogOpen(false);
+        setAvailableAccounts(availableAccounts.filter(a => a.instagram_id !== availableAccount.instagram_id));
+        
+        // Sync the account immediately
+        syncAccount(newAccountData.id);
       }
     } catch (err: any) {
       toast.error('Erro ao adicionar conta', { description: err.message });
     }
 
-    setAddingAccount(false);
+    setAddingAccount(null);
   };
 
   const deleteAccount = async (id: string) => {
@@ -156,9 +196,13 @@ export const InstagramAccountsManager = () => {
       });
 
       if (response.error) {
-        console.log('Sync error (API may not be configured):', response.error);
-        toast.info('Sincronização manual', { 
-          description: 'API não configurada. Atualize as métricas manualmente.' 
+        console.log('Sync error:', response.error);
+        toast.error('Erro na sincronização', { 
+          description: response.error.message || 'Verifique o token de acesso.' 
+        });
+      } else if (response.data?.error) {
+        toast.error('Erro na sincronização', { 
+          description: response.data.error 
         });
       } else {
         toast.success('Métricas sincronizadas!');
@@ -167,7 +211,7 @@ export const InstagramAccountsManager = () => {
       fetchAccounts();
     } catch (error: any) {
       console.log('Sync error:', error);
-      toast.info('Sincronização manual necessária');
+      toast.error('Erro na sincronização');
     }
 
     setSyncing(null);
@@ -179,13 +223,12 @@ export const InstagramAccountsManager = () => {
     }
   };
 
-  // Mock metrics for display (in production these would come from the database)
-  const getMockMetrics = (account: InstagramAccount): AccountMetrics => ({
-    followers: account.followers_count || Math.floor(Math.random() * 10000) + 1000,
-    reach: Math.floor(Math.random() * 50000) + 5000,
-    impressions: Math.floor(Math.random() * 100000) + 10000,
-    engagement_rate: parseFloat((Math.random() * 8 + 2).toFixed(2)),
-    profile_views: Math.floor(Math.random() * 5000) + 500,
+  const getMetrics = (account: InstagramAccount): AccountMetrics => ({
+    followers: account.followers_count || 0,
+    reach: 0, // Will be populated from instagram_metrics table
+    impressions: 0,
+    engagement_rate: 0,
+    profile_views: 0,
   });
 
   return (
@@ -198,7 +241,7 @@ export const InstagramAccountsManager = () => {
             Contas do Instagram
           </h3>
           <p className="text-sm text-muted-foreground">
-            Gerencie e acompanhe as métricas das suas contas do Instagram
+            Conecte suas contas do Instagram Business para acompanhar métricas
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -210,40 +253,80 @@ export const InstagramAccountsManager = () => {
           )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="gap-2">
+              <Button size="sm" className="gap-2" onClick={openDialog}>
                 <Plus className="h-4 w-4" />
-                Adicionar Conta
+                Conectar Conta
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Conectar Conta do Instagram</DialogTitle>
                 <DialogDescription>
-                  Digite o usuário do Instagram para conectar.
+                  Selecione uma conta do Instagram Business conectada ao seu Meta Business
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Usuário do Instagram</Label>
-                  <Input
-                    id="username"
-                    placeholder="@usuario"
-                    value={newAccount.username}
-                    onChange={(e) => setNewAccount({ username: e.target.value })}
-                  />
-                </div>
+              <div className="py-4">
+                {loadingAvailable ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground">Buscando contas...</span>
+                  </div>
+                ) : availableAccounts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">
+                      Nenhuma conta disponível para conectar.
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Certifique-se de que o token Meta tem acesso a páginas com Instagram Business.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {availableAccounts.map((account) => (
+                      <div 
+                        key={account.instagram_id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-4">
+                          <img 
+                            src={account.profile_picture_url} 
+                            alt={account.username}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                          <div>
+                            <p className="font-medium">@{account.username}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {account.followers_count.toLocaleString('pt-BR')} seguidores • 
+                              {account.media_count.toLocaleString('pt-BR')} posts
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Página: {account.page_name}
+                            </p>
+                          </div>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          onClick={() => addAccount(account)}
+                          disabled={addingAccount === account.instagram_id}
+                        >
+                          {addingAccount === account.instagram_id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Plus className="h-4 w-4 mr-2" />
+                              Conectar
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={addAccount} disabled={addingAccount}>
-                  {addingAccount ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Instagram className="h-4 w-4 mr-2" />
-                  )}
-                  Conectar
+                  Fechar
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -265,11 +348,11 @@ export const InstagramAccountsManager = () => {
             <Instagram className="h-12 w-12 text-muted-foreground mb-4" />
             <h4 className="text-lg font-medium mb-2">Nenhuma conta conectada</h4>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              Adicione suas contas do Instagram para começar a acompanhar as métricas de engajamento, alcance e crescimento.
+              Conecte suas contas do Instagram Business para começar a acompanhar as métricas de engajamento, alcance e crescimento.
             </p>
-            <Button onClick={() => setDialogOpen(true)}>
+            <Button onClick={openDialog}>
               <Plus className="h-4 w-4 mr-2" />
-              Adicionar Primeira Conta
+              Conectar Primeira Conta
             </Button>
           </CardContent>
         </Card>
@@ -279,20 +362,28 @@ export const InstagramAccountsManager = () => {
       {!loading && accounts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {accounts.map((account) => {
-            const metrics = getMockMetrics(account);
+            const metrics = getMetrics(account);
             return (
               <Card key={account.id} className="relative overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500" />
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 flex items-center justify-center text-white font-bold">
-                        {account.account_name.slice(0, 2).toUpperCase()}
-                      </div>
+                      {account.profile_picture_url ? (
+                        <img 
+                          src={account.profile_picture_url} 
+                          alt={account.account_name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 flex items-center justify-center text-white font-bold">
+                          {account.account_name.slice(1, 3).toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <CardTitle className="text-base">{account.account_name}</CardTitle>
                         <p className="text-xs text-muted-foreground">
-                          ID: {account.instagram_id.slice(0, 8)}...
+                          {account.media_count} posts
                         </p>
                       </div>
                     </div>
@@ -318,24 +409,24 @@ export const InstagramAccountsManager = () => {
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2">
                       <div className="flex items-center gap-1 text-muted-foreground text-xs mb-1">
-                        <Eye className="h-3 w-3" />
-                        Alcance
+                        <Users className="h-3 w-3" />
+                        Seguindo
                       </div>
-                      <p className="text-lg font-bold">{metrics.reach.toLocaleString('pt-BR')}</p>
+                      <p className="text-lg font-bold">{account.following_count.toLocaleString('pt-BR')}</p>
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2">
                       <div className="flex items-center gap-1 text-muted-foreground text-xs mb-1">
                         <Heart className="h-3 w-3" />
-                        Engajamento
+                        Posts
                       </div>
-                      <p className="text-lg font-bold">{metrics.engagement_rate}%</p>
+                      <p className="text-lg font-bold">{account.media_count.toLocaleString('pt-BR')}</p>
                     </div>
                     <div className="bg-muted/50 rounded-lg p-2">
                       <div className="flex items-center gap-1 text-muted-foreground text-xs mb-1">
                         <TrendingUp className="h-3 w-3" />
-                        Impressões
+                        Taxa Eng.
                       </div>
-                      <p className="text-lg font-bold">{(metrics.impressions / 1000).toFixed(1)}K</p>
+                      <p className="text-lg font-bold">{metrics.engagement_rate}%</p>
                     </div>
                   </div>
 
