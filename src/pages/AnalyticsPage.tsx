@@ -1,33 +1,19 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import { 
   ArrowLeft, 
   BarChart3, 
   Lightbulb, 
-  TrendingUp,
-  Calendar,
-  Moon,
-  Sun,
-  Instagram,
-  Youtube,
-  Film,
-  Clock,
-  Image,
-  Play,
-  Video
+  TrendingUp
 } from "lucide-react";
-import { useTheme } from "@/contexts/ThemeContext";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
 import { PlatformEngagement } from "@/components/analytics/PlatformEngagement";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="min-h-screen bg-background">
@@ -51,20 +37,6 @@ const AnalyticsPage = () => {
                   Métricas de engajamento por plataforma e tipo de conteúdo
                 </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleTheme}
-                className="rounded-full"
-              >
-                {theme === "dark" ? (
-                  <Sun className="h-5 w-5" />
-                ) : (
-                  <Moon className="h-5 w-5" />
-                )}
-              </Button>
             </div>
           </div>
         </div>
