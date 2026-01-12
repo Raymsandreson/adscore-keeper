@@ -121,7 +121,6 @@ export const InstagramAccountsManager = () => {
         setAccounts([newAccountData, ...accounts]);
         setNewAccount({ username: '' });
         setDialogOpen(false);
-        syncAccount(newAccountData.id);
       }
     } catch (err: any) {
       toast.error('Erro ao adicionar conta', { description: err.message });
@@ -157,13 +156,18 @@ export const InstagramAccountsManager = () => {
       });
 
       if (response.error) {
-        throw response.error;
+        console.log('Sync error (API may not be configured):', response.error);
+        toast.info('Sincronização manual', { 
+          description: 'API não configurada. Atualize as métricas manualmente.' 
+        });
+      } else {
+        toast.success('Métricas sincronizadas!');
       }
-
-      toast.success('Métricas sincronizadas!');
+      
       fetchAccounts();
     } catch (error: any) {
-      toast.error('Erro ao sincronizar', { description: error.message });
+      console.log('Sync error:', error);
+      toast.info('Sincronização manual necessária');
     }
 
     setSyncing(null);
