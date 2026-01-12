@@ -94,7 +94,7 @@ const Dashboard = () => {
           </p>
           
           {/* Mode Toggle */}
-          <div className="flex items-center justify-center gap-4 pt-2">
+          <div className="flex items-center justify-center gap-4 pt-2 flex-wrap">
             <Link to="/leads">
               <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
@@ -106,6 +106,13 @@ const Dashboard = () => {
               <Button variant="outline" size="sm">
                 <CalendarDays className="h-4 w-4 mr-2" />
                 Calendário Editorial
+              </Button>
+            </Link>
+
+            <Link to="/analytics">
+              <Button variant="outline" size="sm">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Analytics
               </Button>
             </Link>
             
