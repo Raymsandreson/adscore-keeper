@@ -6,14 +6,31 @@ import {
   ArrowLeft, 
   BarChart3, 
   Lightbulb, 
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
 import { PlatformEngagement } from "@/components/analytics/PlatformEngagement";
+import { AuthForm } from "@/components/auth/AuthForm";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { useAuth } from "@/hooks/useAuth";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
+  const { isAuthenticated, loading, profile } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthForm />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -34,10 +51,11 @@ const AnalyticsPage = () => {
                   Analytics de Redes Sociais
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Métricas de engajamento por plataforma e tipo de conteúdo
+                  {profile?.full_name ? `Olá, ${profile.full_name}` : 'Métricas de engajamento por plataforma'}
                 </p>
               </div>
             </div>
+            <UserMenu />
           </div>
         </div>
       </header>
