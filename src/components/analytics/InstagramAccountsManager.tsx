@@ -57,8 +57,7 @@ export const InstagramAccountsManager = () => {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newAccount, setNewAccount] = useState({
-    account_name: '',
-    instagram_id: '',
+    username: '',
   });
   const [addingAccount, setAddingAccount] = useState(false);
 
@@ -88,8 +87,15 @@ export const InstagramAccountsManager = () => {
   };
 
   const addAccount = async () => {
-    if (!newAccount.account_name || !newAccount.instagram_id) {
-      toast.error('Preencha todos os campos');
+    if (!newAccount.username) {
+      toast.error('Preencha o usuário do Instagram');
+      return;
+    }
+
+    const username = newAccount.username.replace('@', '').trim();
+    
+    if (!username) {
+      toast.error('Usuário inválido');
       return;
     }
 
@@ -99,8 +105,8 @@ export const InstagramAccountsManager = () => {
       const { data, error } = await supabase
         .from('instagram_accounts' as any)
         .insert({
-          account_name: newAccount.account_name,
-          instagram_id: newAccount.instagram_id,
+          account_name: `@${username}`,
+          instagram_id: username,
           access_token: 'USE_GLOBAL_TOKEN',
           is_active: true,
         })
@@ -113,7 +119,7 @@ export const InstagramAccountsManager = () => {
         const newAccountData = data as unknown as InstagramAccount;
         toast.success('Conta adicionada com sucesso!');
         setAccounts([newAccountData, ...accounts]);
-        setNewAccount({ account_name: '', instagram_id: '' });
+        setNewAccount({ username: '' });
         setDialogOpen(false);
         syncAccount(newAccountData.id);
       }
@@ -207,32 +213,20 @@ export const InstagramAccountsManager = () => {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Adicionar Conta do Instagram</DialogTitle>
+                <DialogTitle>Conectar Conta do Instagram</DialogTitle>
                 <DialogDescription>
-                  Adicione uma conta do Instagram para acompanhar suas métricas.
+                  Digite o usuário do Instagram para conectar.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="account_name">Nome da Conta</Label>
+                  <Label htmlFor="username">Usuário do Instagram</Label>
                   <Input
-                    id="account_name"
-                    placeholder="Ex: @minha_empresa"
-                    value={newAccount.account_name}
-                    onChange={(e) => setNewAccount({ ...newAccount, account_name: e.target.value })}
+                    id="username"
+                    placeholder="@usuario"
+                    value={newAccount.username}
+                    onChange={(e) => setNewAccount({ username: e.target.value })}
                   />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="instagram_id">ID do Instagram Business</Label>
-                  <Input
-                    id="instagram_id"
-                    placeholder="Ex: 17841405793187218"
-                    value={newAccount.instagram_id}
-                    onChange={(e) => setNewAccount({ ...newAccount, instagram_id: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    O ID numérico da sua conta Business do Instagram
-                  </p>
                 </div>
               </div>
               <DialogFooter>
@@ -243,9 +237,9 @@ export const InstagramAccountsManager = () => {
                   {addingAccount ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : (
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Instagram className="h-4 w-4 mr-2" />
                   )}
-                  Adicionar
+                  Conectar
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -379,31 +373,6 @@ export const InstagramAccountsManager = () => {
         </div>
       )}
 
-      {/* Info Card */}
-      <Card className="bg-muted/30">
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-4">
-            <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
-              <AlertCircle className="h-5 w-5" />
-            </div>
-            <div>
-              <h4 className="font-medium mb-1">Como obter o ID do Instagram?</h4>
-              <p className="text-sm text-muted-foreground">
-                O ID do Instagram Business pode ser encontrado no{' '}
-                <a 
-                  href="https://business.facebook.com/settings/pages" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Meta Business Suite
-                </a>
-                {' '}nas configurações da sua página conectada ao Instagram.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 };
