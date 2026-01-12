@@ -9,9 +9,11 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { format, differenceInDays, isPast, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   Target, 
   Plus, 
@@ -26,8 +28,11 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  History,
+  Archive
 } from "lucide-react";
+import GoalHistory from "./GoalHistory";
 
 export interface Goal {
   id: string;
@@ -216,6 +221,31 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
     setGoals(prev => prev.filter(g => g.id !== id));
   };
 
+  const handleArchiveGoal = async (goal: Goal, status: 'completed' | 'overdue' | 'cancelled') => {
+    const progress = getProgress(goal);
+    
+    try {
+      await supabase.from('goal_history').insert({
+        goal_title: goal.title,
+        goal_type: goal.type,
+        target_value: goal.targetValue,
+        achieved_value: goal.currentValue,
+        unit: goal.unit,
+        deadline: format(goal.deadline, 'yyyy-MM-dd'),
+        status,
+        achievement_percentage: progress,
+        period_start: format(goal.createdAt, 'yyyy-MM-dd'),
+        period_end: format(new Date(), 'yyyy-MM-dd'),
+        notes: goal.notes
+      });
+
+      // Remove from active goals
+      setGoals(prev => prev.filter(g => g.id !== goal.id));
+    } catch (error) {
+      console.error('Erro ao arquivar meta:', error);
+    }
+  };
+
   const handleUpdateProgress = (id: string, newValue: number) => {
     setGoals(prev => prev.map(g => 
       g.id === id ? { ...g, currentValue: newValue } : g
@@ -272,25 +302,38 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold">Metas e Prazos</h2>
-          <div className="flex items-center gap-2">
-            <p className="text-muted-foreground">Defina e acompanhe suas metas de marketing</p>
-            {autoSync && hasSyncableMetrics && (
-              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Sincronizado
-              </Badge>
-            )}
-          </div>
-          {lastSyncTime && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Última sincronização: {format(lastSyncTime, "HH:mm:ss", { locale: ptBR })}
-            </p>
-          )}
-        </div>
+      <Tabs defaultValue="goals" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsTrigger value="goals" className="gap-2">
+            <Target className="h-4 w-4" />
+            Metas Ativas
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-2">
+            <History className="h-4 w-4" />
+            Histórico & IA
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="goals">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-semibold">Metas e Prazos</h2>
+              <div className="flex items-center gap-2">
+                <p className="text-muted-foreground">Defina e acompanhe suas metas de marketing</p>
+                {autoSync && hasSyncableMetrics && (
+                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Sincronizado
+                  </Badge>
+                )}
+              </div>
+              {lastSyncTime && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Última sincronização: {format(lastSyncTime, "HH:mm:ss", { locale: ptBR })}
+                </p>
+              )}
+            </div>
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
@@ -528,7 +571,18 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {status === 'completed' || status === 'overdue' ? (
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className="text-green-600 hover:text-green-700"
+                          onClick={() => handleArchiveGoal(goal, status === 'completed' ? 'completed' : 'overdue')}
+                          title="Arquivar meta"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                       <Button variant="ghost" size="icon" onClick={() => handleEditGoal(goal)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
@@ -592,6 +646,12 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
           })}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="history">
+          <GoalHistory currentGoals={goals} onArchiveGoal={handleArchiveGoal} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

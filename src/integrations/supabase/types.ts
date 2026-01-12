@@ -182,6 +182,57 @@ export type Database = {
         }
         Relationships: []
       }
+      goal_history: {
+        Row: {
+          achieved_value: number
+          achievement_percentage: number | null
+          ad_account_id: string | null
+          created_at: string
+          deadline: string
+          goal_title: string
+          goal_type: string
+          id: string
+          notes: string | null
+          period_end: string | null
+          period_start: string | null
+          status: string
+          target_value: number
+          unit: string | null
+        }
+        Insert: {
+          achieved_value: number
+          achievement_percentage?: number | null
+          ad_account_id?: string | null
+          created_at?: string
+          deadline: string
+          goal_title: string
+          goal_type: string
+          id?: string
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          target_value: number
+          unit?: string | null
+        }
+        Update: {
+          achieved_value?: number
+          achievement_percentage?: number | null
+          ad_account_id?: string | null
+          created_at?: string
+          deadline?: string
+          goal_title?: string
+          goal_type?: string
+          id?: string
+          notes?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          target_value?: number
+          unit?: string | null
+        }
+        Relationships: []
+      }
       instagram_auto_replies: {
         Row: {
           ad_account_id: string | null
