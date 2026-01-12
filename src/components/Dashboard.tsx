@@ -101,6 +101,13 @@ const Dashboard = () => {
                 Central de Leads
               </Button>
             </Link>
+            <Link to="/analytics">
+              <Button variant="outline" size="sm">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Analytics
+                Central de Leads
+              </Button>
+            </Link>
             
             <Link to="/editorial">
               <Button variant="outline" size="sm">
