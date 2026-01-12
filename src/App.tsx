@@ -7,7 +7,6 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import Index from "./pages/Index";
 import LeadsCenter from "./pages/LeadsCenter";
 import EditorialCalendarPage from "./pages/EditorialCalendarPage";
-import AnalyticsDashboard from "./pages/AnalyticsDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,7 +22,6 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/leads" element={<LeadsCenter />} />
             <Route path="/editorial" element={<EditorialCalendarPage />} />
-            <Route path="/analytics" element={<AnalyticsDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
