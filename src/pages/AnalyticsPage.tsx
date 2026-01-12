@@ -7,30 +7,15 @@ import {
   BarChart3, 
   Lightbulb, 
   TrendingUp,
-  Loader2
+  Instagram
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
 import { PlatformEngagement } from "@/components/analytics/PlatformEngagement";
-import { AuthForm } from "@/components/auth/AuthForm";
-import { UserMenu } from "@/components/auth/UserMenu";
-import { useAuth } from "@/hooks/useAuth";
+import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
-  const { isAuthenticated, loading, profile } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <AuthForm />;
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -51,19 +36,22 @@ const AnalyticsPage = () => {
                   Analytics de Redes Sociais
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  {profile?.full_name ? `Olá, ${profile.full_name}` : 'Métricas de engajamento por plataforma'}
+                  Métricas de engajamento por plataforma e tipo de conteúdo
                 </p>
               </div>
             </div>
-            <UserMenu />
           </div>
         </div>
       </header>
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList className="grid w-full max-w-lg grid-cols-3">
+        <Tabs defaultValue="accounts" className="space-y-6">
+          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+            <TabsTrigger value="accounts" className="gap-2">
+              <Instagram className="h-4 w-4" />
+              <span className="hidden sm:inline">Contas</span>
+            </TabsTrigger>
             <TabsTrigger value="dashboard" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -77,6 +65,11 @@ const AnalyticsPage = () => {
               <span className="hidden sm:inline">Estratégias</span>
             </TabsTrigger>
           </TabsList>
+
+          {/* Accounts Tab */}
+          <TabsContent value="accounts" className="space-y-6">
+            <InstagramAccountsManager />
+          </TabsContent>
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
