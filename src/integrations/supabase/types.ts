@@ -100,6 +100,7 @@ export type Database = {
           replies_sent: number | null
           stat_date: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -117,6 +118,7 @@ export type Database = {
           replies_sent?: number | null
           stat_date?: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -134,6 +136,7 @@ export type Database = {
           replies_sent?: number | null
           stat_date?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -416,6 +419,33 @@ export type Database = {
           status?: string | null
           sync_status?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
