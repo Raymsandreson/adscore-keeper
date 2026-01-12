@@ -21,9 +21,11 @@ import {
   Loader2,
   Calendar,
   BarChart3,
-  Sparkles
+  Sparkles,
+  LineChart
 } from "lucide-react";
 import { Goal } from "./GoalsManager";
+import GoalSuccessChart from "./GoalSuccessChart";
 
 interface GoalHistoryEntry {
   id: string;
@@ -160,8 +162,12 @@ const GoalHistory = ({ currentGoals, onArchiveGoal }: GoalHistoryProps) => {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="current" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs defaultValue="evolution" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="evolution" className="gap-2">
+            <LineChart className="h-4 w-4" />
+            Evolução
+          </TabsTrigger>
           <TabsTrigger value="current" className="gap-2">
             <Sparkles className="h-4 w-4" />
             Sugestões IA
@@ -171,6 +177,10 @@ const GoalHistory = ({ currentGoals, onArchiveGoal }: GoalHistoryProps) => {
             Histórico
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="evolution" className="space-y-4 mt-4">
+          <GoalSuccessChart history={history} />
+        </TabsContent>
 
         <TabsContent value="current" className="space-y-4 mt-4">
           <Card>
