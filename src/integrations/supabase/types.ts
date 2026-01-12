@@ -236,6 +236,51 @@ export type Database = {
         }
         Relationships: []
       }
+      instagram_accounts: {
+        Row: {
+          access_token: string
+          account_name: string
+          created_at: string
+          followers_count: number | null
+          following_count: number | null
+          id: string
+          instagram_id: string
+          is_active: boolean | null
+          last_sync_at: string | null
+          media_count: number | null
+          profile_picture_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          account_name: string
+          created_at?: string
+          followers_count?: number | null
+          following_count?: number | null
+          id?: string
+          instagram_id: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          profile_picture_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          account_name?: string
+          created_at?: string
+          followers_count?: number | null
+          following_count?: number | null
+          id?: string
+          instagram_id?: string
+          is_active?: boolean | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          profile_picture_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       instagram_auto_replies: {
         Row: {
           ad_account_id: string | null
@@ -337,6 +382,101 @@ export type Database = {
           replied_at?: string | null
         }
         Relationships: []
+      }
+      instagram_metrics: {
+        Row: {
+          account_id: string
+          created_at: string
+          email_contacts: number | null
+          engagement_rate: number | null
+          feed_comments: number | null
+          feed_likes: number | null
+          feed_reach: number | null
+          feed_saves: number | null
+          feed_shares: number | null
+          followers_count: number | null
+          following_count: number | null
+          id: string
+          impressions: number | null
+          media_count: number | null
+          metric_date: string
+          profile_views: number | null
+          reach: number | null
+          reels_comments: number | null
+          reels_likes: number | null
+          reels_saves: number | null
+          reels_shares: number | null
+          reels_views: number | null
+          stories_exits: number | null
+          stories_replies: number | null
+          stories_views: number | null
+          website_clicks: number | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          email_contacts?: number | null
+          engagement_rate?: number | null
+          feed_comments?: number | null
+          feed_likes?: number | null
+          feed_reach?: number | null
+          feed_saves?: number | null
+          feed_shares?: number | null
+          followers_count?: number | null
+          following_count?: number | null
+          id?: string
+          impressions?: number | null
+          media_count?: number | null
+          metric_date?: string
+          profile_views?: number | null
+          reach?: number | null
+          reels_comments?: number | null
+          reels_likes?: number | null
+          reels_saves?: number | null
+          reels_shares?: number | null
+          reels_views?: number | null
+          stories_exits?: number | null
+          stories_replies?: number | null
+          stories_views?: number | null
+          website_clicks?: number | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          email_contacts?: number | null
+          engagement_rate?: number | null
+          feed_comments?: number | null
+          feed_likes?: number | null
+          feed_reach?: number | null
+          feed_saves?: number | null
+          feed_shares?: number | null
+          followers_count?: number | null
+          following_count?: number | null
+          id?: string
+          impressions?: number | null
+          media_count?: number | null
+          metric_date?: string
+          profile_views?: number | null
+          reach?: number | null
+          reels_comments?: number | null
+          reels_likes?: number | null
+          reels_saves?: number | null
+          reels_shares?: number | null
+          reels_views?: number | null
+          stories_exits?: number | null
+          stories_replies?: number | null
+          stories_views?: number | null
+          website_clicks?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_metrics_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       leads: {
         Row: {

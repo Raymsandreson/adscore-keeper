@@ -1,0 +1,171 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface InstagramInsightsResponse {
+  data: Array<{
+    name: string;
+    period: string;
+    values: Array<{
+      value: number;
+      end_time: string;
+    }>;
+    title: string;
+    description: string;
+    id: string;
+  }>;
+}
+
+interface InstagramUserResponse {
+  id: string;
+  username: string;
+  followers_count: number;
+  follows_count: number;
+  media_count: number;
+  profile_picture_url?: string;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { account_id } = await req.json();
+
+    if (!account_id) {
+      return new Response(
+        JSON.stringify({ error: 'account_id is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get account details
+    const { data: account, error: accountError } = await supabase
+      .from('instagram_accounts')
+      .select('*')
+      .eq('id', account_id)
+      .single();
+
+    if (accountError || !account) {
+      return new Response(
+        JSON.stringify({ error: 'Account not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const accessToken = account.access_token;
+    const instagramId = account.instagram_id;
+
+    // Fetch user info
+    const userResponse = await fetch(
+      `https://graph.facebook.com/v18.0/${instagramId}?fields=id,username,followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`
+    );
+    
+    const userData: InstagramUserResponse = await userResponse.json();
+
+    if (!userResponse.ok) {
+      console.error('Instagram API error:', userData);
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch Instagram data', details: userData }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Update account with latest user info
+    await supabase
+      .from('instagram_accounts')
+      .update({
+        followers_count: userData.followers_count || 0,
+        following_count: userData.follows_count || 0,
+        media_count: userData.media_count || 0,
+        profile_picture_url: userData.profile_picture_url || null,
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq('id', account_id);
+
+    // Fetch insights (reach, impressions, etc.)
+    let insightsData = {
+      reach: 0,
+      impressions: 0,
+      profile_views: 0,
+      website_clicks: 0,
+      email_contacts: 0,
+    };
+
+    try {
+      const insightsResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${instagramId}/insights?metric=reach,impressions,profile_views,website_clicks,email_contacts&period=day&access_token=${accessToken}`
+      );
+      
+      if (insightsResponse.ok) {
+        const insights: InstagramInsightsResponse = await insightsResponse.json();
+        
+        insights.data?.forEach((metric) => {
+          const latestValue = metric.values?.[metric.values.length - 1]?.value || 0;
+          if (metric.name === 'reach') insightsData.reach = latestValue;
+          if (metric.name === 'impressions') insightsData.impressions = latestValue;
+          if (metric.name === 'profile_views') insightsData.profile_views = latestValue;
+          if (metric.name === 'website_clicks') insightsData.website_clicks = latestValue;
+          if (metric.name === 'email_contacts') insightsData.email_contacts = latestValue;
+        });
+      }
+    } catch (insightError) {
+      console.log('Could not fetch insights (might need business account):', insightError);
+    }
+
+    // Calculate engagement rate
+    const engagementRate = userData.followers_count > 0 
+      ? ((insightsData.reach / userData.followers_count) * 100).toFixed(2)
+      : 0;
+
+    // Upsert metrics for today
+    const today = new Date().toISOString().split('T')[0];
+    
+    await supabase
+      .from('instagram_metrics')
+      .upsert({
+        account_id,
+        metric_date: today,
+        followers_count: userData.followers_count || 0,
+        following_count: userData.follows_count || 0,
+        media_count: userData.media_count || 0,
+        reach: insightsData.reach,
+        impressions: insightsData.impressions,
+        profile_views: insightsData.profile_views,
+        website_clicks: insightsData.website_clicks,
+        email_contacts: insightsData.email_contacts,
+        engagement_rate: engagementRate,
+      }, {
+        onConflict: 'account_id,metric_date',
+      });
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        data: {
+          ...userData,
+          insights: insightsData,
+          engagement_rate: engagementRate,
+        }
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error: unknown) {
+    console.error('Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});

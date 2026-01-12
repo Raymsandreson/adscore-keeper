@@ -69,17 +69,21 @@ export const InstagramAccountsManager = () => {
 
   const fetchAccounts = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('instagram_accounts')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching accounts:', error);
-      // If table doesn't exist yet, just set empty array
+    try {
+      const { data, error } = await supabase
+        .from('instagram_accounts' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching accounts:', error);
+        setAccounts([]);
+      } else {
+        setAccounts((data as unknown as InstagramAccount[]) || []);
+      }
+    } catch (err) {
+      console.error('Error:', err);
       setAccounts([]);
-    } else {
-      setAccounts(data || []);
     }
     setLoading(false);
   };
@@ -92,42 +96,51 @@ export const InstagramAccountsManager = () => {
 
     setAddingAccount(true);
 
-    const { data, error } = await supabase
-      .from('instagram_accounts')
-      .insert({
-        account_name: newAccount.account_name,
-        instagram_id: newAccount.instagram_id,
-        access_token: newAccount.access_token,
-        is_active: true,
-      })
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('instagram_accounts' as any)
+        .insert({
+          account_name: newAccount.account_name,
+          instagram_id: newAccount.instagram_id,
+          access_token: newAccount.access_token,
+          is_active: true,
+        })
+        .select()
+        .single();
 
-    if (error) {
-      toast.error('Erro ao adicionar conta', { description: error.message });
-    } else {
-      toast.success('Conta adicionada com sucesso!');
-      setAccounts([data, ...accounts]);
-      setNewAccount({ account_name: '', instagram_id: '', access_token: '' });
-      setDialogOpen(false);
-      // Sync the new account
-      syncAccount(data.id);
+      if (error) {
+        toast.error('Erro ao adicionar conta', { description: error.message });
+      } else {
+        const newAccountData = data as unknown as InstagramAccount;
+        toast.success('Conta adicionada com sucesso!');
+        setAccounts([newAccountData, ...accounts]);
+        setNewAccount({ account_name: '', instagram_id: '', access_token: '' });
+        setDialogOpen(false);
+        // Sync the new account
+        syncAccount(newAccountData.id);
+      }
+    } catch (err: any) {
+      toast.error('Erro ao adicionar conta', { description: err.message });
     }
 
     setAddingAccount(false);
   };
 
   const deleteAccount = async (id: string) => {
-    const { error } = await supabase
-      .from('instagram_accounts')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('instagram_accounts' as any)
+        .delete()
+        .eq('id', id);
 
-    if (error) {
-      toast.error('Erro ao remover conta', { description: error.message });
-    } else {
-      toast.success('Conta removida');
-      setAccounts(accounts.filter(a => a.id !== id));
+      if (error) {
+        toast.error('Erro ao remover conta', { description: error.message });
+      } else {
+        toast.success('Conta removida');
+        setAccounts(accounts.filter(a => a.id !== id));
+      }
+    } catch (err: any) {
+      toast.error('Erro ao remover conta', { description: err.message });
     }
   };
 
