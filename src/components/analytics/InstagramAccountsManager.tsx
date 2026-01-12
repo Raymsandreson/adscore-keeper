@@ -59,7 +59,6 @@ export const InstagramAccountsManager = () => {
   const [newAccount, setNewAccount] = useState({
     account_name: '',
     instagram_id: '',
-    access_token: '',
   });
   const [addingAccount, setAddingAccount] = useState(false);
 
@@ -89,7 +88,7 @@ export const InstagramAccountsManager = () => {
   };
 
   const addAccount = async () => {
-    if (!newAccount.account_name || !newAccount.instagram_id || !newAccount.access_token) {
+    if (!newAccount.account_name || !newAccount.instagram_id) {
       toast.error('Preencha todos os campos');
       return;
     }
@@ -102,7 +101,7 @@ export const InstagramAccountsManager = () => {
         .insert({
           account_name: newAccount.account_name,
           instagram_id: newAccount.instagram_id,
-          access_token: newAccount.access_token,
+          access_token: 'USE_GLOBAL_TOKEN',
           is_active: true,
         })
         .select()
@@ -114,9 +113,8 @@ export const InstagramAccountsManager = () => {
         const newAccountData = data as unknown as InstagramAccount;
         toast.success('Conta adicionada com sucesso!');
         setAccounts([newAccountData, ...accounts]);
-        setNewAccount({ account_name: '', instagram_id: '', access_token: '' });
+        setNewAccount({ account_name: '', instagram_id: '' });
         setDialogOpen(false);
-        // Sync the new account
         syncAccount(newAccountData.id);
       }
     } catch (err: any) {
@@ -212,7 +210,6 @@ export const InstagramAccountsManager = () => {
                 <DialogTitle>Adicionar Conta do Instagram</DialogTitle>
                 <DialogDescription>
                   Adicione uma conta do Instagram para acompanhar suas métricas.
-                  Você precisará do ID da conta e um token de acesso da API do Meta.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -235,19 +232,6 @@ export const InstagramAccountsManager = () => {
                   />
                   <p className="text-xs text-muted-foreground">
                     O ID numérico da sua conta Business do Instagram
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="access_token">Token de Acesso</Label>
-                  <Input
-                    id="access_token"
-                    type="password"
-                    placeholder="Token de acesso do Meta Business"
-                    value={newAccount.access_token}
-                    onChange={(e) => setNewAccount({ ...newAccount, access_token: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Token com permissões de instagram_basic e instagram_manage_insights
                   </p>
                 </div>
               </div>
@@ -403,19 +387,18 @@ export const InstagramAccountsManager = () => {
               <AlertCircle className="h-5 w-5" />
             </div>
             <div>
-              <h4 className="font-medium mb-1">Como obter as credenciais?</h4>
+              <h4 className="font-medium mb-1">Como obter o ID do Instagram?</h4>
               <p className="text-sm text-muted-foreground">
-                Para conectar sua conta do Instagram, você precisa de uma conta Business ou Creator 
-                conectada a uma página do Facebook. Acesse o{' '}
+                O ID do Instagram Business pode ser encontrado no{' '}
                 <a 
-                  href="https://developers.facebook.com/tools/explorer/" 
+                  href="https://business.facebook.com/settings/pages" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
                 >
-                  Graph API Explorer
+                  Meta Business Suite
                 </a>
-                {' '}para gerar seu token de acesso com as permissões necessárias.
+                {' '}nas configurações da sua página conectada ao Instagram.
               </p>
             </div>
           </div>

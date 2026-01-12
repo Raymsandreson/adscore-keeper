@@ -62,7 +62,10 @@ serve(async (req) => {
       );
     }
 
-    const accessToken = account.access_token;
+    // Use global META_ACCESS_TOKEN if account doesn't have its own token
+    const accessToken = account.access_token === 'USE_GLOBAL_TOKEN' 
+      ? Deno.env.get('META_ACCESS_TOKEN')! 
+      : account.access_token;
     const instagramId = account.instagram_id;
 
     // Fetch user info
