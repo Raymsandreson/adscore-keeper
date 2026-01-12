@@ -30,9 +30,11 @@ import {
   AlertTriangle,
   RefreshCw,
   History,
-  Archive
+  Archive,
+  Send
 } from "lucide-react";
 import GoalHistory from "./GoalHistory";
+import GoalReportScheduler from "./GoalReportScheduler";
 
 export interface Goal {
   id: string;
@@ -303,10 +305,14 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
   return (
     <div className="space-y-6">
       <Tabs defaultValue="goals" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
           <TabsTrigger value="goals" className="gap-2">
             <Target className="h-4 w-4" />
             Metas Ativas
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2">
+            <Send className="h-4 w-4" />
+            Relatórios
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" />
@@ -646,6 +652,14 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
           })}
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <GoalReportScheduler 
+            goals={goals} 
+            getProgress={getProgress}
+            getStatus={getStatus}
+          />
         </TabsContent>
 
         <TabsContent value="history">
