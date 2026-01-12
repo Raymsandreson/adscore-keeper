@@ -204,37 +204,19 @@ export const InstagramMetricsChart = () => {
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="growth" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="growth" className="gap-2">
-              <Users className="h-4 w-4" />
-              Crescimento
-            </TabsTrigger>
-            <TabsTrigger value="reach" className="gap-2">
-              <Eye className="h-4 w-4" />
-              Alcance
-            </TabsTrigger>
-            <TabsTrigger value="engagement" className="gap-2">
-              <Heart className="h-4 w-4" />
-              Engajamento
-            </TabsTrigger>
-            <TabsTrigger value="content" className="gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Conteúdo
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Growth Chart */}
-          <TabsContent value="growth">
-            <Card>
-              <CardHeader>
+        <div className="space-y-6">
+          {/* Row 1: Asymmetric layout - Large chart + Small chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Growth Chart - Takes 2/3 of the space */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Users className="h-5 w-5 text-primary" />
                   Evolução de Seguidores
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-[350px]">
+                <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={metrics}>
                       <defs>
@@ -246,13 +228,14 @@ export const InstagramMetricsChart = () => {
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis 
                         dataKey="formattedDate" 
-                        tick={{ fontSize: 12 }}
+                        tick={{ fontSize: 11 }}
                         className="text-muted-foreground"
                       />
                       <YAxis 
                         tickFormatter={formatNumber}
-                        tick={{ fontSize: 12 }}
+                        tick={{ fontSize: 11 }}
                         className="text-muted-foreground"
+                        width={45}
                       />
                       <Tooltip content={<CustomTooltip />} />
                       <Area
@@ -269,29 +252,126 @@ export const InstagramMetricsChart = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* Reach Chart */}
-          <TabsContent value="reach">
+            {/* Engagement Chart - Takes 1/3 of the space */}
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Heart className="h-5 w-5 text-green-500" />
+                  Engajamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={metrics}>
+                      <defs>
+                        <linearGradient id="colorEngagement" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={COLORS.engagement} stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor={COLORS.engagement} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="formattedDate" 
+                        tick={{ fontSize: 10 }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis 
+                        tickFormatter={(value) => `${value}%`}
+                        tick={{ fontSize: 10 }}
+                        width={40}
+                      />
+                      <Tooltip 
+                        content={<CustomTooltip />}
+                        formatter={(value: number) => [`${value.toFixed(2)}%`, 'Engajamento']}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="engagement"
+                        name="Engajamento %"
+                        stroke={COLORS.engagement}
+                        fillOpacity={1}
+                        fill="url(#colorEngagement)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Row 2: Asymmetric layout - Small chart + Large chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Content Performance - Takes 1/3 of the space */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-cyan-500" />
+                  Conteúdo
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={metrics}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis 
+                        dataKey="formattedDate" 
+                        tick={{ fontSize: 10 }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis 
+                        tickFormatter={formatNumber}
+                        tick={{ fontSize: 10 }}
+                        width={40}
+                      />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
+                      <Line
+                        type="monotone"
+                        dataKey="reelsViews"
+                        name="Reels"
+                        stroke={COLORS.reelsViews}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="storiesViews"
+                        name="Stories"
+                        stroke={COLORS.storiesViews}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Reach Chart - Takes 2/3 of the space */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Eye className="h-5 w-5 text-purple-500" />
                   Alcance e Impressões
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-[350px]">
+                <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={metrics}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis 
                         dataKey="formattedDate" 
-                        tick={{ fontSize: 12 }}
+                        tick={{ fontSize: 11 }}
                       />
                       <YAxis 
                         tickFormatter={formatNumber}
-                        tick={{ fontSize: 12 }}
+                        tick={{ fontSize: 11 }}
+                        width={45}
                       />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
@@ -324,103 +404,8 @@ export const InstagramMetricsChart = () => {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Engagement Chart */}
-          <TabsContent value="engagement">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Heart className="h-5 w-5 text-green-500" />
-                  Taxa de Engajamento
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[350px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={metrics}>
-                      <defs>
-                        <linearGradient id="colorEngagement" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={COLORS.engagement} stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor={COLORS.engagement} stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="formattedDate" 
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis 
-                        tickFormatter={(value) => `${value}%`}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <Tooltip 
-                        content={<CustomTooltip />}
-                        formatter={(value: number) => [`${value.toFixed(2)}%`, 'Engajamento']}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="engagement"
-                        name="Engajamento %"
-                        stroke={COLORS.engagement}
-                        fillOpacity={1}
-                        fill="url(#colorEngagement)"
-                        strokeWidth={2}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Content Performance Chart */}
-          <TabsContent value="content">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-cyan-500" />
-                  Performance de Conteúdo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[350px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={metrics}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="formattedDate" 
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis 
-                        tickFormatter={formatNumber}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="reelsViews"
-                        name="Views Reels"
-                        stroke={COLORS.reelsViews}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="storiesViews"
-                        name="Views Stories"
-                        stroke={COLORS.storiesViews}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       )}
     </div>
   );
