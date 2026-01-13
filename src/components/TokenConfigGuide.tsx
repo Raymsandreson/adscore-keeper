@@ -148,6 +148,69 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
           </div>
 
           <Accordion type="single" collapsible className="w-full">
+            {/* ALERTA - Instagram API certa */}
+            <AccordionItem value="step-alert" className="border border-destructive/50 rounded-lg mb-2 overflow-hidden bg-destructive/5">
+              <AccordionTrigger className="px-4 py-3 hover:bg-destructive/10">
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-destructive text-destructive-foreground h-6 w-6 p-0 flex items-center justify-center rounded-full">⚠️</Badge>
+                  <span className="text-sm font-medium text-destructive">IMPORTANTE: Use a API certa!</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4 pt-2">
+                <div className="space-y-4 text-sm">
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <strong className="text-destructive">Atenção:</strong> Existem 2 tipos de API do Instagram. Para métricas orgânicas, você precisa da correta!
+                    </p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">❌</span>
+                        <span className="font-medium text-sm text-destructive">NÃO USE</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <strong>"Configuração da API com login do Instagram"</strong><br/>
+                        Esta é para apps de usuários finais, não serve para insights/métricas.
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg border border-success/30 bg-success/5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">✅</span>
+                        <span className="font-medium text-sm text-success">USE ESTA</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        <strong>"API setup with Facebook login"</strong><br/>
+                        Esta permite acessar insights, hashtags e métricas da sua conta.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-muted rounded-lg">
+                    <h4 className="font-medium text-sm mb-2">📍 Como encontrar a API correta:</h4>
+                    <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
+                      <li>Vá para <strong>Meta Developers → Seu App → API do Instagram</strong></li>
+                      <li>Na tela, você verá um texto: <em>"Se quiser rastrear hashtags e insights, mude para o API setup with Facebook login"</em></li>
+                      <li>Clique no link azul <strong>"API setup with Facebook login"</strong></li>
+                      <li>Agora você está na API correta para usar o Graph API Explorer</li>
+                    </ol>
+                  </div>
+
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+                    className="gap-2"
+                  >
+                    Abrir Meus Apps
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Passo 0 - Pré-requisitos */}
             <AccordionItem value="step-0" className="border border-warning/50 rounded-lg mb-2 overflow-hidden bg-warning/5">
               <AccordionTrigger className="px-4 py-3 hover:bg-warning/10">
@@ -172,8 +235,8 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
                     <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
                       <li>Acesse <strong>Meta Developers</strong> → Seu App</li>
                       <li>No menu lateral, clique em <strong>"Adicionar Produto"</strong></li>
-                      <li>Procure e adicione: <strong>"Instagram Basic Display"</strong></li>
                       <li>Procure e adicione: <strong>"Instagram Graph API"</strong></li>
+                      <li>Clique em <strong>"API setup with Facebook login"</strong> (NÃO use a com login do Instagram!)</li>
                       <li>Após adicionar, as permissões <code className="bg-muted px-1 rounded">instagram_basic</code> e <code className="bg-muted px-1 rounded">instagram_manage_insights</code> aparecerão no Graph API Explorer</li>
                     </ol>
                   </div>
@@ -203,10 +266,10 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => window.open('https://developers.facebook.com/docs/instagram-basic-display-api/getting-started', '_blank')}
+                      onClick={() => window.open('https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/getting-started', '_blank')}
                       className="gap-2"
                     >
-                      Docs Instagram API
+                      Docs Instagram Graph API
                       <ExternalLink className="h-3 w-3" />
                     </Button>
                   </div>
