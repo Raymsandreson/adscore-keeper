@@ -796,18 +796,31 @@ const BMConnection = ({
                     Expira em {connectedTokenInfo.expiresAt.toLocaleDateString('pt-BR')}
                   </p>
                 )}
-                {connectedTokenInfo.daysUntilExpiry && connectedTokenInfo.daysUntilExpiry <= 7 && (
+                
+                {/* Botões para renovar/gerar token permanente */}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {connectedTokenInfo.daysUntilExpiry && connectedTokenInfo.daysUntilExpiry <= 7 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={openTokenGenerator}
+                      className="gap-2"
+                    >
+                      <Key className="h-4 w-4" />
+                      Renovar Token
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  )}
                   <Button 
-                    variant="outline" 
+                    variant="ghost" 
                     size="sm" 
-                    onClick={openTokenGenerator}
-                    className="mt-2 gap-2"
+                    onClick={() => window.open('https://developers.facebook.com/docs/pages/access-tokens#get-a-page-access-token', '_blank')}
+                    className="gap-2 text-muted-foreground hover:text-foreground"
                   >
-                    <Key className="h-4 w-4" />
-                    Renovar Token
                     <ExternalLink className="h-3 w-3" />
+                    Como obter Token Permanente
                   </Button>
-                )}
+                </div>
               </div>
             )}
             
