@@ -127,16 +127,34 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     }
   };
 
+  // Cache key to avoid refetching same data
+  const [lastFetchKey, setLastFetchKey] = useState<string>('');
+
   const fetchOrganicInsights = async () => {
+    // Build fetch key to detect actual changes
+    const fetchKey = `${pageId}-${accessToken}-${period}-${customDateRange.from?.toISOString()}-${customDateRange.to?.toISOString()}`;
+    
+    // Skip if same request
+    if (fetchKey === lastFetchKey && platforms.length > 0) {
+      console.log('⏭️ Skipping fetch - same parameters');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setIsPermissionError(false);
 
     try {
-      console.log('🔄 Buscando insights orgânicos via edge function...');
+      // Determine the actual period to send
+      let periodDays = parseInt(period);
+      if (period === "custom" && customDateRange.from && customDateRange.to) {
+        periodDays = differenceInDays(customDateRange.to, customDateRange.from) + 1;
+      }
+
+      console.log('🔄 Buscando insights orgânicos - período:', periodDays, 'dias');
       
       const { data, error: fetchError } = await supabase.functions.invoke('fetch-organic-insights', {
-        body: { pageId, accessToken, period: parseInt(period) }
+        body: { pageId, accessToken, period: periodDays }
       });
 
       if (fetchError) {
@@ -144,7 +162,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         throw new Error(fetchError.message);
       }
 
-      console.log('📊 Dados recebidos:', data);
+      console.log('📊 Dados recebidos para', periodDays, 'dias:', data);
 
       if (data.success && data.platforms?.length > 0) {
         const processedPlatforms = data.platforms.map((p: PlatformData) => ({
@@ -156,6 +174,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         }));
         setPlatforms(processedPlatforms);
         setIsRealData(!data.simulated);
+        setLastFetchKey(fetchKey);
         
         // Set active tab to first available platform
         if (processedPlatforms.length > 0) {
@@ -559,13 +578,22 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const renderComparisonCard = () => {
     if (!instagramData || !facebookData) return null;
 
+    // Helper to check if a metric is available for Facebook
+    const isFacebookMetricAvailable = (metricValue: number | undefined, metricName: string) => {
+      // Facebook doesn't support saves and video views in the same way
+      const unsupportedFBMetrics = ['saves', 'videoViews'];
+      if (unsupportedFBMetrics.includes(metricName)) return false;
+      return true;
+    };
+
     const compareMetrics = [
       {
         label: 'Seguidores',
         icon: Users,
         instagram: instagramData.insights.totalFollowers,
         facebook: facebookData.insights.totalFollowers,
-        format: (v: number) => v.toLocaleString('pt-BR')
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'followers'
       },
       {
         label: `Novos (${getPeriodLabel()})`,
@@ -573,35 +601,74 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.newFollowers,
         facebook: facebookData.insights.newFollowers,
         format: (v: number) => `+${v.toLocaleString('pt-BR')}`,
-        colorClass: 'text-green-600'
+        colorClass: 'text-green-600',
+        metricName: 'newFollowers'
       },
       {
         label: 'Alcance',
         icon: Eye,
         instagram: instagramData.insights.reach,
         facebook: facebookData.insights.reach,
-        format: (v: number) => v.toLocaleString('pt-BR')
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'reach'
       },
       {
         label: 'Engajamento',
         icon: Heart,
         instagram: instagramData.insights.engagementRate,
         facebook: facebookData.insights.engagementRate,
-        format: (v: number) => `${v.toFixed(2)}%`
+        format: (v: number) => `${v.toFixed(2)}%`,
+        metricName: 'engagementRate'
       },
       {
         label: 'Curtidas',
         icon: Heart,
         instagram: instagramData.insights.likes,
         facebook: facebookData.insights.likes,
-        format: (v: number) => v.toLocaleString('pt-BR')
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'likes'
       },
       {
         label: 'Comentários',
         icon: MessageCircle,
         instagram: instagramData.insights.comments,
         facebook: facebookData.insights.comments,
-        format: (v: number) => v.toLocaleString('pt-BR')
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'comments'
+      },
+      {
+        label: 'Compartilhamentos',
+        icon: Share2,
+        instagram: instagramData.insights.shares,
+        facebook: facebookData.insights.shares,
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'shares'
+      },
+      {
+        label: 'Salvos',
+        icon: Bookmark,
+        instagram: instagramData.insights.saves,
+        facebook: 0, // Facebook doesn't have saves
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'saves',
+        fbUnavailable: true
+      },
+      {
+        label: 'Visualizações de Vídeo',
+        icon: Play,
+        instagram: instagramData.insights.videoViews,
+        facebook: 0, // Facebook video views require different API
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'videoViews',
+        fbUnavailable: true
+      },
+      {
+        label: 'Visitas ao Perfil',
+        icon: Eye,
+        instagram: instagramData.insights.profileViews,
+        facebook: facebookData.insights.profileViews,
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'profileViews'
       }
     ];
 
@@ -700,6 +767,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   const diff = metric.instagram - metric.facebook;
                   const diffPercent = metric.facebook > 0 ? ((diff / metric.facebook) * 100) : 0;
                   const IconComponent = metric.icon;
+                  const isFbUnavailable = (metric as any).fbUnavailable;
                   
                   return (
                     <tr key={index} className="border-b border-border/30 last:border-0">
@@ -713,10 +781,30 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                         {metric.format(metric.instagram)}
                       </td>
                       <td className={`text-center py-3 px-2 font-semibold ${metric.colorClass || ''}`}>
-                        {metric.format(metric.facebook)}
+                        {isFbUnavailable ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-muted-foreground/50 text-xs cursor-help flex items-center justify-center gap-1">
+                                  <Info className="h-3 w-3" />
+                                  N/D
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">Esta métrica não está disponível para Facebook</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          metric.format(metric.facebook)
+                        )}
                       </td>
                       <td className="text-center py-3 px-2">
-                        {diff !== 0 && (
+                        {isFbUnavailable ? (
+                          <Badge variant="outline" className="text-muted-foreground/50 text-xs">
+                            Só Instagram
+                          </Badge>
+                        ) : diff !== 0 ? (
                           <Badge 
                             variant="secondary" 
                             className={diff > 0 
@@ -730,8 +818,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                               <><Facebook className="h-3 w-3 mr-1" /> +{Math.abs(diffPercent).toFixed(0)}%</>
                             )}
                           </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">Igual</span>
                         )}
-                        {diff === 0 && <span className="text-muted-foreground text-xs">Igual</span>}
                       </td>
                     </tr>
                   );

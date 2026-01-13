@@ -48,6 +48,19 @@ serve(async (req) => {
   }
 
   try {
+    // Parse request body to get period
+    let period = 7; // default
+    try {
+      const body = await req.json();
+      if (body.period && typeof body.period === 'number' && body.period > 0) {
+        period = Math.min(body.period, 90); // max 90 days
+      }
+    } catch {
+      // No body or invalid JSON, use default
+    }
+    
+    console.log('📅 Período solicitado:', period, 'dias');
+
     // Usando META_ACCESS_TOKEN unificado para tráfego pago e orgânico
     const accessToken = Deno.env.get('META_ACCESS_TOKEN');
 
@@ -57,20 +70,21 @@ serve(async (req) => {
         JSON.stringify({
           success: true,
           simulated: true,
+          period,
           platforms: [
             {
               platform: 'instagram',
               accountId: 'demo',
               accountName: '@demo_account',
-              insights: generateSimulatedInsights(),
-              dailyData: generateSimulatedDailyData()
+              insights: generateSimulatedInsights(period),
+              dailyData: generateSimulatedDailyData(period)
             },
             {
               platform: 'facebook',
               accountId: 'demo',
               accountName: 'Demo Page',
-              insights: generateSimulatedInsights(),
-              dailyData: generateSimulatedDailyData()
+              insights: generateSimulatedInsights(period),
+              dailyData: generateSimulatedDailyData(period)
             }
           ],
           message: 'Dados simulados - Configure META_ACCESS_TOKEN com permissões: pages_show_list, pages_read_engagement, instagram_basic, instagram_manage_insights'
@@ -140,24 +154,25 @@ serve(async (req) => {
     console.log('Instagram account lookup:', igAccountData);
 
     if (igAccountData.instagram_business_account?.id) {
-      const igData = await fetchInstagramData(igAccountData.instagram_business_account.id, pageAccessToken);
+      const igData = await fetchInstagramData(igAccountData.instagram_business_account.id, pageAccessToken, period);
       if (igData) {
         platforms.push(igData);
       }
     }
 
     // Fetch Facebook Page data
-    const fbData = await fetchFacebookData(pageId, pageAccessToken, pageName);
+    const fbData = await fetchFacebookData(pageId, pageAccessToken, pageName, period);
     if (fbData) {
       platforms.push(fbData);
     }
 
-    console.log('Returning data for', platforms.length, 'platforms');
+    console.log('Returning data for', platforms.length, 'platforms with period:', period, 'days');
 
     return new Response(
       JSON.stringify({
         success: true,
         simulated: false,
+        period,
         platforms,
         pageInfo: {
           id: pageId,
@@ -185,9 +200,9 @@ serve(async (req) => {
   }
 });
 
-async function fetchInstagramData(igAccountId: string, accessToken: string): Promise<PlatformData | null> {
+async function fetchInstagramData(igAccountId: string, accessToken: string, period: number = 7): Promise<PlatformData | null> {
   try {
-    console.log('Fetching Instagram data for:', igAccountId);
+    console.log('Fetching Instagram data for:', igAccountId, 'period:', period, 'days');
 
     // Fetch basic account info - this should work with basic permissions
     const accountResponse = await fetch(
@@ -209,25 +224,29 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
     let likes = 0, comments = 0, shares = 0, saves = 0, videoViews = 0;
     let reach = 0, impressions = 0;
     const recentPosts: any[] = [];
+    
+    // Calculate date range based on period
+    const now = new Date();
+    const periodStart = new Date(now.getTime() - period * 24 * 60 * 60 * 1000);
+    console.log('📅 Date range:', periodStart.toISOString().split('T')[0], 'to', now.toISOString().split('T')[0]);
 
     // Fetch recent media with engagement data
     // This works with instagram_basic permission
+    // Increase limit based on period to get more posts
+    const mediaLimit = Math.min(100, period * 5);
     try {
       const mediaResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/media?fields=id,media_type,like_count,comments_count,timestamp,caption&limit=50&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/media?fields=id,media_type,like_count,comments_count,timestamp,caption&limit=${mediaLimit}&access_token=${accessToken}`
       );
       const mediaData = await mediaResponse.json();
       console.log('Instagram media count:', mediaData.data?.length || 0);
 
       if (mediaData.data) {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
         for (const media of mediaData.data) {
           const mediaDate = new Date(media.timestamp);
           
-          // Count engagement from last 7 days
-          if (mediaDate >= sevenDaysAgo) {
+          // Count engagement from the specified period
+          if (mediaDate >= periodStart) {
             likes += media.like_count || 0;
             comments += media.comments_count || 0;
             recentPosts.push(media);
@@ -245,7 +264,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
             );
             const mediaInsights = await mediaInsightsResponse.json();
             
-            if (mediaInsights.data && mediaDate >= sevenDaysAgo) {
+            if (mediaInsights.data && mediaDate >= periodStart) {
               for (const insight of mediaInsights.data) {
                 const value = insight.values?.[0]?.value || 0;
                 switch (insight.name) {
@@ -270,15 +289,16 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
     // Estimate reach based on engagement if we couldn't get it from API
     // Typical reach is 10-30% of followers, engagement is 1-5% of reach
     if (reach === 0 && totalFollowers > 0) {
-      // Estimate reach as 15% of followers per post, multiplied by recent posts
-      reach = Math.round(totalFollowers * 0.15 * Math.min(recentPosts.length, 7));
+      // Estimate reach as 15% of followers per day, multiplied by period
+      reach = Math.round(totalFollowers * 0.15 * Math.min(recentPosts.length, period));
       impressions = Math.round(reach * 1.5); // Impressions typically 1.5x reach
       console.log('Estimated reach:', reach, 'impressions:', impressions);
     }
 
-    // Estimate new followers based on typical growth rate
+    // Estimate new followers based on typical growth rate and period
     // Average Instagram growth is 0.5-2% per week for business accounts
-    const estimatedNewFollowers = Math.round(totalFollowers * 0.01); // 1% weekly growth estimate
+    const weeklyGrowthRate = 0.01; // 1% weekly
+    const estimatedNewFollowers = Math.round(totalFollowers * weeklyGrowthRate * (period / 7));
     
     // Try to get profile views and website clicks (might fail without full permissions)
     let profileViews = 0, websiteClicks = 0;
@@ -288,8 +308,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
     const engagementRate = totalFollowers > 0 ? (totalEngagement / totalFollowers) * 100 : 0;
     const followerChange = totalFollowers > 0 ? (estimatedNewFollowers / totalFollowers) * 100 : 0;
 
-    // Generate daily data based on available metrics
-    const dailyData = generateDailyDataFromMetrics(totalFollowers, estimatedNewFollowers, reach, engagementRate);
+    // Generate daily data based on available metrics and period
+    const dailyData = generateDailyDataFromMetrics(totalFollowers, estimatedNewFollowers, reach, engagementRate, period);
 
     console.log('Instagram insights summary:', {
       totalFollowers,
@@ -336,9 +356,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string): Pro
   }
 }
 
-async function fetchFacebookData(pageId: string, accessToken: string, pageName: string): Promise<PlatformData | null> {
+async function fetchFacebookData(pageId: string, accessToken: string, pageName: string, period: number = 7): Promise<PlatformData | null> {
   try {
-    console.log('Fetching Facebook data for:', pageId);
+    console.log('Fetching Facebook data for:', pageId, 'period:', period, 'days');
 
     const fansResponse = await fetch(
       `https://graph.facebook.com/v21.0/${pageId}?fields=followers_count,fan_count&access_token=${accessToken}`
@@ -357,6 +377,13 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
     const dailyMap: Record<string, DailyOrganicData> = {};
     let hasRealInsights = false;
 
+    // Calculate date range for API
+    const now = new Date();
+    const startDate = new Date(now.getTime() - period * 24 * 60 * 60 * 1000);
+    const since = startDate.toISOString().split('T')[0];
+    const until = now.toISOString().split('T')[0];
+    console.log('📅 Facebook date range:', since, 'to', until);
+
     // Fetch page insights with date range
     try {
       const insightsMetrics = [
@@ -367,11 +394,12 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
         'page_views_total'
       ].join(',');
 
+      // Use since/until for custom period instead of date_preset
       const insightsResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=${insightsMetrics}&period=day&date_preset=last_7d&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=${insightsMetrics}&period=day&since=${since}&until=${until}&access_token=${accessToken}`
       );
       const insightsData = await insightsResponse.json();
-      console.log('Facebook insights response:', insightsData.error ? insightsData.error : 'success');
+      console.log('Facebook insights response:', insightsData.error ? insightsData.error : `success - ${insightsData.data?.length || 0} metrics`);
 
       if (insightsData.data && !insightsData.error) {
         hasRealInsights = true;
@@ -440,21 +468,23 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
     }
 
     // Fetch posts engagement (reactions, comments, shares)
+    // Increase limit based on period
+    const postsLimit = Math.min(100, period * 5);
     let likes = 0, comments = 0, shares = 0;
     try {
       const postsResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/posts?fields=reactions.summary(total_count),comments.summary(total_count),shares,created_time&limit=50&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${pageId}/posts?fields=reactions.summary(total_count),comments.summary(total_count),shares,created_time&limit=${postsLimit}&access_token=${accessToken}`
       );
       const postsData = await postsResponse.json();
       console.log('Facebook posts count:', postsData.data?.length || 0);
 
       if (postsData.data) {
         const now = new Date();
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const periodStart = new Date(now.getTime() - period * 24 * 60 * 60 * 1000);
 
         for (const post of postsData.data) {
           const postDate = new Date(post.created_time);
-          if (postDate >= sevenDaysAgo) {
+          if (postDate >= periodStart) {
             likes += post.reactions?.summary?.total_count || 0;
             comments += post.comments?.summary?.total_count || 0;
             shares += post.shares?.count || 0;
@@ -465,12 +495,13 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
       console.warn('Could not fetch posts:', e);
     }
 
-    // If we couldn't get insights, estimate based on engagement
+    // If we couldn't get insights, estimate based on engagement and period
     if (!hasRealInsights && totalFollowers > 0) {
-      newFollowers = Math.round(totalFollowers * 0.005); // 0.5% weekly growth
-      reach = Math.round(totalFollowers * 0.1 * 7); // 10% reach per day
+      const weeklyGrowth = 0.005; // 0.5% weekly growth
+      newFollowers = Math.round(totalFollowers * weeklyGrowth * (period / 7));
+      reach = Math.round(totalFollowers * 0.1 * period); // 10% reach per day
       impressions = Math.round(reach * 1.5);
-      dailyData = generateDailyDataFromMetrics(totalFollowers, newFollowers, reach, (likes + comments + shares) / totalFollowers * 100);
+      dailyData = generateDailyDataFromMetrics(totalFollowers, newFollowers, reach, (likes + comments + shares) / totalFollowers * 100, period);
     }
 
     const engagementRate = totalFollowers > 0 ? ((likes + comments + shares) / totalFollowers) * 100 : 0;
@@ -520,14 +551,15 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
   }
 }
 
-function generateDailyDataFromMetrics(totalFollowers: number, newFollowers: number, totalReach: number, engagementRate: number): DailyOrganicData[] {
+function generateDailyDataFromMetrics(totalFollowers: number, newFollowers: number, totalReach: number, engagementRate: number, period: number = 7): DailyOrganicData[] {
   const data: DailyOrganicData[] = [];
-  const dailyNewFollowers = Math.round(newFollowers / 7);
-  const dailyReach = Math.round(totalReach / 7);
+  const dailyNewFollowers = Math.round(newFollowers / period);
+  const dailyReach = Math.round(totalReach / period);
   
   let currentFollowers = totalFollowers - newFollowers;
   
-  for (let i = 6; i >= 0; i--) {
+  // Generate data for the specified period
+  for (let i = period - 1; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
@@ -549,36 +581,38 @@ function generateDailyDataFromMetrics(totalFollowers: number, newFollowers: numb
   return data;
 }
 
-function generateSimulatedInsights(): OrganicInsights {
+function generateSimulatedInsights(period: number = 7): OrganicInsights {
   const baseFollowers = Math.floor(Math.random() * 5000) + 1000;
-  const newFollowers = Math.floor(Math.random() * 50) + 5;
+  // Scale metrics based on period
+  const periodMultiplier = period / 7;
+  const newFollowers = Math.floor((Math.random() * 50 + 5) * periodMultiplier);
   
   return {
     totalFollowers: baseFollowers,
     newFollowers,
     followerChange: (newFollowers / baseFollowers) * 100,
-    reach: Math.floor(Math.random() * 10000) + 2000,
-    impressions: Math.floor(Math.random() * 20000) + 5000,
+    reach: Math.floor((Math.random() * 10000 + 2000) * periodMultiplier),
+    impressions: Math.floor((Math.random() * 20000 + 5000) * periodMultiplier),
     engagementRate: Math.random() * 5 + 1,
-    likes: Math.floor(Math.random() * 500) + 50,
-    comments: Math.floor(Math.random() * 50) + 5,
-    shares: Math.floor(Math.random() * 20) + 2,
-    saves: Math.floor(Math.random() * 30) + 3,
-    profileViews: Math.floor(Math.random() * 200) + 20,
-    websiteClicks: Math.floor(Math.random() * 50) + 5,
-    storiesViews: Math.floor(Math.random() * 1000) + 100,
-    storiesReplies: Math.floor(Math.random() * 15) + 1,
-    storiesExits: Math.floor(Math.random() * 50) + 5,
-    storiesReach: Math.floor(Math.random() * 800) + 80,
-    videoViews: Math.floor(Math.random() * 2000) + 100
+    likes: Math.floor((Math.random() * 500 + 50) * periodMultiplier),
+    comments: Math.floor((Math.random() * 50 + 5) * periodMultiplier),
+    shares: Math.floor((Math.random() * 20 + 2) * periodMultiplier),
+    saves: Math.floor((Math.random() * 30 + 3) * periodMultiplier),
+    profileViews: Math.floor((Math.random() * 200 + 20) * periodMultiplier),
+    websiteClicks: Math.floor((Math.random() * 50 + 5) * periodMultiplier),
+    storiesViews: Math.floor((Math.random() * 1000 + 100) * periodMultiplier),
+    storiesReplies: Math.floor((Math.random() * 15 + 1) * periodMultiplier),
+    storiesExits: Math.floor((Math.random() * 50 + 5) * periodMultiplier),
+    storiesReach: Math.floor((Math.random() * 800 + 80) * periodMultiplier),
+    videoViews: Math.floor((Math.random() * 2000 + 100) * periodMultiplier)
   };
 }
 
-function generateSimulatedDailyData(): DailyOrganicData[] {
+function generateSimulatedDailyData(period: number = 7): DailyOrganicData[] {
   const data: DailyOrganicData[] = [];
   const baseFollowers = Math.floor(Math.random() * 3000) + 2000;
   
-  for (let i = 6; i >= 0; i--) {
+  for (let i = period - 1; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
@@ -586,7 +620,7 @@ function generateSimulatedDailyData(): DailyOrganicData[] {
     
     data.push({
       date: dateStr,
-      followers: baseFollowers + (6 - i) * dailyNew,
+      followers: baseFollowers + (period - 1 - i) * dailyNew,
       newFollowers: dailyNew,
       reach: Math.floor(Math.random() * 2000) + 200,
       engagement: Math.random() * 6 + 1
