@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { format, differenceInDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { 
   Users, 
   UserPlus, 
@@ -87,6 +92,40 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const [isPermissionError, setIsPermissionError] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('instagram');
   const [period, setPeriod] = useState<string>("7");
+  const [customDateRange, setCustomDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined
+  });
+  const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
+
+  // Get the display label for the period
+  const getPeriodLabel = () => {
+    if (period === "custom" && customDateRange.from && customDateRange.to) {
+      const days = differenceInDays(customDateRange.to, customDateRange.from) + 1;
+      return `${days} dias`;
+    }
+    if (period === "1") return "Hoje";
+    return `${period} dias`;
+  };
+
+  // Handle period change
+  const handlePeriodChange = (value: string) => {
+    if (value === "custom") {
+      setIsCustomDateOpen(true);
+    } else {
+      setPeriod(value);
+      setCustomDateRange({ from: undefined, to: undefined });
+    }
+  };
+
+  // Apply custom date range
+  const applyCustomDateRange = () => {
+    if (customDateRange.from && customDateRange.to) {
+      const days = differenceInDays(customDateRange.to, customDateRange.from) + 1;
+      setPeriod("custom");
+      setIsCustomDateOpen(false);
+    }
+  };
 
   const fetchOrganicInsights = async () => {
     setIsLoading(true);
@@ -145,7 +184,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
   useEffect(() => {
     fetchOrganicInsights();
-  }, [pageId, accessToken, period]);
+  }, [pageId, accessToken, period, customDateRange.from, customDateRange.to]);
 
   const chartConfig: ChartConfig = {
     followers: {
@@ -258,7 +297,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-2">
                 <UserPlus className="h-5 w-5 text-green-500" />
-                <span className="text-sm text-muted-foreground">Novos ({period} dias)</span>
+                <span className="text-sm text-muted-foreground">Novos ({getPeriodLabel()})</span>
               </div>
               <div className="flex items-center gap-2">
                 <p className="text-3xl font-bold text-green-600">+{insights.newFollowers.toLocaleString('pt-BR')}</p>
@@ -367,22 +406,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
         {/* Engagement Details */}
         <Card className="border-border/50">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Detalhes de Engajamento ({period} dias)</CardTitle>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Select value={period} onValueChange={setPeriod}>
-                <SelectTrigger className="w-[130px] h-8">
-                  <SelectValue placeholder="Período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">7 dias</SelectItem>
-                  <SelectItem value="14">14 dias</SelectItem>
-                  <SelectItem value="30">30 dias</SelectItem>
-                  <SelectItem value="90">90 dias</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <CardHeader>
+            <CardTitle className="text-lg">Detalhes de Engajamento ({getPeriodLabel()})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
@@ -543,7 +568,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         format: (v: number) => v.toLocaleString('pt-BR')
       },
       {
-        label: 'Novos (7d)',
+        label: `Novos (${getPeriodLabel()})`,
         icon: UserPlus,
         instagram: instagramData.insights.newFollowers,
         facebook: facebookData.insights.newFollowers,
@@ -583,10 +608,71 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     return (
       <Card className="border-border/50 bg-gradient-to-br from-background to-muted/20">
         <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Comparativo de Plataformas
-          </CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Comparativo de Plataformas
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Select value={period === "custom" ? "custom" : period} onValueChange={handlePeriodChange}>
+                <SelectTrigger className="w-[150px] h-9">
+                  <SelectValue placeholder="Período">
+                    {period === "custom" && customDateRange.from && customDateRange.to 
+                      ? `${format(customDateRange.from, "dd/MM")} - ${format(customDateRange.to, "dd/MM")}`
+                      : period === "1" ? "Hoje" : `${period} dias`
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Hoje</SelectItem>
+                  <SelectItem value="7">7 dias</SelectItem>
+                  <SelectItem value="14">14 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado...</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Custom Date Range Popover */}
+              <Popover open={isCustomDateOpen} onOpenChange={setIsCustomDateOpen}>
+                <PopoverTrigger asChild>
+                  <span />
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-4" align="end">
+                  <div className="space-y-4">
+                    <h4 className="font-medium text-sm">Selecione o período</h4>
+                    <CalendarComponent
+                      mode="range"
+                      selected={{ from: customDateRange.from, to: customDateRange.to }}
+                      onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
+                      locale={ptBR}
+                      disabled={(date) => date > new Date()}
+                      numberOfMonths={2}
+                      className="rounded-md border"
+                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-muted-foreground">
+                        {customDateRange.from && customDateRange.to && (
+                          <>
+                            {format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })} - {format(customDateRange.to, "dd/MM/yyyy", { locale: ptBR })}
+                            {" "}({differenceInDays(customDateRange.to, customDateRange.from) + 1} dias)
+                          </>
+                        )}
+                      </div>
+                      <Button 
+                        size="sm" 
+                        onClick={applyCustomDateRange}
+                        disabled={!customDateRange.from || !customDateRange.to}
+                      >
+                        Aplicar
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
