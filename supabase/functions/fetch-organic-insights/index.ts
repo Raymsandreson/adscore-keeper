@@ -162,7 +162,7 @@ serve(async (req) => {
         pageInfo: {
           id: pageId,
           name: pageName,
-          totalPagesAvailable: pagesData.data.length
+          totalPagesAvailable: pagesData.data?.length || 1
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
