@@ -348,33 +348,70 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4 pt-2">
-                <div className="space-y-3 text-sm">
+                <div className="space-y-4 text-sm">
                   <p className="text-muted-foreground">
-                    Este é o passo mais importante! O Page Access Token gerado aqui <strong className="text-success">nunca expira</strong>.
+                    Este é o passo mais importante! Vamos obter um <strong className="text-success">Page Token que nunca expira</strong>.
                   </p>
-                  
-                  <div className="bg-muted p-3 rounded-lg overflow-x-auto">
-                    <code className="text-xs break-all">
-                      GET https://graph.facebook.com/v18.0/me/accounts?<br/>
-                      &nbsp;&nbsp;access_token=<span className="text-primary">{"{LONG_LIVED_TOKEN}"}</span>
-                    </code>
+
+                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                    <h4 className="font-semibold text-primary mb-2 flex items-center gap-2">
+                      🚀 Método Simples (Recomendado)
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-3 text-muted-foreground">
+                      <li>
+                        Abra o <strong>Graph API Explorer</strong>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}
+                          className="text-primary p-0 h-auto ml-1"
+                        >
+                          (clique aqui)
+                          <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </li>
+                      <li>
+                        No campo <strong>"User or Page"</strong> (menu dropdown), troque de "User Token" para <strong>sua Página do Facebook</strong>
+                      </li>
+                      <li>
+                        Se aparecer uma janela de permissões, clique em <strong>"Generate Access Token"</strong> e autorize
+                      </li>
+                      <li>
+                        <strong className="text-success">Pronto!</strong> O token exibido agora é um <strong>Page Access Token permanente</strong>
+                      </li>
+                      <li>
+                        Copie esse token e use como <code className="bg-muted px-1 rounded">META_ACCESS_TOKEN</code>
+                      </li>
+                    </ol>
                   </div>
 
                   <div className="p-3 bg-success/10 border border-success/20 rounded-lg">
                     <p className="text-xs text-muted-foreground">
-                      <strong className="text-success">Dica:</strong> A resposta retornará um JSON com suas páginas. 
-                      O campo <code className="bg-muted px-1 rounded">access_token</code> de cada página é o <strong>token permanente</strong>!
+                      <strong className="text-success">✓ Por que esse método funciona?</strong><br/>
+                      Quando você seleciona a Página no dropdown e gera o token, o Facebook automaticamente cria um Page Access Token de longa duração vinculado ao seu usuário. Se seu App estiver em "Live Mode", o token nunca expira!
                     </p>
                   </div>
 
+                  <div className="p-3 bg-muted rounded-lg">
+                    <h4 className="font-medium text-xs mb-2 flex items-center gap-2">
+                      <AlertCircle className="h-3 w-3 text-warning" />
+                      Não encontra sua página no dropdown?
+                    </h4>
+                    <ul className="text-xs text-muted-foreground space-y-1">
+                      <li>• Certifique-se de ter completado o <strong>Passo 0</strong> (Casos de Uso)</li>
+                      <li>• Verifique se você é administrador da Página</li>
+                      <li>• Desconecte e reconecte o App à sua página em Configurações {">"} Avançado {">"} Apps</li>
+                    </ul>
+                  </div>
+
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
-                    onClick={() => copyToClipboard(pageTokenUrl, "URL Page Token")}
+                    onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}
                     className="gap-2"
                   >
-                    <Copy className="h-3 w-3" />
-                    {copiedText === "URL Page Token" ? "Copiado!" : "Copiar URL"}
+                    Abrir Graph API Explorer
+                    <ExternalLink className="h-3 w-3" />
                   </Button>
                 </div>
               </AccordionContent>
