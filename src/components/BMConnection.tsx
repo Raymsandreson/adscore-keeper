@@ -814,11 +814,11 @@ const BMConnection = ({
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    onClick={() => window.open('https://developers.facebook.com/docs/pages/access-tokens#get-a-page-access-token', '_blank')}
+                    onClick={() => window.open('https://developers.facebook.com/tools/explorer/', '_blank')}
                     className="gap-2 text-muted-foreground hover:text-foreground"
                   >
                     <ExternalLink className="h-3 w-3" />
-                    Como obter Token Permanente
+                    Gerar Token Permanente
                   </Button>
                 </div>
               </div>
