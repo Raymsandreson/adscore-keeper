@@ -79,87 +79,70 @@ serve(async (req) => {
       );
     }
 
-    // Buscar páginas conectadas dinamicamente via /me/accounts
-    console.log('Fetching connected pages via /me/accounts');
-    const pagesResponse = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${accessToken}`
+    // Primeiro, detectar o tipo de token (User Token vs Page Token)
+    console.log('Detecting token type via /me endpoint');
+    const meResponse = await fetch(
+      `https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${accessToken}`
     );
-    const pagesData = await pagesResponse.json();
-    console.log('Pages response:', pagesData.error ? pagesData.error : `Found ${pagesData.data?.length || 0} pages`);
+    const meData = await meResponse.json();
+    console.log('Token /me response:', meData);
 
-    if (pagesData.error) {
-      console.error('Error fetching pages:', pagesData.error);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          simulated: true,
-          platforms: [
-            {
-              platform: 'instagram',
-              accountId: 'demo',
-              accountName: '@demo_account',
-              insights: generateSimulatedInsights(),
-              dailyData: generateSimulatedDailyData()
-            },
-            {
-              platform: 'facebook',
-              accountId: 'demo',
-              accountName: 'Demo Page',
-              insights: generateSimulatedInsights(),
-              dailyData: generateSimulatedDailyData()
-            }
-          ],
-          error: pagesData.error.message,
-          message: `Erro de token: ${pagesData.error.message}. Verifique se META_ACCESS_TOKEN é válido e tem permissões: pages_show_list, pages_read_engagement, instagram_basic, instagram_manage_insights`
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!pagesData.data || pagesData.data.length === 0) {
-      console.log('No pages connected to this token');
+    if (meData.error) {
+      console.error('Token validation error:', meData.error);
       return new Response(
         JSON.stringify({
           success: false,
           simulated: true,
           platforms: [],
-          message: 'Nenhuma página conectada ao token. Certifique-se de que o token tem acesso a uma Página do Facebook.'
+          error: meData.error.message,
+          message: `Token inválido: ${meData.error.message}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Usar a primeira página encontrada (pode ser expandido para suportar múltiplas páginas)
-    const page = pagesData.data[0];
-    const pageId = page.id;
-    const pageName = page.name || 'Facebook Page';
-    // Usar o page access token específico se disponível, senão usar o token principal
-    const pageAccessToken = page.access_token || accessToken;
+    let pageId: string;
+    let pageName: string;
+    let pageAccessToken: string;
+
+    // Tentar buscar páginas via /me/accounts (funciona com User Token)
+    console.log('Trying to fetch pages via /me/accounts');
+    const pagesResponse = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${accessToken}`
+    );
+    const pagesData = await pagesResponse.json();
+    
+    if (pagesData.data && pagesData.data.length > 0) {
+      // Token de Usuário - usar primeira página encontrada
+      console.log('User Token detected - found', pagesData.data.length, 'pages');
+      const page = pagesData.data[0];
+      pageId = page.id;
+      pageName = page.name || 'Facebook Page';
+      pageAccessToken = page.access_token || accessToken;
+    } else {
+      // Provavelmente é um Page Token - usar o ID do /me como Page ID
+      console.log('Page Token detected - using /me ID as page:', meData.id, meData.name);
+      pageId = meData.id;
+      pageName = meData.name || 'Facebook Page';
+      pageAccessToken = accessToken;
+    }
 
     console.log('Using page:', pageName, '(ID:', pageId, ')');
 
     const platforms: PlatformData[] = [];
 
-    // Fetch Instagram Business Account connected to this page
-    if (page.instagram_business_account?.id) {
-      console.log('Found Instagram Business Account:', page.instagram_business_account.id);
-      const igData = await fetchInstagramData(page.instagram_business_account.id, pageAccessToken);
+    // Buscar conta Instagram vinculada à página
+    console.log('Fetching Instagram Business Account for page:', pageId);
+    const igAccountResponse = await fetch(
+      `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account{id,username,followers_count}&access_token=${pageAccessToken}`
+    );
+    const igAccountData = await igAccountResponse.json();
+    console.log('Instagram account lookup:', igAccountData);
+
+    if (igAccountData.instagram_business_account?.id) {
+      const igData = await fetchInstagramData(igAccountData.instagram_business_account.id, pageAccessToken);
       if (igData) {
         platforms.push(igData);
-      }
-    } else {
-      // Tentar buscar conta Instagram via endpoint separado
-      const igAccountResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${pageAccessToken}`
-      );
-      const igAccountData = await igAccountResponse.json();
-      console.log('Instagram account lookup:', igAccountData);
-
-      if (igAccountData.instagram_business_account?.id) {
-        const igData = await fetchInstagramData(igAccountData.instagram_business_account.id, pageAccessToken);
-        if (igData) {
-          platforms.push(igData);
-        }
       }
     }
 
