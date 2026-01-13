@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Users, 
   UserPlus, 
@@ -20,7 +21,9 @@ import {
   Play,
   Bookmark,
   LogOut,
-  Reply
+  Reply,
+  Calendar,
+  Info
 } from "lucide-react";
 import {
   ChartConfig,
@@ -28,6 +31,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -82,6 +86,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const [isRealData, setIsRealData] = useState(false);
   const [isPermissionError, setIsPermissionError] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('instagram');
+  const [period, setPeriod] = useState<string>("7");
 
   const fetchOrganicInsights = async () => {
     setIsLoading(true);
@@ -92,7 +97,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
       console.log('🔄 Buscando insights orgânicos via edge function...');
       
       const { data, error: fetchError } = await supabase.functions.invoke('fetch-organic-insights', {
-        body: { pageId, accessToken }
+        body: { pageId, accessToken, period: parseInt(period) }
       });
 
       if (fetchError) {
@@ -140,7 +145,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
   useEffect(() => {
     fetchOrganicInsights();
-  }, [pageId, accessToken]);
+  }, [pageId, accessToken, period]);
 
   const chartConfig: ChartConfig = {
     followers: {
@@ -253,7 +258,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-2">
                 <UserPlus className="h-5 w-5 text-green-500" />
-                <span className="text-sm text-muted-foreground">Novos (7 dias)</span>
+                <span className="text-sm text-muted-foreground">Novos ({period} dias)</span>
               </div>
               <div className="flex items-center gap-2">
                 <p className="text-3xl font-bold text-green-600">+{insights.newFollowers.toLocaleString('pt-BR')}</p>
@@ -362,8 +367,22 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
         {/* Engagement Details */}
         <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle className="text-lg">Detalhes de Engajamento (7 dias)</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">Detalhes de Engajamento ({period} dias)</CardTitle>
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Select value={period} onValueChange={setPeriod}>
+                <SelectTrigger className="w-[130px] h-8">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 dias</SelectItem>
+                  <SelectItem value="14">14 dias</SelectItem>
+                  <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="90">90 dias</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
@@ -373,11 +392,25 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                 <p className="text-xs text-muted-foreground">Curtidas</p>
               </div>
               
-              <div className="text-center p-4 bg-muted/30 rounded-lg">
-                <MessageCircle className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-                <p className="text-2xl font-bold">{insights.comments.toLocaleString('pt-BR')}</p>
-                <p className="text-xs text-muted-foreground">Comentários</p>
-              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="text-center p-4 bg-muted/30 rounded-lg cursor-help relative">
+                      <Info className="h-3 w-3 absolute top-2 right-2 text-muted-foreground/50" />
+                      <MessageCircle className="h-6 w-6 mx-auto mb-2 text-blue-500" />
+                      <p className="text-2xl font-bold">{insights.comments.toLocaleString('pt-BR')}</p>
+                      <p className="text-xs text-muted-foreground">Comentários</p>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-medium">Comentários Recebidos</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      A API do Instagram/Facebook só fornece dados de comentários recebidos nos seus posts. 
+                      Comentários que sua página fez em outros perfis não são contabilizados.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               
               <div className="text-center p-4 bg-muted/30 rounded-lg">
                 <Share2 className="h-6 w-6 mx-auto mb-2 text-green-500" />
