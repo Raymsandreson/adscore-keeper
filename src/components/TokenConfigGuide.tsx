@@ -148,6 +148,72 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
           </div>
 
           <Accordion type="single" collapsible className="w-full">
+            {/* Passo 0 - Pré-requisitos */}
+            <AccordionItem value="step-0" className="border border-warning/50 rounded-lg mb-2 overflow-hidden bg-warning/5">
+              <AccordionTrigger className="px-4 py-3 hover:bg-warning/10">
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-warning text-warning-foreground h-6 w-6 p-0 flex items-center justify-center rounded-full">!</Badge>
+                  <span className="text-sm font-medium">Pré-requisito: Adicionar Produtos ao App</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-4 pt-2">
+                <div className="space-y-4 text-sm">
+                  <div className="p-3 bg-warning/10 border border-warning/20 rounded-lg">
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="text-warning">Importante:</strong> As permissões do Instagram só aparecem após adicionar os produtos necessários ao seu App!
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Instagram className="h-4 w-4 text-pink-500" />
+                      Para permissões do Instagram Orgânico:
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
+                      <li>Acesse <strong>Meta Developers</strong> → Seu App</li>
+                      <li>No menu lateral, clique em <strong>"Adicionar Produto"</strong></li>
+                      <li>Procure e adicione: <strong>"Instagram Basic Display"</strong></li>
+                      <li>Procure e adicione: <strong>"Instagram Graph API"</strong></li>
+                      <li>Após adicionar, as permissões <code className="bg-muted px-1 rounded">instagram_basic</code> e <code className="bg-muted px-1 rounded">instagram_manage_insights</code> aparecerão no Graph API Explorer</li>
+                    </ol>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Facebook className="h-4 w-4 text-blue-500" />
+                      Para permissões de Ads/Tráfego Pago:
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-muted-foreground ml-2">
+                      <li>No menu lateral, clique em <strong>"Adicionar Produto"</strong></li>
+                      <li>Procure e adicione: <strong>"Marketing API"</strong></li>
+                      <li>Após adicionar, as permissões <code className="bg-muted px-1 rounded">ads_read</code> e <code className="bg-muted px-1 rounded">ads_management</code> aparecerão</li>
+                    </ol>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => window.open('https://developers.facebook.com/apps/', '_blank')}
+                      className="gap-2"
+                    >
+                      Abrir Meus Apps
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open('https://developers.facebook.com/docs/instagram-basic-display-api/getting-started', '_blank')}
+                      className="gap-2"
+                    >
+                      Docs Instagram API
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Passo 1 */}
             <AccordionItem value="step-1" className="border border-border rounded-lg mb-2 overflow-hidden">
               <AccordionTrigger className="px-4 py-3 hover:bg-muted/50">
@@ -164,10 +230,29 @@ const TokenConfigGuide = ({ onClose }: TokenConfigGuideProps) => {
                     <li>Clique no botão abaixo para abrir o Graph API Explorer</li>
                     <li>Selecione seu <strong>App</strong> no menu "Meta App"</li>
                     <li>Clique em <strong>"Add a Permission"</strong></li>
-                    <li>Adicione todas as permissões listadas acima</li>
+                    <li>
+                      <strong>Para Instagram:</strong> Expanda <code className="bg-muted px-1 rounded">instagram_basic</code> e <code className="bg-muted px-1 rounded">instagram_manage_insights</code>
+                      <div className="ml-4 mt-1 text-xs text-warning">⚠️ Se não aparecer, volte ao passo anterior e adicione os produtos!</div>
+                    </li>
+                    <li>
+                      <strong>Para Ads:</strong> Expanda <code className="bg-muted px-1 rounded">ads_read</code>, <code className="bg-muted px-1 rounded">ads_management</code>
+                    </li>
+                    <li>
+                      <strong>Para Páginas:</strong> Expanda <code className="bg-muted px-1 rounded">pages_show_list</code>, <code className="bg-muted px-1 rounded">pages_read_engagement</code>
+                    </li>
                     <li>Clique em <strong>"Generate Access Token"</strong></li>
-                    <li>Conceda as permissões solicitadas</li>
+                    <li>Conceda as permissões solicitadas na janela popup</li>
                   </ol>
+
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>Onde encontrar cada permissão:</strong><br/>
+                      • <code className="text-primary">instagram_basic</code> → Events, Groups and Pages → instagram_basic<br/>
+                      • <code className="text-primary">instagram_manage_insights</code> → Events, Groups and Pages → instagram_manage_insights<br/>
+                      • <code className="text-primary">ads_read</code> → Ads → ads_read<br/>
+                      • <code className="text-primary">pages_show_list</code> → Events, Groups and Pages → pages_show_list
+                    </p>
+                  </div>
 
                   <Button
                     variant="default"
