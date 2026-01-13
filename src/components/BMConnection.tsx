@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wifi, WifiOff, AlertCircle, RefreshCw, Save, Trash2, Plus, Clock, CheckCircle2, XCircle, Key, ExternalLink } from "lucide-react";
+import { Wifi, WifiOff, AlertCircle, RefreshCw, Save, Trash2, Plus, Clock, CheckCircle2, XCircle, Key, ExternalLink, HelpCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { MetaAPIConfig } from "@/services/metaAPI";
+import TokenConfigGuide from "./TokenConfigGuide";
 
 interface SavedAccount {
   id: string;
@@ -56,6 +57,7 @@ const BMConnection = ({
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [isValidatingToken, setIsValidatingToken] = useState(false);
   const [connectedTokenInfo, setConnectedTokenInfo] = useState<TokenInfo | null>(null);
+  const [showConfigGuide, setShowConfigGuide] = useState(false);
   const { toast } = useToast();
 
   // Carregar contas salvas do localStorage
@@ -493,7 +495,21 @@ const BMConnection = ({
                 Token Longa Duração
                 <ExternalLink className="h-3 w-3" />
               </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={() => setShowConfigGuide(!showConfigGuide)}
+                className="gap-2"
+              >
+                <HelpCircle className="h-4 w-4" />
+                {showConfigGuide ? "Fechar Guia" : "Guia Completo"}
+              </Button>
             </div>
+
+            {/* Guia de Configuração */}
+            {showConfigGuide && (
+              <TokenConfigGuide onClose={() => setShowConfigGuide(false)} />
+            )}
 
             {/* Seleção de conta salva */}
             {savedAccounts.length > 0 && (
