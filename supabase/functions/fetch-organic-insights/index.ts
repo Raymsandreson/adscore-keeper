@@ -286,18 +286,11 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       console.warn('Could not fetch media:', e);
     }
 
-    // Estimate reach based on engagement if we couldn't get it from API
-    // Typical reach is 10-30% of followers, engagement is 1-5% of reach
-    if (reach === 0 && totalFollowers > 0) {
-      // Estimate reach as 15% of followers per day, multiplied by period
-      reach = Math.round(totalFollowers * 0.15 * Math.min(recentPosts.length, period));
-      impressions = Math.round(reach * 1.5); // Impressions typically 1.5x reach
-      console.log('Estimated reach:', reach, 'impressions:', impressions);
-    }
-
+    // NO MORE ESTIMATIONS - Only real data from API
+    // If reach is 0, it stays 0 (API didn't return it)
+    
     // Try to get real follower growth from account insights
     let newFollowers = 0;
-    let newFollowersIsEstimated = true;
     
     // Try to get profile views and website clicks from account-level insights
     let profileViews = 0, websiteClicks = 0;
@@ -323,10 +316,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
           } else if (metric.name === 'follower_count') {
             // follower_count returns daily net change (+/- followers)
             newFollowers = totalValue;
-            newFollowersIsEstimated = false;
           }
         }
-        console.log('Instagram account insights:', { profileViews, websiteClicks, newFollowers, newFollowersIsEstimated });
+        console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers });
       } else if (accountInsights.error) {
         console.log('Instagram account insights not available:', accountInsights.error.message);
       }
@@ -334,11 +326,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       console.warn('Could not fetch Instagram account insights:', e);
     }
     
-    // Fallback: estimate new followers if API didn't return real data
-    if (newFollowersIsEstimated && totalFollowers > 0) {
-      const weeklyGrowthRate = 0.01; // 1% weekly estimated
-      newFollowers = Math.round(totalFollowers * weeklyGrowthRate * (period / 7));
-    }
+    // NO FALLBACK ESTIMATION - newFollowers stays 0 if API didn't return it
     
     // Calculate engagement rate
     const totalEngagement = likes + comments + saves + shares;
@@ -348,10 +336,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     // Generate daily data based on available metrics and period
     const dailyData = generateDailyDataFromMetrics(totalFollowers, newFollowers, reach, engagementRate, period);
 
-    console.log('Instagram insights summary:', {
+    console.log('Instagram insights summary (ONLY REAL DATA):', {
       totalFollowers,
       newFollowers,
-      newFollowersIsEstimated,
       reach,
       impressions,
       likes,
@@ -388,7 +375,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         videoViews
       },
       dailyData,
-      dataSource: reach > 0 && !newFollowersIsEstimated ? 'real' : (reach > 0 ? 'limited' : 'estimated')
+      dataSource: 'real' // Only real data now
     };
   } catch (error) {
     console.error('Error fetching Instagram data:', error);
