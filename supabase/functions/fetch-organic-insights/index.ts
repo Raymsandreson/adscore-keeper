@@ -300,8 +300,35 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     const weeklyGrowthRate = 0.01; // 1% weekly
     const estimatedNewFollowers = Math.round(totalFollowers * weeklyGrowthRate * (period / 7));
     
-    // Try to get profile views and website clicks (might fail without full permissions)
+    // Try to get profile views and website clicks from account-level insights
     let profileViews = 0, websiteClicks = 0;
+    
+    try {
+      // Fetch account-level insights (profile_views, website_clicks)
+      // These metrics require instagram_manage_insights permission
+      const accountInsightsResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=profile_views,website_clicks&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+      );
+      const accountInsights = await accountInsightsResponse.json();
+      
+      if (accountInsights.data && !accountInsights.error) {
+        for (const metric of accountInsights.data) {
+          const values = metric.values || [];
+          const totalValue = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+          
+          if (metric.name === 'profile_views') {
+            profileViews = totalValue;
+          } else if (metric.name === 'website_clicks') {
+            websiteClicks = totalValue;
+          }
+        }
+        console.log('Instagram account insights:', { profileViews, websiteClicks });
+      } else if (accountInsights.error) {
+        console.log('Instagram account insights not available:', accountInsights.error.message);
+      }
+    } catch (e) {
+      console.warn('Could not fetch Instagram account insights:', e);
+    }
     
     // Calculate engagement rate
     const totalEngagement = likes + comments + saves + shares;
