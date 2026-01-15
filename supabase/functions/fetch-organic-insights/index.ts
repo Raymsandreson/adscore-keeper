@@ -274,19 +274,32 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
 
     // OPTIMIZATION: Fetch media insights in parallel batches (only first 10 posts for speed)
     const postsForInsights = recentPosts.slice(0, 10);
+    let mediaInsightsErrors: string[] = [];
+    
     if (postsForInsights.length > 0) {
       const insightStart = Date.now();
       const insightPromises = postsForInsights.map(async (media) => {
         try {
-          let metricsToFetch = 'saved,reach,impressions';
+          // Updated metrics for Instagram API v21.0+
+          // - 'impressions' is deprecated for media insights
+          // - 'plays' is deprecated, use 'views' instead for video content
+          let metricsToFetch = 'saved,reach';
           if (media.media_type === 'VIDEO' || media.media_type === 'REELS') {
-            metricsToFetch += ',plays,shares';
+            metricsToFetch += ',views,shares'; // 'views' replaced 'plays'
           }
           const resp = await fetch(
             `https://graph.facebook.com/v21.0/${media.id}/insights?metric=${metricsToFetch}&access_token=${accessToken}`
           );
-          return resp.json();
-        } catch {
+          const result = await resp.json();
+          
+          // Log any errors for debugging
+          if (result.error) {
+            console.log(`❌ Media ${media.id} insights error:`, result.error.message, result.error.code);
+            return { error: result.error, mediaId: media.id, mediaType: media.media_type };
+          }
+          return { ...result, mediaType: media.media_type };
+        } catch (e) {
+          console.log(`❌ Media ${media.id} fetch error:`, e);
           return null;
         }
       });
@@ -295,18 +308,28 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       console.log('⏱️ Media insights batch:', Date.now() - insightStart, 'ms');
       
       for (const insights of insightResults) {
-        if (insights?.data) {
+        if (insights?.error) {
+          // Collect unique error messages
+          const errMsg = insights.error.message || 'Unknown error';
+          if (!mediaInsightsErrors.includes(errMsg)) {
+            mediaInsightsErrors.push(errMsg);
+          }
+        } else if (insights?.data) {
           for (const insight of insights.data) {
             const value = insight.values?.[0]?.value || 0;
             switch (insight.name) {
               case 'saved': saves += value; break;
               case 'shares': shares += value; break;
               case 'reach': reach += value; break;
-              case 'impressions': impressions += value; break;
-              case 'plays': videoViews += value; break;
+              case 'views': videoViews += value; break; // 'views' replaces 'plays'
             }
           }
         }
+      }
+      
+      // Log all unique errors found
+      if (mediaInsightsErrors.length > 0) {
+        console.log('📛 Media insights errors summary:', mediaInsightsErrors);
       }
     }
 
@@ -371,8 +394,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         console.log('Instagram total_value insights error:', totalValueInsights.error.message);
       }
       
-      // Now fetch reach and impressions with total_value  
-      const reachMetrics = 'reach,impressions';
+      // Now fetch reach with total_value (impressions is NOT a valid account-level metric)
+      // Also fetch total_interactions and views for better data
+      const reachMetrics = 'reach,total_interactions,views';
       const reachResponse = await fetch(
         `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
@@ -385,15 +409,18 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
           if (metric.name === 'reach') {
             reach = value;
             console.log('Instagram account-level REACH:', value);
-          } else if (metric.name === 'impressions') {
+          } else if (metric.name === 'views') {
+            // 'views' is the new metric replacing 'impressions' for total content views
             impressions = value;
-            console.log('Instagram account-level IMPRESSIONS:', value);
+            console.log('Instagram account-level VIEWS (as impressions):', value);
+          } else if (metric.name === 'total_interactions') {
+            console.log('Instagram total_interactions:', value);
           }
         }
       } else if (reachInsights.error) {
-        console.log('Instagram reach/impressions error:', reachInsights.error.message);
+        console.log('Instagram reach/views error:', reachInsights.error.message);
         unavailableMetrics.reach = 'Requer permissão instagram_manage_insights';
-        unavailableMetrics.impressions = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.impressions = 'Métrica views requer permissão instagram_manage_insights';
       }
       
       // Finally, fetch follower_count with time_series to get daily changes
