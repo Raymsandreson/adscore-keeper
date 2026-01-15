@@ -979,6 +979,239 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               );
             })()}
           </div>
+
+          {/* Market Benchmarks Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <h4 className="font-semibold text-lg">Benchmarks de Mercado</h4>
+              <Badge variant="secondary" className="text-xs">referência</Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-sm">
+                      Dados baseados em estudos de <strong>Hootsuite</strong>, <strong>Sprout Social</strong> e <strong>Rival IQ</strong> (2023-2024). 
+                      Benchmarks variam por setor e faixa de seguidores.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            {(() => {
+              const igData = platforms.find(p => p.platform === 'instagram');
+              const fbData = platforms.find(p => p.platform === 'facebook');
+              
+              const igFollowers = igData?.insights?.totalFollowers || 0;
+              const fbFollowers = fbData?.insights?.totalFollowers || 0;
+              const igEngagement = igData?.insights?.engagementRate || 0;
+              const fbEngagement = fbData?.insights?.engagementRate || 0;
+
+              // Benchmarks by follower tier (source: Hootsuite, Sprout Social 2023-2024)
+              const instagramBenchmarks = [
+                { tier: 'Nano (1K-10K)', min: 1000, max: 10000, rate: 4.0, description: 'Maior proximidade com audiência' },
+                { tier: 'Micro (10K-100K)', min: 10000, max: 100000, rate: 2.4, description: 'Bom equilíbrio alcance/engajamento' },
+                { tier: 'Médio (100K-500K)', min: 100000, max: 500000, rate: 1.8, description: 'Audiência consolidada' },
+                { tier: 'Macro (500K-1M)', min: 500000, max: 1000000, rate: 1.4, description: 'Alta visibilidade' },
+                { tier: 'Mega (1M+)', min: 1000000, max: Infinity, rate: 1.1, description: 'Celebridades/marcas globais' },
+              ];
+
+              const facebookBenchmarks = [
+                { tier: 'Pequeno (<10K)', min: 0, max: 10000, rate: 0.8, description: 'Comunidades engajadas' },
+                { tier: 'Médio (10K-100K)', min: 10000, max: 100000, rate: 0.5, description: 'Páginas em crescimento' },
+                { tier: 'Grande (100K+)', min: 100000, max: Infinity, rate: 0.3, description: 'Marcas estabelecidas' },
+              ];
+
+              const getIgBenchmark = (followers: number) => {
+                return instagramBenchmarks.find(b => followers >= b.min && followers < b.max) || instagramBenchmarks[0];
+              };
+
+              const getFbBenchmark = (followers: number) => {
+                return facebookBenchmarks.find(b => followers >= b.min && followers < b.max) || facebookBenchmarks[0];
+              };
+
+              const igBenchmark = getIgBenchmark(igFollowers);
+              const fbBenchmark = getFbBenchmark(fbFollowers);
+
+              const getPerformanceLevel = (actual: number, benchmark: number) => {
+                const ratio = actual / benchmark;
+                if (ratio >= 1.5) return { label: 'Excelente', color: 'text-success', bgColor: 'bg-success/10', icon: '🏆' };
+                if (ratio >= 1.0) return { label: 'Acima da média', color: 'text-success', bgColor: 'bg-success/10', icon: '✅' };
+                if (ratio >= 0.7) return { label: 'Na média', color: 'text-warning', bgColor: 'bg-warning/10', icon: '📊' };
+                return { label: 'Abaixo da média', color: 'text-danger', bgColor: 'bg-danger/10', icon: '⚠️' };
+              };
+
+              const igPerformance = getPerformanceLevel(igEngagement, igBenchmark.rate);
+              const fbPerformance = getPerformanceLevel(fbEngagement, fbBenchmark.rate);
+
+              return (
+                <div className="space-y-4">
+                  {/* Your performance vs benchmarks */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Instagram Benchmark Card */}
+                    <Card className="border-pink-200/50 dark:border-pink-800/50">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Instagram className="h-5 w-5 text-pink-500" />
+                            <CardTitle className="text-base">Instagram</CardTitle>
+                          </div>
+                          <Badge className={`${igPerformance.bgColor} ${igPerformance.color} border-0`}>
+                            {igPerformance.icon} {igPerformance.label}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Seu engajamento</span>
+                          <span className="text-xl font-bold">{igEngagement.toFixed(2)}%</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Benchmark ({igBenchmark.tier})</span>
+                          <span className="text-lg font-semibold text-muted-foreground">{igBenchmark.rate}%</span>
+                        </div>
+                        <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="absolute left-0 top-0 h-full bg-gradient-to-r from-pink-400 to-pink-600 rounded-full transition-all"
+                            style={{ width: `${Math.min((igEngagement / (igBenchmark.rate * 2)) * 100, 100)}%` }}
+                          />
+                          <div 
+                            className="absolute top-0 h-full w-0.5 bg-foreground/50"
+                            style={{ left: '50%' }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{igBenchmark.description}</p>
+                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted/30 rounded">
+                          <strong>Diferença:</strong> {igEngagement >= igBenchmark.rate ? '+' : ''}{((igEngagement - igBenchmark.rate) / igBenchmark.rate * 100).toFixed(0)}% em relação à média do setor
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Facebook Benchmark Card */}
+                    <Card className="border-blue-200/50 dark:border-blue-800/50">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Facebook className="h-5 w-5 text-blue-600" />
+                            <CardTitle className="text-base">Facebook</CardTitle>
+                          </div>
+                          <Badge className={`${fbPerformance.bgColor} ${fbPerformance.color} border-0`}>
+                            {fbPerformance.icon} {fbPerformance.label}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Seu engajamento</span>
+                          <span className="text-xl font-bold">{fbEngagement.toFixed(2)}%</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Benchmark ({fbBenchmark.tier})</span>
+                          <span className="text-lg font-semibold text-muted-foreground">{fbBenchmark.rate}%</span>
+                        </div>
+                        <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                          <div 
+                            className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full transition-all"
+                            style={{ width: `${Math.min((fbEngagement / (fbBenchmark.rate * 2)) * 100, 100)}%` }}
+                          />
+                          <div 
+                            className="absolute top-0 h-full w-0.5 bg-foreground/50"
+                            style={{ left: '50%' }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">{fbBenchmark.description}</p>
+                        <div className="text-xs text-muted-foreground mt-2 p-2 bg-muted/30 rounded">
+                          <strong>Diferença:</strong> {fbEngagement >= fbBenchmark.rate ? '+' : ''}{((fbEngagement - fbBenchmark.rate) / fbBenchmark.rate * 100).toFixed(0)}% em relação à média do setor
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Full Benchmark Reference Table */}
+                  <Card className="bg-muted/20">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">Tabela de Referência por Faixa de Seguidores</CardTitle>
+                        <Badge variant="outline" className="text-xs">Fonte: Hootsuite/Sprout Social 2024</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Instagram Table */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Instagram className="h-4 w-4 text-pink-500" />
+                            <span className="font-medium text-sm">Instagram</span>
+                          </div>
+                          <div className="space-y-2">
+                            {instagramBenchmarks.map((benchmark, idx) => (
+                              <div 
+                                key={idx} 
+                                className={`flex items-center justify-between p-2 rounded ${
+                                  igFollowers >= benchmark.min && igFollowers < benchmark.max 
+                                    ? 'bg-pink-100 dark:bg-pink-900/30 border border-pink-300 dark:border-pink-700' 
+                                    : 'bg-muted/30'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {igFollowers >= benchmark.min && igFollowers < benchmark.max && (
+                                    <Badge className="bg-pink-500 text-white text-xs">Você</Badge>
+                                  )}
+                                  <span className="text-sm">{benchmark.tier}</span>
+                                </div>
+                                <span className="font-semibold text-sm">{benchmark.rate}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Facebook Table */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Facebook className="h-4 w-4 text-blue-600" />
+                            <span className="font-medium text-sm">Facebook</span>
+                          </div>
+                          <div className="space-y-2">
+                            {facebookBenchmarks.map((benchmark, idx) => (
+                              <div 
+                                key={idx} 
+                                className={`flex items-center justify-between p-2 rounded ${
+                                  fbFollowers >= benchmark.min && fbFollowers < benchmark.max 
+                                    ? 'bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700' 
+                                    : 'bg-muted/30'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  {fbFollowers >= benchmark.min && fbFollowers < benchmark.max && (
+                                    <Badge className="bg-blue-600 text-white text-xs">Você</Badge>
+                                  )}
+                                  <span className="text-sm">{benchmark.tier}</span>
+                                </div>
+                                <span className="font-semibold text-sm">{benchmark.rate}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 p-3 bg-muted/30 rounded-lg border border-border text-xs text-muted-foreground">
+                        <strong>📊 Sobre os benchmarks:</strong> Estes valores são médias globais baseadas em estudos de mercado. 
+                        O engajamento real pode variar significativamente por nicho/indústria:
+                        <ul className="mt-2 ml-4 list-disc space-y-1">
+                          <li><strong>Educação/ONGs:</strong> geralmente 30-50% acima da média</li>
+                          <li><strong>Moda/Beleza:</strong> próximo à média</li>
+                          <li><strong>Tecnologia/Finanças:</strong> geralmente 20-40% abaixo da média</li>
+                          <li><strong>Alimentação/Bebidas:</strong> geralmente 10-20% acima da média</li>
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              );
+            })()}
+          </div>
         </CardContent>
       </Card>
       </SkeletonOverlay>
