@@ -140,6 +140,66 @@ serve(async (req) => {
 
     // Upsert metrics for today
     const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    // Fetch yesterday's followers count to calculate new followers
+    let newFollowers = 0;
+    try {
+      const { data: yesterdayMetrics } = await supabase
+        .from('instagram_metrics')
+        .select('followers_count')
+        .eq('account_id', account_id)
+        .eq('metric_date', yesterday)
+        .maybeSingle();
+      
+      if (yesterdayMetrics?.followers_count) {
+        newFollowers = (userData.followers_count || 0) - yesterdayMetrics.followers_count;
+        console.log('New followers calculated:', newFollowers, '(today:', userData.followers_count, ', yesterday:', yesterdayMetrics.followers_count, ')');
+      } else {
+        // If no yesterday data, try to get the most recent previous day
+        const { data: lastMetrics } = await supabase
+          .from('instagram_metrics')
+          .select('followers_count, metric_date')
+          .eq('account_id', account_id)
+          .lt('metric_date', today)
+          .order('metric_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (lastMetrics?.followers_count) {
+          newFollowers = (userData.followers_count || 0) - lastMetrics.followers_count;
+          console.log('New followers calculated from last metric:', newFollowers, '(today:', userData.followers_count, ', last:', lastMetrics.followers_count, 'date:', lastMetrics.metric_date, ')');
+        } else {
+          console.log('No previous metrics found, cannot calculate new followers');
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching previous followers:', e);
+    }
+    
+    // Also try to get new followers from Instagram API insights
+    let apiNewFollowers = 0;
+    try {
+      const followerInsightsResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${instagramId}/insights?metric=follower_count&period=day&access_token=${accessToken}`
+      );
+      
+      if (followerInsightsResponse.ok) {
+        const followerInsights = await followerInsightsResponse.json();
+        if (followerInsights.data?.[0]?.values) {
+          // Sum up the daily changes (follower_count returns net change per day)
+          apiNewFollowers = followerInsights.data[0].values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+          console.log('API follower_count insights:', apiNewFollowers, 'values:', followerInsights.data[0].values.length);
+          
+          // Use API value if available and different from calculated
+          if (apiNewFollowers !== 0) {
+            newFollowers = apiNewFollowers;
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch follower_count insights:', e);
+    }
     
     await supabase
       .from('instagram_metrics')
@@ -158,6 +218,8 @@ serve(async (req) => {
       }, {
         onConflict: 'account_id,metric_date',
       });
+    
+    console.log('Metrics saved. New followers:', newFollowers);
 
     return new Response(
       JSON.stringify({ 
@@ -166,6 +228,7 @@ serve(async (req) => {
           ...userData,
           insights: insightsData,
           engagement_rate: engagementRate,
+          new_followers: newFollowers,
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
