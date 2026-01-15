@@ -18,11 +18,25 @@ import {
   Zap,
   ChevronDown,
   ChevronUp,
-  Loader2
+  Loader2,
+  LayoutGrid,
+  Play,
+  Camera,
+  Film,
+  Rocket,
+  DollarSign
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+
+interface PostFormatCount {
+  format: string;
+  count: number;
+  label: string;
+  icon: React.ReactNode;
+  engagement: number;
+}
 
 interface PostPattern {
   format: "image" | "video" | "carousel" | "reel" | "story";
@@ -39,6 +53,7 @@ interface SmartInsightsProps {
   paidImpressions: number;
   organicEngagement?: number;
   paidEngagement?: number;
+  adSpend?: number;
   topPosts?: Array<{
     id: string;
     type: string;
@@ -58,6 +73,7 @@ export const SmartInsights = ({
   paidImpressions,
   organicEngagement = 0,
   paidEngagement = 0,
+  adSpend = 0,
   topPosts = [],
   period = "7 dias"
 }: SmartInsightsProps) => {
@@ -65,6 +81,7 @@ export const SmartInsights = ({
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [viralIdeas, setViralIdeas] = useState<string[]>([]);
   const [patterns, setPatterns] = useState<PostPattern | null>(null);
+  const [formatCounts, setFormatCounts] = useState<PostFormatCount[]>([]);
 
   const totalImpressions = organicImpressions + paidImpressions;
   const organicPercentage = totalImpressions > 0 ? (organicImpressions / totalImpressions) * 100 : 0;
@@ -73,12 +90,69 @@ export const SmartInsights = ({
   const organicWins = organicPercentage > paidPercentage;
   const significantDifference = Math.abs(organicPercentage - paidPercentage) > 15;
 
-  // Analyze post patterns
+  // Calculate cost per 1000 organic-equivalent views
+  const cpmEffective = paidImpressions > 0 && adSpend > 0 
+    ? (adSpend / paidImpressions) * 1000 
+    : 0;
+
+  // Analyze post patterns and format counts
   useEffect(() => {
     if (topPosts.length > 0) {
       analyzePatterns();
+      countFormats();
     }
   }, [topPosts]);
+
+  const countFormats = () => {
+    const counts: Record<string, { count: number; totalEngagement: number }> = {};
+    
+    topPosts.forEach(post => {
+      const format = normalizeFormat(post.type);
+      if (!counts[format]) {
+        counts[format] = { count: 0, totalEngagement: 0 };
+      }
+      counts[format].count++;
+      counts[format].totalEngagement += post.engagement || 0;
+    });
+
+    const formatData: PostFormatCount[] = Object.entries(counts).map(([format, data]) => ({
+      format,
+      count: data.count,
+      label: getFormatLabel(format),
+      icon: getFormatIconComponent(format),
+      engagement: data.count > 0 ? data.totalEngagement / data.count : 0
+    })).sort((a, b) => b.count - a.count);
+
+    setFormatCounts(formatData);
+  };
+
+  const normalizeFormat = (type: string): string => {
+    const lower = type?.toLowerCase() || "image";
+    if (lower.includes("reel") || lower === "video") return "reel";
+    if (lower.includes("carousel") || lower.includes("album")) return "carousel";
+    if (lower.includes("story")) return "story";
+    return "image";
+  };
+
+  const getFormatLabel = (format: string): string => {
+    switch (format) {
+      case "reel": return "Reels";
+      case "carousel": return "Carrosséis";
+      case "story": return "Stories";
+      case "image": return "Imagens";
+      default: return "Posts";
+    }
+  };
+
+  const getFormatIconComponent = (format: string): React.ReactNode => {
+    switch (format) {
+      case "reel": return <Play className="h-4 w-4" />;
+      case "carousel": return <LayoutGrid className="h-4 w-4" />;
+      case "story": return <Film className="h-4 w-4" />;
+      case "image": return <Camera className="h-4 w-4" />;
+      default: return <Image className="h-4 w-4" />;
+    }
+  };
 
   const analyzePatterns = () => {
     if (topPosts.length === 0) return;
@@ -86,7 +160,7 @@ export const SmartInsights = ({
     // Find most common format
     const formatCounts: Record<string, number> = {};
     topPosts.forEach(post => {
-      const format = post.type || "image";
+      const format = normalizeFormat(post.type);
       formatCounts[format] = (formatCounts[format] || 0) + 1;
     });
     const bestFormat = Object.entries(formatCounts)
@@ -161,7 +235,8 @@ export const SmartInsights = ({
         bestDay: patterns?.bestDay || "Terça",
         avgEngagement: patterns?.avgEngagement?.toFixed(2) || "0",
         topHashtags: patterns?.topHashtags?.join(", ") || "",
-        hasCTA: patterns?.hasCallToAction || false
+        hasCTA: patterns?.hasCallToAction || false,
+        formatBreakdown: formatCounts.map(f => `${f.label}: ${f.count}`).join(", ")
       };
 
       const { data, error } = await supabase.functions.invoke('goal-ai-suggestions', {
@@ -170,6 +245,7 @@ export const SmartInsights = ({
           
 Contexto da conta:
 - Visualizações orgânicas: ${context.organicPercentage}% vs Pagas: ${context.paidPercentage}%
+- Formatos publicados: ${context.formatBreakdown}
 - Formato que mais funciona: ${context.topFormats}
 - Melhor horário: ${context.bestTime}
 - Melhor dia: ${context.bestDay}
@@ -208,35 +284,27 @@ Formato: retorne APENAS as 4 ideias, uma por linha, sem numeração.`
     }
   };
 
-  const getFormatIcon = (format: string) => {
-    switch (format) {
-      case "video":
-      case "reel":
-        return <Video className="h-4 w-4" />;
-      case "carousel":
-        return <Image className="h-4 w-4" />;
-      default:
-        return <Image className="h-4 w-4" />;
-    }
-  };
-
   const getAlertLevel = () => {
+    // Orgânico superando = oportunidade de escalar investimento em ads
     if (organicWins && significantDifference) {
       return {
-        type: "success" as const,
-        icon: TrendingUp,
-        title: "🎯 Orgânico Superando Anúncios!",
-        message: `Seu conteúdo orgânico representa ${organicPercentage.toFixed(0)}% das visualizações. Considere:`,
+        type: "opportunity" as const,
+        icon: Rocket,
+        title: "🚀 Oportunidade de Escalar!",
+        message: `Orgânico representa ${organicPercentage.toFixed(0)}% das visualizações. Seu conteúdo tem potencial, considere:`,
         suggestions: [
-          "Revisar segmentação dos anúncios pagos",
-          "Turbinar os posts orgânicos de melhor performance",
-          "Realocar orçamento para formatos orgânicos que funcionam"
+          "Aumentar investimento em anúncios para escalar o alcance",
+          "Turbinar os posts orgânicos que estão performando bem",
+          "Testar criativos baseados no conteúdo orgânico de sucesso",
+          "O algoritmo está favorecendo seu conteúdo - hora de investir mais!"
         ],
-        bgClass: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
-        textClass: "text-green-700 dark:text-green-400",
-        iconClass: "text-green-600"
+        bgClass: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800",
+        textClass: "text-blue-700 dark:text-blue-400",
+        iconClass: "text-blue-600"
       };
-    } else if (!organicWins && significantDifference) {
+    } 
+    // Anúncios dominando = dependência alta, precisa melhorar orgânico
+    else if (!organicWins && significantDifference) {
       return {
         type: "warning" as const,
         icon: AlertTriangle,
@@ -245,7 +313,8 @@ Formato: retorne APENAS as 4 ideias, uma por linha, sem numeração.`
         suggestions: [
           "Investir mais em conteúdo orgânico de qualidade",
           "Analisar por que o orgânico está com baixo alcance",
-          "Criar conteúdo mais engajador para algoritmo"
+          "Criar conteúdo mais engajador para o algoritmo",
+          "Diversificar formatos (Reels costumam ter mais alcance orgânico)"
         ],
         bgClass: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800",
         textClass: "text-amber-700 dark:text-amber-400",
@@ -260,11 +329,11 @@ Formato: retorne APENAS as 4 ideias, uma por linha, sem numeração.`
       suggestions: [
         "Continue monitorando a performance",
         "Teste novos formatos de conteúdo",
-        "Otimize gradualmente o mix"
+        "Otimize gradualmente o mix de investimento"
       ],
-      bgClass: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800",
-      textClass: "text-blue-700 dark:text-blue-400",
-      iconClass: "text-blue-600"
+      bgClass: "bg-muted/50 border-border",
+      textClass: "text-foreground",
+      iconClass: "text-muted-foreground"
     };
   };
 
@@ -308,6 +377,57 @@ Formato: retorne APENAS as 4 ideias, uma por linha, sem numeração.`
           </div>
         </div>
 
+        {/* CPM Comparison if available */}
+        {cpmEffective > 0 && (
+          <div className="bg-muted/30 rounded-lg p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">CPM dos Anúncios</span>
+            </div>
+            <Badge variant="outline" className="font-mono">
+              R$ {cpmEffective.toFixed(2)}
+            </Badge>
+          </div>
+        )}
+
+        {/* Post Format Breakdown */}
+        {formatCounts.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4 text-violet-500" />
+              Posts por Formato
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {formatCounts.map((format, i) => (
+                <div 
+                  key={i}
+                  className="bg-muted/50 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-md bg-background">
+                      {format.icon}
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium">{format.label}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {format.engagement.toFixed(1)}% eng
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {format.count}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            {formatCounts.length === 0 && topPosts.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Conecte para ver a análise de formatos
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Pattern Analysis */}
         {patterns && (
           <div className="space-y-3">
@@ -336,9 +456,9 @@ Formato: retorne APENAS as 4 ideias, uma por linha, sem numeração.`
                   <TooltipTrigger asChild>
                     <div className="bg-muted/50 rounded-lg p-2 text-center cursor-help">
                       <div className="flex items-center justify-center gap-1 mb-1">
-                        {getFormatIcon(patterns.format)}
+                        {getFormatIconComponent(patterns.format)}
                       </div>
-                      <p className="text-xs font-medium capitalize">{patterns.format}</p>
+                      <p className="text-xs font-medium capitalize">{getFormatLabel(patterns.format)}</p>
                       <p className="text-[10px] text-muted-foreground">Melhor formato</p>
                     </div>
                   </TooltipTrigger>

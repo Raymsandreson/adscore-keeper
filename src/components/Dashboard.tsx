@@ -297,27 +297,7 @@ const Dashboard = () => {
           </Card>
         )}
 
-        {/* Views Breakdown - Organic vs Paid */}
-        {isConnected && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <ViewsBreakdown
-              paidImpressions={metrics.impressions}
-              paidReach={0}
-              organicImpressions={organicMetricsData.impressions}
-              organicReach={organicMetricsData.reach}
-              period="Período selecionado"
-            />
-            <SmartInsights
-              organicImpressions={organicMetricsData.impressions}
-              paidImpressions={metrics.impressions}
-              organicEngagement={0}
-              paidEngagement={metrics.ctr}
-              period="Período selecionado"
-            />
-          </div>
-        )}
-
-        {/* Connection Status */}
+        {/* Connection Status - SEMPRE NO TOPO */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <BMConnection 
             isConnected={isConnected}
@@ -340,6 +320,27 @@ const Dashboard = () => {
             isLoading={isLoading}
           />
         </div>
+
+        {/* Views Breakdown & Smart Insights - ABAIXO DA CONEXÃO */}
+        {isConnected && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ViewsBreakdown
+              paidImpressions={metrics.impressions}
+              paidReach={0}
+              organicImpressions={organicMetricsData.impressions}
+              organicReach={organicMetricsData.reach}
+              period="Período selecionado"
+            />
+            <SmartInsights
+              organicImpressions={organicMetricsData.impressions}
+              paidImpressions={metrics.impressions}
+              organicEngagement={0}
+              paidEngagement={metrics.ctr}
+              adSpend={metrics.spend}
+              period="Período selecionado"
+            />
+          </div>
+        )}
 
         {/* Tabs: Tráfego Pago / Público Orgânico / Metas */}
         <Tabs defaultValue="paid" className="w-full">
