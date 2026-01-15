@@ -41,7 +41,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid, Line, LineChart, Legend, ResponsiveContainer } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import TokenConfigGuide from "./TokenConfigGuide";
 
@@ -799,6 +799,185 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                 })}
               </tbody>
             </table>
+          </div>
+          {/* Engagement Evolution Chart */}
+          <div className="pt-4 border-t border-border/30">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">Evolução do Engajamento</h3>
+              <Badge variant="outline" className="text-xs">comparativo</Badge>
+            </div>
+            
+            {/* Prepare chart data by merging daily data from both platforms */}
+            {(() => {
+              // Create merged data for the chart
+              const igDaily = instagramData.dailyData || [];
+              const fbDaily = facebookData.dailyData || [];
+              
+              // Create a map of dates to values
+              const chartData = igDaily.map((ig, index) => ({
+                date: ig.date,
+                instagram: ig.engagement,
+                facebook: fbDaily[index]?.engagement || 0,
+                igReach: ig.reach,
+                fbReach: fbDaily[index]?.reach || 0,
+              }));
+              
+              const engagementChartConfig: ChartConfig = {
+                instagram: {
+                  label: "Instagram",
+                  color: "hsl(328, 85%, 58%)", // Pink
+                },
+                facebook: {
+                  label: "Facebook",
+                  color: "hsl(220, 90%, 56%)", // Blue
+                },
+              };
+
+              // Calculate averages and trends
+              const igAvg = igDaily.length > 0 ? igDaily.reduce((sum, d) => sum + d.engagement, 0) / igDaily.length : 0;
+              const fbAvg = fbDaily.length > 0 ? fbDaily.reduce((sum, d) => sum + d.engagement, 0) / fbDaily.length : 0;
+              
+              // Calculate trend (last 3 days vs first 3 days)
+              const getEngagementTrend = (data: DailyOrganicData[]) => {
+                if (data.length < 3) return 0;
+                const firstThree = data.slice(0, 3).reduce((sum, d) => sum + d.engagement, 0) / 3;
+                const lastThree = data.slice(-3).reduce((sum, d) => sum + d.engagement, 0) / 3;
+                return firstThree > 0 ? ((lastThree - firstThree) / firstThree) * 100 : 0;
+              };
+              
+              const igTrend = getEngagementTrend(igDaily);
+              const fbTrend = getEngagementTrend(fbDaily);
+
+              return (
+                <div className="space-y-4">
+                  {/* Trend Summary Cards */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-lg bg-gradient-to-br from-pink-500/5 to-purple-500/5 border border-pink-200/30 dark:border-pink-800/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Instagram className="h-4 w-4 text-pink-500" />
+                          <span className="text-sm font-medium">Instagram</span>
+                        </div>
+                        <Badge 
+                          variant="secondary" 
+                          className={igTrend >= 0 
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" 
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          }
+                        >
+                          {igTrend >= 0 ? "↑" : "↓"} {Math.abs(igTrend).toFixed(1)}%
+                        </Badge>
+                      </div>
+                      <p className="text-lg font-bold mt-1">{igAvg.toFixed(2)}%</p>
+                      <p className="text-xs text-muted-foreground">média de engajamento</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500/5 to-blue-600/5 border border-blue-200/30 dark:border-blue-800/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Facebook className="h-4 w-4 text-blue-600" />
+                          <span className="text-sm font-medium">Facebook</span>
+                        </div>
+                        <Badge 
+                          variant="secondary" 
+                          className={fbTrend >= 0 
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" 
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                          }
+                        >
+                          {fbTrend >= 0 ? "↑" : "↓"} {Math.abs(fbTrend).toFixed(1)}%
+                        </Badge>
+                      </div>
+                      <p className="text-lg font-bold mt-1">{fbAvg.toFixed(2)}%</p>
+                      <p className="text-xs text-muted-foreground">média de engajamento</p>
+                    </div>
+                  </div>
+
+                  {/* Chart */}
+                  <div className="h-[280px] w-full">
+                    <ChartContainer config={engagementChartConfig} className="h-full w-full">
+                      <LineChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                        <XAxis 
+                          dataKey="date" 
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11 }}
+                          className="text-muted-foreground"
+                        />
+                        <YAxis 
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(value) => `${value.toFixed(1)}%`}
+                          className="text-muted-foreground"
+                          width={50}
+                        />
+                        <ChartTooltip 
+                          content={
+                            <ChartTooltipContent 
+                              formatter={(value, name) => (
+                                <span className="font-semibold">
+                                  {typeof value === 'number' ? value.toFixed(2) : value}%
+                                </span>
+                              )}
+                            />
+                          }
+                        />
+                        <Legend 
+                          verticalAlign="top" 
+                          height={36}
+                          formatter={(value) => (
+                            <span className="text-sm font-medium">
+                              {value === 'instagram' ? 'Instagram' : 'Facebook'}
+                            </span>
+                          )}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="instagram" 
+                          stroke="hsl(328, 85%, 58%)" 
+                          strokeWidth={2.5}
+                          dot={{ r: 3, fill: "hsl(328, 85%, 58%)" }}
+                          activeDot={{ r: 5, fill: "hsl(328, 85%, 58%)" }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="facebook" 
+                          stroke="hsl(220, 90%, 56%)" 
+                          strokeWidth={2.5}
+                          dot={{ r: 3, fill: "hsl(220, 90%, 56%)" }}
+                          activeDot={{ r: 5, fill: "hsl(220, 90%, 56%)" }}
+                        />
+                      </LineChart>
+                    </ChartContainer>
+                  </div>
+
+                  {/* Winner indicator */}
+                  <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/30">
+                    {igAvg > fbAvg ? (
+                      <>
+                        <Instagram className="h-5 w-5 text-pink-500" />
+                        <span className="text-sm">
+                          <strong>Instagram</strong> tem engajamento <strong>{((igAvg - fbAvg) / fbAvg * 100).toFixed(0)}% maior</strong> no período
+                        </span>
+                      </>
+                    ) : igAvg < fbAvg ? (
+                      <>
+                        <Facebook className="h-5 w-5 text-blue-600" />
+                        <span className="text-sm">
+                          <strong>Facebook</strong> tem engajamento <strong>{((fbAvg - igAvg) / igAvg * 100).toFixed(0)}% maior</strong> no período
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        Engajamento igual nas duas plataformas
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </CardContent>
       </Card>
