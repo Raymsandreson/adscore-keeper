@@ -177,9 +177,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: O
     }
   };
 
-  // Apply custom date range
+  // Apply custom date range (supports single date or range)
   const applyCustomDateRange = () => {
-    if (customDateRange.from && customDateRange.to) {
+    if (customDateRange.from) {
+      // If only from is set (single click), set to as well for single day
+      if (!customDateRange.to) {
+        setCustomDateRange({ from: customDateRange.from, to: customDateRange.from });
+      }
       setPeriod("custom");
       setIsCustomDateOpen(false);
     }
@@ -717,31 +721,67 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: O
                 <PopoverTrigger asChild>
                   <span />
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-4" align="end">
+                <PopoverContent className="w-auto p-4 z-50 bg-popover" align="end">
                   <div className="space-y-4">
-                    <h4 className="font-medium text-sm">Selecione o período</h4>
+                    <div className="space-y-1">
+                      <h4 className="font-medium text-sm">Selecione o período</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Clique em uma data para um único dia, ou selecione duas datas para um período
+                      </p>
+                    </div>
                     <CalendarComponent
                       mode="range"
                       selected={{ from: customDateRange.from, to: customDateRange.to }}
-                      onSelect={(range) => setCustomDateRange({ from: range?.from, to: range?.to })}
+                      onSelect={(range) => {
+                        // Allow single date selection by setting both from and to to the same date
+                        if (range?.from && !range?.to) {
+                          setCustomDateRange({ from: range.from, to: range.from });
+                        } else {
+                          setCustomDateRange({ from: range?.from, to: range?.to });
+                        }
+                      }}
                       locale={ptBR}
-                      disabled={(date) => date > new Date()}
+                      disabled={(date) => {
+                        const today = new Date();
+                        const yesterday = new Date(today);
+                        yesterday.setHours(0, 0, 0, 0);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        
+                        // Max 90 days back (Instagram API limit)
+                        const maxPastDate = new Date(today);
+                        maxPastDate.setDate(maxPastDate.getDate() - 90);
+                        
+                        // Disable: today, future dates, and dates older than 90 days
+                        const dateToCheck = new Date(date);
+                        dateToCheck.setHours(0, 0, 0, 0);
+                        
+                        return dateToCheck > yesterday || dateToCheck < maxPastDate;
+                      }}
                       numberOfMonths={2}
                       className="rounded-md border pointer-events-auto"
                     />
+                    <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                      ⚠️ Dados disponíveis apenas até ontem (atraso de 24-48h da API do Instagram)
+                    </div>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs text-muted-foreground">
                         {customDateRange.from && customDateRange.to && (
                           <>
-                            {format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })} - {format(customDateRange.to, "dd/MM/yyyy", { locale: ptBR })}
-                            {" "}({differenceInDays(customDateRange.to, customDateRange.from) + 1} dias)
+                            {customDateRange.from.getTime() === customDateRange.to.getTime() ? (
+                              <>{format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })} (1 dia)</>
+                            ) : (
+                              <>
+                                {format(customDateRange.from, "dd/MM/yyyy", { locale: ptBR })} - {format(customDateRange.to, "dd/MM/yyyy", { locale: ptBR })}
+                                {" "}({differenceInDays(customDateRange.to, customDateRange.from) + 1} dias)
+                              </>
+                            )}
                           </>
                         )}
                       </div>
                       <Button 
                         size="sm" 
                         onClick={applyCustomDateRange}
-                        disabled={!customDateRange.from || !customDateRange.to}
+                        disabled={!customDateRange.from}
                       >
                         Aplicar
                       </Button>
