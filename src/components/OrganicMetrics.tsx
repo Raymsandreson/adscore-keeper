@@ -35,8 +35,7 @@ import {
   ExternalLink,
   Wifi,
   WifiOff,
-  Clock,
-  UserMinus
+  Clock
 } from "lucide-react";
 import {
   ChartConfig,
@@ -52,9 +51,8 @@ import { useOrganicCache } from "@/hooks/useOrganicCache";
 
 export interface OrganicInsights {
   totalFollowers: number;
-  newFollowers: number;
-  unfollows: number;
-  followerChange: number;
+  netFollowerChange: number;
+  followerChangePercent: number;
   reach: number;
   impressions: number;
   engagementRate: number;
@@ -76,7 +74,7 @@ export interface OrganicInsights {
 export interface DailyOrganicData {
   date: string;
   followers: number;
-  newFollowers: number;
+  netChange: number;
   reach: number;
   engagement: number;
 }
@@ -85,8 +83,7 @@ export interface DailyOrganicData {
 interface UnavailableMetrics {
   reach?: string;
   impressions?: string;
-  newFollowers?: string;
-  unfollows?: string;
+  netFollowerChange?: string;
   profileViews?: string;
   websiteClicks?: string;
   shares?: string;
@@ -279,8 +276,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
       label: "Seguidores",
       color: "hsl(var(--primary))",
     },
-    newFollowers: {
-      label: "Novos",
+    netChange: {
+      label: "Saldo",
       color: "hsl(var(--chart-2))",
     },
     reach: {
@@ -394,27 +391,19 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         metricName: 'followers'
       },
       {
-        label: `Novos (${getPeriodLabel()})`,
-        icon: UserPlus,
-        instagram: instagramData.insights.newFollowers,
-        facebook: facebookData.insights.newFollowers,
-        format: (v: number) => `+${v.toLocaleString('pt-BR')}`,
-        colorClass: 'text-green-600',
-        metricName: 'newFollowers',
-        igUnavailable: igUnavailable.newFollowers,
-        fbUnavailableReason: fbUnavailable.newFollowers
-      },
-      {
-        label: `Deixaram de seguir (${getPeriodLabel()})`,
-        icon: UserMinus,
-        instagram: instagramData.insights.unfollows,
-        facebook: facebookData.insights.unfollows,
-        format: (v: number) => v > 0 ? `-${v.toLocaleString('pt-BR')}` : '0',
-        colorClass: 'text-red-500',
-        metricName: 'unfollows',
-        igUnavailable: igUnavailable.unfollows,
-        fbUnavailable: true, // Facebook doesn't provide unfollows data
-        fbUnavailableReason: 'Não disponível na API do Facebook'
+        label: `Saldo de Seguidores (${getPeriodLabel()})`,
+        icon: TrendingUp,
+        instagram: instagramData.insights.netFollowerChange,
+        facebook: facebookData.insights.netFollowerChange,
+        format: (v: number) => {
+          const prefix = v > 0 ? '+' : '';
+          return `${prefix}${v.toLocaleString('pt-BR')}`;
+        },
+        colorClass: undefined, // Will be determined dynamically
+        getColorClass: (v: number) => v >= 0 ? 'text-green-600' : 'text-red-500',
+        metricName: 'netFollowerChange',
+        igUnavailable: igUnavailable.netFollowerChange,
+        fbUnavailableReason: fbUnavailable.netFollowerChange
       },
       {
         label: 'Alcance',
