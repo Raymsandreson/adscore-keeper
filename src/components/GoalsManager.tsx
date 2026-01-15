@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { format, differenceInDays, isPast, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { 
   Target, 
   Plus, 
@@ -31,12 +32,15 @@ import {
   RefreshCw,
   History,
   Archive,
-  Send
+  Send,
+  Bell,
+  BellOff
 } from "lucide-react";
 import GoalHistory from "./GoalHistory";
 import GoalReportScheduler from "./GoalReportScheduler";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Flame, Zap, TrendingDown } from "lucide-react";
+import { useGoalNotifications, GoalForNotification } from "@/hooks/useGoalNotifications";
 
 export interface Goal {
   id: string;
@@ -80,6 +84,7 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -89,6 +94,24 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
   const [unit, setUnit] = useState('');
   const [deadline, setDeadline] = useState<Date | undefined>(undefined);
   const [notes, setNotes] = useState('');
+
+  // Convert goals for notification hook
+  const goalsForNotification: GoalForNotification[] = useMemo(() => 
+    goals.map(g => ({
+      id: g.id,
+      title: g.title,
+      targetValue: g.targetValue,
+      currentValue: g.currentValue,
+      deadline: format(g.deadline, 'yyyy-MM-dd'),
+      type: g.type,
+    })), [goals]);
+
+  // Goal notifications hook
+  const { 
+    requestNotificationPermission, 
+    hasNotificationPermission,
+    checkGoals: checkGoalNotifications 
+  } = useGoalNotifications(goalsForNotification);
 
   // Load goals from localStorage
   useEffect(() => {
@@ -101,7 +124,28 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
         createdAt: new Date(g.createdAt)
       })));
     }
+    // Check notification permission status
+    if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted');
+    }
   }, []);
+
+  // Handle enabling notifications
+  const handleEnableNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    setNotificationsEnabled(granted);
+    if (granted) {
+      toast.success('Notificações ativadas!', {
+        description: 'Você receberá alertas quando metas estiverem próximas do prazo ou com baixo progresso.'
+      });
+      // Check goals immediately after enabling
+      checkGoalNotifications();
+    } else {
+      toast.error('Permissão negada', {
+        description: 'Habilite notificações nas configurações do navegador.'
+      });
+    }
+  };
 
   // Save goals to localStorage
   useEffect(() => {
@@ -327,7 +371,7 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-2xl font-semibold">Metas e Prazos</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-muted-foreground">Defina e acompanhe suas metas de marketing</p>
                 {autoSync && hasSyncableMetrics && (
                   <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
@@ -335,6 +379,43 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
                     Sincronizado
                   </Badge>
                 )}
+                {/* Notification Toggle */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={notificationsEnabled ? "outline" : "secondary"}
+                        size="sm"
+                        onClick={handleEnableNotifications}
+                        className={cn(
+                          "gap-1.5 h-7 text-xs",
+                          notificationsEnabled 
+                            ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
+                            : "bg-muted hover:bg-muted/80"
+                        )}
+                      >
+                        {notificationsEnabled ? (
+                          <>
+                            <Bell className="h-3 w-3" />
+                            Notificações ON
+                          </>
+                        ) : (
+                          <>
+                            <BellOff className="h-3 w-3" />
+                            Ativar Alertas
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        {notificationsEnabled 
+                          ? 'Você receberá alertas push quando metas estiverem críticas ou com baixo progresso' 
+                          : 'Ative para receber notificações push sobre metas próximas do prazo'}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               {lastSyncTime && (
                 <p className="text-xs text-muted-foreground mt-1">
