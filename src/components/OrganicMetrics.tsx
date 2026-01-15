@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { 
@@ -28,7 +29,9 @@ import {
   LogOut,
   Reply,
   Calendar,
-  Info
+  Info,
+  Settings,
+  Key
 } from "lucide-react";
 import {
   ChartConfig,
@@ -39,6 +42,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
+import TokenConfigGuide from "./TokenConfigGuide";
 
 export interface OrganicInsights {
   totalFollowers: number;
@@ -114,6 +118,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     to: undefined
   });
   const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
+  const [showPermissionGuide, setShowPermissionGuide] = useState(false);
 
   // Get the display label for the period
   const getPeriodLabel = () => {
@@ -402,23 +407,37 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             {isInstagram ? 'Instagram' : 'Facebook'}
           </Badge>
           {unavailableMetrics && Object.keys(unavailableMetrics).length > 0 && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 cursor-help">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    Algumas métricas limitadas
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-sm">
-                  <p className="font-medium mb-1">Métricas com dados limitados:</p>
-                  <p className="text-xs text-muted-foreground">
-                    Algumas métricas exibem 0 porque requerem permissões adicionais da API do Meta.
-                    Procure por indicadores amarelos "Indisponível" para ver detalhes.
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 cursor-help">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Algumas métricas limitadas
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm">
+                    <p className="font-medium mb-1">Métricas com dados limitados:</p>
+                    <p className="text-xs text-muted-foreground">
+                      Algumas métricas exibem 0 porque requerem permissões adicionais da API do Meta.
+                      Procure por indicadores amarelos "Indisponível" para ver detalhes.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950/30">
+                    <Key className="h-3 w-3" />
+                    Solicitar Permissões
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <TokenConfigGuide onClose={() => setShowPermissionGuide(false)} />
+                </DialogContent>
+              </Dialog>
+            </>
           )}
         </div>
 
