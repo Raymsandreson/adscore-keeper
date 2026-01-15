@@ -109,9 +109,10 @@ interface OrganicMetricsProps {
   pageId?: string;
   accessToken?: string;
   isConnected: boolean;
+  onMetricsChange?: (data: { impressions: number; reach: number }) => void;
 }
 
-const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProps) => {
+const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: OrganicMetricsProps) => {
   const [platforms, setPlatforms] = useState<PlatformData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false); // For subtle loading when period changes
@@ -259,6 +260,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         if (processedPlatforms.length > 0) {
           const hasInstagram = processedPlatforms.some((p: PlatformData) => p.platform === 'instagram');
           setActiveTab(hasInstagram ? 'instagram' : 'facebook');
+          
+          // Notify parent of organic metrics for ViewsBreakdown
+          if (onMetricsChange) {
+            const totalImpressions = processedPlatforms.reduce((sum: number, p: PlatformData) => sum + (p.insights.impressions || 0), 0);
+            const totalReach = processedPlatforms.reduce((sum: number, p: PlatformData) => sum + (p.insights.reach || 0), 0);
+            onMetricsChange({ impressions: totalImpressions, reach: totalReach });
+          }
         }
         
         if (data.simulated && data.message) {
