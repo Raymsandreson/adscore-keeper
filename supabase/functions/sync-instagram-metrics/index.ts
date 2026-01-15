@@ -215,6 +215,7 @@ serve(async (req) => {
         website_clicks: insightsData.website_clicks,
         email_contacts: insightsData.email_contacts,
         engagement_rate: engagementRate,
+        new_followers: newFollowers,
       }, {
         onConflict: 'account_id,metric_date',
       });

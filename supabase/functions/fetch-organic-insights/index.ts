@@ -341,33 +341,78 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     let profileViews = 0, websiteClicks = 0;
     
     try {
-      // Fetch account-level insights including follower_count (daily changes)
-      // These metrics require instagram_manage_insights permission
-      const metricsToFetch = 'profile_views,website_clicks,follower_count';
-      const accountInsightsResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${metricsToFetch}&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
-      );
-      const accountInsights = await accountInsightsResponse.json();
+      // Instagram API requires different metric_type for different metrics
+      // profile_views, website_clicks need metric_type=total_value
+      // follower_count needs period=day with metric_type=time_series
       
-      if (accountInsights.data && !accountInsights.error) {
+      // First, fetch profile_views and website_clicks with total_value
+      const totalValueMetrics = 'profile_views,website_clicks';
+      const totalValueResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${totalValueMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+      );
+      const totalValueInsights = await totalValueResponse.json();
+      
+      if (totalValueInsights.data && !totalValueInsights.error) {
         accountInsightsAvailable = true;
-        for (const metric of accountInsights.data) {
-          const values = metric.values || [];
-          const totalValue = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+        for (const metric of totalValueInsights.data) {
+          // For total_value, the value is directly in total_value.value
+          const value = metric.total_value?.value || 0;
           
           if (metric.name === 'profile_views') {
-            profileViews = totalValue;
+            profileViews = value;
           } else if (metric.name === 'website_clicks') {
-            websiteClicks = totalValue;
-          } else if (metric.name === 'follower_count') {
-            // follower_count returns daily net change (+/- followers)
-            newFollowers = totalValue;
+            websiteClicks = value;
           }
         }
-        console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers });
-      } else if (accountInsights.error) {
-        console.log('Instagram account insights not available:', accountInsights.error.message);
-        // Mark these metrics as unavailable
+        console.log('Instagram total_value metrics:', { profileViews, websiteClicks });
+      } else if (totalValueInsights.error) {
+        console.log('Instagram total_value insights error:', totalValueInsights.error.message);
+      }
+      
+      // Now fetch reach and impressions with total_value  
+      const reachMetrics = 'reach,impressions';
+      const reachResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+      );
+      const reachInsights = await reachResponse.json();
+      
+      if (reachInsights.data && !reachInsights.error) {
+        for (const metric of reachInsights.data) {
+          const value = metric.total_value?.value || 0;
+          
+          if (metric.name === 'reach') {
+            reach = value;
+            console.log('Instagram account-level REACH:', value);
+          } else if (metric.name === 'impressions') {
+            impressions = value;
+            console.log('Instagram account-level IMPRESSIONS:', value);
+          }
+        }
+      } else if (reachInsights.error) {
+        console.log('Instagram reach/impressions error:', reachInsights.error.message);
+        unavailableMetrics.reach = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.impressions = 'Requer permissão instagram_manage_insights';
+      }
+      
+      // Finally, fetch follower_count with time_series to get daily changes
+      const followerResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=follower_count&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+      );
+      const followerInsights = await followerResponse.json();
+      
+      if (followerInsights.data && followerInsights.data[0]?.values && !followerInsights.error) {
+        // follower_count returns daily net change (+/- followers)
+        const values = followerInsights.data[0].values || [];
+        newFollowers = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+        console.log('Instagram follower_count (daily changes sum):', newFollowers, 'from', values.length, 'days');
+      } else if (followerInsights.error) {
+        console.log('Instagram follower_count error:', followerInsights.error.message);
+        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
+      }
+      
+      console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers, reach, impressions });
+      
+      if (!accountInsightsAvailable && totalValueInsights.error) {
         unavailableMetrics.profileViews = 'Requer permissão instagram_manage_insights';
         unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
         unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';

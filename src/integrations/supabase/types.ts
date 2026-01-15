@@ -400,6 +400,7 @@ export type Database = {
           impressions: number | null
           media_count: number | null
           metric_date: string
+          new_followers: number | null
           profile_views: number | null
           reach: number | null
           reels_comments: number | null
@@ -428,6 +429,7 @@ export type Database = {
           impressions?: number | null
           media_count?: number | null
           metric_date?: string
+          new_followers?: number | null
           profile_views?: number | null
           reach?: number | null
           reels_comments?: number | null
@@ -456,6 +458,7 @@ export type Database = {
           impressions?: number | null
           media_count?: number | null
           metric_date?: string
+          new_followers?: number | null
           profile_views?: number | null
           reach?: number | null
           reels_comments?: number | null
