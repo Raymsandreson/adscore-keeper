@@ -10,6 +10,7 @@ import DataSourceIndicator from "./DataSourceIndicator";
 import GoalBiasIndicator from "./GoalBiasIndicator";
 import UnifiedMetaStatus from "./UnifiedMetaStatus";
 import ViewsBreakdown from "./ViewsBreakdown";
+import SmartInsights from "./SmartInsights";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -298,13 +299,22 @@ const Dashboard = () => {
 
         {/* Views Breakdown - Organic vs Paid */}
         {isConnected && (
-          <ViewsBreakdown
-            paidImpressions={metrics.impressions}
-            paidReach={0}
-            organicImpressions={organicMetricsData.impressions}
-            organicReach={organicMetricsData.reach}
-            period="Período selecionado"
-          />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ViewsBreakdown
+              paidImpressions={metrics.impressions}
+              paidReach={0}
+              organicImpressions={organicMetricsData.impressions}
+              organicReach={organicMetricsData.reach}
+              period="Período selecionado"
+            />
+            <SmartInsights
+              organicImpressions={organicMetricsData.impressions}
+              paidImpressions={metrics.impressions}
+              organicEngagement={0}
+              paidEngagement={metrics.ctr}
+              period="Período selecionado"
+            />
+          </div>
         )}
 
         {/* Connection Status */}
