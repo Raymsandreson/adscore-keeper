@@ -31,7 +31,8 @@ import {
   Calendar,
   Info,
   Settings,
-  Key
+  Key,
+  ExternalLink
 } from "lucide-react";
 import {
   ChartConfig,
@@ -326,420 +327,6 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     </div>
   );
 
-  // Component to show unavailable metric indicator
-  const UnavailableMetricIndicator = ({ reason, value }: { reason?: string; value: number }) => {
-    if (value !== 0 || !reason) return null;
-    
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1 mt-1">
-              <AlertCircle className="h-3 w-3 text-amber-500" />
-              <span className="text-xs text-amber-600 dark:text-amber-400">Indisponível</span>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs">
-            <p className="text-xs">{reason}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
-
-  // Wrapper component for metrics that might be unavailable
-  const MetricValue = ({ 
-    value, 
-    unavailableReason, 
-    format = 'number',
-    suffix = ''
-  }: { 
-    value: number; 
-    unavailableReason?: string;
-    format?: 'number' | 'percent';
-    suffix?: string;
-  }) => {
-    const formattedValue = format === 'percent' 
-      ? `${value.toFixed(2)}%` 
-      : value.toLocaleString('pt-BR');
-    
-    const isUnavailable = value === 0 && unavailableReason;
-    
-    return (
-      <div>
-        <p className={`text-2xl font-bold ${isUnavailable ? 'text-muted-foreground/50' : ''}`}>
-          {formattedValue}{suffix}
-        </p>
-        {isUnavailable && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1 mt-1 cursor-help">
-                  <AlertCircle className="h-3 w-3 text-amber-500" />
-                  <span className="text-xs text-amber-600 dark:text-amber-400">Indisponível</span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p className="text-xs">{unavailableReason}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-    );
-  };
-
-  const renderPlatformMetrics = (platformData: PlatformData) => {
-    const { insights, dailyData, accountName, platform, unavailableMetrics } = platformData;
-    const isInstagram = platform === 'instagram';
-
-    return (
-      <div className="space-y-6">
-        {/* Account Name Badge */}
-        <div className="flex items-center gap-2">
-          {isInstagram ? (
-            <Instagram className="h-5 w-5 text-pink-500" />
-          ) : (
-            <Facebook className="h-5 w-5 text-blue-600" />
-          )}
-          <span className="font-medium">{accountName}</span>
-          <Badge variant="secondary" className={isInstagram ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white" : "bg-blue-600 text-white"}>
-            {isInstagram ? 'Instagram' : 'Facebook'}
-          </Badge>
-          {unavailableMetrics && Object.keys(unavailableMetrics).length > 0 && (
-            <>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 cursor-help">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Algumas métricas limitadas
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-sm">
-                    <p className="font-medium mb-1">Métricas com dados limitados:</p>
-                    <p className="text-xs text-muted-foreground">
-                      Algumas métricas exibem 0 porque requerem permissões adicionais da API do Meta.
-                      Procure por indicadores amarelos "Indisponível" para ver detalhes.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950/30">
-                    <Key className="h-3 w-3" />
-                    Solicitar Permissões
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                  <TokenConfigGuide onClose={() => setShowPermissionGuide(false)} />
-                </DialogContent>
-              </Dialog>
-            </>
-          )}
-        </div>
-
-        {/* KPIs */}
-        <SkeletonOverlay>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="border-border/50">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  <span className="text-sm text-muted-foreground">Total Seguidores</span>
-                </div>
-                <p className="text-3xl font-bold">{insights.totalFollowers.toLocaleString('pt-BR')}</p>
-              </CardContent>
-            </Card>
-
-            <Card className={`border-border/50 ${unavailableMetrics?.newFollowers && insights.newFollowers === 0 ? 'border-amber-200 dark:border-amber-800' : ''}`}>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <UserPlus className="h-5 w-5 text-green-500" />
-                  <span className="text-sm text-muted-foreground">Novos ({getPeriodLabel()})</span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <MetricValue 
-                    value={insights.newFollowers} 
-                    unavailableReason={unavailableMetrics?.newFollowers}
-                    suffix=""
-                  />
-                  {insights.followerChange > 0 && !unavailableMetrics?.newFollowers && (
-                    <Badge variant="secondary" className="bg-green-100 text-green-700">
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      {insights.followerChange.toFixed(1)}%
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={`border-border/50 ${unavailableMetrics?.reach && insights.reach === 0 ? 'border-amber-200 dark:border-amber-800' : ''}`}>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Eye className="h-5 w-5 text-blue-500" />
-                  <span className="text-sm text-muted-foreground">Alcance</span>
-                </div>
-                <MetricValue 
-                  value={insights.reach} 
-                  unavailableReason={unavailableMetrics?.reach}
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Heart className="h-5 w-5 text-red-500" />
-                  <span className="text-sm text-muted-foreground">Engajamento</span>
-                </div>
-                <p className="text-3xl font-bold">{insights.engagementRate.toFixed(2)}%</p>
-              </CardContent>
-            </Card>
-          </div>
-        </SkeletonOverlay>
-
-        {/* Charts */}
-        <SkeletonOverlay>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  Crescimento de Seguidores
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={chartConfig} className="h-[250px]">
-                  <AreaChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickLine={false}
-                      axisLine={false}
-                      className="text-xs"
-                    />
-                    <YAxis 
-                      tickLine={false}
-                      axisLine={false}
-                      className="text-xs"
-                      tickFormatter={(value) => value.toLocaleString('pt-BR')}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area
-                      type="monotone"
-                      dataKey="followers"
-                      stroke={isInstagram ? "#E1306C" : "#1877F2"}
-                      fill={isInstagram ? "rgba(225, 48, 108, 0.2)" : "rgba(24, 119, 242, 0.2)"}
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <UserPlus className="h-5 w-5 text-green-500" />
-                  Novos Seguidores por Dia
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ChartContainer config={chartConfig} className="h-[250px]">
-                  <BarChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                    <XAxis 
-                      dataKey="date" 
-                      tickLine={false}
-                      axisLine={false}
-                      className="text-xs"
-                    />
-                    <YAxis 
-                      tickLine={false}
-                      axisLine={false}
-                      className="text-xs"
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar
-                      dataKey="newFollowers"
-                      fill={isInstagram ? "#E1306C" : "#1877F2"}
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              </CardContent>
-            </Card>
-          </div>
-        </SkeletonOverlay>
-
-        {/* Engagement Details */}
-        <SkeletonOverlay>
-          <Card className="border-border/50">
-            <CardHeader>
-              <CardTitle className="text-lg">Detalhes de Engajamento ({getPeriodLabel()})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                <div className="text-center p-4 bg-muted/30 rounded-lg">
-                  <Heart className="h-6 w-6 mx-auto mb-2 text-red-500" />
-                  <p className="text-2xl font-bold">{insights.likes.toLocaleString('pt-BR')}</p>
-                  <p className="text-xs text-muted-foreground">Curtidas</p>
-                </div>
-                
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="text-center p-4 bg-muted/30 rounded-lg cursor-help relative">
-                        <Info className="h-3 w-3 absolute top-2 right-2 text-muted-foreground/50" />
-                        <MessageCircle className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-                        <p className="text-2xl font-bold">{insights.comments.toLocaleString('pt-BR')}</p>
-                        <p className="text-xs text-muted-foreground">Comentários</p>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="font-medium">Comentários Recebidos</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        A API do Instagram/Facebook só fornece dados de comentários recebidos nos seus posts. 
-                        Comentários que sua página fez em outros perfis não são contabilizados.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                
-                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.shares && insights.shares === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
-                  <Share2 className="h-6 w-6 mx-auto mb-2 text-green-500" />
-                  <MetricValue 
-                    value={insights.shares} 
-                    unavailableReason={unavailableMetrics?.shares}
-                  />
-                  <p className="text-xs text-muted-foreground">Compartilhamentos</p>
-                </div>
-                
-                {isInstagram && (
-                  <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.saves && insights.saves === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
-                    <Bookmark className="h-6 w-6 mx-auto mb-2 text-purple-500" />
-                    <MetricValue 
-                      value={insights.saves} 
-                      unavailableReason={unavailableMetrics?.saves}
-                    />
-                    <p className="text-xs text-muted-foreground">Salvos</p>
-                  </div>
-                )}
-
-                {isInstagram && (
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <Play className="h-6 w-6 mx-auto mb-2 text-orange-500" />
-                    <p className="text-2xl font-bold">{insights.videoViews.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs text-muted-foreground">Visualizações de Vídeo</p>
-                  </div>
-                )}
-                
-                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.profileViews && insights.profileViews === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
-                  <Eye className="h-6 w-6 mx-auto mb-2 text-yellow-500" />
-                  <MetricValue 
-                    value={insights.profileViews} 
-                    unavailableReason={unavailableMetrics?.profileViews}
-                  />
-                  <p className="text-xs text-muted-foreground">Visitas ao Perfil</p>
-                </div>
-                
-                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.websiteClicks && insights.websiteClicks === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
-                  <svg className="h-6 w-6 mx-auto mb-2 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                  <MetricValue 
-                    value={insights.websiteClicks} 
-                    unavailableReason={unavailableMetrics?.websiteClicks}
-                  />
-                  <p className="text-xs text-muted-foreground">Cliques no Site</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </SkeletonOverlay>
-
-        {/* Instagram Stories Metrics */}
-        {isInstagram && (insights.storiesViews > 0 || insights.storiesReach > 0 || insights.storiesReplies > 0) && (
-          <SkeletonOverlay>
-            <Card className="border-border/50 bg-gradient-to-br from-pink-500/5 to-purple-500/5">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 flex items-center justify-center">
-                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                    </svg>
-                  </div>
-                  Stories do Instagram
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <Eye className="h-6 w-6 mx-auto mb-2 text-pink-500" />
-                    <p className="text-2xl font-bold">{insights.storiesViews.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs text-muted-foreground">Visualizações</p>
-                  </div>
-                  
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <Users className="h-6 w-6 mx-auto mb-2 text-purple-500" />
-                    <p className="text-2xl font-bold">{insights.storiesReach.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs text-muted-foreground">Alcance</p>
-                  </div>
-                  
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <Reply className="h-6 w-6 mx-auto mb-2 text-blue-500" />
-                    <p className="text-2xl font-bold">{insights.storiesReplies.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs text-muted-foreground">Respostas</p>
-                  </div>
-                  
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
-                    <LogOut className="h-6 w-6 mx-auto mb-2 text-red-400" />
-                    <p className="text-2xl font-bold">{insights.storiesExits.toLocaleString('pt-BR')}</p>
-                    <p className="text-xs text-muted-foreground">Saídas</p>
-                  </div>
-                </div>
-                
-                {insights.storiesViews > 0 && insights.storiesExits > 0 && (
-                  <div className="mt-4 p-3 bg-muted/20 rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-medium text-foreground">Taxa de Retenção: </span>
-                      {((1 - (insights.storiesExits / insights.storiesViews)) * 100).toFixed(1)}% 
-                      dos espectadores assistiram até o final
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </SkeletonOverlay>
-        )}
-
-        {/* Show placeholder if no stories data */}
-        {isInstagram && insights.storiesViews === 0 && insights.storiesReach === 0 && (
-          <Card className="border-border/50 border-dashed">
-            <CardContent className="py-8 text-center">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-600 flex items-center justify-center mx-auto mb-4 opacity-50">
-                <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                </svg>
-              </div>
-              <p className="text-muted-foreground text-sm">
-                Nenhum Story publicado recentemente ou sem dados disponíveis.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Stories expiram após 24h - métricas aparecem quando há stories ativos.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    );
-  };
-
   const instagramData = platforms.find(p => p.platform === 'instagram');
   const facebookData = platforms.find(p => p.platform === 'facebook');
 
@@ -747,6 +334,11 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     if (!instagramData || !facebookData) return null;
 
     // Helper to check if a metric is available for Facebook
+    // Check for unavailable metrics in either platform
+    const igUnavailable = instagramData.unavailableMetrics || {};
+    const fbUnavailable = facebookData.unavailableMetrics || {};
+    const hasUnavailableMetrics = Object.keys(igUnavailable).length > 0 || Object.keys(fbUnavailable).length > 0;
+
     const isFacebookMetricAvailable = (metricValue: number | undefined, metricName: string) => {
       // Facebook doesn't support saves and video views in the same way
       const unsupportedFBMetrics = ['saves', 'videoViews'];
@@ -770,7 +362,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: facebookData.insights.newFollowers,
         format: (v: number) => `+${v.toLocaleString('pt-BR')}`,
         colorClass: 'text-green-600',
-        metricName: 'newFollowers'
+        metricName: 'newFollowers',
+        igUnavailable: igUnavailable.newFollowers,
+        fbUnavailableReason: fbUnavailable.newFollowers
       },
       {
         label: 'Alcance',
@@ -778,7 +372,18 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.reach,
         facebook: facebookData.insights.reach,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'reach'
+        metricName: 'reach',
+        igUnavailable: igUnavailable.reach,
+        fbUnavailableReason: fbUnavailable.reach
+      },
+      {
+        label: 'Impressões',
+        icon: Eye,
+        instagram: instagramData.insights.impressions,
+        facebook: facebookData.insights.impressions,
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'impressions',
+        igUnavailable: igUnavailable.impressions
       },
       {
         label: 'Engajamento',
@@ -810,22 +415,24 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.shares,
         facebook: facebookData.insights.shares,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'shares'
+        metricName: 'shares',
+        igUnavailable: igUnavailable.shares
       },
       {
         label: 'Salvos',
         icon: Bookmark,
         instagram: instagramData.insights.saves,
-        facebook: 0, // Facebook doesn't have saves
+        facebook: 0,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'saves',
-        fbUnavailable: true
+        fbUnavailable: true,
+        igUnavailable: igUnavailable.saves
       },
       {
         label: 'Visualizações de Vídeo',
         icon: Play,
         instagram: instagramData.insights.videoViews,
-        facebook: 0, // Facebook video views require different API
+        facebook: 0,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'videoViews',
         fbUnavailable: true
@@ -836,19 +443,71 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.profileViews,
         facebook: facebookData.insights.profileViews,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'profileViews'
+        metricName: 'profileViews',
+        igUnavailable: igUnavailable.profileViews
+      },
+      {
+        label: 'Cliques no Site',
+        icon: ExternalLink,
+        instagram: instagramData.insights.websiteClicks,
+        facebook: facebookData.insights.websiteClicks,
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'websiteClicks',
+        igUnavailable: igUnavailable.websiteClicks
       }
     ];
+
+    // Render unavailable indicator for a metric value
+    const renderMetricValue = (value: number, format: (v: number) => string, unavailableReason?: string, colorClass?: string) => {
+      const isUnavailable = value === 0 && unavailableReason;
+      
+      if (isUnavailable) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-muted-foreground/50 text-xs cursor-help flex items-center justify-center gap-1">
+                  <AlertCircle className="h-3 w-3 text-amber-500" />
+                  0
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-xs">{unavailableReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
+      
+      return <span className={colorClass}>{format(value)}</span>;
+    };
 
     return (
       <SkeletonOverlay>
         <Card className="border-border/50 bg-gradient-to-br from-background to-muted/20">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Comparativo de Plataformas
-            </CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Comparativo de Plataformas
+              </CardTitle>
+              
+              {hasUnavailableMetrics && (
+                <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-amber-600 border-amber-300 hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950/30">
+                      <Key className="h-3 w-3" />
+                      Solicitar Permissões
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <TokenConfigGuide onClose={() => setShowPermissionGuide(false)} />
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+            
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <Select value={period === "custom" ? "custom" : period} onValueChange={handlePeriodChange}>
@@ -909,8 +568,45 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               </Popover>
             </div>
           </div>
+          
+          {hasUnavailableMetrics && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-3 w-3" />
+              <span>Algumas métricas estão indisponíveis por falta de permissões na API</span>
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 rounded-lg bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-200/50 dark:border-pink-800/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Instagram className="h-5 w-5 text-pink-500" />
+                <span className="font-medium text-sm">{instagramData.accountName}</span>
+              </div>
+              <p className="text-2xl font-bold">{instagramData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-muted-foreground">seguidores</p>
+            </div>
+            <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-200/50 dark:border-blue-800/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Facebook className="h-5 w-5 text-blue-600" />
+                <span className="font-medium text-sm">{facebookData.accountName}</span>
+              </div>
+              <p className="text-2xl font-bold">{facebookData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-muted-foreground">seguidores</p>
+            </div>
+          </div>
+
+          {/* Total Combined */}
+          <div className="p-4 rounded-lg bg-muted/30 text-center">
+            <p className="text-sm text-muted-foreground mb-1">Total Combinado</p>
+            <p className="text-3xl font-bold text-primary">
+              {(instagramData.insights.totalFollowers + facebookData.insights.totalFollowers).toLocaleString('pt-BR')}
+            </p>
+            <p className="text-xs text-muted-foreground">seguidores nas duas plataformas</p>
+          </div>
+
+          {/* Comparison Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -937,6 +633,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   const diffPercent = metric.facebook > 0 ? ((diff / metric.facebook) * 100) : 0;
                   const IconComponent = metric.icon;
                   const isFbUnavailable = (metric as any).fbUnavailable;
+                  const igUnavailableReason = (metric as any).igUnavailable;
+                  const fbUnavailableReason = (metric as any).fbUnavailableReason;
                   
                   return (
                     <tr key={index} className="border-b border-border/30 last:border-0">
@@ -946,10 +644,10 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                           <span className="text-sm">{metric.label}</span>
                         </div>
                       </td>
-                      <td className={`text-center py-3 px-2 font-semibold ${metric.colorClass || ''}`}>
-                        {metric.format(metric.instagram)}
+                      <td className={`text-center py-3 px-2 font-semibold`}>
+                        {renderMetricValue(metric.instagram, metric.format, igUnavailableReason, metric.colorClass)}
                       </td>
-                      <td className={`text-center py-3 px-2 font-semibold ${metric.colorClass || ''}`}>
+                      <td className={`text-center py-3 px-2 font-semibold`}>
                         {isFbUnavailable ? (
                           <TooltipProvider>
                             <Tooltip>
@@ -965,7 +663,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                             </Tooltip>
                           </TooltipProvider>
                         ) : (
-                          metric.format(metric.facebook)
+                          renderMetricValue(metric.facebook, metric.format, fbUnavailableReason, metric.colorClass)
                         )}
                       </td>
                       <td className="text-center py-3 px-2">
@@ -997,35 +695,6 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               </tbody>
             </table>
           </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            <div className="p-4 rounded-lg bg-gradient-to-br from-pink-500/10 to-purple-500/10 border border-pink-200/50 dark:border-pink-800/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Instagram className="h-5 w-5 text-pink-500" />
-                <span className="font-medium text-sm">{instagramData.accountName}</span>
-              </div>
-              <p className="text-2xl font-bold">{instagramData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
-              <p className="text-xs text-muted-foreground">seguidores</p>
-            </div>
-            <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-200/50 dark:border-blue-800/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Facebook className="h-5 w-5 text-blue-600" />
-                <span className="font-medium text-sm">{facebookData.accountName}</span>
-              </div>
-              <p className="text-2xl font-bold">{facebookData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
-              <p className="text-xs text-muted-foreground">seguidores</p>
-            </div>
-          </div>
-
-          {/* Total Combined */}
-          <div className="mt-4 p-4 rounded-lg bg-muted/30 text-center">
-            <p className="text-sm text-muted-foreground mb-1">Total Combinado</p>
-            <p className="text-3xl font-bold text-primary">
-              {(instagramData.insights.totalFollowers + facebookData.insights.totalFollowers).toLocaleString('pt-BR')}
-            </p>
-            <p className="text-xs text-muted-foreground">seguidores nas duas plataformas</p>
-          </div>
         </CardContent>
       </Card>
       </SkeletonOverlay>
@@ -1046,96 +715,15 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         </Button>
       </div>
 
-      {/* Comparison Card - Only show if both platforms available */}
+      {/* Consolidated Comparison Card */}
       {renderComparisonCard()}
 
-      {/* Platform Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger 
-            value="instagram" 
-            disabled={!instagramData}
-            className="flex items-center gap-2"
-          >
-            <Instagram className="h-4 w-4" />
-            Instagram
-            {instagramData && (
-              <Badge variant="secondary" className="ml-1 text-xs">
-                {instagramData.insights.totalFollowers.toLocaleString('pt-BR')}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger 
-            value="facebook" 
-            disabled={!facebookData}
-            className="flex items-center gap-2"
-          >
-            <Facebook className="h-4 w-4" />
-            Facebook
-            {facebookData && (
-              <Badge variant="secondary" className="ml-1 text-xs">
-                {facebookData.insights.totalFollowers.toLocaleString('pt-BR')}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="instagram" className="mt-6">
-          {instagramData ? renderPlatformMetrics(instagramData) : (
-            <Card className="border-border/50">
-              <CardContent className="py-8 text-center">
-                <Instagram className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Instagram não conectado</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="facebook" className="mt-6">
-          {facebookData ? renderPlatformMetrics(facebookData) : (
-            <Card className="border-border/50">
-              <CardContent className="py-8 text-center">
-                <Facebook className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Facebook não conectado</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Status */}
-      {isRealData ? (
-        <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                  Dados Reais Conectados
-                </p>
-                <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                  Exibindo dados de {platforms.map(p => p.platform === 'instagram' ? 'Instagram' : 'Facebook').join(' e ')}.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                  Dados de Demonstração
-                </p>
-                <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                  Configure as secrets do backend para ver dados reais.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Status indicator - compact */}
+      {!isRealData && (
+        <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+          <AlertCircle className="h-4 w-4" />
+          <span>Dados de demonstração - Configure o backend para ver dados reais</span>
+        </div>
       )}
     </div>
   );
