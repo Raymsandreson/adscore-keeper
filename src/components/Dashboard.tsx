@@ -531,6 +531,7 @@ const Dashboard = () => {
             <OrganicMetrics 
               isConnected={isConnected} 
               onMetricsChange={setOrganicMetricsData}
+              externalPeriod={dateRange}
             />
           </TabsContent>
 
