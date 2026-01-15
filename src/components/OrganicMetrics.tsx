@@ -35,7 +35,8 @@ import {
   ExternalLink,
   Wifi,
   WifiOff,
-  Clock
+  Clock,
+  UserMinus
 } from "lucide-react";
 import {
   ChartConfig,
@@ -52,6 +53,7 @@ import { useOrganicCache } from "@/hooks/useOrganicCache";
 export interface OrganicInsights {
   totalFollowers: number;
   newFollowers: number;
+  unfollows: number;
   followerChange: number;
   reach: number;
   impressions: number;
@@ -84,6 +86,7 @@ interface UnavailableMetrics {
   reach?: string;
   impressions?: string;
   newFollowers?: string;
+  unfollows?: string;
   profileViews?: string;
   websiteClicks?: string;
   shares?: string;
@@ -400,6 +403,18 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         metricName: 'newFollowers',
         igUnavailable: igUnavailable.newFollowers,
         fbUnavailableReason: fbUnavailable.newFollowers
+      },
+      {
+        label: `Deixaram de seguir (${getPeriodLabel()})`,
+        icon: UserMinus,
+        instagram: instagramData.insights.unfollows,
+        facebook: facebookData.insights.unfollows,
+        format: (v: number) => v > 0 ? `-${v.toLocaleString('pt-BR')}` : '0',
+        colorClass: 'text-red-500',
+        metricName: 'unfollows',
+        igUnavailable: igUnavailable.unfollows,
+        fbUnavailable: true, // Facebook doesn't provide unfollows data
+        fbUnavailableReason: 'Não disponível na API do Facebook'
       },
       {
         label: 'Alcance',

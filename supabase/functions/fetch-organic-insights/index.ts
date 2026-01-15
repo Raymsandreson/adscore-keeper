@@ -8,6 +8,7 @@ const corsHeaders = {
 interface OrganicInsights {
   totalFollowers: number;
   newFollowers: number;
+  unfollows: number;
   followerChange: number;
   reach: number;
   impressions: number;
@@ -30,6 +31,7 @@ interface UnavailableMetrics {
   reach?: string;
   impressions?: string;
   newFollowers?: string;
+  unfollows?: string;
   profileViews?: string;
   websiteClicks?: string;
   shares?: string;
@@ -335,6 +337,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     
     // Try to get real follower growth from account insights
     let newFollowers = 0;
+    let unfollows = 0;
     let accountInsightsAvailable = false;
     
     // Try to get profile views and website clicks from account-level insights
@@ -403,25 +406,43 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       if (followerInsights.data && followerInsights.data[0]?.values && !followerInsights.error) {
         // follower_count returns daily net change (+/- followers)
         const values = followerInsights.data[0].values || [];
-        newFollowers = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
-        console.log('Instagram follower_count (daily changes sum):', newFollowers, 'from', values.length, 'days');
+        
+        // Separate positive changes (new followers) from negative changes (unfollows)
+        for (const v of values) {
+          const change = v.value || 0;
+          if (change > 0) {
+            newFollowers += change;
+          } else if (change < 0) {
+            unfollows += Math.abs(change);
+          }
+        }
+        
+        console.log('Instagram follower_count breakdown:', {
+          newFollowers,
+          unfollows,
+          netChange: newFollowers - unfollows,
+          daysAnalyzed: values.length
+        });
       } else if (followerInsights.error) {
         console.log('Instagram follower_count error:', followerInsights.error.message);
         unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
       }
       
-      console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers, reach, impressions });
+      console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers, unfollows, reach, impressions });
       
       if (!accountInsightsAvailable && totalValueInsights.error) {
         unavailableMetrics.profileViews = 'Requer permissão instagram_manage_insights';
         unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
         unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
       }
     } catch (e) {
       console.warn('Could not fetch Instagram account insights:', e);
       unavailableMetrics.profileViews = 'Erro ao buscar dados da API';
       unavailableMetrics.websiteClicks = 'Erro ao buscar dados da API';
       unavailableMetrics.newFollowers = 'Erro ao buscar dados da API';
+      unavailableMetrics.unfollows = 'Erro ao buscar dados da API';
     }
     
     // If account insights were available but values are 0, they're real zeros
@@ -435,6 +456,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       }
       if (newFollowers === 0 && !unavailableMetrics.newFollowers) {
         unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
+      }
+      if (unfollows === 0 && !unavailableMetrics.unfollows) {
+        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
       }
     }
     
@@ -455,6 +479,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     console.log('Instagram insights summary (ONLY REAL DATA):', {
       totalFollowers,
       newFollowers,
+      unfollows,
       reach,
       impressions,
       likes,
@@ -475,6 +500,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       insights: {
         totalFollowers,
         newFollowers,
+        unfollows,
         followerChange,
         reach,
         impressions,
@@ -668,6 +694,7 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
       insights: {
         totalFollowers,
         newFollowers,
+        unfollows: 0, // Facebook API doesn't provide this granular data
         followerChange,
         reach,
         impressions,
@@ -728,10 +755,12 @@ function generateSimulatedInsights(period: number = 7): OrganicInsights {
   // Scale metrics based on period
   const periodMultiplier = period / 7;
   const newFollowers = Math.floor((Math.random() * 50 + 5) * periodMultiplier);
+  const unfollows = Math.floor((Math.random() * 10 + 1) * periodMultiplier);
   
   return {
     totalFollowers: baseFollowers,
     newFollowers,
+    unfollows,
     followerChange: (newFollowers / baseFollowers) * 100,
     reach: Math.floor((Math.random() * 10000 + 2000) * periodMultiplier),
     impressions: Math.floor((Math.random() * 20000 + 5000) * periodMultiplier),
