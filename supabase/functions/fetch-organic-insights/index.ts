@@ -17,6 +17,7 @@ interface OrganicInsights {
   comments: number;
   shares: number;
   saves: number;
+  totalInteractions: number; // From API total_interactions - includes likes, comments, saves, shares, replies
   profileViews: number;
   websiteClicks: number;
   storiesViews: number;
@@ -24,6 +25,7 @@ interface OrganicInsights {
   storiesExits: number;
   storiesReach: number;
   videoViews: number;
+  dataUpdatedAt?: string; // ISO date of when the API data was last updated
 }
 
 // Track which metrics are unavailable due to API/permission limitations
@@ -228,8 +230,11 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     console.log('🔄 Fetching Instagram data for:', igAccountId, 'period:', period, 'days');
 
     // Calculate date range based on period
+    // Instagram API data has ~24-48h delay - data up to yesterday is reliable
+    // We use yesterday as the "now" to get complete data
     const now = new Date();
-    const periodStart = new Date(now.getTime() - period * 24 * 60 * 60 * 1000);
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000); // API data is up to yesterday
+    const periodStart = new Date(yesterday.getTime() - (period - 1) * 24 * 60 * 60 * 1000);
     
     // OPTIMIZATION: Fetch account info and media in parallel
     const mediaLimit = Math.min(50, period * 3); // Reduced limit for speed
@@ -258,6 +263,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     // Initialize metrics
     let likes = 0, comments = 0, shares = 0, saves = 0, videoViews = 0;
     let reach = 0, impressions = 0;
+    let totalInteractions = 0; // From API - more accurate than summing individual metrics
     const recentPosts: any[] = [];
 
     // Process media data - only count engagement, skip per-media insights for speed
@@ -373,7 +379,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       // First, fetch profile_views and website_clicks with total_value
       const totalValueMetrics = 'profile_views,website_clicks';
       const totalValueResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${totalValueMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${totalValueMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const totalValueInsights = await totalValueResponse.json();
       
@@ -398,7 +404,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       // Also fetch total_interactions and views for better data
       const reachMetrics = 'reach,total_interactions,views';
       const reachResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const reachInsights = await reachResponse.json();
       
@@ -414,7 +420,9 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
             impressions = value;
             console.log('Instagram account-level VIEWS (as impressions):', value);
           } else if (metric.name === 'total_interactions') {
-            console.log('Instagram total_interactions:', value);
+            // Use total_interactions from API - this is the accurate value matching Instagram Insights
+            totalInteractions = value;
+            console.log('Instagram total_interactions (from API):', value);
           }
         }
       } else if (reachInsights.error) {
@@ -425,7 +433,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       
       // Finally, fetch follower_count with time_series to get daily changes
       const followerResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=follower_count&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${now.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=follower_count&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const followerInsights = await followerResponse.json();
       
@@ -476,9 +484,11 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     unavailableMetrics.storiesExits = 'Stories expiram em 24h - dados históricos não disponíveis';
     unavailableMetrics.storiesReach = 'Stories expiram em 24h - dados históricos não disponíveis';
     
-    // Calculate engagement rate
-    const totalEngagement = likes + comments + saves + shares;
-    const engagementRate = totalFollowers > 0 ? (totalEngagement / totalFollowers) * 100 : 0;
+    // Calculate engagement rate using total_interactions from API if available
+    // total_interactions is more accurate as it includes replies, reactions, etc.
+    const calculatedEngagement = likes + comments + saves + shares;
+    const engagementBase = totalInteractions > 0 ? totalInteractions : calculatedEngagement;
+    const engagementRate = totalFollowers > 0 ? (engagementBase / totalFollowers) * 100 : 0;
     const followerChangePercent = totalFollowers > 0 ? (netFollowerChange / totalFollowers) * 100 : 0;
 
     // Generate daily data based on available metrics and period
@@ -494,10 +504,13 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       comments,
       shares,
       saves,
+      totalInteractions, // This is the API value matching Instagram Insights
+      calculatedEngagement, // This is our manual calculation for comparison
       profileViews,
       websiteClicks,
       engagementRate: engagementRate.toFixed(2),
       recentPostsAnalyzed: recentPosts.length,
+      dataUpdatedAt: yesterday.toISOString().split('T')[0], // Data is up to this date
       unavailableMetrics: Object.keys(unavailableMetrics)
     });
 
@@ -517,13 +530,15 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         comments,
         shares,
         saves,
+        totalInteractions, // Use API value - matches Instagram Insights exactly
         profileViews,
         websiteClicks,
         storiesViews: 0,
         storiesReplies: 0,
         storiesExits: 0,
         storiesReach: 0,
-        videoViews
+        videoViews,
+        dataUpdatedAt: yesterday.toISOString().split('T')[0] // Inform frontend of data date
       },
       dailyData,
       dataSource: 'real',
@@ -695,6 +710,9 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
       hasRealInsights
     });
 
+    // Calculate total interactions for Facebook (similar to Instagram)
+    const totalInteractions = likes + comments + shares;
+    
     return {
       platform: 'facebook',
       accountId: pageId,
@@ -711,6 +729,7 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
         comments,
         shares,
         saves: 0,
+        totalInteractions,
         profileViews,
         websiteClicks,
         storiesViews: 0,
@@ -765,6 +784,12 @@ function generateSimulatedInsights(period: number = 7): OrganicInsights {
   const periodMultiplier = period / 7;
   const netFollowerChange = Math.floor((Math.random() * 40 - 5) * periodMultiplier); // Can be negative
   
+  const likes = Math.floor((Math.random() * 500 + 50) * periodMultiplier);
+  const comments = Math.floor((Math.random() * 50 + 5) * periodMultiplier);
+  const shares = Math.floor((Math.random() * 20 + 2) * periodMultiplier);
+  const saves = Math.floor((Math.random() * 30 + 3) * periodMultiplier);
+  const totalInteractions = likes + comments + shares + saves;
+  
   return {
     totalFollowers: baseFollowers,
     followingCount: baseFollowing,
@@ -773,10 +798,11 @@ function generateSimulatedInsights(period: number = 7): OrganicInsights {
     reach: Math.floor((Math.random() * 10000 + 2000) * periodMultiplier),
     impressions: Math.floor((Math.random() * 20000 + 5000) * periodMultiplier),
     engagementRate: Math.random() * 5 + 1,
-    likes: Math.floor((Math.random() * 500 + 50) * periodMultiplier),
-    comments: Math.floor((Math.random() * 50 + 5) * periodMultiplier),
-    shares: Math.floor((Math.random() * 20 + 2) * periodMultiplier),
-    saves: Math.floor((Math.random() * 30 + 3) * periodMultiplier),
+    likes,
+    comments,
+    shares,
+    saves,
+    totalInteractions,
     profileViews: Math.floor((Math.random() * 200 + 20) * periodMultiplier),
     websiteClicks: Math.floor((Math.random() * 50 + 5) * periodMultiplier),
     storiesViews: Math.floor((Math.random() * 1000 + 100) * periodMultiplier),
