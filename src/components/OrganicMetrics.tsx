@@ -655,29 +655,42 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Select value={period === "custom" ? "custom" : period} onValueChange={handlePeriodChange}>
-                <SelectTrigger className="w-[180px] h-9">
-                  <SelectValue placeholder="Período">
-                    {period === "custom" && customDateRange.from && customDateRange.to 
-                      ? `${format(customDateRange.from, "dd/MM")} - ${format(customDateRange.to, "dd/MM")}`
-                      : getPeriodLabel()
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Hoje</SelectItem>
-                  <SelectItem value="this_week">Esta semana</SelectItem>
-                  <SelectItem value="7">7 dias</SelectItem>
-                  <SelectItem value="14">14 dias</SelectItem>
-                  <SelectItem value="this_month">Este mês</SelectItem>
-                  <SelectItem value="30">30 dias</SelectItem>
-                  <SelectItem value="60">60 dias</SelectItem>
-                  <SelectItem value="this_semester">Este semestre</SelectItem>
-                  <SelectItem value="90">90 dias</SelectItem>
-                  <SelectItem value="this_year">Este ano</SelectItem>
-                  <SelectItem value="custom">Data personalizada...</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1">
+                <Select value={period} onValueChange={handlePeriodChange}>
+                  <SelectTrigger className={period === "custom" ? "w-[160px] h-9" : "w-[180px] h-9"}>
+                    <SelectValue placeholder="Período">
+                      {period === "custom" && customDateRange.from && customDateRange.to 
+                        ? `${format(customDateRange.from, "dd/MM")} - ${format(customDateRange.to, "dd/MM")}`
+                        : getPeriodLabel()
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Hoje</SelectItem>
+                    <SelectItem value="this_week">Esta semana</SelectItem>
+                    <SelectItem value="7">7 dias</SelectItem>
+                    <SelectItem value="14">14 dias</SelectItem>
+                    <SelectItem value="this_month">Este mês</SelectItem>
+                    <SelectItem value="30">30 dias</SelectItem>
+                    <SelectItem value="60">60 dias</SelectItem>
+                    <SelectItem value="this_semester">Este semestre</SelectItem>
+                    <SelectItem value="90">90 dias</SelectItem>
+                    <SelectItem value="this_year">Este ano</SelectItem>
+                    <SelectItem value="custom">Data personalizada...</SelectItem>
+                  </SelectContent>
+                </Select>
+                {/* Button to edit custom date range when in custom mode */}
+                {period === "custom" && (
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => setIsCustomDateOpen(true)}
+                  >
+                    <Calendar className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
 
               {/* Custom Date Range Popover */}
               <Popover open={isCustomDateOpen} onOpenChange={setIsCustomDateOpen}>
@@ -694,7 +707,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                       locale={ptBR}
                       disabled={(date) => date > new Date()}
                       numberOfMonths={2}
-                      className="rounded-md border"
+                      className="rounded-md border pointer-events-auto"
                     />
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs text-muted-foreground">
