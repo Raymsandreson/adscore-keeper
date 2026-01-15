@@ -159,6 +159,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: O
     }
     switch (period) {
       case "1": return "Hoje";
+      case "yesterday": return "Ontem";
       case "this_week": return "Esta semana";
       case "this_month": return "Este mês";
       case "this_semester": return "Este semestre";
@@ -224,6 +225,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: O
       let periodDays: number;
       if (period === "custom" && customDateRange.from && customDateRange.to) {
         periodDays = differenceInDays(customDateRange.to, customDateRange.from) + 1;
+      } else if (period === "yesterday") {
+        periodDays = 1; // Yesterday is 1 day of data
       } else if (['this_week', 'this_month', 'this_semester', 'this_year'].includes(period)) {
         periodDays = getPresetPeriodDays(period);
       } else {
@@ -691,6 +694,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange }: O
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Hoje</SelectItem>
+                    <SelectItem value="yesterday">Ontem</SelectItem>
                     <SelectItem value="this_week">Esta semana</SelectItem>
                     <SelectItem value="7">7 dias</SelectItem>
                     <SelectItem value="14">14 dias</SelectItem>
