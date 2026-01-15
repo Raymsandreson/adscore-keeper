@@ -70,12 +70,28 @@ export interface DailyOrganicData {
   engagement: number;
 }
 
+// Track which metrics are unavailable due to API/permission limitations
+interface UnavailableMetrics {
+  reach?: string;
+  impressions?: string;
+  newFollowers?: string;
+  profileViews?: string;
+  websiteClicks?: string;
+  shares?: string;
+  saves?: string;
+  storiesViews?: string;
+  storiesReplies?: string;
+  storiesExits?: string;
+  storiesReach?: string;
+}
+
 interface PlatformData {
   platform: 'facebook' | 'instagram';
   accountId: string;
   accountName?: string;
   insights: OrganicInsights;
   dailyData: DailyOrganicData[];
+  unavailableMetrics?: UnavailableMetrics;
 }
 
 interface OrganicMetricsProps {
@@ -172,8 +188,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
       console.log('📊 Dados recebidos para', periodDays, 'dias:', data);
 
       if (data.success && data.platforms?.length > 0) {
-        const processedPlatforms = data.platforms.map((p: PlatformData) => ({
+        const processedPlatforms = data.platforms.map((p: PlatformData & { unavailableMetrics?: UnavailableMetrics }) => ({
           ...p,
+          unavailableMetrics: p.unavailableMetrics,
           dailyData: p.dailyData.map((d: any) => ({
             ...d,
             date: new Date(d.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })
@@ -304,8 +321,71 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     </div>
   );
 
+  // Component to show unavailable metric indicator
+  const UnavailableMetricIndicator = ({ reason, value }: { reason?: string; value: number }) => {
+    if (value !== 0 || !reason) return null;
+    
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1 mt-1">
+              <AlertCircle className="h-3 w-3 text-amber-500" />
+              <span className="text-xs text-amber-600 dark:text-amber-400">Indisponível</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            <p className="text-xs">{reason}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  };
+
+  // Wrapper component for metrics that might be unavailable
+  const MetricValue = ({ 
+    value, 
+    unavailableReason, 
+    format = 'number',
+    suffix = ''
+  }: { 
+    value: number; 
+    unavailableReason?: string;
+    format?: 'number' | 'percent';
+    suffix?: string;
+  }) => {
+    const formattedValue = format === 'percent' 
+      ? `${value.toFixed(2)}%` 
+      : value.toLocaleString('pt-BR');
+    
+    const isUnavailable = value === 0 && unavailableReason;
+    
+    return (
+      <div>
+        <p className={`text-2xl font-bold ${isUnavailable ? 'text-muted-foreground/50' : ''}`}>
+          {formattedValue}{suffix}
+        </p>
+        {isUnavailable && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1 mt-1 cursor-help">
+                  <AlertCircle className="h-3 w-3 text-amber-500" />
+                  <span className="text-xs text-amber-600 dark:text-amber-400">Indisponível</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-xs">{unavailableReason}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    );
+  };
+
   const renderPlatformMetrics = (platformData: PlatformData) => {
-    const { insights, dailyData, accountName, platform } = platformData;
+    const { insights, dailyData, accountName, platform, unavailableMetrics } = platformData;
     const isInstagram = platform === 'instagram';
 
     return (
@@ -321,6 +401,25 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           <Badge variant="secondary" className={isInstagram ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white" : "bg-blue-600 text-white"}>
             {isInstagram ? 'Instagram' : 'Facebook'}
           </Badge>
+          {unavailableMetrics && Object.keys(unavailableMetrics).length > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-amber-600 border-amber-300 dark:border-amber-700 cursor-help">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    Algumas métricas limitadas
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm">
+                  <p className="font-medium mb-1">Métricas com dados limitados:</p>
+                  <p className="text-xs text-muted-foreground">
+                    Algumas métricas exibem 0 porque requerem permissões adicionais da API do Meta.
+                    Procure por indicadores amarelos "Indisponível" para ver detalhes.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* KPIs */}
@@ -336,15 +435,19 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               </CardContent>
             </Card>
 
-            <Card className="border-border/50">
+            <Card className={`border-border/50 ${unavailableMetrics?.newFollowers && insights.newFollowers === 0 ? 'border-amber-200 dark:border-amber-800' : ''}`}>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-2">
                   <UserPlus className="h-5 w-5 text-green-500" />
                   <span className="text-sm text-muted-foreground">Novos ({getPeriodLabel()})</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <p className="text-3xl font-bold text-green-600">+{insights.newFollowers.toLocaleString('pt-BR')}</p>
-                  {insights.followerChange > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <MetricValue 
+                    value={insights.newFollowers} 
+                    unavailableReason={unavailableMetrics?.newFollowers}
+                    suffix=""
+                  />
+                  {insights.followerChange > 0 && !unavailableMetrics?.newFollowers && (
                     <Badge variant="secondary" className="bg-green-100 text-green-700">
                       <TrendingUp className="h-3 w-3 mr-1" />
                       {insights.followerChange.toFixed(1)}%
@@ -354,13 +457,16 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
               </CardContent>
             </Card>
 
-            <Card className="border-border/50">
+            <Card className={`border-border/50 ${unavailableMetrics?.reach && insights.reach === 0 ? 'border-amber-200 dark:border-amber-800' : ''}`}>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-2">
                   <Eye className="h-5 w-5 text-blue-500" />
                   <span className="text-sm text-muted-foreground">Alcance</span>
                 </div>
-                <p className="text-3xl font-bold">{insights.reach.toLocaleString('pt-BR')}</p>
+                <MetricValue 
+                  value={insights.reach} 
+                  unavailableReason={unavailableMetrics?.reach}
+                />
               </CardContent>
             </Card>
 
@@ -484,16 +590,22 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   </Tooltip>
                 </TooltipProvider>
                 
-                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.shares && insights.shares === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
                   <Share2 className="h-6 w-6 mx-auto mb-2 text-green-500" />
-                  <p className="text-2xl font-bold">{insights.shares.toLocaleString('pt-BR')}</p>
+                  <MetricValue 
+                    value={insights.shares} 
+                    unavailableReason={unavailableMetrics?.shares}
+                  />
                   <p className="text-xs text-muted-foreground">Compartilhamentos</p>
                 </div>
                 
                 {isInstagram && (
-                  <div className="text-center p-4 bg-muted/30 rounded-lg">
+                  <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.saves && insights.saves === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
                     <Bookmark className="h-6 w-6 mx-auto mb-2 text-purple-500" />
-                    <p className="text-2xl font-bold">{insights.saves.toLocaleString('pt-BR')}</p>
+                    <MetricValue 
+                      value={insights.saves} 
+                      unavailableReason={unavailableMetrics?.saves}
+                    />
                     <p className="text-xs text-muted-foreground">Salvos</p>
                   </div>
                 )}
@@ -506,19 +618,25 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   </div>
                 )}
                 
-                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.profileViews && insights.profileViews === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
                   <Eye className="h-6 w-6 mx-auto mb-2 text-yellow-500" />
-                  <p className="text-2xl font-bold">{insights.profileViews.toLocaleString('pt-BR')}</p>
+                  <MetricValue 
+                    value={insights.profileViews} 
+                    unavailableReason={unavailableMetrics?.profileViews}
+                  />
                   <p className="text-xs text-muted-foreground">Visitas ao Perfil</p>
                 </div>
                 
-                <div className="text-center p-4 bg-muted/30 rounded-lg">
+                <div className={`text-center p-4 rounded-lg ${unavailableMetrics?.websiteClicks && insights.websiteClicks === 0 ? 'bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800' : 'bg-muted/30'}`}>
                   <svg className="h-6 w-6 mx-auto mb-2 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                     <polyline points="15 3 21 3 21 9" />
                     <line x1="10" y1="14" x2="21" y2="3" />
                   </svg>
-                  <p className="text-2xl font-bold">{insights.websiteClicks.toLocaleString('pt-BR')}</p>
+                  <MetricValue 
+                    value={insights.websiteClicks} 
+                    unavailableReason={unavailableMetrics?.websiteClicks}
+                  />
                   <p className="text-xs text-muted-foreground">Cliques no Site</p>
                 </div>
               </div>

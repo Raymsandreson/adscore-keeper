@@ -25,6 +25,21 @@ interface OrganicInsights {
   videoViews: number;
 }
 
+// Track which metrics are unavailable due to API/permission limitations
+interface UnavailableMetrics {
+  reach?: string;
+  impressions?: string;
+  newFollowers?: string;
+  profileViews?: string;
+  websiteClicks?: string;
+  shares?: string;
+  saves?: string;
+  storiesViews?: string;
+  storiesReplies?: string;
+  storiesExits?: string;
+  storiesReach?: string;
+}
+
 interface DailyOrganicData {
   date: string;
   followers: number;
@@ -40,6 +55,7 @@ interface PlatformData {
   insights: OrganicInsights;
   dailyData: DailyOrganicData[];
   dataSource?: 'real' | 'estimated' | 'limited';
+  unavailableMetrics?: UnavailableMetrics;
 }
 
 serve(async (req) => {
@@ -287,10 +303,31 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     }
 
     // NO MORE ESTIMATIONS - Only real data from API
-    // If reach is 0, it stays 0 (API didn't return it)
+    // Track which metrics are unavailable
+    const unavailableMetrics: UnavailableMetrics = {};
+    
+    // If reach is 0, it means we couldn't get it from media insights
+    if (reach === 0 && recentPosts.length > 0) {
+      unavailableMetrics.reach = 'Requer permissão instagram_manage_insights';
+      unavailableMetrics.impressions = 'Requer permissão instagram_manage_insights';
+    }
+    
+    // If saves is 0 and we had posts, it might be unavailable
+    if (saves === 0 && recentPosts.length > 0) {
+      unavailableMetrics.saves = 'Requer permissão instagram_manage_insights';
+    }
+    
+    // Shares only available for Reels
+    const hasReels = recentPosts.some((p: any) => p.media_type === 'VIDEO' || p.media_type === 'REELS');
+    if (shares === 0 && hasReels) {
+      unavailableMetrics.shares = 'Disponível apenas para Reels com permissão instagram_manage_insights';
+    } else if (!hasReels) {
+      unavailableMetrics.shares = 'Métrica disponível apenas para Reels';
+    }
     
     // Try to get real follower growth from account insights
     let newFollowers = 0;
+    let accountInsightsAvailable = false;
     
     // Try to get profile views and website clicks from account-level insights
     let profileViews = 0, websiteClicks = 0;
@@ -305,6 +342,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       const accountInsights = await accountInsightsResponse.json();
       
       if (accountInsights.data && !accountInsights.error) {
+        accountInsightsAvailable = true;
         for (const metric of accountInsights.data) {
           const values = metric.values || [];
           const totalValue = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
@@ -321,12 +359,37 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers });
       } else if (accountInsights.error) {
         console.log('Instagram account insights not available:', accountInsights.error.message);
+        // Mark these metrics as unavailable
+        unavailableMetrics.profileViews = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
       }
     } catch (e) {
       console.warn('Could not fetch Instagram account insights:', e);
+      unavailableMetrics.profileViews = 'Erro ao buscar dados da API';
+      unavailableMetrics.websiteClicks = 'Erro ao buscar dados da API';
+      unavailableMetrics.newFollowers = 'Erro ao buscar dados da API';
     }
     
-    // NO FALLBACK ESTIMATION - newFollowers stays 0 if API didn't return it
+    // If account insights were available but values are 0, they're real zeros
+    // If account insights were NOT available, mark them
+    if (!accountInsightsAvailable) {
+      if (profileViews === 0 && !unavailableMetrics.profileViews) {
+        unavailableMetrics.profileViews = 'Requer permissão instagram_manage_insights';
+      }
+      if (websiteClicks === 0 && !unavailableMetrics.websiteClicks) {
+        unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
+      }
+      if (newFollowers === 0 && !unavailableMetrics.newFollowers) {
+        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
+      }
+    }
+    
+    // Stories metrics are always unavailable via this API endpoint
+    unavailableMetrics.storiesViews = 'Stories expiram em 24h - dados históricos não disponíveis';
+    unavailableMetrics.storiesReplies = 'Stories expiram em 24h - dados históricos não disponíveis';
+    unavailableMetrics.storiesExits = 'Stories expiram em 24h - dados históricos não disponíveis';
+    unavailableMetrics.storiesReach = 'Stories expiram em 24h - dados históricos não disponíveis';
     
     // Calculate engagement rate
     const totalEngagement = likes + comments + saves + shares;
@@ -348,7 +411,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       profileViews,
       websiteClicks,
       engagementRate: engagementRate.toFixed(2),
-      recentPostsAnalyzed: recentPosts.length
+      recentPostsAnalyzed: recentPosts.length,
+      unavailableMetrics: Object.keys(unavailableMetrics)
     });
 
     return {
@@ -375,7 +439,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         videoViews
       },
       dailyData,
-      dataSource: 'real' // Only real data now
+      dataSource: 'real',
+      unavailableMetrics: Object.keys(unavailableMetrics).length > 0 ? unavailableMetrics : undefined
     };
   } catch (error) {
     console.error('Error fetching Instagram data:', error);
