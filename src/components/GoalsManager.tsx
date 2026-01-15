@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import GoalHistory from "./GoalHistory";
 import GoalReportScheduler from "./GoalReportScheduler";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Flame, Zap, TrendingDown } from "lucide-react";
 
 export interface Goal {
   id: string;
@@ -574,6 +576,58 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
                             }
                           </span>
                         </div>
+                        {/* Motivational Bias Message */}
+                        {status !== 'completed' && status !== 'overdue' && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className={cn(
+                                  "mt-2 text-xs px-2 py-1 rounded-md inline-flex items-center gap-1 cursor-help",
+                                  daysLeft <= 3 ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                                  daysLeft <= 7 ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" :
+                                  progress >= 70 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                                  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                )}>
+                                  {daysLeft <= 3 ? (
+                                    <>
+                                      <Flame className="h-3 w-3" />
+                                      <span>URGENTE: {((goal.targetValue - goal.currentValue) / Math.max(daysLeft, 1)).toFixed(1)} {goal.unit}/dia necessário</span>
+                                    </>
+                                  ) : daysLeft <= 7 ? (
+                                    <>
+                                      <Zap className="h-3 w-3" />
+                                      <span>Acelere: {((goal.targetValue - goal.currentValue) / Math.max(daysLeft, 1)).toFixed(1)} {goal.unit}/dia para atingir</span>
+                                    </>
+                                  ) : progress >= 70 ? (
+                                    <>
+                                      <TrendingUp className="h-3 w-3" />
+                                      <span>Quase lá! {(100 - progress).toFixed(0)}% restante</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Target className="h-3 w-3" />
+                                      <span>Meta: {((goal.targetValue - goal.currentValue) / Math.max(daysLeft, 1)).toFixed(1)} {goal.unit}/dia</span>
+                                    </>
+                                  )}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="max-w-xs">
+                                <div className="space-y-1">
+                                  <p className="font-medium">Viés de Atingimento</p>
+                                  <p className="text-sm">
+                                    {goal.type === 'cpc' 
+                                      ? `Reduza o CPC em R$ ${(goal.currentValue - goal.targetValue).toFixed(2)} para atingir a meta`
+                                      : `Faltam ${(goal.targetValue - goal.currentValue).toLocaleString('pt-BR')} ${goal.unit} em ${daysLeft} dias`
+                                    }
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Ritmo necessário: {((goal.targetValue - goal.currentValue) / Math.max(daysLeft, 1)).toFixed(2)} {goal.unit}/dia
+                                  </p>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                       </div>
                     </div>
                     
