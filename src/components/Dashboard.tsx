@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetricCard from "./MetricCard";
 import DataSourceIndicator from "./DataSourceIndicator";
+import GoalBiasIndicator from "./GoalBiasIndicator";
+import UnifiedMetaStatus from "./UnifiedMetaStatus";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -20,14 +22,16 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
+import { useUnifiedMetaConnection, GoalBias } from "@/hooks/useUnifiedMetaConnection";
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
   const [proMode, setProMode] = useState(false);
+  const [goalBiases, setGoalBiases] = useState<GoalBias[]>([]);
   
   const { 
     metrics, 
@@ -49,11 +53,50 @@ const Dashboard = () => {
   const { stats: leadStats, loading: leadsLoading } = useLeads();
 
   const {
+    connectionStatus,
+    calculateBiases,
+    fetchUnifiedMetrics
+  } = useUnifiedMetaConnection();
+
+  const {
     getThresholds,
     saveThresholds,
     requestNotificationPermission,
     hasNotificationPermission,
   } = useMetricAlerts(metrics, isConnected);
+
+  // Calculate goal biases when metrics change
+  useEffect(() => {
+    const savedGoals = localStorage.getItem('marketing_goals');
+    if (savedGoals && metrics) {
+      const goals = JSON.parse(savedGoals);
+      const unifiedMetrics = {
+        paid: {
+          cpc: metrics.cpc,
+          ctr: metrics.ctr,
+          cpm: metrics.cpm,
+          spend: metrics.spend,
+          impressions: metrics.impressions,
+          clicks: metrics.clicks,
+          conversions: metrics.conversions,
+          leads: leadStats.total
+        },
+        organic: {
+          followers: 0,
+          newFollowers: 0,
+          reach: 0,
+          impressions: 0,
+          engagement: 0,
+          likes: 0,
+          comments: 0,
+          shares: 0
+        },
+        biases: []
+      };
+      const biases = calculateBiases(unifiedMetrics, goals);
+      setGoalBiases(biases);
+    }
+  }, [metrics, leadStats, calculateBiases]);
 
   const getPerformanceStatus = (value: number, metric: string) => {
     switch (metric) {
@@ -235,15 +278,45 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Goal Biases - Motivational Indicators */}
+        {goalBiases.length > 0 && (
+          <Card className="border-border/50 border-l-4 border-l-orange-500">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Flame className="h-5 w-5 text-orange-500" />
+                Vieses de Atingimento
+                <Badge variant="outline" className="ml-2">{goalBiases.length} meta{goalBiases.length !== 1 ? 's' : ''}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <GoalBiasIndicator biases={goalBiases} maxItems={3} />
+            </CardContent>
+          </Card>
+        )}
+
         {/* Connection Status */}
-        <BMConnection 
-          isConnected={isConnected}
-          isLoading={isLoading}
-          error={error}
-          onConnect={connectToMeta}
-          onDisconnect={disconnect}
-          onRefresh={refreshMetrics}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <BMConnection 
+            isConnected={isConnected}
+            isLoading={isLoading}
+            error={error}
+            onConnect={connectToMeta}
+            onDisconnect={disconnect}
+            onRefresh={refreshMetrics}
+          />
+          
+          {/* Unified Status Indicator */}
+          <UnifiedMetaStatus 
+            status={{
+              paid: isConnected,
+              organic: isConnected, // Will be updated when organic fetches
+              unified: isConnected,
+              lastSync: isConnected ? new Date() : undefined
+            }}
+            onRefresh={refreshMetrics}
+            isLoading={isLoading}
+          />
+        </div>
 
         {/* Tabs: Tráfego Pago / Público Orgânico / Metas */}
         <Tabs defaultValue="paid" className="w-full">
