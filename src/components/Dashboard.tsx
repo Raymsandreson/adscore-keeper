@@ -9,6 +9,7 @@ import MetricCard from "./MetricCard";
 import DataSourceIndicator from "./DataSourceIndicator";
 import GoalBiasIndicator from "./GoalBiasIndicator";
 import UnifiedMetaStatus from "./UnifiedMetaStatus";
+import ViewsBreakdown from "./ViewsBreakdown";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -32,6 +33,7 @@ import { Link } from "react-router-dom";
 const Dashboard = () => {
   const [proMode, setProMode] = useState(false);
   const [goalBiases, setGoalBiases] = useState<GoalBias[]>([]);
+  const [organicMetricsData, setOrganicMetricsData] = useState<{ impressions: number; reach: number }>({ impressions: 0, reach: 0 });
   
   const { 
     metrics, 
@@ -294,6 +296,17 @@ const Dashboard = () => {
           </Card>
         )}
 
+        {/* Views Breakdown - Organic vs Paid */}
+        {isConnected && (
+          <ViewsBreakdown
+            paidImpressions={metrics.impressions}
+            paidReach={0}
+            organicImpressions={organicMetricsData.impressions}
+            organicReach={organicMetricsData.reach}
+            period="Período selecionado"
+          />
+        )}
+
         {/* Connection Status */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <BMConnection 
@@ -309,8 +322,8 @@ const Dashboard = () => {
           <UnifiedMetaStatus 
             status={{
               paid: isConnected,
-              organic: isConnected, // Will be updated when organic fetches
-              unified: isConnected,
+              organic: organicMetricsData.impressions > 0,
+              unified: isConnected && organicMetricsData.impressions > 0,
               lastSync: isConnected ? new Date() : undefined
             }}
             onRefresh={refreshMetrics}
@@ -465,7 +478,10 @@ const Dashboard = () => {
 
           {/* Tab: Público Orgânico */}
           <TabsContent value="organic" className="mt-6">
-            <OrganicMetrics isConnected={isConnected} />
+            <OrganicMetrics 
+              isConnected={isConnected} 
+              onMetricsChange={setOrganicMetricsData}
+            />
           </TabsContent>
 
           {/* Tab: Automação Instagram */}
