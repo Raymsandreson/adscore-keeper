@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MetricCard from "./MetricCard";
+import DataSourceIndicator from "./DataSourceIndicator";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -135,10 +136,17 @@ const Dashboard = () => {
         <Card className="border-border/50">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="h-5 w-5 text-primary" />
-                Central de Leads
-              </CardTitle>
+              <div className="flex items-center gap-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Central de Leads
+                </CardTitle>
+                <DataSourceIndicator 
+                  isRealData={leadStats.total > 0} 
+                  source="Banco de Dados"
+                  compact
+                />
+              </div>
               <Link to="/leads">
                 <Button variant="outline" size="sm">
                   Ver todos
@@ -260,6 +268,18 @@ const Dashboard = () => {
 
           {/* Tab: Tráfego Pago */}
           <TabsContent value="paid" className="space-y-8 mt-6">
+            {/* Data Source Indicator */}
+            <div className="flex items-center justify-between">
+              <DataSourceIndicator 
+                isRealData={isConnected} 
+                source="Meta Ads API"
+              />
+              <DataSourceIndicator 
+                isRealData={isConnected} 
+                source="Meta Ads"
+                compact
+              />
+            </div>
             {/* Alert Settings - PRO ONLY */}
             {proMode && (
               <AlertSettings
