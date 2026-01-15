@@ -7,9 +7,8 @@ const corsHeaders = {
 
 interface OrganicInsights {
   totalFollowers: number;
-  newFollowers: number;
-  unfollows: number;
-  followerChange: number;
+  netFollowerChange: number;
+  followerChangePercent: number;
   reach: number;
   impressions: number;
   engagementRate: number;
@@ -30,8 +29,7 @@ interface OrganicInsights {
 interface UnavailableMetrics {
   reach?: string;
   impressions?: string;
-  newFollowers?: string;
-  unfollows?: string;
+  netFollowerChange?: string;
   profileViews?: string;
   websiteClicks?: string;
   shares?: string;
@@ -45,7 +43,7 @@ interface UnavailableMetrics {
 interface DailyOrganicData {
   date: string;
   followers: number;
-  newFollowers: number;
+  netChange: number;
   reach: number;
   engagement: number;
 }
@@ -336,8 +334,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     }
     
     // Try to get real follower growth from account insights
-    let newFollowers = 0;
-    let unfollows = 0;
+    let netFollowerChange = 0;
     let accountInsightsAvailable = false;
     
     // Try to get profile views and website clicks from account-level insights
@@ -407,42 +404,27 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         // follower_count returns daily net change (+/- followers)
         const values = followerInsights.data[0].values || [];
         
-        // Separate positive changes (new followers) from negative changes (unfollows)
-        for (const v of values) {
-          const change = v.value || 0;
-          if (change > 0) {
-            newFollowers += change;
-          } else if (change < 0) {
-            unfollows += Math.abs(change);
-          }
-        }
+        // Sum all daily changes to get net change
+        netFollowerChange = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
         
-        console.log('Instagram follower_count breakdown:', {
-          newFollowers,
-          unfollows,
-          netChange: newFollowers - unfollows,
-          daysAnalyzed: values.length
-        });
+        console.log('Instagram follower_count net change:', netFollowerChange, 'from', values.length, 'days');
       } else if (followerInsights.error) {
         console.log('Instagram follower_count error:', followerInsights.error.message);
-        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
-        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.netFollowerChange = 'Requer permissão instagram_manage_insights';
       }
       
-      console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, newFollowers, unfollows, reach, impressions });
+      console.log('Instagram account insights (REAL DATA):', { profileViews, websiteClicks, netFollowerChange, reach, impressions });
       
       if (!accountInsightsAvailable && totalValueInsights.error) {
         unavailableMetrics.profileViews = 'Requer permissão instagram_manage_insights';
         unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
-        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
-        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
+        unavailableMetrics.netFollowerChange = 'Requer permissão instagram_manage_insights';
       }
     } catch (e) {
       console.warn('Could not fetch Instagram account insights:', e);
       unavailableMetrics.profileViews = 'Erro ao buscar dados da API';
       unavailableMetrics.websiteClicks = 'Erro ao buscar dados da API';
-      unavailableMetrics.newFollowers = 'Erro ao buscar dados da API';
-      unavailableMetrics.unfollows = 'Erro ao buscar dados da API';
+      unavailableMetrics.netFollowerChange = 'Erro ao buscar dados da API';
     }
     
     // If account insights were available but values are 0, they're real zeros
@@ -454,11 +436,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       if (websiteClicks === 0 && !unavailableMetrics.websiteClicks) {
         unavailableMetrics.websiteClicks = 'Requer permissão instagram_manage_insights';
       }
-      if (newFollowers === 0 && !unavailableMetrics.newFollowers) {
-        unavailableMetrics.newFollowers = 'Requer permissão instagram_manage_insights';
-      }
-      if (unfollows === 0 && !unavailableMetrics.unfollows) {
-        unavailableMetrics.unfollows = 'Requer permissão instagram_manage_insights';
+      if (netFollowerChange === 0 && !unavailableMetrics.netFollowerChange) {
+        unavailableMetrics.netFollowerChange = 'Requer permissão instagram_manage_insights';
       }
     }
     
@@ -471,15 +450,14 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     // Calculate engagement rate
     const totalEngagement = likes + comments + saves + shares;
     const engagementRate = totalFollowers > 0 ? (totalEngagement / totalFollowers) * 100 : 0;
-    const followerChange = totalFollowers > 0 ? (newFollowers / totalFollowers) * 100 : 0;
+    const followerChangePercent = totalFollowers > 0 ? (netFollowerChange / totalFollowers) * 100 : 0;
 
     // Generate daily data based on available metrics and period
-    const dailyData = generateDailyDataFromMetrics(totalFollowers, newFollowers, reach, engagementRate, period);
+    const dailyData = generateDailyDataFromMetrics(totalFollowers, netFollowerChange, reach, engagementRate, period);
 
     console.log('Instagram insights summary (ONLY REAL DATA):', {
       totalFollowers,
-      newFollowers,
-      unfollows,
+      netFollowerChange,
       reach,
       impressions,
       likes,
@@ -499,9 +477,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       accountName: `@${username}`,
       insights: {
         totalFollowers,
-        newFollowers,
-        unfollows,
-        followerChange,
+        netFollowerChange,
+        followerChangePercent,
         reach,
         impressions,
         engagementRate,
@@ -566,7 +543,7 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
 
     const totalFollowers = fansData.followers_count || fansData.fan_count || 0;
 
-    let newFollowers = 0, reach = 0, impressions = 0, engagement = 0, profileViews = 0, websiteClicks = 0;
+    let netFollowerChange = 0, reach = 0, impressions = 0, engagement = 0, profileViews = 0, websiteClicks = 0;
     const dailyMap: Record<string, DailyOrganicData> = {};
     let hasRealInsights = false;
 
@@ -577,14 +554,14 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
         
         switch (metric.name) {
           case 'page_fan_adds':
-            newFollowers = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+            netFollowerChange = values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
             values.forEach((v: any) => {
               const dateStr = v.end_time?.split('T')[0];
               if (dateStr) {
                 if (!dailyMap[dateStr]) {
-                  dailyMap[dateStr] = { date: dateStr, followers: 0, newFollowers: 0, reach: 0, engagement: 0 };
+                  dailyMap[dateStr] = { date: dateStr, followers: 0, netChange: 0, reach: 0, engagement: 0 };
                 }
-                dailyMap[dateStr].newFollowers = v.value || 0;
+                dailyMap[dateStr].netChange = v.value || 0;
               }
             });
             break;
@@ -594,7 +571,7 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
               const dateStr = v.end_time?.split('T')[0];
               if (dateStr) {
                 if (!dailyMap[dateStr]) {
-                  dailyMap[dateStr] = { date: dateStr, followers: 0, newFollowers: 0, reach: 0, engagement: 0 };
+                  dailyMap[dateStr] = { date: dateStr, followers: 0, netChange: 0, reach: 0, engagement: 0 };
                 }
                 dailyMap[dateStr].reach = v.value || 0;
               }
@@ -624,10 +601,10 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
     // Build daily data with cumulative followers
     let dailyData: DailyOrganicData[] = [];
     if (Object.keys(dailyMap).length > 0) {
-      let cumulativeFollowers = totalFollowers - newFollowers;
+      let cumulativeFollowers = totalFollowers - netFollowerChange;
       const sortedDates = Object.keys(dailyMap).sort();
       for (const date of sortedDates) {
-        cumulativeFollowers += dailyMap[date].newFollowers;
+        cumulativeFollowers += dailyMap[date].netChange;
         dailyData.push({
           ...dailyMap[date],
           followers: cumulativeFollowers
@@ -666,18 +643,18 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
     // If we couldn't get insights, estimate based on engagement and period
     if (!hasRealInsights && totalFollowers > 0) {
       const weeklyGrowth = 0.005; // 0.5% weekly growth
-      newFollowers = Math.round(totalFollowers * weeklyGrowth * (period / 7));
+      netFollowerChange = Math.round(totalFollowers * weeklyGrowth * (period / 7));
       reach = Math.round(totalFollowers * 0.1 * period); // 10% reach per day
       impressions = Math.round(reach * 1.5);
-      dailyData = generateDailyDataFromMetrics(totalFollowers, newFollowers, reach, (likes + comments + shares) / totalFollowers * 100, period);
+      dailyData = generateDailyDataFromMetrics(totalFollowers, netFollowerChange, reach, (likes + comments + shares) / totalFollowers * 100, period);
     }
 
     const engagementRate = totalFollowers > 0 ? ((likes + comments + shares) / totalFollowers) * 100 : 0;
-    const followerChange = totalFollowers > 0 ? (newFollowers / totalFollowers) * 100 : 0;
+    const followerChangePercent = totalFollowers > 0 ? (netFollowerChange / totalFollowers) * 100 : 0;
 
     console.log('Facebook insights summary:', {
       totalFollowers,
-      newFollowers,
+      netFollowerChange,
       reach,
       impressions,
       likes,
@@ -693,9 +670,8 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
       accountName: pageName,
       insights: {
         totalFollowers,
-        newFollowers,
-        unfollows: 0, // Facebook API doesn't provide this granular data
-        followerChange,
+        netFollowerChange,
+        followerChangePercent,
         reach,
         impressions,
         engagementRate,
@@ -720,12 +696,12 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
   }
 }
 
-function generateDailyDataFromMetrics(totalFollowers: number, newFollowers: number, totalReach: number, engagementRate: number, period: number = 7): DailyOrganicData[] {
+function generateDailyDataFromMetrics(totalFollowers: number, netChange: number, totalReach: number, engagementRate: number, period: number = 7): DailyOrganicData[] {
   const data: DailyOrganicData[] = [];
-  const dailyNewFollowers = Math.round(newFollowers / period);
+  const dailyNetChange = Math.round(netChange / period);
   const dailyReach = Math.round(totalReach / period);
   
-  let currentFollowers = totalFollowers - newFollowers;
+  let currentFollowers = totalFollowers - netChange;
   
   // Generate data for the specified period
   for (let i = period - 1; i >= 0; i--) {
@@ -735,13 +711,13 @@ function generateDailyDataFromMetrics(totalFollowers: number, newFollowers: numb
     
     // Add some variation
     const variation = 0.8 + Math.random() * 0.4; // 80% to 120%
-    const dailyNew = Math.round(dailyNewFollowers * variation);
-    currentFollowers += dailyNew;
+    const dailyChange = Math.round(dailyNetChange * variation);
+    currentFollowers += dailyChange;
     
     data.push({
       date: dateStr,
       followers: currentFollowers,
-      newFollowers: dailyNew,
+      netChange: dailyChange,
       reach: Math.round(dailyReach * variation),
       engagement: engagementRate * variation
     });
@@ -754,14 +730,12 @@ function generateSimulatedInsights(period: number = 7): OrganicInsights {
   const baseFollowers = Math.floor(Math.random() * 5000) + 1000;
   // Scale metrics based on period
   const periodMultiplier = period / 7;
-  const newFollowers = Math.floor((Math.random() * 50 + 5) * periodMultiplier);
-  const unfollows = Math.floor((Math.random() * 10 + 1) * periodMultiplier);
+  const netFollowerChange = Math.floor((Math.random() * 40 - 5) * periodMultiplier); // Can be negative
   
   return {
     totalFollowers: baseFollowers,
-    newFollowers,
-    unfollows,
-    followerChange: (newFollowers / baseFollowers) * 100,
+    netFollowerChange,
+    followerChangePercent: (netFollowerChange / baseFollowers) * 100,
     reach: Math.floor((Math.random() * 10000 + 2000) * periodMultiplier),
     impressions: Math.floor((Math.random() * 20000 + 5000) * periodMultiplier),
     engagementRate: Math.random() * 5 + 1,
@@ -787,12 +761,12 @@ function generateSimulatedDailyData(period: number = 7): DailyOrganicData[] {
     const date = new Date();
     date.setDate(date.getDate() - i);
     const dateStr = date.toISOString().split('T')[0];
-    const dailyNew = Math.floor(Math.random() * 15) + 1;
+    const dailyChange = Math.floor(Math.random() * 20) - 3; // Can be negative
     
     data.push({
       date: dateStr,
-      followers: baseFollowers + (period - 1 - i) * dailyNew,
-      newFollowers: dailyNew,
+      followers: baseFollowers + (period - 1 - i) * dailyChange,
+      netChange: dailyChange,
       reach: Math.floor(Math.random() * 2000) + 200,
       engagement: Math.random() * 6 + 1
     });
