@@ -391,7 +391,22 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.engagementRate,
         facebook: facebookData.insights.engagementRate,
         format: (v: number) => `${v.toFixed(2)}%`,
-        metricName: 'engagementRate'
+        metricName: 'engagementRate',
+        hasBreakdown: true,
+        instagramBreakdown: {
+          likes: instagramData.insights.likes,
+          comments: instagramData.insights.comments,
+          saves: instagramData.insights.saves,
+          followers: instagramData.insights.totalFollowers,
+          formula: '(curtidas + comentários + salvos) / seguidores × 100'
+        },
+        facebookBreakdown: {
+          likes: facebookData.insights.likes,
+          comments: facebookData.insights.comments,
+          shares: facebookData.insights.shares,
+          followers: facebookData.insights.totalFollowers,
+          formula: 'page_post_engagements / seguidores × 100'
+        }
       },
       {
         label: 'Curtidas',
@@ -635,6 +650,87 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                   const isFbUnavailable = (metric as any).fbUnavailable;
                   const igUnavailableReason = (metric as any).igUnavailable;
                   const fbUnavailableReason = (metric as any).fbUnavailableReason;
+                  const hasBreakdown = (metric as any).hasBreakdown;
+                  const instagramBreakdown = (metric as any).instagramBreakdown;
+                  const facebookBreakdown = (metric as any).facebookBreakdown;
+                  
+                  const renderEngagementWithBreakdown = (value: number, breakdown: any, platform: 'instagram' | 'facebook') => {
+                    if (!breakdown) return <span className="font-semibold">{metric.format(value)}</span>;
+                    
+                    const isInstagram = platform === 'instagram';
+                    const totalInteractions = isInstagram 
+                      ? (breakdown.likes + breakdown.comments + breakdown.saves)
+                      : (breakdown.likes + breakdown.comments + breakdown.shares);
+                    
+                    return (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-semibold cursor-help underline decoration-dashed decoration-muted-foreground/40 underline-offset-4 flex items-center justify-center gap-1">
+                              {metric.format(value)}
+                              <Info className="h-3 w-3 text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs p-3">
+                            <div className="space-y-2">
+                              <p className="font-medium text-xs text-muted-foreground border-b pb-1 mb-2">
+                                {isInstagram ? 'Cálculo Instagram' : 'Cálculo Facebook'}
+                              </p>
+                              <div className="space-y-1 text-xs">
+                                <div className="flex justify-between gap-4">
+                                  <span className="flex items-center gap-1">
+                                    <Heart className="h-3 w-3" /> Curtidas:
+                                  </span>
+                                  <span className="font-semibold">{breakdown.likes.toLocaleString('pt-BR')}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <span className="flex items-center gap-1">
+                                    <MessageCircle className="h-3 w-3" /> Comentários:
+                                  </span>
+                                  <span className="font-semibold">{breakdown.comments.toLocaleString('pt-BR')}</span>
+                                </div>
+                                {isInstagram ? (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="flex items-center gap-1">
+                                      <Bookmark className="h-3 w-3" /> Salvos:
+                                    </span>
+                                    <span className="font-semibold">{breakdown.saves.toLocaleString('pt-BR')}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="flex items-center gap-1">
+                                      <Share2 className="h-3 w-3" /> Compartilhamentos:
+                                    </span>
+                                    <span className="font-semibold">{breakdown.shares.toLocaleString('pt-BR')}</span>
+                                  </div>
+                                )}
+                                <div className="border-t pt-1 mt-1">
+                                  <div className="flex justify-between gap-4">
+                                    <span>Total interações:</span>
+                                    <span className="font-semibold">{totalInteractions.toLocaleString('pt-BR')}</span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="flex items-center gap-1">
+                                      <Users className="h-3 w-3" /> Seguidores:
+                                    </span>
+                                    <span className="font-semibold">{breakdown.followers.toLocaleString('pt-BR')}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="border-t pt-2 mt-2">
+                                <p className="text-xs text-muted-foreground italic">
+                                  {breakdown.formula}
+                                </p>
+                                <p className="text-xs font-medium mt-1">
+                                  = {totalInteractions.toLocaleString('pt-BR')} / {breakdown.followers.toLocaleString('pt-BR')} × 100 = <span className="text-primary">{value.toFixed(2)}%</span>
+                                </p>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  };
                   
                   return (
                     <tr key={index} className="border-b border-border/30 last:border-0">
@@ -642,10 +738,18 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                         <div className="flex items-center gap-2">
                           <IconComponent className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm">{metric.label}</span>
+                          {hasBreakdown && (
+                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                              ver cálculo
+                            </Badge>
+                          )}
                         </div>
                       </td>
                       <td className={`text-center py-3 px-2 font-semibold`}>
-                        {renderMetricValue(metric.instagram, metric.format, igUnavailableReason, metric.colorClass)}
+                        {hasBreakdown 
+                          ? renderEngagementWithBreakdown(metric.instagram, instagramBreakdown, 'instagram')
+                          : renderMetricValue(metric.instagram, metric.format, igUnavailableReason, metric.colorClass)
+                        }
                       </td>
                       <td className={`text-center py-3 px-2 font-semibold`}>
                         {isFbUnavailable ? (
@@ -662,9 +766,10 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
-                        ) : (
-                          renderMetricValue(metric.facebook, metric.format, fbUnavailableReason, metric.colorClass)
-                        )}
+                        ) : hasBreakdown 
+                          ? renderEngagementWithBreakdown(metric.facebook, facebookBreakdown, 'facebook')
+                          : renderMetricValue(metric.facebook, metric.format, fbUnavailableReason, metric.colorClass)
+                        }
                       </td>
                       <td className="text-center py-3 px-2">
                         {isFbUnavailable ? (
