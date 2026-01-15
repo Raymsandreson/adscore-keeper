@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MetricCard from "./MetricCard";
 import DataSourceIndicator from "./DataSourceIndicator";
 import GoalBiasIndicator from "./GoalBiasIndicator";
@@ -24,7 +25,7 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -321,7 +322,45 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Views Breakdown & Smart Insights - ABAIXO DA CONEXÃO */}
+        {/* Period Selector - LOGO ABAIXO DA CONEXÃO */}
+        {isConnected && (
+          <Card className="border-border/50">
+            <CardContent className="py-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Período dos Dados</p>
+                    <p className="text-xs text-muted-foreground">
+                      Selecione o período para visualizar as métricas
+                    </p>
+                  </div>
+                </div>
+                <Select value={dateRange} onValueChange={changeDateRange}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Selecione o período" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Hoje</SelectItem>
+                    <SelectItem value="yesterday">Ontem</SelectItem>
+                    <SelectItem value="last_7d">Últimos 7 dias</SelectItem>
+                    <SelectItem value="last_15d">Últimos 15 dias</SelectItem>
+                    <SelectItem value="last_30d">Últimos 30 dias</SelectItem>
+                    <SelectItem value="last_60d">Últimos 60 dias</SelectItem>
+                    <SelectItem value="last_90d">Últimos 90 dias</SelectItem>
+                    <SelectItem value="this_month">Este mês</SelectItem>
+                    <SelectItem value="last_month">Mês passado</SelectItem>
+                    <SelectItem value="this_quarter">Este trimestre</SelectItem>
+                    <SelectItem value="this_semester">Este semestre</SelectItem>
+                    <SelectItem value="this_year">Este ano</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Views Breakdown & Smart Insights - ABAIXO DO PERÍODO */}
         {isConnected && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ViewsBreakdown
@@ -329,7 +368,7 @@ const Dashboard = () => {
               paidReach={0}
               organicImpressions={organicMetricsData.impressions}
               organicReach={organicMetricsData.reach}
-              period="Período selecionado"
+              period={dateRange === 'today' ? 'Hoje' : dateRange === 'yesterday' ? 'Ontem' : dateRange === 'last_7d' ? 'Últimos 7 dias' : dateRange === 'last_30d' ? 'Últimos 30 dias' : 'Período selecionado'}
             />
             <SmartInsights
               organicImpressions={organicMetricsData.impressions}
@@ -337,7 +376,7 @@ const Dashboard = () => {
               organicEngagement={0}
               paidEngagement={metrics.ctr}
               adSpend={metrics.spend}
-              period="Período selecionado"
+              period={dateRange === 'today' ? 'Hoje' : dateRange === 'yesterday' ? 'Ontem' : dateRange === 'last_7d' ? 'Últimos 7 dias' : dateRange === 'last_30d' ? 'Últimos 30 dias' : 'Período selecionado'}
             />
           </div>
         )}
