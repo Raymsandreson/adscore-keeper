@@ -34,7 +34,8 @@ import {
   Key,
   ExternalLink,
   Wifi,
-  WifiOff
+  WifiOff,
+  Clock
 } from "lucide-react";
 import {
   ChartConfig,
@@ -46,6 +47,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid, Line, LineChart, Legend, ResponsiveContainer } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import TokenConfigGuide from "./TokenConfigGuide";
+import { useOrganicCache } from "@/hooks/useOrganicCache";
 
 export interface OrganicInsights {
   totalFollowers: number;
@@ -152,17 +154,24 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     }
   };
 
-  // Cache key to avoid refetching same data
-  const [lastFetchKey, setLastFetchKey] = useState<string>('');
+  // Cache hook for 5-minute local caching
+  const { getCachedData, setCachedData, clearCache, getCacheAge } = useOrganicCache();
+  const [cacheAge, setCacheAge] = useState<number | null>(null);
 
-  const fetchOrganicInsights = async () => {
+  const fetchOrganicInsights = async (forceRefresh = false) => {
     // Build fetch key to detect actual changes
     const fetchKey = `${pageId}-${accessToken}-${period}-${customDateRange.from?.toISOString()}-${customDateRange.to?.toISOString()}`;
     
-    // Skip if same request
-    if (fetchKey === lastFetchKey && platforms.length > 0) {
-      console.log('⏭️ Skipping fetch - same parameters');
-      return;
+    // Check local cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cached = getCachedData(fetchKey);
+      if (cached) {
+        console.log('📦 Usando dados do cache local');
+        setPlatforms(cached.platforms);
+        setIsRealData(cached.isRealData);
+        setCacheAge(getCacheAge());
+        return;
+      }
     }
 
     // Use isRefreshing for subtle loading when we have existing data
@@ -206,7 +215,14 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         }));
         setPlatforms(processedPlatforms);
         setIsRealData(!data.simulated);
-        setLastFetchKey(fetchKey);
+        
+        // Save to local cache
+        setCachedData({
+          platforms: processedPlatforms,
+          isRealData: !data.simulated,
+          fetchKey,
+        });
+        setCacheAge(0);
         
         // Set active tab to first available platform
         if (processedPlatforms.length > 0) {
@@ -234,9 +250,26 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
     }
   };
 
+  // Force refresh handler (bypasses cache)
+  const handleForceRefresh = () => {
+    clearCache();
+    fetchOrganicInsights(true);
+  };
+
   useEffect(() => {
     fetchOrganicInsights();
   }, [pageId, accessToken, period, customDateRange.from, customDateRange.to]);
+
+  // Update cache age every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const age = getCacheAge();
+      if (age !== null) {
+        setCacheAge(age);
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const chartConfig: ChartConfig = {
     followers: {
@@ -291,7 +324,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                 Para Facebook: <code className="bg-red-100 dark:bg-red-900 px-1 rounded">pages_read_engagement</code>,{' '}
                 <code className="bg-red-100 dark:bg-red-900 px-1 rounded">read_insights</code>.
               </p>
-              <Button variant="outline" size="sm" onClick={fetchOrganicInsights} className="mt-4">
+              <Button variant="outline" size="sm" onClick={handleForceRefresh} className="mt-4">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Tentar Novamente
               </Button>
@@ -299,7 +332,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           ) : error ? (
             <>
               <p className="text-muted-foreground mb-2">{error}</p>
-              <Button variant="outline" size="sm" onClick={fetchOrganicInsights} className="mt-2">
+              <Button variant="outline" size="sm" onClick={handleForceRefresh} className="mt-2">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Tentar Novamente
               </Button>
@@ -1266,10 +1299,28 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           <h2 className="text-2xl font-semibold">Público Orgânico</h2>
           <p className="text-muted-foreground">Acompanhe o crescimento e engajamento dos seus perfis</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchOrganicInsights} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          {cacheAge !== null && cacheAge > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Clock className="h-3 w-3" />
+                    Cache: {cacheAge < 60 ? `${cacheAge}s` : `${Math.floor(cacheAge / 60)}m`}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Dados em cache local (TTL: 5 min)</p>
+                  <p className="text-xs text-muted-foreground">Clique em Atualizar para buscar dados novos</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button variant="outline" size="sm" onClick={handleForceRefresh} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* Consolidated Comparison Card */}
