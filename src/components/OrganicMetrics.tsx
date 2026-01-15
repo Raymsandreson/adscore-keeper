@@ -32,7 +32,9 @@ import {
   Info,
   Settings,
   Key,
-  ExternalLink
+  ExternalLink,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import {
   ChartConfig,
@@ -507,6 +509,44 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                 <TrendingUp className="h-5 w-5 text-primary" />
                 Comparativo de Plataformas
               </CardTitle>
+              
+              {/* Data Source Indicator */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge 
+                      variant="outline" 
+                      className={`gap-1 cursor-help ${
+                        isRealData 
+                          ? 'border-success/50 bg-success/10 text-success hover:bg-success/20' 
+                          : 'border-warning/50 bg-warning/10 text-warning hover:bg-warning/20'
+                      }`}
+                    >
+                      {isRealData ? (
+                        <Wifi className="h-3 w-3" />
+                      ) : (
+                        <WifiOff className="h-3 w-3" />
+                      )}
+                      <span className="text-xs">
+                        {isRealData ? 'Dados reais' : 'Demo'}
+                      </span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    <div className="space-y-1">
+                      <p className="font-semibold">
+                        {isRealData ? '✅ Dados Reais' : '⚠️ Dados de Demonstração'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {isRealData 
+                          ? 'Conectado à Meta Graph API. Dados de Facebook e Instagram em tempo real.'
+                          : 'Valores fictícios para visualização. Conecte sua conta para ver dados reais.'
+                        }
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               
               {hasUnavailableMetrics && (
                 <Dialog open={showPermissionGuide} onOpenChange={setShowPermissionGuide}>
