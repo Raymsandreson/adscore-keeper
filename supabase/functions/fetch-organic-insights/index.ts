@@ -7,6 +7,7 @@ const corsHeaders = {
 
 interface OrganicInsights {
   totalFollowers: number;
+  followingCount: number;
   netFollowerChange: number;
   followerChangePercent: number;
   reach: number;
@@ -251,6 +252,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     }
 
     const totalFollowers = accountData.followers_count || 0;
+    const followingCount = accountData.follows_count || 0;
     const username = accountData.username || 'instagram';
 
     // Initialize metrics
@@ -457,6 +459,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
 
     console.log('Instagram insights summary (ONLY REAL DATA):', {
       totalFollowers,
+      followingCount,
       netFollowerChange,
       reach,
       impressions,
@@ -477,6 +480,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       accountName: `@${username}`,
       insights: {
         totalFollowers,
+        followingCount,
         netFollowerChange,
         followerChangePercent,
         reach,
@@ -670,6 +674,7 @@ async function fetchFacebookData(pageId: string, accessToken: string, pageName: 
       accountName: pageName,
       insights: {
         totalFollowers,
+        followingCount: 0, // Facebook pages don't have a "following" concept
         netFollowerChange,
         followerChangePercent,
         reach,
@@ -728,12 +733,14 @@ function generateDailyDataFromMetrics(totalFollowers: number, netChange: number,
 
 function generateSimulatedInsights(period: number = 7): OrganicInsights {
   const baseFollowers = Math.floor(Math.random() * 5000) + 1000;
+  const baseFollowing = Math.floor(Math.random() * 500) + 100;
   // Scale metrics based on period
   const periodMultiplier = period / 7;
   const netFollowerChange = Math.floor((Math.random() * 40 - 5) * periodMultiplier); // Can be negative
   
   return {
     totalFollowers: baseFollowers,
+    followingCount: baseFollowing,
     netFollowerChange,
     followerChangePercent: (netFollowerChange / baseFollowers) * 100,
     reach: Math.floor((Math.random() * 10000 + 2000) * periodMultiplier),

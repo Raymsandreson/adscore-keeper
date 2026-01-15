@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, startOfWeek, startOfMonth, startOfYear, subDays, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { 
   Users, 
@@ -35,7 +35,8 @@ import {
   ExternalLink,
   Wifi,
   WifiOff,
-  Clock
+  Clock,
+  UserCheck
 } from "lucide-react";
 import {
   ChartConfig,
@@ -51,6 +52,7 @@ import { useOrganicCache } from "@/hooks/useOrganicCache";
 
 export interface OrganicInsights {
   totalFollowers: number;
+  followingCount: number;
   netFollowerChange: number;
   followerChangePercent: number;
   reach: number;
@@ -125,14 +127,40 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   const [isCustomDateOpen, setIsCustomDateOpen] = useState(false);
   const [showPermissionGuide, setShowPermissionGuide] = useState(false);
 
+  // Helper to calculate period in days from preset
+  const getPresetPeriodDays = (preset: string): number => {
+    const today = new Date();
+    switch (preset) {
+      case 'this_week': 
+        return differenceInDays(today, startOfWeek(today, { weekStartsOn: 0 })) + 1;
+      case 'this_month':
+        return differenceInDays(today, startOfMonth(today)) + 1;
+      case 'this_semester':
+        const semesterStart = today.getMonth() < 6 
+          ? new Date(today.getFullYear(), 0, 1)
+          : new Date(today.getFullYear(), 6, 1);
+        return differenceInDays(today, semesterStart) + 1;
+      case 'this_year':
+        return differenceInDays(today, startOfYear(today)) + 1;
+      default:
+        return parseInt(preset) || 7;
+    }
+  };
+
   // Get the display label for the period
   const getPeriodLabel = () => {
     if (period === "custom" && customDateRange.from && customDateRange.to) {
       const days = differenceInDays(customDateRange.to, customDateRange.from) + 1;
       return `${days} dias`;
     }
-    if (period === "1") return "Hoje";
-    return `${period} dias`;
+    switch (period) {
+      case "1": return "Hoje";
+      case "this_week": return "Esta semana";
+      case "this_month": return "Este mês";
+      case "this_semester": return "Este semestre";
+      case "this_year": return "Este ano";
+      default: return `${period} dias`;
+    }
   };
 
   // Handle period change
@@ -148,7 +176,6 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
   // Apply custom date range
   const applyCustomDateRange = () => {
     if (customDateRange.from && customDateRange.to) {
-      const days = differenceInDays(customDateRange.to, customDateRange.from) + 1;
       setPeriod("custom");
       setIsCustomDateOpen(false);
     }
@@ -186,9 +213,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
 
     try {
       // Determine the actual period to send
-      let periodDays = parseInt(period);
+      let periodDays: number;
       if (period === "custom" && customDateRange.from && customDateRange.to) {
         periodDays = differenceInDays(customDateRange.to, customDateRange.from) + 1;
+      } else if (['this_week', 'this_month', 'this_semester', 'this_year'].includes(period)) {
+        periodDays = getPresetPeriodDays(period);
+      } else {
+        periodDays = parseInt(period) || 7;
       }
 
       console.log('🔄 Buscando insights orgânicos - período:', periodDays, 'dias');
@@ -388,7 +419,18 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.totalFollowers,
         facebook: facebookData.insights.totalFollowers,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'followers'
+        metricName: 'followers',
+        tooltip: 'Número total de pessoas que seguem seu perfil.'
+      },
+      {
+        label: 'Seguindo',
+        icon: UserCheck,
+        instagram: instagramData.insights.followingCount || 0,
+        facebook: 0, // Facebook pages don't follow others
+        format: (v: number) => v.toLocaleString('pt-BR'),
+        metricName: 'following',
+        fbUnavailable: true,
+        tooltip: 'Número de contas que você está seguindo. (Apenas Instagram)'
       },
       {
         label: `Saldo de Seguidores (${getPeriodLabel()})`,
@@ -400,10 +442,11 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           return `${prefix}${v.toLocaleString('pt-BR')}`;
         },
         colorClass: undefined, // Will be determined dynamically
-        getColorClass: (v: number) => v >= 0 ? 'text-green-600' : 'text-red-500',
+        getColorClass: (v: number) => v >= 0 ? 'text-green-600 font-bold' : 'text-red-500 font-bold',
         metricName: 'netFollowerChange',
         igUnavailable: igUnavailable.netFollowerChange,
-        fbUnavailableReason: fbUnavailable.netFollowerChange
+        fbUnavailableReason: fbUnavailable.netFollowerChange,
+        tooltip: 'Diferença líquida de seguidores no período (ganhos - perdas). A API do Instagram fornece apenas o saldo diário, não valores separados.'
       },
       {
         label: 'Alcance',
@@ -413,7 +456,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'reach',
         igUnavailable: igUnavailable.reach,
-        fbUnavailableReason: fbUnavailable.reach
+        fbUnavailableReason: fbUnavailable.reach,
+        tooltip: 'Número de contas únicas que viram seu conteúdo no período.'
       },
       {
         label: 'Impressões',
@@ -422,7 +466,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: facebookData.insights.impressions,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'impressions',
-        igUnavailable: igUnavailable.impressions
+        igUnavailable: igUnavailable.impressions,
+        tooltip: 'Número total de vezes que seu conteúdo foi exibido (inclui visualizações repetidas).'
       },
       {
         label: 'Engajamento',
@@ -445,7 +490,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
           shares: facebookData.insights.shares,
           followers: facebookData.insights.totalFollowers,
           formula: 'page_post_engagements / seguidores × 100'
-        }
+        },
+        tooltip: 'Percentual de interações em relação ao número de seguidores. Clique no ícone para ver o cálculo detalhado.'
       },
       {
         label: 'Curtidas',
@@ -453,7 +499,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.likes,
         facebook: facebookData.insights.likes,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'likes'
+        metricName: 'likes',
+        tooltip: 'Total de curtidas recebidas em posts do período.'
       },
       {
         label: 'Comentários',
@@ -461,7 +508,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         instagram: instagramData.insights.comments,
         facebook: facebookData.insights.comments,
         format: (v: number) => v.toLocaleString('pt-BR'),
-        metricName: 'comments'
+        metricName: 'comments',
+        tooltip: 'Total de comentários recebidos em posts do período.'
       },
       {
         label: 'Compartilhamentos',
@@ -470,7 +518,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: facebookData.insights.shares,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'shares',
-        igUnavailable: igUnavailable.shares
+        igUnavailable: igUnavailable.shares,
+        tooltip: 'Número de vezes que seu conteúdo foi compartilhado. Para Instagram, disponível apenas para Reels com permissões específicas. Zero pode indicar falta de permissão ou realmente nenhum compartilhamento.'
       },
       {
         label: 'Salvos',
@@ -480,7 +529,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'saves',
         fbUnavailable: true,
-        igUnavailable: igUnavailable.saves
+        igUnavailable: igUnavailable.saves,
+        tooltip: 'Número de vezes que seu conteúdo foi salvo por outros usuários. (Apenas Instagram)'
       },
       {
         label: 'Visualizações de Vídeo',
@@ -489,7 +539,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: 0,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'videoViews',
-        fbUnavailable: true
+        fbUnavailable: true,
+        tooltip: 'Total de reproduções de vídeos e Reels no período. Zero pode indicar que não há vídeos publicados no período ou falta de permissão.'
       },
       {
         label: 'Visitas ao Perfil',
@@ -498,7 +549,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: facebookData.insights.profileViews,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'profileViews',
-        igUnavailable: igUnavailable.profileViews
+        igUnavailable: igUnavailable.profileViews,
+        tooltip: 'Número de vezes que seu perfil foi visitado no período.'
       },
       {
         label: 'Cliques no Site',
@@ -507,7 +559,8 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
         facebook: facebookData.insights.websiteClicks,
         format: (v: number) => v.toLocaleString('pt-BR'),
         metricName: 'websiteClicks',
-        igUnavailable: igUnavailable.websiteClicks
+        igUnavailable: igUnavailable.websiteClicks,
+        tooltip: 'Número de cliques no link do site na bio/perfil.'
       }
     ];
 
@@ -603,21 +656,26 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <Select value={period === "custom" ? "custom" : period} onValueChange={handlePeriodChange}>
-                <SelectTrigger className="w-[150px] h-9">
+                <SelectTrigger className="w-[180px] h-9">
                   <SelectValue placeholder="Período">
                     {period === "custom" && customDateRange.from && customDateRange.to 
                       ? `${format(customDateRange.from, "dd/MM")} - ${format(customDateRange.to, "dd/MM")}`
-                      : period === "1" ? "Hoje" : `${period} dias`
+                      : getPeriodLabel()
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">Hoje</SelectItem>
+                  <SelectItem value="this_week">Esta semana</SelectItem>
                   <SelectItem value="7">7 dias</SelectItem>
                   <SelectItem value="14">14 dias</SelectItem>
+                  <SelectItem value="this_month">Este mês</SelectItem>
                   <SelectItem value="30">30 dias</SelectItem>
+                  <SelectItem value="60">60 dias</SelectItem>
+                  <SelectItem value="this_semester">Este semestre</SelectItem>
                   <SelectItem value="90">90 dias</SelectItem>
-                  <SelectItem value="custom">Personalizado...</SelectItem>
+                  <SelectItem value="this_year">Este ano</SelectItem>
+                  <SelectItem value="custom">Data personalizada...</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -820,12 +878,28 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                               ver cálculo
                             </Badge>
                           )}
+                          {(metric as any).tooltip && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 cursor-help hover:text-muted-foreground transition-colors" />
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p className="text-xs">{(metric as any).tooltip}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                       </td>
                       <td className={`text-center py-3 px-2 font-semibold`}>
                         {hasBreakdown 
                           ? renderEngagementWithBreakdown(metric.instagram, instagramBreakdown, 'instagram')
-                          : renderMetricValue(metric.instagram, metric.format, igUnavailableReason, metric.colorClass)
+                          : (() => {
+                              const getColorClass = (metric as any).getColorClass;
+                              const colorClass = getColorClass ? getColorClass(metric.instagram) : metric.colorClass;
+                              return renderMetricValue(metric.instagram, metric.format, igUnavailableReason, colorClass);
+                            })()
                         }
                       </td>
                       <td className={`text-center py-3 px-2 font-semibold`}>
@@ -845,7 +919,11 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected }: OrganicMetricsProp
                           </TooltipProvider>
                         ) : hasBreakdown 
                           ? renderEngagementWithBreakdown(metric.facebook, facebookBreakdown, 'facebook')
-                          : renderMetricValue(metric.facebook, metric.format, fbUnavailableReason, metric.colorClass)
+                          : (() => {
+                              const getColorClass = (metric as any).getColorClass;
+                              const colorClass = getColorClass ? getColorClass(metric.facebook) : metric.colorClass;
+                              return renderMetricValue(metric.facebook, metric.format, fbUnavailableReason, colorClass);
+                            })()
                         }
                       </td>
                       <td className="text-center py-3 px-2">
