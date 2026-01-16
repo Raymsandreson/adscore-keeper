@@ -5,6 +5,7 @@ import { facebookCAPI } from '@/services/facebookCAPI';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
+export type ClientClassification = 'client' | 'non_client' | 'prospect' | null;
 
 export interface Lead {
   id: string;
@@ -35,6 +36,7 @@ export interface Lead {
   instagram_comment_id: string | null;
   instagram_username: string | null;
   is_follower: boolean | null;
+  client_classification: ClientClassification;
 }
 
 export interface LeadStats {
@@ -383,6 +385,34 @@ export const useLeads = (adAccountId?: string) => {
     }
   };
 
+  const updateClientClassification = async (leadId: string, classification: ClientClassification) => {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ client_classification: classification })
+        .eq('id', leadId);
+
+      if (error) throw error;
+
+      setLeads(prev =>
+        prev.map(lead =>
+          lead.id === leadId ? { ...lead, client_classification: classification } : lead
+        )
+      );
+
+      const labels: Record<string, string> = {
+        client: 'Cliente',
+        non_client: 'Não-Cliente',
+        prospect: 'Prospect',
+      };
+      
+      toast.success(classification ? `Classificado como ${labels[classification]}` : 'Classificação removida');
+    } catch (error) {
+      console.error('Error updating client classification:', error);
+      toast.error('Erro ao atualizar classificação');
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
@@ -399,5 +429,6 @@ export const useLeads = (adAccountId?: string) => {
     updateLeadStatusAndSync,
     syncLeadWithFacebook,
     toggleFollower,
+    updateClientClassification,
   };
 };
