@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,8 @@ import {
   ExternalLink,
   Info,
   Zap,
-  MessageSquare
+  MessageSquare,
+  AlertTriangle
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -25,6 +27,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import LeadManager from "@/components/LeadManager";
+import { useLeads } from "@/hooks/useLeads";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -71,6 +74,36 @@ const chartConfig = {
 };
 
 const LeadsCenter = () => {
+  const [adAccountId, setAdAccountId] = useState<string | null>(null);
+  
+  // Get connected ad account from localStorage (saved by useUnifiedMetaConnection hook)
+  useEffect(() => {
+    // Try to get from unified_meta_credentials first
+    const savedCredentials = localStorage.getItem('unified_meta_credentials');
+    if (savedCredentials) {
+      try {
+        const parsed = JSON.parse(savedCredentials);
+        if (parsed.accountId) {
+          setAdAccountId(parsed.accountId);
+          // Also save to selectedAdAccountId for backwards compatibility
+          localStorage.setItem('selectedAdAccountId', parsed.accountId);
+          return;
+        }
+      } catch (e) {
+        console.error('Error parsing credentials:', e);
+      }
+    }
+    
+    // Fallback to selectedAdAccountId
+    const savedAccountId = localStorage.getItem('selectedAdAccountId');
+    if (savedAccountId) {
+      setAdAccountId(savedAccountId);
+    }
+  }, []);
+
+  // Use real leads data from database
+  const { leads: realLeads, stats: realStats, loading } = useLeads(adAccountId || undefined);
+
   const handleOpenFacebookEvents = () => {
     window.open('https://business.facebook.com/events_manager', '_blank');
     toast.info("Abrindo Events Manager do Facebook");
@@ -83,6 +116,22 @@ const LeadsCenter = () => {
 
   const handleDownloadTemplate = () => {
     toast.success("Template de CSV para upload de conversões - em breve!");
+  };
+
+  // Use real data if available, otherwise show simulated
+  const hasRealData = realLeads.length > 0;
+  const displayStats = hasRealData ? {
+    total: realStats.total,
+    converted: realStats.converted,
+    inProgress: realStats.new + realStats.contacted + realStats.qualified,
+    notQualified: realStats.notQualified + realStats.lost,
+    conversionRate: realStats.conversionRate,
+  } : {
+    total: totalLeads,
+    converted: statusDistribution[0].value,
+    inProgress: statusDistribution[1].value,
+    notQualified: statusDistribution[2].value,
+    conversionRate: parseFloat(avgConversionRate),
   };
 
   return (
@@ -104,6 +153,41 @@ const LeadsCenter = () => {
             </div>
           </div>
 
+          {/* Connection Status Warning */}
+          {!adAccountId && (
+            <Card className="border-yellow-500/30 bg-yellow-500/5">
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-sm">Conta Meta não conectada</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Para importar leads do Facebook automaticamente, conecte sua conta Meta no{' '}
+                      <Link to="/" className="text-primary hover:underline">Dashboard</Link>{' '}
+                      usando o Modo Pro → Business Manager.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {adAccountId && (
+            <Card className="border-green-500/30 bg-green-500/5">
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  <div>
+                    <p className="font-medium text-sm">Conta Meta conectada</p>
+                    <p className="text-xs text-muted-foreground">
+                      ID: {adAccountId} • {realLeads.length} leads no banco de dados
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tabs for Lead Management and Analytics */}
           <Tabs defaultValue="leads" className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-4">
@@ -123,34 +207,49 @@ const LeadsCenter = () => {
 
             {/* Lead Manager Tab */}
             <TabsContent value="leads">
-              <LeadManager />
+              <LeadManager adAccountId={adAccountId || undefined} />
             </TabsContent>
 
             {/* Analytics Tab */}
             <TabsContent value="analytics" className="space-y-6">
+              {/* Real vs Simulated Data Indicator */}
+              {hasRealData && (
+                <Card className="border-green-500/30 bg-green-500/5">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-medium">Dados reais do banco de dados</span>
+                      <Badge variant="secondary">{realLeads.length} leads</Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* KPIs Summary */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-2xl font-bold">{totalLeads}</div>
-                    <p className="text-xs text-muted-foreground">Total de Leads (simulado)</p>
+                    <div className="text-2xl font-bold">{displayStats.total}</div>
+                    <p className="text-xs text-muted-foreground">
+                      Total de Leads {hasRealData ? '' : '(simulado)'}
+                    </p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-2xl font-bold text-green-500">{statusDistribution[0].value}</div>
+                    <div className="text-2xl font-bold text-green-500">{displayStats.converted}</div>
                     <p className="text-xs text-muted-foreground">Convertidos</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-2xl font-bold text-primary">{avgConversionRate}%</div>
+                    <div className="text-2xl font-bold text-primary">{displayStats.conversionRate.toFixed(1)}%</div>
                     <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4">
-                    <div className="text-2xl font-bold text-yellow-500">{statusDistribution[1].value}</div>
+                    <div className="text-2xl font-bold text-yellow-500">{displayStats.inProgress}</div>
                     <p className="text-xs text-muted-foreground">Em Andamento</p>
                   </CardContent>
                 </Card>
