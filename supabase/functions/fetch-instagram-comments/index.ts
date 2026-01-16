@@ -21,28 +21,38 @@ serve(async (req) => {
 
     console.log("🔍 Buscando comentários do Instagram...");
 
-    // First, get the Instagram Business Account ID if not provided
-    let igAccountId = instagramAccountId;
+    // First, detect if this is a Page Token by checking /me endpoint
+    const meResponse = await fetch(
+      `https://graph.facebook.com/v21.0/me?fields=id,name,instagram_business_account&access_token=${token}`
+    );
+    const meData = await meResponse.json();
     
-    if (!igAccountId && pageId) {
-      const pageResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${token}`
-      );
-      const pageData = await pageResponse.json();
-      igAccountId = pageData.instagram_business_account?.id;
-    }
+    console.log("Token /me response:", JSON.stringify(meData));
 
-    if (!igAccountId) {
-      // Try to get from pages
+    let igAccountId = instagramAccountId;
+    let detectedPageId = pageId;
+
+    // Check if /me returns a page (Page Token) or user (User Token)
+    if (meData.instagram_business_account?.id) {
+      // Page Token - /me directly returns the page with Instagram account
+      igAccountId = meData.instagram_business_account.id;
+      detectedPageId = meData.id;
+      console.log(`Page Token detected - Instagram Account: ${igAccountId}`);
+    } else if (!igAccountId) {
+      // User Token - need to fetch pages
       const pagesResponse = await fetch(
         `https://graph.facebook.com/v21.0/me/accounts?fields=instagram_business_account,name&access_token=${token}`
       );
       const pagesData = await pagesResponse.json();
       
+      console.log("Pages response:", JSON.stringify(pagesData));
+      
       if (pagesData.data && pagesData.data.length > 0) {
         for (const page of pagesData.data) {
           if (page.instagram_business_account?.id) {
             igAccountId = page.instagram_business_account.id;
+            detectedPageId = page.id;
+            console.log(`Found Instagram Account from pages: ${igAccountId}`);
             break;
           }
         }
