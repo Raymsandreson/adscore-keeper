@@ -47,12 +47,12 @@ interface CommentsTrackerProps {
 export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTrackerProps) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('received');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [stats, setStats] = useState({ received: 0, sent: 0 });
   const [convertedUsers, setConvertedUsers] = useState<Set<string>>(new Set());
   const [convertingId, setConvertingId] = useState<string | null>(null);
-
   // Form state for manual comment logging
   const [newComment, setNewComment] = useState({
     post_url: '',
@@ -136,6 +136,60 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       }
     } catch (error) {
       console.error('Error checking existing leads:', error);
+    }
+  };
+
+  // Sync comments from Instagram API
+  const syncFromInstagram = async () => {
+    setIsSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
+        body: { accessToken, pageId }
+      });
+
+      if (error) throw error;
+
+      if (!data.success) {
+        toast.error(data.error || 'Erro ao sincronizar comentários');
+        return;
+      }
+
+      // Save comments to database
+      if (data.comments && data.comments.length > 0) {
+        let saved = 0;
+        for (const comment of data.comments) {
+          const { error: insertError } = await supabase
+            .from('instagram_comments')
+            .upsert({
+              comment_id: comment.comment_id,
+              comment_text: comment.comment_text,
+              author_username: comment.author_username,
+              created_at: comment.created_at,
+              post_id: comment.post_id,
+              post_url: comment.post_url,
+              comment_type: comment.comment_type,
+              parent_comment_id: comment.parent_comment_id || null,
+              platform: 'instagram'
+            }, { 
+              onConflict: 'comment_id',
+              ignoreDuplicates: false 
+            });
+
+          if (!insertError) saved++;
+        }
+        
+        toast.success(`${saved} comentários sincronizados do Instagram!`);
+        await fetchComments();
+        await fetchStats();
+        await checkExistingLeads();
+      } else {
+        toast.info('Nenhum comentário encontrado no Instagram');
+      }
+    } catch (error: any) {
+      console.error('Erro ao sincronizar:', error);
+      toast.error('Erro ao sincronizar comentários do Instagram');
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -416,13 +470,17 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => { fetchComments(); fetchStats(); checkExistingLeads(); }}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Atualizar
+              <Button variant="outline" size="sm" onClick={syncFromInstagram} disabled={isSyncing}>
+                {isSyncing ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Sincronizar do Instagram
               </Button>
               {activeTab === 'received' && filteredComments.filter(c => c.author_username && !convertedUsers.has(c.author_username.replace('@', '').toLowerCase())).length > 0 && (
                 <Button 
-                  size="sm" 
+                  size="sm"
                   variant="secondary"
                   onClick={convertAllToLeads}
                   disabled={convertingId === 'all'}
