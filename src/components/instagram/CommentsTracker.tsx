@@ -249,13 +249,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         return;
       }
 
-      // Create lead from comment
+      // Create lead from comment with reference to the original comment
       const { error } = await supabase
         .from('leads')
         .insert({
           lead_name: `@${username}`,
           source: comment.platform,
-          status: 'new',
+          status: 'comment',
+          instagram_comment_id: comment.id,
+          instagram_username: username,
           notes: `Capturado via ${comment.platform} - Comentou: "${comment.comment_text?.slice(0, 100)}..."${comment.post_url ? ` | Post: ${comment.post_url}` : ''}`,
         });
 
@@ -309,13 +311,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           continue;
         }
 
-        // Create lead
+        // Create lead with reference to original comment
         const { error } = await supabase
           .from('leads')
           .insert({
             lead_name: `@${username}`,
             source: comment.platform,
-            status: 'new',
+            status: 'comment',
+            instagram_comment_id: comment.id,
+            instagram_username: username,
             notes: `Capturado via ${comment.platform} - Comentou: "${comment.comment_text?.slice(0, 100)}..."${comment.post_url ? ` | Post: ${comment.post_url}` : ''}`,
           });
 

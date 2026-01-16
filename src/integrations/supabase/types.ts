@@ -498,6 +498,9 @@ export type Database = {
           creative_name: string | null
           facebook_lead_id: string | null
           id: string
+          instagram_comment_id: string | null
+          instagram_username: string | null
+          is_follower: boolean | null
           last_sync_at: string | null
           lead_email: string | null
           lead_name: string | null
@@ -525,6 +528,9 @@ export type Database = {
           creative_name?: string | null
           facebook_lead_id?: string | null
           id?: string
+          instagram_comment_id?: string | null
+          instagram_username?: string | null
+          is_follower?: boolean | null
           last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
@@ -552,6 +558,9 @@ export type Database = {
           creative_name?: string | null
           facebook_lead_id?: string | null
           id?: string
+          instagram_comment_id?: string | null
+          instagram_username?: string | null
+          is_follower?: boolean | null
           last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
@@ -563,7 +572,15 @@ export type Database = {
           sync_status?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_instagram_comment_id_fkey"
+            columns: ["instagram_comment_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_comments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
