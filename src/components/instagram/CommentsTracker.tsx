@@ -689,15 +689,40 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             )}
           </div>
 
+          {/* Totalization Summary */}
+          <div className="flex items-center justify-between mb-4 p-3 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-4">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Total: </span>
+                <span className="font-semibold">{filteredComments.length}</span>
+                {hasActiveFilters && (
+                  <span className="text-muted-foreground"> de {comments.filter(c => c.comment_type === activeTab).length}</span>
+                )}
+                <span className="text-muted-foreground"> comentário{filteredComments.length !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+            {hasActiveFilters && (
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                Filtros ativos
+              </Badge>
+            )}
+          </div>
+
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'received' | 'sent')}>
             <TabsList className="grid w-full grid-cols-2 max-w-xs">
               <TabsTrigger value="received" className="gap-2">
                 <Inbox className="h-4 w-4" />
                 Recebidos
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {comments.filter(c => c.comment_type === 'received').length}
+                </Badge>
               </TabsTrigger>
               <TabsTrigger value="sent" className="gap-2">
                 <Send className="h-4 w-4" />
                 Enviados
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {comments.filter(c => c.comment_type === 'sent').length}
+                </Badge>
               </TabsTrigger>
             </TabsList>
 
