@@ -16,7 +16,9 @@ import {
   ExternalLink,
   Clock,
   User,
-  Reply
+  Reply,
+  UserPlus,
+  CheckCircle2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -31,7 +33,9 @@ interface Comment {
   post_url: string | null;
   comment_text: string | null;
   author_username: string | null;
+  author_id: string | null;
   created_at: string;
+  converted_to_lead?: boolean;
 }
 
 interface CommentsTrackerProps {
@@ -46,6 +50,8 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [activeTab, setActiveTab] = useState('received');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [stats, setStats] = useState({ received: 0, sent: 0 });
+  const [convertedUsers, setConvertedUsers] = useState<Set<string>>(new Set());
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   // Form state for manual comment logging
   const [newComment, setNewComment] = useState({
@@ -58,6 +64,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   useEffect(() => {
     fetchComments();
     fetchStats();
+    checkExistingLeads();
   }, []);
 
   const fetchComments = async () => {
@@ -101,6 +108,149 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  // Check which usernames are already leads
+  const checkExistingLeads = async () => {
+    try {
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('lead_name, notes')
+        .not('lead_name', 'is', null);
+
+      if (leads) {
+        const converted = new Set<string>();
+        leads.forEach(lead => {
+          // Check if the lead notes contain instagram username reference
+          if (lead.notes?.includes('@')) {
+            const match = lead.notes.match(/@(\w+)/);
+            if (match) converted.add(match[1].toLowerCase());
+          }
+          // Also check lead_name for direct match
+          if (lead.lead_name?.startsWith('@')) {
+            converted.add(lead.lead_name.slice(1).toLowerCase());
+          }
+        });
+        setConvertedUsers(converted);
+      }
+    } catch (error) {
+      console.error('Error checking existing leads:', error);
+    }
+  };
+
+  // Convert a commenter to a lead
+  const convertToLead = async (comment: Comment) => {
+    if (!comment.author_username) {
+      toast.error('Este comentário não tem usuário identificado');
+      return;
+    }
+
+    setConvertingId(comment.id);
+
+    try {
+      // Check if already exists
+      const username = comment.author_username.replace('@', '').toLowerCase();
+      
+      const { data: existing } = await supabase
+        .from('leads')
+        .select('id')
+        .or(`lead_name.ilike.@${username},notes.ilike.%@${username}%`)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        toast.info('Este usuário já está na sua lista de leads');
+        setConvertedUsers(prev => new Set([...prev, username]));
+        setConvertingId(null);
+        return;
+      }
+
+      // Create lead from comment
+      const { error } = await supabase
+        .from('leads')
+        .insert({
+          lead_name: `@${username}`,
+          source: comment.platform,
+          status: 'new',
+          notes: `Capturado via ${comment.platform} - Comentou: "${comment.comment_text?.slice(0, 100)}..."${comment.post_url ? ` | Post: ${comment.post_url}` : ''}`,
+        });
+
+      if (error) throw error;
+
+      toast.success(`@${username} adicionado como lead!`);
+      setConvertedUsers(prev => new Set([...prev, username]));
+    } catch (error) {
+      console.error('Error converting to lead:', error);
+      toast.error('Erro ao converter para lead');
+    } finally {
+      setConvertingId(null);
+    }
+  };
+
+  // Convert all commenters to leads
+  const convertAllToLeads = async () => {
+    const uniqueUsers = new Map<string, Comment>();
+    
+    comments
+      .filter(c => c.comment_type === 'received' && c.author_username)
+      .forEach(c => {
+        const username = c.author_username!.replace('@', '').toLowerCase();
+        if (!convertedUsers.has(username) && !uniqueUsers.has(username)) {
+          uniqueUsers.set(username, c);
+        }
+      });
+
+    if (uniqueUsers.size === 0) {
+      toast.info('Todos os usuários já foram convertidos em leads');
+      return;
+    }
+
+    setConvertingId('all');
+
+    try {
+      let converted = 0;
+      let skipped = 0;
+
+      for (const [username, comment] of uniqueUsers) {
+        // Check if already exists
+        const { data: existing } = await supabase
+          .from('leads')
+          .select('id')
+          .or(`lead_name.ilike.@${username},notes.ilike.%@${username}%`)
+          .limit(1);
+
+        if (existing && existing.length > 0) {
+          skipped++;
+          setConvertedUsers(prev => new Set([...prev, username]));
+          continue;
+        }
+
+        // Create lead
+        const { error } = await supabase
+          .from('leads')
+          .insert({
+            lead_name: `@${username}`,
+            source: comment.platform,
+            status: 'new',
+            notes: `Capturado via ${comment.platform} - Comentou: "${comment.comment_text?.slice(0, 100)}..."${comment.post_url ? ` | Post: ${comment.post_url}` : ''}`,
+          });
+
+        if (!error) {
+          converted++;
+          setConvertedUsers(prev => new Set([...prev, username]));
+        }
+      }
+
+      if (converted > 0) {
+        toast.success(`${converted} novos leads adicionados!${skipped > 0 ? ` (${skipped} já existiam)` : ''}`);
+      } else {
+        toast.info('Nenhum novo lead foi adicionado');
+      }
+    } catch (error) {
+      console.error('Error converting all to leads:', error);
+      toast.error('Erro ao converter leads');
+    } finally {
+      setConvertingId(null);
     }
   };
 
@@ -265,11 +415,26 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 Acompanhe todos os comentários enviados e recebidos
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => { fetchComments(); fetchStats(); }}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => { fetchComments(); fetchStats(); checkExistingLeads(); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Atualizar
               </Button>
+              {activeTab === 'received' && filteredComments.filter(c => c.author_username && !convertedUsers.has(c.author_username.replace('@', '').toLowerCase())).length > 0 && (
+                <Button 
+                  size="sm" 
+                  variant="secondary"
+                  onClick={convertAllToLeads}
+                  disabled={convertingId === 'all'}
+                >
+                  {convertingId === 'all' ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4 mr-2" />
+                  )}
+                  Converter Todos em Leads
+                </Button>
+              )}
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm">
@@ -364,48 +529,80 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               ) : (
                 <ScrollArea className="h-[400px]">
                   <div className="space-y-3">
-                    {filteredComments.map((comment) => (
-                      <div
-                        key={comment.id}
-                        className="p-4 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="secondary" className={
-                                comment.platform === 'instagram' 
-                                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
-                                  : 'bg-blue-500 text-white'
-                              }>
-                                {comment.platform}
-                              </Badge>
-                              {comment.author_username && (
-                                <span className="text-sm font-medium flex items-center gap-1">
-                                  <User className="h-3 w-3" />
-                                  {comment.author_username}
-                                </span>
+                    {filteredComments.map((comment) => {
+                      const username = comment.author_username?.replace('@', '').toLowerCase() || '';
+                      const isConverted = convertedUsers.has(username);
+                      const isConverting = convertingId === comment.id;
+
+                      return (
+                        <div
+                          key={comment.id}
+                          className="p-4 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="secondary" className={
+                                  comment.platform === 'instagram' 
+                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
+                                    : 'bg-blue-500 text-white'
+                                }>
+                                  {comment.platform}
+                                </Badge>
+                                {comment.author_username && (
+                                  <span className="text-sm font-medium flex items-center gap-1">
+                                    <User className="h-3 w-3" />
+                                    {comment.author_username}
+                                  </span>
+                                )}
+                                {isConverted && (
+                                  <Badge variant="outline" className="text-green-600 border-green-600">
+                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                    Lead
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-sm">{comment.comment_text}</p>
+                              {comment.post_url && (
+                                <a
+                                  href={comment.post_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-2"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Ver post
+                                </a>
                               )}
                             </div>
-                            <p className="text-sm">{comment.comment_text}</p>
-                            {comment.post_url && (
-                              <a
-                                href={comment.post_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline flex items-center gap-1 mt-2"
-                              >
-                                <ExternalLink className="h-3 w-3" />
-                                Ver post
-                              </a>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                            <div className="flex flex-col items-end gap-2">
+                              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                              </div>
+                              {activeTab === 'received' && comment.author_username && !isConverted && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs"
+                                  onClick={() => convertToLead(comment)}
+                                  disabled={isConverting}
+                                >
+                                  {isConverting ? (
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <UserPlus className="h-3 w-3 mr-1" />
+                                      Converter em Lead
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               )}
