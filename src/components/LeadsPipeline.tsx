@@ -31,9 +31,12 @@ import {
   ExternalLink,
   UserCheck,
   UserX,
+  Briefcase,
+  CircleOff,
+  Target,
 } from 'lucide-react';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import { Lead, LeadStatus, SyncStatus } from '@/hooks/useLeads';
+import { Lead, LeadStatus, SyncStatus, ClientClassification } from '@/hooks/useLeads';
 
 interface LeadsPipelineProps {
   leads: Lead[];
@@ -42,7 +45,14 @@ interface LeadsPipelineProps {
   onDeleteLead: (id: string) => void;
   onToggleFollower?: (leadId: string, isFollower: boolean) => void;
   onNavigateToComment?: (commentId: string) => void;
+  onClassificationChange?: (leadId: string, classification: ClientClassification) => void;
 }
+
+const classificationConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  client: { label: 'Cliente', color: 'border-green-500 text-green-600 bg-green-50', icon: <Briefcase className="h-3 w-3" /> },
+  non_client: { label: 'Não-Cliente', color: 'border-red-500 text-red-600 bg-red-50', icon: <CircleOff className="h-3 w-3" /> },
+  prospect: { label: 'Prospect', color: 'border-blue-500 text-blue-600 bg-blue-50', icon: <Target className="h-3 w-3" /> },
+};
 
 interface PipelineColumn {
   id: LeadStatus;
@@ -62,7 +72,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleFollower, onNavigateToComment }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleFollower, onNavigateToComment, onClassificationChange }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -275,6 +285,34 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleF
                                       </>
                                     )}
                                     
+                                    {/* Client Classification */}
+                                    {onClassificationChange && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => onClassificationChange(lead.id, lead.client_classification === 'client' ? null : 'client')}
+                                          className={lead.client_classification === 'client' ? 'bg-green-50' : ''}
+                                        >
+                                          <Briefcase className="h-3 w-3 mr-2" />
+                                          {lead.client_classification === 'client' ? '✓ Cliente' : 'Marcar como Cliente'}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onClassificationChange(lead.id, lead.client_classification === 'non_client' ? null : 'non_client')}
+                                          className={lead.client_classification === 'non_client' ? 'bg-red-50' : ''}
+                                        >
+                                          <CircleOff className="h-3 w-3 mr-2" />
+                                          {lead.client_classification === 'non_client' ? '✓ Não-Cliente' : 'Marcar como Não-Cliente'}
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => onClassificationChange(lead.id, lead.client_classification === 'prospect' ? null : 'prospect')}
+                                          className={lead.client_classification === 'prospect' ? 'bg-blue-50' : ''}
+                                        >
+                                          <Target className="h-3 w-3 mr-2" />
+                                          {lead.client_classification === 'prospect' ? '✓ Prospect' : 'Marcar como Prospect'}
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    
                                     <DropdownMenuSeparator />
                                     
                                     {lead.lead_phone && (
@@ -331,6 +369,19 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleF
                                     ) : (
                                       <><UserX className="h-3 w-3 mr-1" /> Não seguidor</>
                                     )}
+                                  </Badge>
+                                </div>
+                              )}
+
+                              {/* Client Classification Badge */}
+                              {lead.client_classification && classificationConfig[lead.client_classification] && (
+                                <div className="mt-2">
+                                  <Badge 
+                                    variant="outline" 
+                                    className={`text-xs ${classificationConfig[lead.client_classification].color}`}
+                                  >
+                                    {classificationConfig[lead.client_classification].icon}
+                                    <span className="ml-1">{classificationConfig[lead.client_classification].label}</span>
                                   </Badge>
                                 </div>
                               )}

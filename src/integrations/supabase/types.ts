@@ -491,6 +491,7 @@ export type Database = {
           adset_name: string | null
           campaign_id: string | null
           campaign_name: string | null
+          client_classification: string | null
           conversion_value: number | null
           converted_at: string | null
           created_at: string
@@ -521,6 +522,7 @@ export type Database = {
           adset_name?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          client_classification?: string | null
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string
@@ -551,6 +553,7 @@ export type Database = {
           adset_name?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          client_classification?: string | null
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string

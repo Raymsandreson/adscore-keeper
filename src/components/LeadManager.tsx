@@ -72,7 +72,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 };
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
-  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower } = useLeads(adAccountId);
+  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -742,6 +742,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               onStatusChange={handleStatusChange}
               onDeleteLead={handleDeleteLead}
               onToggleFollower={toggleFollower}
+              onClassificationChange={updateClientClassification}
             />
           ) : (
             <>
