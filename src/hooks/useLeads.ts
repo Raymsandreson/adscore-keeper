@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
 
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost';
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'follower';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
 
 export interface Lead {
@@ -42,6 +42,7 @@ export interface LeadStats {
   notQualified: number;
   converted: number;
   lost: number;
+  follower: number;
   totalSpent: number;
   totalRevenue: number;
   costPerLead: number;
@@ -61,6 +62,7 @@ export const useLeads = (adAccountId?: string) => {
     notQualified: 0,
     converted: 0,
     lost: 0,
+    follower: 0,
     totalSpent: 0,
     totalRevenue: 0,
     costPerLead: 0,
@@ -105,6 +107,7 @@ export const useLeads = (adAccountId?: string) => {
     const notQualified = leadsData.filter(l => l.status === 'not_qualified').length;
     const converted = leadsData.filter(l => l.status === 'converted').length;
     const lost = leadsData.filter(l => l.status === 'lost').length;
+    const follower = leadsData.filter(l => l.status === 'follower').length;
 
     const totalSpent = leadsData.reduce((acc, l) => acc + (l.ad_spend_at_conversion || 0), 0);
     const totalRevenue = leadsData.filter(l => l.status === 'converted')
@@ -123,6 +126,7 @@ export const useLeads = (adAccountId?: string) => {
       notQualified,
       converted,
       lost,
+      follower,
       totalSpent,
       totalRevenue,
       costPerLead,

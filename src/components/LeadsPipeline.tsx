@@ -46,6 +46,7 @@ interface PipelineColumn {
 }
 
 const columns: PipelineColumn[] = [
+  { id: 'follower', title: 'Seguidor', color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200' },
   { id: 'new', title: 'Em análise', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   { id: 'contacted', title: 'Contatado', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' },
   { id: 'qualified', title: 'Qualificado', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
