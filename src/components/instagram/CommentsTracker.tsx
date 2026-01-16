@@ -156,26 +156,45 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
 
       // Save comments to database
       if (data.comments && data.comments.length > 0) {
-        let saved = 0;
-        for (const comment of data.comments) {
-          const { error: insertError } = await supabase
-            .from('instagram_comments')
-            .upsert({
-              comment_id: comment.comment_id,
-              comment_text: comment.comment_text,
-              author_username: comment.author_username,
-              created_at: comment.created_at,
-              post_id: comment.post_id,
-              post_url: comment.post_url,
-              comment_type: comment.comment_type,
-              parent_comment_id: comment.parent_comment_id || null,
-              platform: 'instagram'
-            }, { 
-              onConflict: 'comment_id',
-              ignoreDuplicates: false 
-            });
+        // First check existing comment_ids to avoid duplicates
+        const { data: existingComments } = await supabase
+          .from('instagram_comments')
+          .select('comment_id')
+          .not('comment_id', 'is', null);
+        
+        const existingIds = new Set((existingComments || []).map(c => c.comment_id));
+        
+        // Filter new comments
+        const newComments = data.comments.filter((c: any) => !existingIds.has(c.comment_id));
+        
+        if (newComments.length === 0) {
+          toast.info('Todos os comentários já estão sincronizados');
+          return;
+        }
+        
+        // Insert new comments
+        const commentsToInsert = newComments.map((comment: any) => ({
+          comment_id: comment.comment_id,
+          comment_text: comment.comment_text,
+          author_username: comment.author_username,
+          created_at: comment.created_at,
+          post_id: comment.post_id,
+          post_url: comment.post_url,
+          comment_type: comment.comment_type,
+          parent_comment_id: comment.parent_comment_id || null,
+          platform: 'instagram'
+        }));
+        
+        const { error: insertError, data: inserted } = await supabase
+          .from('instagram_comments')
+          .insert(commentsToInsert)
+          .select();
 
-          if (!insertError) saved++;
+        const saved = inserted?.length || 0;
+        if (insertError) {
+          console.error('Error inserting comments:', insertError);
+          toast.error('Erro ao salvar comentários no banco');
+          return;
         }
         
         toast.success(`${saved} comentários sincronizados do Instagram!`);
