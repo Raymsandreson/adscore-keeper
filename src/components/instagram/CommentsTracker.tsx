@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { 
   MessageCircle, 
   Send, 
@@ -18,12 +20,16 @@ import {
   User,
   Reply,
   UserPlus,
-  CheckCircle2
+  CheckCircle2,
+  Search,
+  CalendarIcon,
+  X
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface Comment {
   id: string;
@@ -53,6 +59,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [stats, setStats] = useState({ received: 0, sent: 0 });
   const [convertedUsers, setConvertedUsers] = useState<Set<string>>(new Set());
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  // Filter states
+  const [searchText, setSearchText] = useState('');
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  
   // Form state for manual comment logging
   const [newComment, setNewComment] = useState({
     post_url: '',
@@ -410,7 +421,38 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }
   };
 
-  const filteredComments = comments.filter(c => c.comment_type === activeTab);
+  // Apply all filters
+  const filteredComments = useMemo(() => {
+    return comments.filter(c => {
+      // Filter by tab (received/sent)
+      if (c.comment_type !== activeTab) return false;
+      
+      // Filter by search text
+      if (searchText) {
+        const searchLower = searchText.toLowerCase();
+        const matchesText = c.comment_text?.toLowerCase().includes(searchLower);
+        const matchesUser = c.author_username?.toLowerCase().includes(searchLower);
+        if (!matchesText && !matchesUser) return false;
+      }
+      
+      // Filter by date range
+      if (dateFrom || dateTo) {
+        const commentDate = new Date(c.created_at);
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
+        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+      }
+      
+      return true;
+    });
+  }, [comments, activeTab, searchText, dateFrom, dateTo]);
+
+  const clearFilters = () => {
+    setSearchText('');
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
+
+  const hasActiveFilters = searchText || dateFrom || dateTo;
 
   return (
     <div className="space-y-6">
@@ -579,6 +621,70 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           </div>
         </CardHeader>
         <CardContent>
+          {/* Filters Section */}
+          <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por texto ou usuário..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-2", dateFrom && "border-primary")}>
+                  <CalendarIcon className="h-4 w-4" />
+                  {dateFrom ? format(dateFrom, "dd/MM/yy", { locale: ptBR }) : "De"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={setDateFrom}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className={cn("gap-2", dateTo && "border-primary")}>
+                  <CalendarIcon className="h-4 w-4" />
+                  {dateTo ? format(dateTo, "dd/MM/yy", { locale: ptBR }) : "Até"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={setDateTo}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
+                <X className="h-4 w-4" />
+                Limpar
+              </Button>
+            )}
+            
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-auto">
+                {filteredComments.length} resultado{filteredComments.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'received' | 'sent')}>
             <TabsList className="grid w-full grid-cols-2 max-w-xs">
               <TabsTrigger value="received" className="gap-2">
@@ -600,8 +706,16 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <div className="py-12 text-center">
                   <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">
-                    Nenhum comentário {activeTab === 'received' ? 'recebido' : 'enviado'} registrado
+                    {hasActiveFilters 
+                      ? 'Nenhum comentário encontrado com os filtros aplicados'
+                      : `Nenhum comentário ${activeTab === 'received' ? 'recebido' : 'enviado'} registrado`
+                    }
                   </p>
+                  {hasActiveFilters && (
+                    <Button variant="link" onClick={clearFilters} className="mt-2">
+                      Limpar filtros
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <ScrollArea className="h-[400px]">
