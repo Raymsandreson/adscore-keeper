@@ -27,7 +27,12 @@ import {
   CloudOff,
   Loader2,
   AlertCircle,
+  Instagram,
+  ExternalLink,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
+import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Lead, LeadStatus, SyncStatus } from '@/hooks/useLeads';
 
 interface LeadsPipelineProps {
@@ -35,6 +40,8 @@ interface LeadsPipelineProps {
   loading: boolean;
   onStatusChange: (leadId: string, status: LeadStatus, conversionValue?: number) => void;
   onDeleteLead: (id: string) => void;
+  onToggleFollower?: (leadId: string, isFollower: boolean) => void;
+  onNavigateToComment?: (commentId: string) => void;
 }
 
 interface PipelineColumn {
@@ -46,7 +53,7 @@ interface PipelineColumn {
 }
 
 const columns: PipelineColumn[] = [
-  { id: 'follower', title: 'Seguidor', color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200' },
+  { id: 'comment', title: 'Comentários', color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200' },
   { id: 'new', title: 'Em análise', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   { id: 'contacted', title: 'Contatado', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' },
   { id: 'qualified', title: 'Qualificado', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
@@ -55,7 +62,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleFollower, onNavigateToComment }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -217,6 +224,59 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPi
                                       <Edit2 className="h-3 w-3 mr-2" />
                                       Editar
                                     </DropdownMenuItem>
+                                    
+                                    {/* Instagram actions for leads from comments */}
+                                    {lead.instagram_username && (
+                                      <DropdownMenuItem
+                                        onClick={() => window.open(`https://instagram.com/${lead.instagram_username?.replace('@', '')}`, '_blank')}
+                                      >
+                                        <Instagram className="h-3 w-3 mr-2" />
+                                        Ver perfil Instagram
+                                      </DropdownMenuItem>
+                                    )}
+                                    
+                                    {lead.instagram_comment_id && onNavigateToComment && (
+                                      <DropdownMenuItem
+                                        onClick={() => onNavigateToComment(lead.instagram_comment_id!)}
+                                      >
+                                        <ExternalLink className="h-3 w-3 mr-2" />
+                                        Ver comentário original
+                                      </DropdownMenuItem>
+                                    )}
+                                    
+                                    {/* Extract username from lead_name if starts with @ */}
+                                    {!lead.instagram_username && lead.lead_name?.startsWith('@') && (
+                                      <DropdownMenuItem
+                                        onClick={() => window.open(`https://instagram.com/${lead.lead_name?.replace('@', '')}`, '_blank')}
+                                      >
+                                        <Instagram className="h-3 w-3 mr-2" />
+                                        Ver perfil Instagram
+                                      </DropdownMenuItem>
+                                    )}
+                                    
+                                    {(lead.instagram_username || lead.lead_name?.startsWith('@') || lead.source === 'instagram') && onToggleFollower && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        {lead.is_follower ? (
+                                          <DropdownMenuItem
+                                            onClick={() => onToggleFollower(lead.id, false)}
+                                          >
+                                            <UserX className="h-3 w-3 mr-2" />
+                                            Marcar como não seguidor
+                                          </DropdownMenuItem>
+                                        ) : (
+                                          <DropdownMenuItem
+                                            onClick={() => onToggleFollower(lead.id, true)}
+                                          >
+                                            <UserCheck className="h-3 w-3 mr-2" />
+                                            Marcar como seguidor
+                                          </DropdownMenuItem>
+                                        )}
+                                      </>
+                                    )}
+                                    
+                                    <DropdownMenuSeparator />
+                                    
                                     {lead.lead_phone && (
                                       <DropdownMenuItem
                                         onClick={() => window.open(`https://wa.me/${lead.lead_phone?.replace(/\D/g, '')}`, '_blank')}
@@ -255,6 +315,22 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead }: LeadsPi
                                 <div className="mt-2">
                                   <Badge className="bg-emerald-500 text-white text-xs">
                                     R$ {lead.conversion_value.toLocaleString('pt-BR')}
+                                  </Badge>
+                                </div>
+                              )}
+
+                              {/* Follower badge for Instagram leads */}
+                              {lead.is_follower !== null && (lead.instagram_username || lead.lead_name?.startsWith('@') || lead.source === 'instagram') && (
+                                <div className="mt-2">
+                                  <Badge 
+                                    variant="outline" 
+                                    className={`text-xs ${lead.is_follower ? 'border-green-500 text-green-600' : 'border-gray-400 text-gray-500'}`}
+                                  >
+                                    {lead.is_follower ? (
+                                      <><UserCheck className="h-3 w-3 mr-1" /> Seguidor</>
+                                    ) : (
+                                      <><UserX className="h-3 w-3 mr-1" /> Não seguidor</>
+                                    )}
                                   </Badge>
                                 </div>
                               )}

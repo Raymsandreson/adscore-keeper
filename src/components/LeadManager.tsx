@@ -68,11 +68,11 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
   not_qualified: { label: 'Não Qualificado', color: 'bg-gray-500', icon: <XCircle className="h-3 w-3" /> },
   converted: { label: 'Convertido', color: 'bg-emerald-600', icon: <CheckCircle2 className="h-3 w-3" /> },
   lost: { label: 'Perdido', color: 'bg-red-500', icon: <XCircle className="h-3 w-3" /> },
-  follower: { label: 'Seguidor', color: 'bg-pink-500', icon: <Users className="h-3 w-3" /> },
+  comment: { label: 'Comentário', color: 'bg-pink-500', icon: <MessageSquare className="h-3 w-3" /> },
 };
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
-  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads } = useLeads(adAccountId);
+  const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower } = useLeads(adAccountId);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -741,6 +741,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               loading={loading}
               onStatusChange={handleStatusChange}
               onDeleteLead={handleDeleteLead}
+              onToggleFollower={toggleFollower}
             />
           ) : (
             <>

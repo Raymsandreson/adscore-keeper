@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
 
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'follower';
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
 
 export interface Lead {
@@ -32,6 +32,9 @@ export interface Lead {
   facebook_lead_id: string | null;
   sync_status: SyncStatus;
   last_sync_at: string | null;
+  instagram_comment_id: string | null;
+  instagram_username: string | null;
+  is_follower: boolean | null;
 }
 
 export interface LeadStats {
@@ -42,7 +45,7 @@ export interface LeadStats {
   notQualified: number;
   converted: number;
   lost: number;
-  follower: number;
+  comment: number;
   totalSpent: number;
   totalRevenue: number;
   costPerLead: number;
@@ -62,7 +65,7 @@ export const useLeads = (adAccountId?: string) => {
     notQualified: 0,
     converted: 0,
     lost: 0,
-    follower: 0,
+    comment: 0,
     totalSpent: 0,
     totalRevenue: 0,
     costPerLead: 0,
@@ -107,7 +110,7 @@ export const useLeads = (adAccountId?: string) => {
     const notQualified = leadsData.filter(l => l.status === 'not_qualified').length;
     const converted = leadsData.filter(l => l.status === 'converted').length;
     const lost = leadsData.filter(l => l.status === 'lost').length;
-    const follower = leadsData.filter(l => l.status === 'follower').length;
+    const comment = leadsData.filter(l => l.status === 'comment').length;
 
     const totalSpent = leadsData.reduce((acc, l) => acc + (l.ad_spend_at_conversion || 0), 0);
     const totalRevenue = leadsData.filter(l => l.status === 'converted')
@@ -126,7 +129,7 @@ export const useLeads = (adAccountId?: string) => {
       notQualified,
       converted,
       lost,
-      follower,
+      comment,
       totalSpent,
       totalRevenue,
       costPerLead,
@@ -358,6 +361,28 @@ export const useLeads = (adAccountId?: string) => {
     return result;
   };
 
+  const toggleFollower = async (leadId: string, isFollower: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({ is_follower: isFollower })
+        .eq('id', leadId);
+
+      if (error) throw error;
+
+      setLeads(prev =>
+        prev.map(lead =>
+          lead.id === leadId ? { ...lead, is_follower: isFollower } : lead
+        )
+      );
+
+      toast.success(isFollower ? 'Marcado como seguidor' : 'Marcado como não seguidor');
+    } catch (error) {
+      console.error('Error updating follower status:', error);
+      toast.error('Erro ao atualizar status de seguidor');
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
@@ -373,5 +398,6 @@ export const useLeads = (adAccountId?: string) => {
     updateLeadStatus,
     updateLeadStatusAndSync,
     syncLeadWithFacebook,
+    toggleFollower,
   };
 };
