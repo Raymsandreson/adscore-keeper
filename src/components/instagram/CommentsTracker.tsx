@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
 
 interface Comment {
   id: string;
@@ -625,6 +626,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           </div>
         </CardHeader>
         <CardContent>
+          {/* Evolution Chart */}
+          <CommentsEvolutionChart comments={comments} />
+
           {/* Filters Section */}
           <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b">
             <div className="relative flex-1 min-w-[200px] max-w-sm">
