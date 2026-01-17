@@ -340,13 +340,17 @@ export type Database = {
           comment_id: string | null
           comment_text: string | null
           comment_type: string
+          conversation_thread_id: string | null
           created_at: string
+          funnel_stage: string | null
           id: string
           metadata: Json | null
+          notes: string | null
           parent_comment_id: string | null
           platform: string
           post_id: string | null
           post_url: string | null
+          prospect_name: string | null
           replied_at: string | null
         }
         Insert: {
@@ -356,13 +360,17 @@ export type Database = {
           comment_id?: string | null
           comment_text?: string | null
           comment_type: string
+          conversation_thread_id?: string | null
           created_at?: string
+          funnel_stage?: string | null
           id?: string
           metadata?: Json | null
+          notes?: string | null
           parent_comment_id?: string | null
           platform?: string
           post_id?: string | null
           post_url?: string | null
+          prospect_name?: string | null
           replied_at?: string | null
         }
         Update: {
@@ -372,13 +380,17 @@ export type Database = {
           comment_id?: string | null
           comment_text?: string | null
           comment_type?: string
+          conversation_thread_id?: string | null
           created_at?: string
+          funnel_stage?: string | null
           id?: string
           metadata?: Json | null
+          notes?: string | null
           parent_comment_id?: string | null
           platform?: string
           post_id?: string | null
           post_url?: string | null
+          prospect_name?: string | null
           replied_at?: string | null
         }
         Relationships: []
