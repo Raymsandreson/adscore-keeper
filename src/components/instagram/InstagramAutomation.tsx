@@ -10,12 +10,14 @@ import {
   TrendingUp,
   Settings,
   Plus,
-  RefreshCw
+  RefreshCw,
+  BarChart3
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
 import { CommentsTracker } from "./CommentsTracker";
 import { EngagementStats } from "./EngagementStats";
+import { CommentsDashboard } from "./CommentsDashboard";
 
 interface InstagramAutomationProps {
   isConnected: boolean;
@@ -24,7 +26,7 @@ interface InstagramAutomationProps {
 }
 
 const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAutomationProps) => {
-  const [activeTab, setActiveTab] = useState("goals");
+  const [activeTab, setActiveTab] = useState("dashboard");
 
   return (
     <div className="space-y-6">
@@ -46,7 +48,11 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAuto
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="dashboard" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Dashboard
+          </TabsTrigger>
           <TabsTrigger value="goals" className="gap-2">
             <Target className="h-4 w-4" />
             Metas
@@ -64,6 +70,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAuto
             Estatísticas
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="dashboard" className="mt-6">
+          <CommentsDashboard />
+        </TabsContent>
 
         <TabsContent value="goals" className="mt-6">
           <EngagementGoals />
