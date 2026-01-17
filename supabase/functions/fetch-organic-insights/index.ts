@@ -5,6 +5,43 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Content type breakdown for detailed views
+interface ContentTypeBreakdown {
+  reels: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+  feed: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+  stories: {
+    views: number;
+    replies: number;
+    exits: number;
+    reach: number;
+    count: number;
+  };
+  carousel: {
+    views: number;
+    likes: number;
+    comments: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+}
+
 interface OrganicInsights {
   totalFollowers: number;
   followingCount: number;
@@ -26,6 +63,7 @@ interface OrganicInsights {
   storiesReach: number;
   videoViews: number;
   dataUpdatedAt?: string; // ISO date of when the API data was last updated
+  contentBreakdown?: ContentTypeBreakdown; // NEW: breakdown by content type
 }
 
 // Track which metrics are unavailable due to API/permission limitations
@@ -265,6 +303,14 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     let reach = 0, impressions = 0;
     let totalInteractions = 0;
     const recentPosts: any[] = [];
+    
+    // Initialize content type breakdown
+    const contentBreakdown: ContentTypeBreakdown = {
+      reels: { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, reach: 0, count: 0 },
+      feed: { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, reach: 0, count: 0 },
+      stories: { views: 0, replies: 0, exits: 0, reach: 0, count: 0 },
+      carousel: { views: 0, likes: 0, comments: 0, saves: 0, reach: 0, count: 0 }
+    };
 
     // Process ALL media data, not just within period - for impressions we want all recent content
     if (mediaData.data) {
@@ -342,22 +388,82 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
             mediaInsightsErrors.push(errMsg);
           }
         } else if (insights?.data) {
+          // Determine content type for this media
+          const mediaType = insights.mediaType;
+          const isReel = mediaType === 'VIDEO' || mediaType === 'REELS';
+          const isCarousel = mediaType === 'CAROUSEL_ALBUM';
+          const isFeed = mediaType === 'IMAGE';
+          
+          // Find corresponding post for likes/comments
+          const post = postsForInsights.find(p => p.id === insights.mediaId);
+          const postLikes = post?.like_count || 0;
+          const postComments = post?.comments_count || 0;
+          
+          let mediaReach = 0, mediaViews = 0, mediaSaves = 0, mediaShares = 0;
+          
           for (const insight of insights.data) {
             const value = insight.values?.[0]?.value || 0;
             switch (insight.name) {
-              case 'saved': saves += value; break;
-              case 'shares': shares += value; break;
-              case 'reach': reach += value; break;
-              case 'impressions': impressions += value; break;
-              case 'plays': videoViews += value; break;
+              case 'saved': 
+                saves += value; 
+                mediaSaves = value;
+                break;
+              case 'shares': 
+                shares += value; 
+                mediaShares = value;
+                break;
+              case 'reach': 
+                reach += value; 
+                mediaReach = value;
+                break;
+              case 'impressions': 
+                impressions += value; 
+                mediaViews = value;
+                break;
+              case 'plays': 
+                videoViews += value;
+                mediaViews = value;
+                break;
               case 'ig_reels_aggregated_all_plays_count': 
                 videoViews += value;
                 impressions += value; // Reels views count as impressions
+                mediaViews = value;
                 break;
             }
           }
+          
+          // Add to content type breakdown
+          if (isReel) {
+            contentBreakdown.reels.views += mediaViews;
+            contentBreakdown.reels.likes += postLikes;
+            contentBreakdown.reels.comments += postComments;
+            contentBreakdown.reels.shares += mediaShares;
+            contentBreakdown.reels.saves += mediaSaves;
+            contentBreakdown.reels.reach += mediaReach;
+            contentBreakdown.reels.count += 1;
+          } else if (isCarousel) {
+            contentBreakdown.carousel.views += mediaViews;
+            contentBreakdown.carousel.likes += postLikes;
+            contentBreakdown.carousel.comments += postComments;
+            contentBreakdown.carousel.saves += mediaSaves;
+            contentBreakdown.carousel.reach += mediaReach;
+            contentBreakdown.carousel.count += 1;
+          } else if (isFeed) {
+            contentBreakdown.feed.views += mediaViews;
+            contentBreakdown.feed.likes += postLikes;
+            contentBreakdown.feed.comments += postComments;
+            contentBreakdown.feed.saves += mediaSaves;
+            contentBreakdown.feed.reach += mediaReach;
+            contentBreakdown.feed.count += 1;
+          }
         }
       }
+      
+      console.log('📊 Content breakdown:', {
+        reels: contentBreakdown.reels,
+        feed: contentBreakdown.feed,
+        carousel: contentBreakdown.carousel
+      });
       
       // Total impressions = content impressions + video views
       console.log('📊 Metrics from media insights:', { 
@@ -596,7 +702,8 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
         storiesExits: 0,
         storiesReach: 0,
         videoViews,
-        dataUpdatedAt: yesterday.toISOString().split('T')[0] // Inform frontend of data date
+        dataUpdatedAt: yesterday.toISOString().split('T')[0], // Inform frontend of data date
+        contentBreakdown // NEW: Include content type breakdown
       },
       dailyData,
       dataSource: 'real',
