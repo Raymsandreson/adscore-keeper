@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.receive-lead-webhook]
 verify_jwt = false
+
+[functions.fetch-organic-insights]
+verify_jwt = false
