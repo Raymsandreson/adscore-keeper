@@ -11,14 +11,15 @@ import {
   Settings,
   Plus,
   RefreshCw,
-  BarChart3
+  BarChart3,
+  Filter
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
 import { CommentsTracker } from "./CommentsTracker";
 import { EngagementStats } from "./EngagementStats";
 import { CommentsDashboard } from "./CommentsDashboard";
-
+import { ProspectingFunnel } from "./ProspectingFunnel";
 interface InstagramAutomationProps {
   isConnected: boolean;
   pageId?: string;
@@ -26,7 +27,7 @@ interface InstagramAutomationProps {
 }
 
 const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAutomationProps) => {
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("funnel");
 
   return (
     <div className="space-y-6">
@@ -48,7 +49,11 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAuto
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="funnel" className="gap-2">
+            <Filter className="h-4 w-4" />
+            Funil
+          </TabsTrigger>
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Dashboard
@@ -70,6 +75,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAuto
             Estatísticas
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="funnel" className="mt-6">
+          <ProspectingFunnel />
+        </TabsContent>
 
         <TabsContent value="dashboard" className="mt-6">
           <CommentsDashboard />
