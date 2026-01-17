@@ -231,17 +231,16 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
 
     // Calculate date range based on period
     // Instagram API data has ~24-48h delay - data up to yesterday is reliable
-    // We use yesterday as the "now" to get complete data
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000); // API data is up to yesterday
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const periodStart = new Date(yesterday.getTime() - (period - 1) * 24 * 60 * 60 * 1000);
     
-    // OPTIMIZATION: Fetch account info and media in parallel
-    const mediaLimit = Math.min(50, period * 3); // Reduced limit for speed
+    // Increase media limit to get more posts for accurate metrics
+    const mediaLimit = Math.max(50, period * 5);
     
     const [accountResponse, mediaResponse] = await Promise.all([
       fetch(`https://graph.facebook.com/v21.0/${igAccountId}?fields=followers_count,follows_count,media_count,username,name&access_token=${accessToken}`),
-      fetch(`https://graph.facebook.com/v21.0/${igAccountId}/media?fields=id,media_type,like_count,comments_count,timestamp&limit=${mediaLimit}&access_token=${accessToken}`)
+      fetch(`https://graph.facebook.com/v21.0/${igAccountId}/media?fields=id,media_type,like_count,comments_count,timestamp,caption&limit=${mediaLimit}&access_token=${accessToken}`)
     ]);
     
     const [accountData, mediaData] = await Promise.all([
@@ -250,6 +249,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     ]);
     
     console.log('⏱️ Account + Media fetch:', Date.now() - fetchStart, 'ms');
+    console.log('📊 Total media found:', mediaData.data?.length || 0);
 
     if (accountData.error) {
       console.error('Instagram account error:', accountData.error);
@@ -263,47 +263,69 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
     // Initialize metrics
     let likes = 0, comments = 0, shares = 0, saves = 0, videoViews = 0;
     let reach = 0, impressions = 0;
-    let totalInteractions = 0; // From API - more accurate than summing individual metrics
+    let totalInteractions = 0;
     const recentPosts: any[] = [];
 
-    // Process media data - only count engagement, skip per-media insights for speed
+    // Process ALL media data, not just within period - for impressions we want all recent content
     if (mediaData.data) {
       for (const media of mediaData.data) {
         const mediaDate = new Date(media.timestamp);
+        // Include posts from the period for engagement metrics
         if (mediaDate >= periodStart) {
           likes += media.like_count || 0;
           comments += media.comments_count || 0;
           recentPosts.push(media);
+        } else {
+          // Also include older posts (up to 30 days old) for impressions since views accumulate over time
+          const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          if (mediaDate >= thirtyDaysAgo) {
+            recentPosts.push({ ...media, olderPost: true });
+          }
         }
       }
     }
+    
+    console.log('📊 Posts in period:', recentPosts.filter(p => !p.olderPost).length);
+    console.log('📊 Older posts (for views):', recentPosts.filter(p => p.olderPost).length);
 
-    // OPTIMIZATION: Fetch media insights in parallel batches (only first 10 posts for speed)
-    const postsForInsights = recentPosts.slice(0, 10);
+    // Fetch media insights for ALL recent posts (up to 25 for speed)
+    const postsForInsights = recentPosts.slice(0, 25);
     let mediaInsightsErrors: string[] = [];
     
     if (postsForInsights.length > 0) {
       const insightStart = Date.now();
       const insightPromises = postsForInsights.map(async (media) => {
         try {
-          // Updated metrics for Instagram API v21.0+
-          // - 'impressions' is deprecated for media insights
-          // - 'plays' is deprecated, use 'views' instead for video content
-          let metricsToFetch = 'saved,reach';
+          // Different metrics based on media type
+          // For REELS: use ig_reels_aggregated_all_plays_count for total views
+          // For IMAGE/CAROUSEL: use impressions
+          // For VIDEO (IGTV): use ig_reels_video_view_total_time or impressions
+          let metricsToFetch = 'saved,reach,impressions';
           if (media.media_type === 'VIDEO' || media.media_type === 'REELS') {
-            metricsToFetch += ',views,shares'; // 'views' replaced 'plays'
+            // For Reels, use the correct plays metric
+            metricsToFetch = 'saved,reach,shares,plays,ig_reels_aggregated_all_plays_count';
           }
+          
           const resp = await fetch(
             `https://graph.facebook.com/v21.0/${media.id}/insights?metric=${metricsToFetch}&access_token=${accessToken}`
           );
           const result = await resp.json();
           
-          // Log any errors for debugging
           if (result.error) {
-            console.log(`❌ Media ${media.id} insights error:`, result.error.message, result.error.code);
+            // Try fallback metrics if the first request fails
+            if (media.media_type === 'VIDEO' || media.media_type === 'REELS') {
+              const fallbackResp = await fetch(
+                `https://graph.facebook.com/v21.0/${media.id}/insights?metric=saved,reach,shares,plays&access_token=${accessToken}`
+              );
+              const fallbackResult = await fallbackResp.json();
+              if (!fallbackResult.error) {
+                return { ...fallbackResult, mediaType: media.media_type, mediaId: media.id };
+              }
+            }
+            console.log(`❌ Media ${media.id} (${media.media_type}) insights error:`, result.error.message);
             return { error: result.error, mediaId: media.id, mediaType: media.media_type };
           }
-          return { ...result, mediaType: media.media_type };
+          return { ...result, mediaType: media.media_type, mediaId: media.id };
         } catch (e) {
           console.log(`❌ Media ${media.id} fetch error:`, e);
           return null;
@@ -315,7 +337,6 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       
       for (const insights of insightResults) {
         if (insights?.error) {
-          // Collect unique error messages
           const errMsg = insights.error.message || 'Unknown error';
           if (!mediaInsightsErrors.includes(errMsg)) {
             mediaInsightsErrors.push(errMsg);
@@ -327,13 +348,29 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
               case 'saved': saves += value; break;
               case 'shares': shares += value; break;
               case 'reach': reach += value; break;
-              case 'views': videoViews += value; break; // 'views' replaces 'plays'
+              case 'impressions': impressions += value; break;
+              case 'plays': videoViews += value; break;
+              case 'ig_reels_aggregated_all_plays_count': 
+                videoViews += value;
+                impressions += value; // Reels views count as impressions
+                break;
             }
           }
         }
       }
       
-      // Log all unique errors found
+      // Total impressions = content impressions + video views
+      console.log('📊 Metrics from media insights:', { 
+        reach, 
+        impressions, 
+        videoViews, 
+        likes, 
+        comments, 
+        shares, 
+        saves,
+        postsAnalyzed: postsForInsights.length 
+      });
+      
       if (mediaInsightsErrors.length > 0) {
         console.log('📛 Media insights errors summary:', mediaInsightsErrors);
       }
@@ -408,27 +445,48 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       );
       const reachInsights = await reachResponse.json();
       
+      // Store media insights values before potentially overwriting with account-level
+      const mediaReach = reach;
+      const mediaImpressions = impressions;
+      
       if (reachInsights.data && !reachInsights.error) {
         for (const metric of reachInsights.data) {
           const value = metric.total_value?.value || 0;
           
           if (metric.name === 'reach') {
-            reach = value;
-            console.log('Instagram account-level REACH:', value);
+            // Use account-level reach if available, otherwise keep media-level
+            if (value > 0) {
+              reach = value;
+              console.log('Instagram account-level REACH:', value);
+            } else if (mediaReach > 0) {
+              console.log('Using media-level reach:', mediaReach);
+            }
           } else if (metric.name === 'views') {
-            // 'views' is the new metric replacing 'impressions' for total content views
-            impressions = value;
-            console.log('Instagram account-level VIEWS (as impressions):', value);
+            // 'views' is the new metric for total content views
+            // Only use if we don't already have impressions from media insights
+            if (value > 0) {
+              // Account-level views should be higher than media-level
+              if (value > mediaImpressions) {
+                impressions = value;
+                console.log('Instagram account-level VIEWS (as impressions):', value);
+              } else {
+                console.log('Keeping media-level impressions:', mediaImpressions);
+              }
+            }
           } else if (metric.name === 'total_interactions') {
-            // Use total_interactions from API - this is the accurate value matching Instagram Insights
             totalInteractions = value;
             console.log('Instagram total_interactions (from API):', value);
           }
         }
       } else if (reachInsights.error) {
         console.log('Instagram reach/views error:', reachInsights.error.message);
-        unavailableMetrics.reach = 'Requer permissão instagram_manage_insights';
-        unavailableMetrics.impressions = 'Métrica views requer permissão instagram_manage_insights';
+        // Keep media-level values if available
+        if (mediaReach === 0) {
+          unavailableMetrics.reach = 'Requer permissão instagram_manage_insights';
+        }
+        if (mediaImpressions === 0) {
+          unavailableMetrics.impressions = 'Métrica views requer permissão instagram_manage_insights';
+        }
       }
       
       // Finally, fetch follower_count with time_series to get daily changes
