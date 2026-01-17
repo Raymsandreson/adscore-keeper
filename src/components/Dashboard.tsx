@@ -25,17 +25,23 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
 import { useUnifiedMetaConnection, GoalBias } from "@/hooks/useUnifiedMetaConnection";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 const Dashboard = () => {
+  const [searchParams] = useSearchParams();
   const [proMode, setProMode] = useState(false);
   const [goalBiases, setGoalBiases] = useState<GoalBias[]>([]);
   const [organicMetricsData, setOrganicMetricsData] = useState<{ impressions: number; reach: number }>({ impressions: 0, reach: 0 });
+  
+  // Read tab from URL params
+  const initialTab = searchParams.get('tab') || 'paid';
+  const initialSubTab = searchParams.get('subtab') || undefined;
+  const [activeMainTab, setActiveMainTab] = useState(initialTab);
   
   const { 
     metrics, 
@@ -161,6 +167,13 @@ const Dashboard = () => {
               <Button variant="outline" size="sm">
                 <TrendingUp className="h-4 w-4 mr-2" />
                 Analytics
+              </Button>
+            </Link>
+
+            <Link to="/?tab=automation&subtab=comments">
+              <Button variant="outline" size="sm" className="border-primary/50 hover:bg-primary/10">
+                <MessageCircle className="h-4 w-4 mr-2 text-primary" />
+                Comentários
               </Button>
             </Link>
             
@@ -382,7 +395,7 @@ const Dashboard = () => {
         )}
 
         {/* Tabs: Tráfego Pago / Público Orgânico / Metas */}
-        <Tabs defaultValue="paid" className="w-full">
+        <Tabs value={activeMainTab} onValueChange={setActiveMainTab} className="w-full">
           <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4">
             <TabsTrigger value="paid" className="gap-2">
               <Megaphone className="h-4 w-4" />
@@ -537,7 +550,7 @@ const Dashboard = () => {
 
           {/* Tab: Automação Instagram */}
           <TabsContent value="automation" className="mt-6">
-            <InstagramAutomation isConnected={isConnected} />
+            <InstagramAutomation isConnected={isConnected} initialTab={initialSubTab} />
           </TabsContent>
 
           {/* Tab: Metas e Prazos */}
