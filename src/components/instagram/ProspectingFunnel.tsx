@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -26,7 +27,10 @@ import {
   Calendar,
   User,
   StickyNote,
-  Edit
+  Edit,
+  AlertTriangle,
+  Settings,
+  Bell
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -46,15 +50,24 @@ interface Prospect {
   post_url: string | null;
 }
 
-const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; color: string; bgColor: string }[] = [
-  { key: 'comment', label: 'Comentário', icon: <MessageSquare className="h-4 w-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  { key: 'dm', label: 'DM', icon: <Send className="h-4 w-4" />, color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  { key: 'whatsapp', label: 'WhatsApp', icon: <Phone className="h-4 w-4" />, color: 'text-green-600', bgColor: 'bg-green-100' },
-  { key: 'visit_scheduled', label: 'Visita Agendada', icon: <Calendar className="h-4 w-4" />, color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  { key: 'visit_done', label: 'Visita Realizada', icon: <MapPin className="h-4 w-4" />, color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  { key: 'closed', label: 'Fechado', icon: <CheckCircle2 className="h-4 w-4" />, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
-  { key: 'post_sale', label: 'Pós-venda', icon: <RefreshCw className="h-4 w-4" />, color: 'text-teal-600', bgColor: 'bg-teal-100' },
+const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; color: string; bgColor: string; defaultAlertDays: number }[] = [
+  { key: 'comment', label: 'Comentário', icon: <MessageSquare className="h-4 w-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100', defaultAlertDays: 2 },
+  { key: 'dm', label: 'DM', icon: <Send className="h-4 w-4" />, color: 'text-purple-600', bgColor: 'bg-purple-100', defaultAlertDays: 3 },
+  { key: 'whatsapp', label: 'WhatsApp', icon: <Phone className="h-4 w-4" />, color: 'text-green-600', bgColor: 'bg-green-100', defaultAlertDays: 5 },
+  { key: 'visit_scheduled', label: 'Visita Agendada', icon: <Calendar className="h-4 w-4" />, color: 'text-orange-600', bgColor: 'bg-orange-100', defaultAlertDays: 7 },
+  { key: 'visit_done', label: 'Visita Realizada', icon: <MapPin className="h-4 w-4" />, color: 'text-amber-600', bgColor: 'bg-amber-100', defaultAlertDays: 7 },
+  { key: 'closed', label: 'Fechado', icon: <CheckCircle2 className="h-4 w-4" />, color: 'text-emerald-600', bgColor: 'bg-emerald-100', defaultAlertDays: 30 },
+  { key: 'post_sale', label: 'Pós-venda', icon: <RefreshCw className="h-4 w-4" />, color: 'text-teal-600', bgColor: 'bg-teal-100', defaultAlertDays: 0 },
 ];
+
+type StageAlertConfig = Record<FunnelStage, { enabled: boolean; days: number }>;
+
+const getDefaultAlertConfig = (): StageAlertConfig => {
+  return FUNNEL_STAGES.reduce((acc, stage) => {
+    acc[stage.key] = { enabled: stage.defaultAlertDays > 0, days: stage.defaultAlertDays };
+    return acc;
+  }, {} as StageAlertConfig);
+};
 
 const getStageConfig = (stage: FunnelStage) => {
   return FUNNEL_STAGES.find(s => s.key === stage) || FUNNEL_STAGES[0];
@@ -69,6 +82,41 @@ export function ProspectingFunnel() {
   const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage });
   const [draggedProspect, setDraggedProspect] = useState<Prospect | null>(null);
   const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
+  const [showAlertSettings, setShowAlertSettings] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<StageAlertConfig>(() => {
+    const saved = localStorage.getItem('prospecting-alert-config');
+    return saved ? JSON.parse(saved) : getDefaultAlertConfig();
+  });
+
+  // Save alert config to localStorage
+  useEffect(() => {
+    localStorage.setItem('prospecting-alert-config', JSON.stringify(alertConfig));
+  }, [alertConfig]);
+
+  // Calculate stagnant prospects
+  const stagnantProspects = useMemo(() => {
+    const now = new Date();
+    return prospects.filter(prospect => {
+      const config = alertConfig[prospect.funnel_stage];
+      if (!config?.enabled || config.days === 0) return false;
+      const daysSinceCreated = differenceInDays(now, new Date(prospect.created_at));
+      return daysSinceCreated >= config.days;
+    }).map(prospect => ({
+      ...prospect,
+      daysSinceCreated: differenceInDays(now, new Date(prospect.created_at))
+    }));
+  }, [prospects, alertConfig]);
+
+  const isProspectStagnant = (prospect: Prospect): boolean => {
+    const config = alertConfig[prospect.funnel_stage];
+    if (!config?.enabled || config.days === 0) return false;
+    const daysSinceCreated = differenceInDays(new Date(), new Date(prospect.created_at));
+    return daysSinceCreated >= config.days;
+  };
+
+  const getDaysSinceCreated = (prospect: Prospect): number => {
+    return differenceInDays(new Date(), new Date(prospect.created_at));
+  };
 
   const fetchProspects = async () => {
     setLoading(true);
@@ -284,6 +332,15 @@ export function ProspectingFunnel() {
           <p className="text-muted-foreground">Acompanhe a jornada dos prospectos</p>
         </div>
         <div className="flex items-center gap-2">
+          {stagnantProspects.length > 0 && (
+            <Badge variant="destructive" className="gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {stagnantProspects.length} parado{stagnantProspects.length > 1 ? 's' : ''}
+            </Badge>
+          )}
+          <Button variant="outline" size="icon" onClick={() => setShowAlertSettings(true)}>
+            <Settings className="h-4 w-4" />
+          </Button>
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[140px]">
               <SelectValue />
@@ -342,6 +399,70 @@ export function ProspectingFunnel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Stagnant Prospects Alert Panel */}
+      {stagnantProspects.length > 0 && (
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Prospectos Parados ({stagnantProspects.length})
+            </CardTitle>
+            <CardDescription>
+              Estes prospectos estão parados há mais tempo que o configurado
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="max-h-[200px]">
+              <div className="space-y-2">
+                {stagnantProspects.slice(0, 10).map(prospect => {
+                  const stageConfig = getStageConfig(prospect.funnel_stage);
+                  return (
+                    <div key={prospect.id} className="flex items-center justify-between p-2 bg-background rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline" className={`${stageConfig.bgColor} ${stageConfig.color} border-0`}>
+                          {stageConfig.icon}
+                          <span className="ml-1">{stageConfig.label}</span>
+                        </Badge>
+                        <div>
+                          <p className="font-medium text-sm">
+                            {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {prospect.daysSinceCreated} dias parado
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(prospect)}
+                        >
+                          <Edit className="h-3 w-3 mr-1" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleAdvanceStage(prospect)}
+                        >
+                          <ArrowRight className="h-3 w-3 mr-1" />
+                          Avançar
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {stagnantProspects.length > 10 && (
+                  <p className="text-xs text-center text-muted-foreground pt-2">
+                    +{stagnantProspects.length - 10} mais prospectos parados
+                  </p>
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -431,30 +552,39 @@ export function ProspectingFunnel() {
                   <CardContent className="p-2">
                     <ScrollArea className="h-[350px]">
                       <div className="space-y-2">
-                        {stageProspects.slice(0, 10).map(prospect => (
-                          <Card 
-                            key={prospect.id} 
-                            draggable
-                            onDragStart={() => handleDragStart(prospect)}
-                            onDragEnd={handleDragEnd}
-                            className={`p-3 cursor-grab hover:shadow-md transition-all active:cursor-grabbing ${
-                              draggedProspect?.id === prospect.id ? 'opacity-50 scale-95' : ''
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate">
-                                  {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
-                                </p>
-                                {prospect.comment_text && (
-                                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                                    {prospect.comment_text}
+                        {stageProspects.slice(0, 10).map(prospect => {
+                          const isStagnant = isProspectStagnant(prospect);
+                          const daysStagnant = getDaysSinceCreated(prospect);
+                          return (
+                            <Card 
+                              key={prospect.id} 
+                              draggable
+                              onDragStart={() => handleDragStart(prospect)}
+                              onDragEnd={handleDragEnd}
+                              className={`p-3 cursor-grab hover:shadow-md transition-all active:cursor-grabbing ${
+                                draggedProspect?.id === prospect.id ? 'opacity-50 scale-95' : ''
+                              } ${isStagnant ? 'border-destructive/50 bg-destructive/5' : ''}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    <p className="font-medium text-sm truncate">
+                                      {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
+                                    </p>
+                                    {isStagnant && (
+                                      <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
+                                    )}
+                                  </div>
+                                  {prospect.comment_text && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                                      {prospect.comment_text}
+                                    </p>
+                                  )}
+                                  <p className={`text-xs mt-1 ${isStagnant ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                                    {format(new Date(prospect.created_at), 'dd/MM', { locale: ptBR })}
+                                    {isStagnant && ` • ${daysStagnant}d parado`}
                                   </p>
-                                )}
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(prospect.created_at), 'dd/MM', { locale: ptBR })}
-                                </p>
-                              </div>
+                                </div>
                               <div className="flex flex-col gap-1">
                                 <Button
                                   variant="ghost"
@@ -485,7 +615,8 @@ export function ProspectingFunnel() {
                               </div>
                             )}
                           </Card>
-                        ))}
+                          );
+                        })}
                         {stageProspects.length > 10 && (
                           <p className="text-xs text-center text-muted-foreground">
                             +{stageProspects.length - 10} mais
@@ -584,6 +715,68 @@ export function ProspectingFunnel() {
             </Button>
             <Button onClick={handleUpdateProspect}>
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alert Settings Dialog */}
+      <Dialog open={showAlertSettings} onOpenChange={setShowAlertSettings}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Configurar Alertas de Prospectos Parados
+            </DialogTitle>
+            <DialogDescription>
+              Defina quantos dias um prospecto pode ficar parado em cada estágio antes de gerar um alerta
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {FUNNEL_STAGES.filter(s => s.key !== 'post_sale').map(stage => {
+              const config = alertConfig[stage.key];
+              return (
+                <div key={stage.key} className="flex items-center justify-between gap-4 p-3 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded ${stage.bgColor}`}>
+                      <div className={stage.color}>{stage.icon}</div>
+                    </div>
+                    <span className="font-medium text-sm">{stage.label}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={config?.days || 3}
+                        onChange={(e) => setAlertConfig(prev => ({
+                          ...prev,
+                          [stage.key]: { ...prev[stage.key], days: parseInt(e.target.value) || 3 }
+                        }))}
+                        className="w-16 h-8 text-center"
+                        disabled={!config?.enabled}
+                      />
+                      <span className="text-xs text-muted-foreground">dias</span>
+                    </div>
+                    <Switch
+                      checked={config?.enabled || false}
+                      onCheckedChange={(checked) => setAlertConfig(prev => ({
+                        ...prev,
+                        [stage.key]: { ...prev[stage.key], enabled: checked }
+                      }))}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAlertConfig(getDefaultAlertConfig())}>
+              Restaurar Padrões
+            </Button>
+            <Button onClick={() => setShowAlertSettings(false)}>
+              Feito
             </Button>
           </DialogFooter>
         </DialogContent>
