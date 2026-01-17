@@ -269,9 +269,30 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
 
     // Calculate date range based on period
     // Instagram API data has ~24-48h delay - data up to yesterday is reliable
+    // IMPORTANT: Instagram Insights API requires 'since' and 'until' to span at least 1 day
+    // 'until' should be AFTER the last day you want data for (exclusive end date)
     const now = new Date();
+    
+    // For Instagram API: data is available up to 2 days ago reliably
+    // 'yesterday' in UTC terms for the API
+    const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const periodStart = new Date(yesterday.getTime() - (period - 1) * 24 * 60 * 60 * 1000);
+    
+    // periodStart: beginning of the requested period
+    // For period=1 (yesterday): we want data from 2 days ago
+    // The Instagram API has about 48h delay for metrics
+    const periodStart = new Date(twoDaysAgo.getTime() - (period - 1) * 24 * 60 * 60 * 1000);
+    
+    // periodEnd: one day AFTER the last day we want (API uses exclusive end date)
+    // This ensures we get the full range of data
+    const periodEnd = new Date(twoDaysAgo.getTime() + 24 * 60 * 60 * 1000);
+    
+    console.log('📅 Date range for API:', {
+      periodStart: periodStart.toISOString().split('T')[0],
+      periodEnd: periodEnd.toISOString().split('T')[0],
+      twoDaysAgo: twoDaysAgo.toISOString().split('T')[0],
+      now: now.toISOString().split('T')[0]
+    });
     
     // Increase media limit to get more posts for accurate metrics
     const mediaLimit = Math.max(50, period * 5);
@@ -518,7 +539,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       // First, fetch profile_views and website_clicks with total_value
       const totalValueMetrics = 'profile_views,website_clicks';
       const totalValueResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${totalValueMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${totalValueMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${periodEnd.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const totalValueInsights = await totalValueResponse.json();
       
@@ -543,7 +564,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       // Also fetch total_interactions and views for better data
       const reachMetrics = 'reach,total_interactions,views';
       const reachResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=${reachMetrics}&metric_type=total_value&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${periodEnd.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const reachInsights = await reachResponse.json();
       
@@ -592,7 +613,7 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       
       // Finally, fetch follower_count with time_series to get daily changes
       const followerResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=follower_count&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${yesterday.toISOString().split('T')[0]}&access_token=${accessToken}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/insights?metric=follower_count&period=day&since=${periodStart.toISOString().split('T')[0]}&until=${periodEnd.toISOString().split('T')[0]}&access_token=${accessToken}`
       );
       const followerInsights = await followerResponse.json();
       
