@@ -312,27 +312,21 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
       carousel: { views: 0, likes: 0, comments: 0, saves: 0, reach: 0, count: 0 }
     };
 
-    // Process ALL media data, not just within period - for impressions we want all recent content
+    // ONLY include posts within the requested period - do NOT include older posts
+    // The Business Suite shows views for the selected period only
     if (mediaData.data) {
       for (const media of mediaData.data) {
         const mediaDate = new Date(media.timestamp);
-        // Include posts from the period for engagement metrics
+        // ONLY include posts from the period - matching Business Suite behavior
         if (mediaDate >= periodStart) {
           likes += media.like_count || 0;
           comments += media.comments_count || 0;
           recentPosts.push(media);
-        } else {
-          // Also include older posts (up to 30 days old) for impressions since views accumulate over time
-          const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          if (mediaDate >= thirtyDaysAgo) {
-            recentPosts.push({ ...media, olderPost: true });
-          }
         }
       }
     }
     
-    console.log('📊 Posts in period:', recentPosts.filter(p => !p.olderPost).length);
-    console.log('📊 Older posts (for views):', recentPosts.filter(p => p.olderPost).length);
+    console.log('📊 Posts in period:', recentPosts.length);
 
     // Fetch media insights for ALL recent posts (up to 25 for speed)
     const postsForInsights = recentPosts.slice(0, 25);
@@ -417,16 +411,18 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
                 mediaReach = value;
                 break;
               case 'impressions': 
+                // For IMAGE/CAROUSEL, impressions = views
                 impressions += value; 
                 mediaViews = value;
                 break;
               case 'plays': 
+                // For VIDEO content, plays = views (DON'T add to impressions to avoid duplication)
                 videoViews += value;
                 mediaViews = value;
                 break;
               case 'ig_reels_aggregated_all_plays_count': 
+                // For REELS, this is the view count (DON'T add to impressions to avoid duplication)
                 videoViews += value;
-                impressions += value; // Reels views count as impressions
                 mediaViews = value;
                 break;
             }
@@ -560,24 +556,23 @@ async function fetchInstagramData(igAccountId: string, accessToken: string, peri
           const value = metric.total_value?.value || 0;
           
           if (metric.name === 'reach') {
-            // Use account-level reach if available, otherwise keep media-level
+            // ALWAYS prefer account-level reach - this is what Business Suite shows
             if (value > 0) {
               reach = value;
-              console.log('Instagram account-level REACH:', value);
+              console.log('✅ Instagram account-level REACH:', value);
             } else if (mediaReach > 0) {
               console.log('Using media-level reach:', mediaReach);
             }
           } else if (metric.name === 'views') {
-            // 'views' is the new metric for total content views
-            // Only use if we don't already have impressions from media insights
+            // 'views' is the official metric for total content views (matches Business Suite)
+            // ALWAYS prefer this value when available - it's the authoritative source
             if (value > 0) {
-              // Account-level views should be higher than media-level
-              if (value > mediaImpressions) {
-                impressions = value;
-                console.log('Instagram account-level VIEWS (as impressions):', value);
-              } else {
-                console.log('Keeping media-level impressions:', mediaImpressions);
-              }
+              impressions = value;
+              console.log('✅ Instagram account-level VIEWS:', value, '(this matches Business Suite)');
+              console.log('📊 Media-level impressions was:', mediaImpressions, '- using account-level instead');
+            } else if (mediaImpressions > 0) {
+              // Only use media-level if account-level returns 0
+              console.log('⚠️ Account-level views is 0, using media-level:', mediaImpressions);
             }
           } else if (metric.name === 'total_interactions') {
             totalInteractions = value;
