@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TrendingUp } from "lucide-react";
@@ -97,17 +97,7 @@ export const CommentsEvolutionChart = ({ comments, daysToShow = 14 }: CommentsEv
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-[200px] w-full">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="fillReceived" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="fillSent" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(var(--secondary))" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(var(--secondary))" stopOpacity={0} />
-              </linearGradient>
-            </defs>
+          <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis 
               dataKey="dateLabel" 
@@ -128,23 +118,19 @@ export const CommentsEvolutionChart = ({ comments, daysToShow = 14 }: CommentsEv
                 />
               }
             />
-            <Area
-              type="monotone"
+            <Bar
               dataKey="received"
-              stroke="hsl(var(--primary))"
-              strokeWidth={2}
-              fill="url(#fillReceived)"
+              fill="hsl(var(--primary))"
+              radius={[4, 4, 0, 0]}
               name="Recebidos"
             />
-            <Area
-              type="monotone"
+            <Bar
               dataKey="sent"
-              stroke="hsl(var(--secondary))"
-              strokeWidth={2}
-              fill="url(#fillSent)"
+              fill="hsl(var(--secondary))"
+              radius={[4, 4, 0, 0]}
               name="Enviados"
             />
-          </AreaChart>
+          </BarChart>
         </ChartContainer>
       </CardContent>
     </Card>
