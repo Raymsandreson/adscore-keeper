@@ -15,6 +15,7 @@ import SmartInsights from "./SmartInsights";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
+import { RecentProspects } from "./dashboard/RecentProspects";
 import StrategyPanel from "./StrategyPanel";
 import ActionHistory from "./ActionHistory";
 import AlertSettings from "./AlertSettings";
@@ -380,6 +381,9 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         )}
+
+        {/* Recent Prospects - Quick Actions */}
+        <RecentProspects />
 
         {/* Connection Status - SEMPRE NO TOPO */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
