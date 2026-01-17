@@ -2,23 +2,30 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { differenceInHours } from 'date-fns';
 import { Link } from 'react-router-dom';
 import { 
-  MessageSquare, 
-  Send, 
-  Phone, 
-  Calendar, 
-  MapPin, 
-  CheckCircle2, 
-  RefreshCw,
+  User, 
   ChevronRight,
-  User,
-  ArrowRight
+  MessageSquare,
+  Send,
+  Phone,
+  Calendar,
+  MapPin,
+  CheckCircle2,
+  RefreshCw,
+  ArrowRight,
+  Filter
 } from 'lucide-react';
-import { format, differenceInHours } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { toast } from 'sonner';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -41,28 +48,36 @@ const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; c
   { key: 'post_sale', label: 'Pós-venda', icon: <RefreshCw className="h-3 w-3" />, color: 'text-teal-600', bgColor: 'bg-teal-100 dark:bg-teal-950' },
 ];
 
-const getStageConfig = (stage: FunnelStage) => {
-  return FUNNEL_STAGES.find(s => s.key === stage) || FUNNEL_STAGES[0];
+const getNextStage = (currentStage: FunnelStage): FunnelStage | null => {
+  const stageOrder: FunnelStage[] = ['comment', 'dm', 'whatsapp', 'visit_scheduled', 'visit_done', 'closed', 'post_sale'];
+  const currentIndex = stageOrder.indexOf(currentStage);
+  return currentIndex < stageOrder.length - 1 ? stageOrder[currentIndex + 1] : null;
 };
 
-const getNextStage = (currentStage: FunnelStage): FunnelStage | null => {
-  const currentIndex = FUNNEL_STAGES.findIndex(s => s.key === currentStage);
-  if (currentIndex >= FUNNEL_STAGES.length - 1) return null;
-  return FUNNEL_STAGES[currentIndex + 1].key;
+const getStageConfig = (stage: FunnelStage) => {
+  return FUNNEL_STAGES.find(s => s.key === stage) || FUNNEL_STAGES[0];
 };
 
 export function RecentProspects() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stageFilter, setStageFilter] = useState<string>('all_active');
 
   const fetchProspects = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('instagram_comments')
         .select('id, author_username, comment_text, created_at, funnel_stage, prospect_name')
-        .not('funnel_stage', 'in', '("closed","post_sale")')
         .order('created_at', { ascending: false })
         .limit(3);
+
+      if (stageFilter === 'all_active') {
+        query = query.not('funnel_stage', 'in', '("closed","post_sale")');
+      } else if (stageFilter !== 'all') {
+        query = query.eq('funnel_stage', stageFilter);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       
@@ -93,7 +108,7 @@ export function RecentProspects() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [stageFilter]);
 
   const handleAdvanceStage = async (prospect: Prospect) => {
     const nextStage = getNextStage(prospect.funnel_stage);
@@ -150,12 +165,32 @@ export function RecentProspects() {
             Prospectos Recentes
             <Badge variant="outline" className="ml-2">{prospects.length}</Badge>
           </CardTitle>
-          <Link to="/?tab=automation&subtab=funnel">
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              Ver todos
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Select value={stageFilter} onValueChange={setStageFilter}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <Filter className="h-3 w-3 mr-1" />
+                <SelectValue placeholder="Filtrar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all_active">Ativos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
+                {FUNNEL_STAGES.map((stage) => (
+                  <SelectItem key={stage.key} value={stage.key}>
+                    <span className="flex items-center gap-1">
+                      {stage.icon}
+                      {stage.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Link to="/?tab=automation&subtab=funnel">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                Ver todos
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
