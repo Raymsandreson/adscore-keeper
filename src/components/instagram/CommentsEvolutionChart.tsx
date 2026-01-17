@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
-import { format, subDays, startOfDay, eachDayOfInterval } from "date-fns";
+import { format, subDays, startOfDay, eachDayOfInterval, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TrendingUp } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 interface Comment {
   id: string;
@@ -14,13 +16,51 @@ interface Comment {
 
 interface CommentsEvolutionChartProps {
   comments: Comment[];
-  daysToShow?: number;
 }
 
-export const CommentsEvolutionChart = ({ comments, daysToShow = 14 }: CommentsEvolutionChartProps) => {
+type PeriodType = 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom';
+
+const periodOptions = [
+  { value: 'week', label: 'Esta Semana' },
+  { value: 'month', label: 'Este Mês' },
+  { value: 'quarter', label: 'Este Trimestre' },
+  { value: 'semester', label: 'Este Semestre' },
+  { value: 'year', label: 'Este Ano' },
+  { value: 'custom', label: 'Últimos X dias' },
+];
+
+export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps) => {
+  const [period, setPeriod] = useState<PeriodType>('week');
+  const [customDays, setCustomDays] = useState(14);
+
   const chartData = useMemo(() => {
     const endDate = new Date();
-    const startDate = subDays(endDate, daysToShow - 1);
+    let startDate: Date;
+
+    switch (period) {
+      case 'week':
+        startDate = startOfWeek(endDate, { weekStartsOn: 1 });
+        break;
+      case 'month':
+        startDate = startOfMonth(endDate);
+        break;
+      case 'quarter':
+        startDate = startOfQuarter(endDate);
+        break;
+      case 'semester':
+        const currentMonth = endDate.getMonth();
+        const semesterStart = currentMonth < 6 ? 0 : 6;
+        startDate = new Date(endDate.getFullYear(), semesterStart, 1);
+        break;
+      case 'year':
+        startDate = startOfYear(endDate);
+        break;
+      case 'custom':
+        startDate = subDays(endDate, customDays - 1);
+        break;
+      default:
+        startDate = subDays(endDate, 13);
+    }
     
     // Generate all days in range
     const days = eachDayOfInterval({ start: startDate, end: endDate });
@@ -51,7 +91,7 @@ export const CommentsEvolutionChart = ({ comments, daysToShow = 14 }: CommentsEv
         total: dayData.received + dayData.sent
       };
     });
-  }, [comments, daysToShow]);
+  }, [comments, period, customDays]);
 
   const totals = useMemo(() => {
     return chartData.reduce(
@@ -78,10 +118,39 @@ export const CommentsEvolutionChart = ({ comments, daysToShow = 14 }: CommentsEv
   return (
     <Card className="mb-6">
       <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <CardTitle className="text-lg">Evolução Diária</CardTitle>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Evolução Diária</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={period} onValueChange={(value) => setPeriod(value as PeriodType)}>
+                <SelectTrigger className="w-[160px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {periodOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {period === 'custom' && (
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={customDays}
+                    onChange={(e) => setCustomDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
+                    className="w-16 h-8"
+                  />
+                  <span className="text-sm text-muted-foreground">dias</span>
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
