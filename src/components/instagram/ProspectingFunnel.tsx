@@ -30,13 +30,19 @@ import {
   Edit,
   AlertTriangle,
   Settings,
-  Bell
+  Bell,
+  Tag,
+  Filter,
+  UserCheck,
+  Building
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
+
+type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
 
 interface Prospect {
   id: string;
@@ -48,7 +54,22 @@ interface Prospect {
   prospect_name: string | null;
   notes: string | null;
   post_url: string | null;
+  prospect_classification: ProspectClassification;
 }
+
+const CLASSIFICATIONS: { key: ProspectClassification; label: string; color: string; bgColor: string }[] = [
+  { key: null, label: 'Sem classificação', color: 'text-gray-600', bgColor: 'bg-gray-100' },
+  { key: 'prospect', label: 'Prospecto', color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  { key: 'client', label: 'Cliente', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+  { key: 'closer', label: 'Acolhedor', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  { key: 'sdr', label: 'SDR', color: 'text-orange-600', bgColor: 'bg-orange-100' },
+  { key: 'team', label: 'Equipe', color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  { key: 'other', label: 'Outro', color: 'text-slate-600', bgColor: 'bg-slate-100' },
+];
+
+const getClassificationConfig = (classification: ProspectClassification) => {
+  return CLASSIFICATIONS.find(c => c.key === classification) || CLASSIFICATIONS[0];
+};
 
 const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; color: string; bgColor: string; defaultAlertDays: number }[] = [
   { key: 'comment', label: 'Comentário', icon: <MessageSquare className="h-4 w-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100', defaultAlertDays: 2 },
@@ -79,19 +100,47 @@ export function ProspectingFunnel() {
   const [period, setPeriod] = useState('30');
   const [activeTab, setActiveTab] = useState('overview');
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage });
+  const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage, prospect_classification: null as ProspectClassification });
   const [draggedProspect, setDraggedProspect] = useState<Prospect | null>(null);
   const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
   const [showAlertSettings, setShowAlertSettings] = useState(false);
+  const [classificationFilter, setClassificationFilter] = useState<ProspectClassification | 'all'>('all');
+  const [hideTeamComments, setHideTeamComments] = useState(() => {
+    const saved = localStorage.getItem('hide-team-comments');
+    return saved === 'true';
+  });
   const [alertConfig, setAlertConfig] = useState<StageAlertConfig>(() => {
     const saved = localStorage.getItem('prospecting-alert-config');
     return saved ? JSON.parse(saved) : getDefaultAlertConfig();
   });
 
-  // Save alert config to localStorage
+  // Save alert config and hide team to localStorage
   useEffect(() => {
     localStorage.setItem('prospecting-alert-config', JSON.stringify(alertConfig));
   }, [alertConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('hide-team-comments', String(hideTeamComments));
+  }, [hideTeamComments]);
+
+  // Filter prospects based on classification and hideTeamComments
+  const filteredProspects = useMemo(() => {
+    let filtered = prospects;
+    
+    // Hide team/closer/sdr comments if enabled
+    if (hideTeamComments) {
+      filtered = filtered.filter(p => 
+        !['closer', 'sdr', 'team'].includes(p.prospect_classification || '')
+      );
+    }
+    
+    // Apply classification filter
+    if (classificationFilter !== 'all') {
+      filtered = filtered.filter(p => p.prospect_classification === classificationFilter);
+    }
+    
+    return filtered;
+  }, [prospects, classificationFilter, hideTeamComments]);
 
   // Calculate stagnant prospects
   const stagnantProspects = useMemo(() => {
@@ -125,7 +174,7 @@ export function ProspectingFunnel() {
       
       const { data, error } = await supabase
         .from('instagram_comments')
-        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url')
+        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url, prospect_classification')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false });
 
@@ -133,7 +182,8 @@ export function ProspectingFunnel() {
       
       setProspects((data || []).map(p => ({
         ...p,
-        funnel_stage: (p.funnel_stage as FunnelStage) || 'comment'
+        funnel_stage: (p.funnel_stage as FunnelStage) || 'comment',
+        prospect_classification: (p.prospect_classification as ProspectClassification) || null
       })));
     } catch (error) {
       console.error('Erro ao buscar prospectos:', error);
@@ -149,11 +199,11 @@ export function ProspectingFunnel() {
 
   const stats = useMemo(() => {
     const byStage = FUNNEL_STAGES.reduce((acc, stage) => {
-      acc[stage.key] = prospects.filter(p => p.funnel_stage === stage.key).length;
+      acc[stage.key] = filteredProspects.filter(p => p.funnel_stage === stage.key).length;
       return acc;
     }, {} as Record<FunnelStage, number>);
 
-    const totalProspects = prospects.length;
+    const totalProspects = filteredProspects.length;
     const closedCount = byStage.closed + byStage.post_sale;
     const conversionRate = totalProspects > 0 ? ((closedCount / totalProspects) * 100).toFixed(1) : '0';
     
@@ -166,8 +216,14 @@ export function ProspectingFunnel() {
       return { from: stage.key, rate: parseFloat(rate) };
     });
 
-    return { byStage, totalProspects, closedCount, conversionRate, stageConversions };
-  }, [prospects]);
+    // Classification breakdown
+    const byClassification = CLASSIFICATIONS.reduce((acc, c) => {
+      acc[c.key || 'null'] = filteredProspects.filter(p => p.prospect_classification === c.key).length;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return { byStage, totalProspects, closedCount, conversionRate, stageConversions, byClassification };
+  }, [filteredProspects]);
 
   const funnelData = useMemo(() => {
     return FUNNEL_STAGES.map(stage => ({
@@ -218,7 +274,8 @@ export function ProspectingFunnel() {
         .update({
           prospect_name: editForm.prospect_name || null,
           notes: editForm.notes || null,
-          funnel_stage: editForm.funnel_stage
+          funnel_stage: editForm.funnel_stage,
+          prospect_classification: editForm.prospect_classification
         })
         .eq('id', editingProspect.id);
 
@@ -260,7 +317,8 @@ export function ProspectingFunnel() {
     setEditForm({
       prospect_name: prospect.prospect_name || '',
       notes: prospect.notes || '',
-      funnel_stage: prospect.funnel_stage
+      funnel_stage: prospect.funnel_stage,
+      prospect_classification: prospect.prospect_classification
     });
   };
 
@@ -341,6 +399,27 @@ export function ProspectingFunnel() {
           <Button variant="outline" size="icon" onClick={() => setShowAlertSettings(true)}>
             <Settings className="h-4 w-4" />
           </Button>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={hideTeamComments}
+              onCheckedChange={setHideTeamComments}
+            />
+            <span className="text-xs text-muted-foreground">Ocultar equipe</span>
+          </div>
+          <Select value={classificationFilter} onValueChange={(v) => setClassificationFilter(v as ProspectClassification | 'all')}>
+            <SelectTrigger className="w-[160px]">
+              <Tag className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Classificação" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {CLASSIFICATIONS.map(c => (
+                <SelectItem key={c.key || 'null'} value={c.key || 'null'}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[140px]">
               <SelectValue />
@@ -530,7 +609,7 @@ export function ProspectingFunnel() {
           {/* Pipeline Kanban */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             {FUNNEL_STAGES.map(stage => {
-              const stageProspects = prospects.filter(p => p.funnel_stage === stage.key);
+              const stageProspects = filteredProspects.filter(p => p.funnel_stage === stage.key);
               const isDropTarget = dragOverStage === stage.key;
               return (
                 <Card 
@@ -567,7 +646,7 @@ export function ProspectingFunnel() {
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-1">
+                                  <div className="flex items-center gap-1 flex-wrap">
                                     <p className="font-medium text-sm truncate">
                                       {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
                                     </p>
@@ -575,6 +654,14 @@ export function ProspectingFunnel() {
                                       <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                                     )}
                                   </div>
+                                  {prospect.prospect_classification && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`text-[10px] px-1 py-0 h-4 mt-1 ${getClassificationConfig(prospect.prospect_classification).bgColor} ${getClassificationConfig(prospect.prospect_classification).color} border-0`}
+                                    >
+                                      {getClassificationConfig(prospect.prospect_classification).label}
+                                    </Badge>
+                                  )}
                                   {prospect.comment_text && (
                                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                                       {prospect.comment_text}
@@ -698,6 +785,33 @@ export function ProspectingFunnel() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label>Classificação</Label>
+              <Select
+                value={editForm.prospect_classification || 'null'}
+                onValueChange={(value) => setEditForm({ 
+                  ...editForm, 
+                  prospect_classification: value === 'null' ? null : value as ProspectClassification 
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma classificação" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CLASSIFICATIONS.map(c => (
+                    <SelectItem key={c.key || 'null'} value={c.key || 'null'}>
+                      <span className={`flex items-center gap-2 ${c.color}`}>
+                        <Tag className="h-3 w-3" />
+                        {c.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Use "Acolhedor", "SDR" ou "Equipe" para marcar comentários da sua equipe
+              </p>
             </div>
             <div>
               <Label>Notas</Label>
