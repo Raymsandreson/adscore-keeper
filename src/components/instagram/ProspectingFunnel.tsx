@@ -67,6 +67,8 @@ export function ProspectingFunnel() {
   const [activeTab, setActiveTab] = useState('overview');
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
   const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage });
+  const [draggedProspect, setDraggedProspect] = useState<Prospect | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
 
   const fetchProspects = async () => {
     setLoading(true);
@@ -214,6 +216,57 @@ export function ProspectingFunnel() {
     });
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (prospect: Prospect) => {
+    setDraggedProspect(prospect);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedProspect(null);
+    setDragOverStage(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, stage: FunnelStage) => {
+    e.preventDefault();
+    setDragOverStage(stage);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverStage(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetStage: FunnelStage) => {
+    e.preventDefault();
+    setDragOverStage(null);
+
+    if (!draggedProspect || draggedProspect.funnel_stage === targetStage) {
+      setDraggedProspect(null);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('instagram_comments')
+        .update({ funnel_stage: targetStage })
+        .eq('id', draggedProspect.id);
+
+      if (error) throw error;
+
+      const stageConfig = FUNNEL_STAGES.find(s => s.key === targetStage);
+      toast.success(`Movido para ${stageConfig?.label}`);
+      
+      // Update local state immediately for better UX
+      setProspects(prev => prev.map(p => 
+        p.id === draggedProspect.id ? { ...p, funnel_stage: targetStage } : p
+      ));
+    } catch (error) {
+      console.error('Erro ao mover prospecto:', error);
+      toast.error('Erro ao mover prospecto');
+    } finally {
+      setDraggedProspect(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -357,8 +410,17 @@ export function ProspectingFunnel() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             {FUNNEL_STAGES.map(stage => {
               const stageProspects = prospects.filter(p => p.funnel_stage === stage.key);
+              const isDropTarget = dragOverStage === stage.key;
               return (
-                <Card key={stage.key} className="min-h-[400px]">
+                <Card 
+                  key={stage.key} 
+                  className={`min-h-[400px] transition-all duration-200 ${
+                    isDropTarget ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''
+                  }`}
+                  onDragOver={(e) => handleDragOver(e, stage.key)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, stage.key)}
+                >
                   <CardHeader className={`${stage.bgColor} rounded-t-lg`}>
                     <CardTitle className={`text-sm flex items-center gap-2 ${stage.color}`}>
                       {stage.icon}
@@ -370,7 +432,15 @@ export function ProspectingFunnel() {
                     <ScrollArea className="h-[350px]">
                       <div className="space-y-2">
                         {stageProspects.slice(0, 10).map(prospect => (
-                          <Card key={prospect.id} className="p-3 cursor-pointer hover:shadow-md transition-shadow">
+                          <Card 
+                            key={prospect.id} 
+                            draggable
+                            onDragStart={() => handleDragStart(prospect)}
+                            onDragEnd={handleDragEnd}
+                            className={`p-3 cursor-grab hover:shadow-md transition-all active:cursor-grabbing ${
+                              draggedProspect?.id === prospect.id ? 'opacity-50 scale-95' : ''
+                            }`}
+                          >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">
@@ -390,7 +460,7 @@ export function ProspectingFunnel() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-6 w-6"
-                                  onClick={() => openEditDialog(prospect)}
+                                  onClick={(e) => { e.stopPropagation(); openEditDialog(prospect); }}
                                 >
                                   <Edit className="h-3 w-3" />
                                 </Button>
@@ -399,7 +469,7 @@ export function ProspectingFunnel() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-6 w-6"
-                                    onClick={() => handleAdvanceStage(prospect)}
+                                    onClick={(e) => { e.stopPropagation(); handleAdvanceStage(prospect); }}
                                   >
                                     <ArrowRight className="h-3 w-3" />
                                   </Button>
