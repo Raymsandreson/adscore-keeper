@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -309,6 +310,28 @@ export function ProspectingFunnel() {
     } catch (error) {
       console.error('Erro ao avançar estágio:', error);
       toast.error('Erro ao avançar estágio');
+    }
+  };
+
+  const handleQuickClassify = async (prospect: Prospect, classification: ProspectClassification) => {
+    try {
+      const { error } = await supabase
+        .from('instagram_comments')
+        .update({ prospect_classification: classification })
+        .eq('id', prospect.id);
+
+      if (error) throw error;
+
+      const config = getClassificationConfig(classification);
+      toast.success(`Classificado como ${config.label}`);
+      
+      // Update local state immediately for better UX
+      setProspects(prev => prev.map(p => 
+        p.id === prospect.id ? { ...p, prospect_classification: classification } : p
+      ));
+    } catch (error) {
+      console.error('Erro ao classificar:', error);
+      toast.error('Erro ao classificar prospecto');
     }
   };
 
@@ -654,14 +677,40 @@ export function ProspectingFunnel() {
                                       <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                                     )}
                                   </div>
-                                  {prospect.prospect_classification && (
-                                    <Badge 
-                                      variant="outline" 
-                                      className={`text-[10px] px-1 py-0 h-4 mt-1 ${getClassificationConfig(prospect.prospect_classification).bgColor} ${getClassificationConfig(prospect.prospect_classification).color} border-0`}
-                                    >
-                                      {getClassificationConfig(prospect.prospect_classification).label}
-                                    </Badge>
-                                  )}
+                                  {/* Quick classification dropdown */}
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button 
+                                        className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 h-5 mt-1 rounded-md border-0 cursor-pointer hover:opacity-80 transition-opacity ${
+                                          prospect.prospect_classification 
+                                            ? `${getClassificationConfig(prospect.prospect_classification).bgColor} ${getClassificationConfig(prospect.prospect_classification).color}` 
+                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        }`}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <Tag className="h-2.5 w-2.5" />
+                                        {prospect.prospect_classification 
+                                          ? getClassificationConfig(prospect.prospect_classification).label 
+                                          : 'Classificar'}
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-36" onClick={(e) => e.stopPropagation()}>
+                                      <DropdownMenuLabel className="text-xs">Classificação</DropdownMenuLabel>
+                                      <DropdownMenuSeparator />
+                                      {CLASSIFICATIONS.map((c) => (
+                                        <DropdownMenuItem
+                                          key={c.key || 'none'}
+                                          onClick={() => handleQuickClassify(prospect, c.key)}
+                                          className={`text-xs cursor-pointer ${
+                                            prospect.prospect_classification === c.key ? 'bg-accent' : ''
+                                          }`}
+                                        >
+                                          <span className={`w-2 h-2 rounded-full mr-2 ${c.bgColor}`} />
+                                          {c.label}
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                   {prospect.comment_text && (
                                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                                       {prospect.comment_text}
