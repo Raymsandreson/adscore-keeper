@@ -49,6 +49,44 @@ import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, CartesianGrid, Line, Line
 import { supabase } from "@/integrations/supabase/client";
 import TokenConfigGuide from "./TokenConfigGuide";
 import { useOrganicCache } from "@/hooks/useOrganicCache";
+import { ContentTypeBreakdownComponent } from "./ContentTypeBreakdown";
+
+// Content type breakdown interface
+interface ContentTypeBreakdown {
+  reels: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+  feed: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+  stories: {
+    views: number;
+    replies: number;
+    exits: number;
+    reach: number;
+    count: number;
+  };
+  carousel: {
+    views: number;
+    likes: number;
+    comments: number;
+    saves: number;
+    reach: number;
+    count: number;
+  };
+}
 
 export interface OrganicInsights {
   totalFollowers: number;
@@ -74,6 +112,8 @@ export interface OrganicInsights {
   videoViews: number;
   // Data freshness
   dataUpdatedAt?: string; // ISO date of when the API data was last updated
+  // Content breakdown
+  contentBreakdown?: ContentTypeBreakdown;
 }
 
 export interface DailyOrganicData {
@@ -1533,6 +1573,14 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
 
       {/* Consolidated Comparison Card */}
       {renderComparisonCard()}
+      
+      {/* Content Type Breakdown - Instagram only */}
+      {instagramData?.insights.contentBreakdown && (
+        <ContentTypeBreakdownComponent 
+          breakdown={instagramData.insights.contentBreakdown} 
+          periodLabel={getPeriodLabel()} 
+        />
+      )}
 
       {/* Status indicator - compact */}
       {!isRealData && (
