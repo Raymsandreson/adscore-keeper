@@ -84,11 +84,25 @@ const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; c
 
 type StageAlertConfig = Record<FunnelStage, { enabled: boolean; days: number }>;
 
+type VisibleClassifications = Record<string, boolean>;
+
 const getDefaultAlertConfig = (): StageAlertConfig => {
   return FUNNEL_STAGES.reduce((acc, stage) => {
     acc[stage.key] = { enabled: stage.defaultAlertDays > 0, days: stage.defaultAlertDays };
     return acc;
   }, {} as StageAlertConfig);
+};
+
+const getDefaultVisibleClassifications = (): VisibleClassifications => {
+  return {
+    'null': true, // Sem classificação
+    'prospect': true,
+    'client': true,
+    'closer': false,
+    'sdr': false,
+    'team': false,
+    'other': true,
+  };
 };
 
 const getStageConfig = (stage: FunnelStage) => {
@@ -106,42 +120,41 @@ export function ProspectingFunnel() {
   const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [classificationFilter, setClassificationFilter] = useState<ProspectClassification | 'all'>('all');
-  const [hideTeamComments, setHideTeamComments] = useState(() => {
-    const saved = localStorage.getItem('hide-team-comments');
-    return saved === 'true';
-  });
   const [alertConfig, setAlertConfig] = useState<StageAlertConfig>(() => {
     const saved = localStorage.getItem('prospecting-alert-config');
     return saved ? JSON.parse(saved) : getDefaultAlertConfig();
   });
+  const [visibleClassifications, setVisibleClassifications] = useState<VisibleClassifications>(() => {
+    const saved = localStorage.getItem('prospecting-visible-classifications');
+    return saved ? JSON.parse(saved) : getDefaultVisibleClassifications();
+  });
 
-  // Save alert config and hide team to localStorage
+  // Save configs to localStorage
   useEffect(() => {
     localStorage.setItem('prospecting-alert-config', JSON.stringify(alertConfig));
   }, [alertConfig]);
 
   useEffect(() => {
-    localStorage.setItem('hide-team-comments', String(hideTeamComments));
-  }, [hideTeamComments]);
+    localStorage.setItem('prospecting-visible-classifications', JSON.stringify(visibleClassifications));
+  }, [visibleClassifications]);
 
-  // Filter prospects based on classification and hideTeamComments
+  // Filter prospects based on visible classifications
   const filteredProspects = useMemo(() => {
     let filtered = prospects;
     
-    // Hide team/closer/sdr comments if enabled
-    if (hideTeamComments) {
-      filtered = filtered.filter(p => 
-        !['closer', 'sdr', 'team'].includes(p.prospect_classification || '')
-      );
-    }
+    // Filter by visible classifications
+    filtered = filtered.filter(p => {
+      const classKey = p.prospect_classification || 'null';
+      return visibleClassifications[classKey] !== false;
+    });
     
-    // Apply classification filter
+    // Apply classification filter (dropdown)
     if (classificationFilter !== 'all') {
       filtered = filtered.filter(p => p.prospect_classification === classificationFilter);
     }
     
     return filtered;
-  }, [prospects, classificationFilter, hideTeamComments]);
+  }, [prospects, classificationFilter, visibleClassifications]);
 
   // Calculate stagnant prospects
   const stagnantProspects = useMemo(() => {
@@ -419,24 +432,17 @@ export function ProspectingFunnel() {
               {stagnantProspects.length} parado{stagnantProspects.length > 1 ? 's' : ''}
             </Badge>
           )}
-          <Button variant="outline" size="icon" onClick={() => setShowAlertSettings(true)}>
+          <Button variant="outline" size="icon" onClick={() => setShowAlertSettings(true)} title="Configurações">
             <Settings className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={hideTeamComments}
-              onCheckedChange={setHideTeamComments}
-            />
-            <span className="text-xs text-muted-foreground">Ocultar equipe</span>
-          </div>
           <Select value={classificationFilter} onValueChange={(v) => setClassificationFilter(v as ProspectClassification | 'all')}>
             <SelectTrigger className="w-[160px]">
               <Tag className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Classificação" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {CLASSIFICATIONS.map(c => (
+              <SelectItem value="all">Todas visíveis</SelectItem>
+              {CLASSIFICATIONS.filter(c => visibleClassifications[c.key || 'null'] !== false).map(c => (
                 <SelectItem key={c.key || 'null'} value={c.key || 'null'}>
                   {c.label}
                 </SelectItem>
@@ -885,60 +891,120 @@ export function ProspectingFunnel() {
 
       {/* Alert Settings Dialog */}
       <Dialog open={showAlertSettings} onOpenChange={setShowAlertSettings}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Configurar Alertas de Prospectos Parados
+              <Settings className="h-5 w-5" />
+              Configurações do Funil
             </DialogTitle>
             <DialogDescription>
-              Defina quantos dias um prospecto pode ficar parado em cada estágio antes de gerar um alerta
+              Configure quais classificações aparecem no Kanban e alertas de prospectos parados
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {FUNNEL_STAGES.filter(s => s.key !== 'post_sale').map(stage => {
-              const config = alertConfig[stage.key];
-              return (
-                <div key={stage.key} className="flex items-center justify-between gap-4 p-3 rounded-lg border">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded ${stage.bgColor}`}>
-                      <div className={stage.color}>{stage.icon}</div>
-                    </div>
-                    <span className="font-medium text-sm">{stage.label}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
+          
+          {/* Visible Classifications Section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Tag className="h-4 w-4" />
+              Classificações Visíveis no Kanban
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Escolha quais classificações de prospectos aparecem no pipeline para conversão
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {CLASSIFICATIONS.map(c => {
+                const key = c.key || 'null';
+                return (
+                  <div 
+                    key={key} 
+                    className={`flex items-center justify-between p-2.5 rounded-lg border transition-colors ${
+                      visibleClassifications[key] !== false 
+                        ? `${c.bgColor} border-transparent` 
+                        : 'bg-muted/30 border-dashed'
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="365"
-                        value={config?.days || 3}
-                        onChange={(e) => setAlertConfig(prev => ({
-                          ...prev,
-                          [stage.key]: { ...prev[stage.key], days: parseInt(e.target.value) || 3 }
-                        }))}
-                        className="w-16 h-8 text-center"
-                        disabled={!config?.enabled}
-                      />
-                      <span className="text-xs text-muted-foreground">dias</span>
+                      <span className={`w-2 h-2 rounded-full ${c.bgColor} ${visibleClassifications[key] === false ? 'opacity-40' : ''}`} />
+                      <span className={`text-xs font-medium ${visibleClassifications[key] === false ? 'text-muted-foreground' : c.color}`}>
+                        {c.label}
+                      </span>
                     </div>
                     <Switch
-                      checked={config?.enabled || false}
-                      onCheckedChange={(checked) => setAlertConfig(prev => ({
+                      checked={visibleClassifications[key] !== false}
+                      onCheckedChange={(checked) => setVisibleClassifications(prev => ({
                         ...prev,
-                        [stage.key]: { ...prev[stage.key], enabled: checked }
+                        [key]: checked
                       }))}
+                      className="scale-75"
                     />
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAlertConfig(getDefaultAlertConfig())}>
+
+          <div className="border-t pt-4 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Bell className="h-4 w-4" />
+              Alertas de Prospectos Parados
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Defina quantos dias um prospecto pode ficar parado em cada estágio
+            </p>
+            <div className="space-y-2">
+              {FUNNEL_STAGES.filter(s => s.key !== 'post_sale').map(stage => {
+                const config = alertConfig[stage.key];
+                return (
+                  <div key={stage.key} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded ${stage.bgColor}`}>
+                        <div className={stage.color}>{stage.icon}</div>
+                      </div>
+                      <span className="font-medium text-xs">{stage.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={config?.days || 3}
+                          onChange={(e) => setAlertConfig(prev => ({
+                            ...prev,
+                            [stage.key]: { ...prev[stage.key], days: parseInt(e.target.value) || 3 }
+                          }))}
+                          className="w-14 h-7 text-center text-xs"
+                          disabled={!config?.enabled}
+                        />
+                        <span className="text-xs text-muted-foreground">d</span>
+                      </div>
+                      <Switch
+                        checked={config?.enabled || false}
+                        onCheckedChange={(checked) => setAlertConfig(prev => ({
+                          ...prev,
+                          [stage.key]: { ...prev[stage.key], enabled: checked }
+                        }))}
+                        className="scale-75"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                setAlertConfig(getDefaultAlertConfig());
+                setVisibleClassifications(getDefaultVisibleClassifications());
+              }}
+            >
               Restaurar Padrões
             </Button>
-            <Button onClick={() => setShowAlertSettings(false)}>
+            <Button size="sm" onClick={() => setShowAlertSettings(false)}>
               Feito
             </Button>
           </DialogFooter>
