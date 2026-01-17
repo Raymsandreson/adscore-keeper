@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { 
   MessageCircle, 
   Send, 
@@ -23,7 +24,9 @@ import {
   CheckCircle2,
   Search,
   CalendarIcon,
-  X
+  X,
+  Timer,
+  CheckCheck
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -65,6 +68,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   
+  // Auto-refresh states
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(5); // minutes
+  const autoRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Form state for manual comment logging
   const [newComment, setNewComment] = useState({
     post_url: '',
@@ -73,11 +82,39 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     platform: 'instagram'
   });
 
+  // Load last sync time from localStorage
+  useEffect(() => {
+    const savedSyncTime = localStorage.getItem('comments_last_sync');
+    if (savedSyncTime) {
+      setLastSyncTime(new Date(savedSyncTime));
+    }
+  }, []);
+
   useEffect(() => {
     fetchComments();
     fetchStats();
     checkExistingLeads();
   }, []);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (autoRefreshEnabled && isConnected) {
+      autoRefreshTimerRef.current = setInterval(() => {
+        syncFromInstagram();
+      }, autoRefreshInterval * 60 * 1000);
+      
+      return () => {
+        if (autoRefreshTimerRef.current) {
+          clearInterval(autoRefreshTimerRef.current);
+        }
+      };
+    } else {
+      if (autoRefreshTimerRef.current) {
+        clearInterval(autoRefreshTimerRef.current);
+        autoRefreshTimerRef.current = null;
+      }
+    }
+  }, [autoRefreshEnabled, autoRefreshInterval, isConnected]);
 
   const fetchComments = async () => {
     try {
@@ -152,7 +189,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   };
 
   // Sync comments from Instagram API
-  const syncFromInstagram = async () => {
+  const syncFromInstagram = useCallback(async () => {
+    if (isSyncing) return;
+    
     setIsSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
@@ -165,6 +204,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         toast.error(data.error || 'Erro ao sincronizar comentários');
         return;
       }
+
+      // Update last sync time
+      const now = new Date();
+      setLastSyncTime(now);
+      localStorage.setItem('comments_last_sync', now.toISOString());
 
       // Save comments to database
       if (data.comments && data.comments.length > 0) {
@@ -222,6 +266,22 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     } finally {
       setIsSyncing(false);
     }
+  }, [accessToken, pageId, isSyncing]);
+
+  // Format time ago for last sync
+  const formatLastSync = (date: Date | null): string => {
+    if (!date) return 'Nunca sincronizado';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffMins < 1) return 'Agora mesmo';
+    if (diffMins < 60) return `Há ${diffMins} min`;
+    if (diffHours < 24) return `Há ${diffHours}h`;
+    return `Há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
   };
 
   // Convert a commenter to a lead
@@ -536,13 +596,45 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={syncFromInstagram} disabled={isSyncing}>
+              {/* Last Sync Indicator */}
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md text-sm">
+                <CheckCheck className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {formatLastSync(lastSyncTime)}
+                </span>
+              </div>
+              
+              {/* Auto-refresh Toggle */}
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md">
+                <Timer className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Auto</span>
+                <Switch
+                  checked={autoRefreshEnabled}
+                  onCheckedChange={setAutoRefreshEnabled}
+                  disabled={!isConnected}
+                />
+                {autoRefreshEnabled && (
+                  <select
+                    className="h-6 text-xs bg-background border rounded px-1"
+                    value={autoRefreshInterval}
+                    onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
+                  >
+                    <option value={1}>1 min</option>
+                    <option value={5}>5 min</option>
+                    <option value={10}>10 min</option>
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                  </select>
+                )}
+              </div>
+              
+              <Button variant="outline" size="sm" onClick={syncFromInstagram} disabled={isSyncing || !isConnected}>
                 {isSyncing ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Sincronizar do Instagram
+                Sincronizar
               </Button>
               {activeTab === 'received' && filteredComments.filter(c => c.author_username && !convertedUsers.has(c.author_username.replace('@', '').toLowerCase())).length > 0 && (
                 <Button 
