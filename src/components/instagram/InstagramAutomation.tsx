@@ -24,10 +24,11 @@ interface InstagramAutomationProps {
   isConnected: boolean;
   pageId?: string;
   accessToken?: string;
+  initialTab?: string;
 }
 
-const InstagramAutomation = ({ isConnected, pageId, accessToken }: InstagramAutomationProps) => {
-  const [activeTab, setActiveTab] = useState("funnel");
+const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: InstagramAutomationProps) => {
+  const [activeTab, setActiveTab] = useState(initialTab || "funnel");
 
   return (
     <div className="space-y-6">
