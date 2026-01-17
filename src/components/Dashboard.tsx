@@ -31,17 +31,49 @@ import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
 import { useUnifiedMetaConnection, GoalBias } from "@/hooks/useUnifiedMetaConnection";
 import { Link, useSearchParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
   const [searchParams] = useSearchParams();
   const [proMode, setProMode] = useState(false);
   const [goalBiases, setGoalBiases] = useState<GoalBias[]>([]);
   const [organicMetricsData, setOrganicMetricsData] = useState<{ impressions: number; reach: number }>({ impressions: 0, reach: 0 });
+  const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   
   // Read tab from URL params
   const initialTab = searchParams.get('tab') || 'paid';
   const initialSubTab = searchParams.get('subtab') || undefined;
   const [activeMainTab, setActiveMainTab] = useState(initialTab);
+
+  // Fetch unclassified comments count
+  useEffect(() => {
+    const fetchUnclassifiedCount = async () => {
+      const { count, error } = await supabase
+        .from('instagram_comments')
+        .select('*', { count: 'exact', head: true })
+        .is('prospect_classification', null);
+      
+      if (!error && count !== null) {
+        setUnclassifiedCount(count);
+      }
+    };
+
+    fetchUnclassifiedCount();
+    
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel('unclassified-comments-count')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'instagram_comments' },
+        () => fetchUnclassifiedCount()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
   
   const { 
     metrics, 
@@ -171,9 +203,17 @@ const Dashboard = () => {
             </Link>
 
             <Link to="/?tab=automation&subtab=comments">
-              <Button variant="outline" size="sm" className="border-primary/50 hover:bg-primary/10">
+              <Button variant="outline" size="sm" className="border-primary/50 hover:bg-primary/10 relative">
                 <MessageCircle className="h-4 w-4 mr-2 text-primary" />
                 Comentários
+                {unclassifiedCount > 0 && (
+                  <Badge 
+                    variant="destructive" 
+                    className="absolute -top-2 -right-2 h-5 min-w-5 flex items-center justify-center text-xs px-1.5"
+                  >
+                    {unclassifiedCount > 99 ? '99+' : unclassifiedCount}
+                  </Badge>
+                )}
               </Button>
             </Link>
             
