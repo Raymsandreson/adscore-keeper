@@ -25,7 +25,7 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter } from "lucide-react";
 import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -39,13 +39,14 @@ const Dashboard = () => {
   const [goalBiases, setGoalBiases] = useState<GoalBias[]>([]);
   const [organicMetricsData, setOrganicMetricsData] = useState<{ impressions: number; reach: number }>({ impressions: 0, reach: 0 });
   const [unclassifiedCount, setUnclassifiedCount] = useState(0);
+  const [pendingProspectsCount, setPendingProspectsCount] = useState(0);
   
   // Read tab from URL params
   const initialTab = searchParams.get('tab') || 'paid';
   const initialSubTab = searchParams.get('subtab') || undefined;
   const [activeMainTab, setActiveMainTab] = useState(initialTab);
 
-  // Fetch unclassified comments count
+  // Fetch unclassified comments count and pending prospects count
   useEffect(() => {
     const fetchUnclassifiedCount = async () => {
       const { count, error } = await supabase
@@ -58,15 +59,30 @@ const Dashboard = () => {
       }
     };
 
+    const fetchPendingProspectsCount = async () => {
+      const { count, error } = await supabase
+        .from('instagram_comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('funnel_stage', 'comment');
+      
+      if (!error && count !== null) {
+        setPendingProspectsCount(count);
+      }
+    };
+
     fetchUnclassifiedCount();
+    fetchPendingProspectsCount();
     
     // Subscribe to realtime changes
     const channel = supabase
-      .channel('unclassified-comments-count')
+      .channel('dashboard-comments-count')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'instagram_comments' },
-        () => fetchUnclassifiedCount()
+        () => {
+          fetchUnclassifiedCount();
+          fetchPendingProspectsCount();
+        }
       )
       .subscribe();
 
@@ -212,6 +228,20 @@ const Dashboard = () => {
                     className="absolute -top-2 -right-2 h-5 min-w-5 flex items-center justify-center text-xs px-1.5"
                   >
                     {unclassifiedCount > 99 ? '99+' : unclassifiedCount}
+                  </Badge>
+                )}
+              </Button>
+            </Link>
+
+            <Link to="/?tab=automation&subtab=funnel">
+              <Button variant="outline" size="sm" className="border-orange-500/50 hover:bg-orange-500/10 relative">
+                <Filter className="h-4 w-4 mr-2 text-orange-500" />
+                Funil
+                {pendingProspectsCount > 0 && (
+                  <Badge 
+                    className="absolute -top-2 -right-2 h-5 min-w-5 flex items-center justify-center text-xs px-1.5 bg-orange-500 hover:bg-orange-500"
+                  >
+                    {pendingProspectsCount > 99 ? '99+' : pendingProspectsCount}
                   </Badge>
                 )}
               </Button>
