@@ -29,8 +29,14 @@ export const ViewsBreakdown = ({
   period = "últimos 28 dias",
   isLoading = false
 }: ViewsBreakdownProps) => {
-  const totalImpressions = paidImpressions + organicImpressions;
-  const totalReach = (paidReach || 0) + (organicReach || 0);
+  // Ensure values are always valid numbers
+  const safePaidImpressions = paidImpressions ?? 0;
+  const safeOrganicImpressions = organicImpressions ?? 0;
+  const safePaidReach = paidReach ?? 0;
+  const safeOrganicReach = organicReach ?? 0;
+  
+  const totalImpressions = safePaidImpressions + safeOrganicImpressions;
+  const totalReach = safePaidReach + safeOrganicReach;
 
   // Calculate percentage changes
   const getPercentChange = (current: number, previous?: number) => {
@@ -38,24 +44,25 @@ export const ViewsBreakdown = ({
     return ((current - previous) / previous) * 100;
   };
 
-  const paidChange = getPercentChange(paidImpressions, previousPaidImpressions);
-  const organicChange = getPercentChange(organicImpressions, previousOrganicImpressions);
+  const paidChange = getPercentChange(safePaidImpressions, previousPaidImpressions);
+  const organicChange = getPercentChange(safeOrganicImpressions, previousOrganicImpressions);
   const totalChange = previousPaidImpressions && previousOrganicImpressions 
     ? getPercentChange(totalImpressions, previousPaidImpressions + previousOrganicImpressions)
     : null;
 
   // Calculate distribution percentages
-  const paidPercentage = totalImpressions > 0 ? (paidImpressions / totalImpressions) * 100 : 0;
-  const organicPercentage = totalImpressions > 0 ? (organicImpressions / totalImpressions) * 100 : 0;
+  const paidPercentage = totalImpressions > 0 ? (safePaidImpressions / totalImpressions) * 100 : 0;
+  const organicPercentage = totalImpressions > 0 ? (safeOrganicImpressions / totalImpressions) * 100 : 0;
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return `${(num / 1000000).toFixed(1)}M`;
+  const formatNumber = (num: number | undefined | null) => {
+    const safeNum = num ?? 0;
+    if (safeNum >= 1000000) {
+      return `${(safeNum / 1000000).toFixed(1)}M`;
     }
-    if (num >= 1000) {
-      return `${(num / 1000).toFixed(1)}K`;
+    if (safeNum >= 1000) {
+      return `${(safeNum / 1000).toFixed(1)}K`;
     }
-    return num.toLocaleString('pt-BR');
+    return safeNum.toLocaleString('pt-BR');
   };
 
   const ChangeIndicator = ({ change, size = "sm" }: { change: number | null; size?: "sm" | "lg" }) => {
