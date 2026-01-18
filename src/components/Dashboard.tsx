@@ -92,15 +92,15 @@ const Dashboard = () => {
     };
   }, []);
   
-  const { 
-    metrics, 
-    campaigns, 
+  const {
+    metrics,
+    campaigns,
     adSets,
     creatives,
     dailyData,
     placementData,
-    dateRange, 
-    changeDateRange, 
+    dateRange,
+    changeDateRange,
     isLoading,
     isConnected,
     error,
@@ -109,6 +109,16 @@ const Dashboard = () => {
     disconnect,
     refreshMetrics
   } = useMetaAPI();
+
+  // Debug log para verificar se token está sendo passado para OrganicMetrics
+  useEffect(() => {
+    console.log('🔧 [Dashboard Debug] Meta config status:', {
+      hasAccessToken: !!metaConfig?.accessToken,
+      accessTokenLength: metaConfig?.accessToken?.length || 0,
+      accountId: metaConfig?.accountId || 'não definido',
+      isConnected
+    });
+  }, [metaConfig, isConnected]);
 
   const { stats: leadStats, loading: leadsLoading } = useLeads();
 

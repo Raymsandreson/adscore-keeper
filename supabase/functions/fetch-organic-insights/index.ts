@@ -71,15 +71,16 @@ serve(async (req) => {
     // Validate and normalize period (max 90 days for Instagram API)
     const normalizedPeriod = Math.min(Math.max(1, period), 90);
 
-    // If no access token, return simulated data
+    // If no access token, return error instead of simulated data
     if (!accessToken) {
-      console.log('⚠️ No access token provided, returning simulated data');
+      console.log('❌ No access token provided - returning error');
       return new Response(
         JSON.stringify({
-          success: true,
-          platforms: generateSimulatedInsights(normalizedPeriod),
-          isRealData: false,
-          message: 'Dados simulados - configure o token do Meta para dados reais'
+          success: false,
+          error: 'Token de acesso não configurado',
+          message: 'Configure o token do Meta Business para visualizar dados orgânicos reais',
+          platforms: [],
+          isRealData: false
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -102,9 +103,9 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             success: false,
-            error: 'Token inválido ou expirado',
+            error: `Token inválido: ${pagesData.error.message}`,
             details: pagesData.error.message,
-            platforms: generateSimulatedInsights(normalizedPeriod),
+            platforms: [],
             isRealData: false
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -144,13 +145,14 @@ serve(async (req) => {
       }
 
       if (platforms.length === 0) {
-        console.log('⚠️ No platforms found, returning simulated data');
+        console.log('❌ No platforms found - returning error');
         return new Response(
           JSON.stringify({
-            success: true,
-            platforms: generateSimulatedInsights(normalizedPeriod),
-            isRealData: false,
-            message: 'Nenhuma conta encontrada - verifique permissões do token'
+            success: false,
+            error: 'Nenhuma conta encontrada',
+            message: 'Verifique se o token tem as permissões: instagram_basic, instagram_manage_insights, pages_read_engagement',
+            platforms: [],
+            isRealData: false
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -172,9 +174,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Erro ao buscar dados da API',
+          error: `Erro na API do Meta: ${apiError instanceof Error ? apiError.message : String(apiError)}`,
           details: apiError instanceof Error ? apiError.message : String(apiError),
-          platforms: generateSimulatedInsights(normalizedPeriod),
+          platforms: [],
           isRealData: false
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -186,8 +188,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : String(error),
-        platforms: generateSimulatedInsights(7),
+        error: `Erro interno: ${error instanceof Error ? error.message : String(error)}`,
+        platforms: [],
         isRealData: false
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }

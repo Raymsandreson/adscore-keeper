@@ -260,6 +260,15 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
   const [cacheAge, setCacheAge] = useState<number | null>(null);
 
   const fetchOrganicInsights = async (forceRefresh = false) => {
+    // Debug log para rastrear token
+    console.log('🔧 [OrganicMetrics Debug] Iniciando fetch:', {
+      hasAccessToken: !!accessToken,
+      accessTokenLength: accessToken?.length || 0,
+      pageId: pageId || 'não definido',
+      period,
+      forceRefresh
+    });
+
     // Build fetch key to detect actual changes
     const fetchKey = `${pageId}-${accessToken}-${period}-${customDateRange.from?.toISOString()}-${customDateRange.to?.toISOString()}`;
     
@@ -299,9 +308,21 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
       }
 
       console.log('🔄 Buscando insights orgânicos - período:', periodDays, 'dias');
+      console.log('🔧 [OrganicMetrics Debug] Payload para Edge Function:', {
+        pageId,
+        hasAccessToken: !!accessToken,
+        period: periodDays
+      });
       
       const { data, error: fetchError } = await supabase.functions.invoke('fetch-organic-insights', {
         body: { pageId, accessToken, period: periodDays }
+      });
+
+      console.log('🔧 [OrganicMetrics Debug] Resposta da Edge Function:', {
+        success: data?.success,
+        isRealData: data?.isRealData,
+        platformsCount: data?.platforms?.length || 0,
+        error: data?.error || fetchError?.message
       });
 
       if (fetchError) {
