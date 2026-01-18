@@ -462,17 +462,17 @@ const Dashboard = () => {
         {isConnected && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ViewsBreakdown
-              paidImpressions={metrics.impressions}
+              paidImpressions={metrics?.impressions ?? 0}
               paidReach={0}
-              organicImpressions={organicMetricsData.impressions}
-              organicReach={organicMetricsData.reach}
+              organicImpressions={organicMetricsData?.impressions ?? 0}
+              organicReach={organicMetricsData?.reach ?? 0}
               period={dateRange === 'today' ? 'Hoje' : dateRange === 'yesterday' ? 'Ontem' : dateRange === 'last_7d' ? 'Últimos 7 dias' : dateRange === 'last_30d' ? 'Últimos 30 dias' : 'Período selecionado'}
             />
             <SmartInsights
-              organicImpressions={organicMetricsData.impressions}
-              paidImpressions={metrics.impressions}
+              organicImpressions={organicMetricsData?.impressions ?? 0}
+              paidImpressions={metrics?.impressions ?? 0}
               organicEngagement={0}
-              paidEngagement={metrics.ctr}
+              paidEngagement={metrics?.ctr ?? 0}
               adSpend={metrics.spend}
               period={dateRange === 'today' ? 'Hoje' : dateRange === 'yesterday' ? 'Ontem' : dateRange === 'last_7d' ? 'Últimos 7 dias' : dateRange === 'last_30d' ? 'Últimos 30 dias' : 'Período selecionado'}
             />
