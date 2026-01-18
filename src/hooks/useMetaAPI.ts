@@ -191,6 +191,7 @@ export const useMetaAPI = () => {
     isLoading,
     error,
     dateRange,
+    config, // Export config to allow passing accessToken to OrganicMetrics
     connectToMeta,
     disconnect,
     refreshMetrics,

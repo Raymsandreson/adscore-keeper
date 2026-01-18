@@ -104,6 +104,7 @@ const Dashboard = () => {
     isLoading,
     isConnected,
     error,
+    config: metaConfig,
     connectToMeta,
     disconnect,
     refreshMetrics
@@ -616,7 +617,9 @@ const Dashboard = () => {
           {/* Tab: Público Orgânico */}
           <TabsContent value="organic" className="mt-6">
             <OrganicMetrics 
-              isConnected={isConnected} 
+              isConnected={isConnected}
+              accessToken={metaConfig?.accessToken}
+              pageId={metaConfig?.accountId}
               onMetricsChange={setOrganicMetricsData}
               externalPeriod={dateRange}
             />
