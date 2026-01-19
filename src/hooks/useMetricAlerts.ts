@@ -114,7 +114,7 @@ export const useMetricAlerts = (metrics: MetricData, isConnected: boolean) => {
         alerts.push({
           key,
           title: '🚨 Gasto Elevado',
-          message: `Gasto total R$ ${metrics.spend.toLocaleString('pt-BR')} ultrapassou o limite de R$ ${thresholds.spendMax.toLocaleString('pt-BR')}`,
+          message: `Gasto total R$ ${(metrics.spend ?? 0).toLocaleString('pt-BR')} ultrapassou o limite de R$ ${(thresholds.spendMax ?? 0).toLocaleString('pt-BR')}`,
           type: 'error',
         });
       }

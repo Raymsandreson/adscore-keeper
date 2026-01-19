@@ -366,10 +366,10 @@ const Dashboard = () => {
                     {leadStats.conversionRate.toFixed(1)}%
                   </Badge>
                 </div>
-                {leadStats.totalRevenue > 0 && (
+                {(leadStats.totalRevenue ?? 0) > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground">Receita:</span>
-                    <Badge className="bg-emerald-500">R$ {leadStats.totalRevenue.toLocaleString('pt-BR')}</Badge>
+                    <Badge className="bg-emerald-500">R$ {(leadStats.totalRevenue ?? 0).toLocaleString('pt-BR')}</Badge>
                   </div>
                 )}
               </div>

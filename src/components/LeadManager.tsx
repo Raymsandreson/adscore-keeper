@@ -386,7 +386,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               <span className="text-xs text-muted-foreground">Receita</span>
             </div>
             <div className="text-2xl font-bold text-green-500">
-              R$ {stats.totalRevenue.toLocaleString('pt-BR')}
+              R$ {(stats.totalRevenue ?? 0).toLocaleString('pt-BR')}
             </div>
           </CardContent>
         </Card>
@@ -839,9 +839,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                             </Select>
                           </TableCell>
                           <TableCell>
-                            {lead.status === 'converted' && lead.conversion_value > 0 ? (
+                            {lead.status === 'converted' && (lead.conversion_value ?? 0) > 0 ? (
                               <span className="text-green-500 font-medium">
-                                R$ {lead.conversion_value.toLocaleString('pt-BR')}
+                                R$ {(lead.conversion_value ?? 0).toLocaleString('pt-BR')}
                               </span>
                             ) : (
                               <span className="text-muted-foreground">—</span>

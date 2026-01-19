@@ -697,12 +697,12 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
                                   <p className="font-medium">Viés de Atingimento</p>
                                   <p className="text-sm">
                                     {goal.type === 'cpc' 
-                                      ? `Reduza o CPC em R$ ${(goal.currentValue - goal.targetValue).toFixed(2)} para atingir a meta`
-                                      : `Faltam ${(goal.targetValue - goal.currentValue).toLocaleString('pt-BR')} ${goal.unit} em ${daysLeft} dias`
+                                      ? `Reduza o CPC em R$ ${((goal.currentValue ?? 0) - (goal.targetValue ?? 0)).toFixed(2)} para atingir a meta`
+                                      : `Faltam ${((goal.targetValue ?? 0) - (goal.currentValue ?? 0)).toLocaleString('pt-BR')} ${goal.unit} em ${daysLeft} dias`
                                     }
                                   </p>
                                   <p className="text-xs text-muted-foreground">
-                                    Ritmo necessário: {((goal.targetValue - goal.currentValue) / Math.max(daysLeft, 1)).toFixed(2)} {goal.unit}/dia
+                                    Ritmo necessário: {(((goal.targetValue ?? 0) - (goal.currentValue ?? 0)) / Math.max(daysLeft, 1)).toFixed(2)} {goal.unit}/dia
                                   </p>
                                 </div>
                               </TooltipContent>
@@ -742,7 +742,7 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Progresso</span>
                       <span className="font-medium">
-                        {goal.currentValue.toLocaleString('pt-BR')} / {goal.targetValue.toLocaleString('pt-BR')} {goal.unit}
+                        {(goal.currentValue ?? 0).toLocaleString('pt-BR')} / {(goal.targetValue ?? 0).toLocaleString('pt-BR')} {goal.unit}
                       </span>
                     </div>
                     
