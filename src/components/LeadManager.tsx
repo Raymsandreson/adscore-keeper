@@ -100,6 +100,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     ad_start_date: '',
     notes: '',
     ad_spend_at_conversion: 0,
+    state: '',
+    city: '',
+    neighborhood: '',
   });
   const [testEventCode, setTestEventCode] = useState('');
   const [dayOfWeekFilter, setDayOfWeekFilter] = useState<number | null>(null);
@@ -314,6 +317,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       ad_start_date: '',
       notes: '',
       ad_spend_at_conversion: 0,
+      state: '',
+      city: '',
+      neighborhood: '',
     });
     setIsAddDialogOpen(false);
   };
@@ -706,6 +712,56 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                       <p className="text-xs text-muted-foreground mt-1">
                         Encontre em Events Manager → Test Events → Código de Teste
                       </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label>Estado</Label>
+                        <Select
+                          value={newLead.state}
+                          onValueChange={(value) => {
+                            setNewLead({ ...newLead, state: value, city: '' });
+                            fetchCities(value);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="UF" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-background border z-50 max-h-60">
+                            {states.map((state) => (
+                              <SelectItem key={state.sigla} value={state.sigla}>
+                                {state.sigla} - {state.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Cidade</Label>
+                        <Select
+                          value={newLead.city}
+                          onValueChange={(value) => setNewLead({ ...newLead, city: value })}
+                          disabled={!newLead.state || loadingCities}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={loadingCities ? 'Carregando...' : 'Cidade'} />
+                          </SelectTrigger>
+                          <SelectContent className="bg-background border z-50 max-h-60">
+                            {cities.map((city) => (
+                              <SelectItem key={city.id} value={city.nome}>
+                                {city.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Bairro</Label>
+                        <Input
+                          placeholder="Bairro"
+                          value={newLead.neighborhood}
+                          onChange={(e) => setNewLead({ ...newLead, neighborhood: e.target.value })}
+                        />
+                      </div>
                     </div>
                     <div>
                       <Label>Observações</Label>
