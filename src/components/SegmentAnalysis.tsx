@@ -406,17 +406,17 @@ const SegmentAnalysis = ({ campaigns, adSets, creatives, dateRange, onDateRangeC
           <div className="grid grid-cols-3 gap-2 text-xs text-center pt-2 border-t border-border/50">
             <div>
               <p className="text-muted-foreground">Impressões</p>
-              <p className="font-semibold">{item.impressions?.toLocaleString('pt-BR') || '0'}</p>
+              <p className="font-semibold">{(item.impressions ?? 0).toLocaleString('pt-BR')}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Conversões</p>
-              <p className={`font-semibold ${item.conversions > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                {item.conversions || 0}
+              <p className={`font-semibold ${(item.conversions ?? 0) > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                {item.conversions ?? 0}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground">CPA</p>
-              <p className="font-semibold">R${item.conversions > 0 ? (item.spend / item.conversions).toFixed(0) : '0'}</p>
+              <p className="font-semibold">R${(item.conversions ?? 0) > 0 ? ((item.spend ?? 0) / (item.conversions ?? 1)).toFixed(0) : '0'}</p>
             </div>
           </div>
 

@@ -146,7 +146,7 @@ export const GoalBiasIndicator = ({ biases, compact = false, maxItems = 3 }: Goa
               
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{bias.currentValue.toLocaleString('pt-BR')} / {bias.targetValue.toLocaleString('pt-BR')}</span>
+                  <span>{(bias.currentValue ?? 0).toLocaleString('pt-BR')} / {(bias.targetValue ?? 0).toLocaleString('pt-BR')}</span>
                   <span className="flex items-center gap-1">
                     {getTrendIcon(bias.trend)}
                     {Math.round(bias.progress)}%

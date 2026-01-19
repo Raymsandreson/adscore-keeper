@@ -240,7 +240,7 @@ export const EngagementStats = () => {
               <Eye className="h-4 w-4 text-amber-600" />
               <span className="text-xs text-amber-600">Alcance</span>
             </div>
-            <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{totals.reach.toLocaleString('pt-BR')}</p>
+            <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{(totals.reach ?? 0).toLocaleString('pt-BR')}</p>
           </CardContent>
         </Card>
 

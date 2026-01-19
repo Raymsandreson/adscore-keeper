@@ -349,10 +349,10 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleF
                                 )}
                               </div>
 
-                              {lead.status === 'converted' && lead.conversion_value > 0 && (
+                              {lead.status === 'converted' && (lead.conversion_value ?? 0) > 0 && (
                                 <div className="mt-2">
                                   <Badge className="bg-emerald-500 text-white text-xs">
-                                    R$ {lead.conversion_value.toLocaleString('pt-BR')}
+                                    R$ {(lead.conversion_value ?? 0).toLocaleString('pt-BR')}
                                   </Badge>
                                 </div>
                               )}
