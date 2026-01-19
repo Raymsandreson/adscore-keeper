@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LabelList } from "recharts";
 import { format, subDays, startOfDay, eachDayOfInterval, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 
@@ -33,6 +33,9 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
   const [period, setPeriod] = useState<PeriodType>('week');
   const [customDays, setCustomDays] = useState(14);
   const [customDaysInput, setCustomDaysInput] = useState("14");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const chartData = useMemo(() => {
     const endDate = new Date();
@@ -93,6 +96,38 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
       };
     });
   }, [comments, period, customDays]);
+
+  const checkScrollPosition = () => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 1);
+    }
+  };
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      checkScrollPosition();
+      container.addEventListener('scroll', checkScrollPosition);
+      window.addEventListener('resize', checkScrollPosition);
+      return () => {
+        container.removeEventListener('scroll', checkScrollPosition);
+        window.removeEventListener('resize', checkScrollPosition);
+      };
+    }
+  }, [chartData]);
+
+  const handleScrollTo = (direction: 'left' | 'right') => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const scrollAmount = container.clientWidth * 0.8;
+      container.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   const totals = useMemo(() => {
     return chartData.reduce(
@@ -200,51 +235,76 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
         </div>
       </CardHeader>
       <CardContent>
-        <div 
-          className={needsScroll ? "overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent" : ""}
-          style={{ maxWidth: '100%' }}
-        >
-          <div style={{ width: needsScroll ? chartWidth : '100%', minWidth: needsScroll ? chartWidth : 'auto' }}>
-            <ChartContainer config={chartConfig} className="h-[200px] w-full">
-              <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis 
-                  dataKey="dateLabel" 
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis 
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                />
-                <ChartTooltip 
-                  content={
-                    <ChartTooltipContent 
-                      labelFormatter={(value) => `Data: ${value}`}
-                    />
-                  }
-                />
-                <Bar
-                  dataKey="received"
-                  fill="hsl(var(--primary))"
-                  radius={[4, 4, 0, 0]}
-                  name="Recebidos"
-                >
-                  <LabelList dataKey="received" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
-                </Bar>
-                <Bar
-                  dataKey="sent"
-                  fill="hsl(142 76% 36%)"
-                  radius={[4, 4, 0, 0]}
-                  name="Enviados"
-                >
-                  <LabelList dataKey="sent" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+        <div className="relative">
+          {/* Left scroll indicator */}
+          {needsScroll && canScrollLeft && (
+            <button
+              onClick={() => handleScrollTo('left')}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center bg-gradient-to-r from-background via-background/80 to-transparent hover:from-muted transition-colors"
+              aria-label="Rolar para esquerda"
+            >
+              <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+            </button>
+          )}
+          
+          {/* Right scroll indicator */}
+          {needsScroll && canScrollRight && (
+            <button
+              onClick={() => handleScrollTo('right')}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-16 flex items-center justify-center bg-gradient-to-l from-background via-background/80 to-transparent hover:from-muted transition-colors"
+              aria-label="Rolar para direita"
+            >
+              <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </button>
+          )}
+
+          <div 
+            ref={scrollContainerRef}
+            className={needsScroll ? "overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent scroll-smooth" : ""}
+            style={{ maxWidth: '100%' }}
+          >
+            <div style={{ width: needsScroll ? chartWidth : '100%', minWidth: needsScroll ? chartWidth : 'auto' }}>
+              <ChartContainer config={chartConfig} className="h-[200px] w-full">
+                <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis 
+                    dataKey="dateLabel" 
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    allowDecimals={false}
+                  />
+                  <ChartTooltip 
+                    content={
+                      <ChartTooltipContent 
+                        labelFormatter={(value) => `Data: ${value}`}
+                      />
+                    }
+                  />
+                  <Bar
+                    dataKey="received"
+                    fill="hsl(var(--primary))"
+                    radius={[4, 4, 0, 0]}
+                    name="Recebidos"
+                  >
+                    <LabelList dataKey="received" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+                  </Bar>
+                  <Bar
+                    dataKey="sent"
+                    fill="hsl(142 76% 36%)"
+                    radius={[4, 4, 0, 0]}
+                    name="Enviados"
+                  >
+                    <LabelList dataKey="sent" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </div>
           </div>
         </div>
       </CardContent>
