@@ -167,7 +167,14 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
                         setCustomDays(365);
                       }
                     }}
-                    className="w-16 h-8"
+                    className={`w-16 h-8 ${
+                      customDaysInput === '' || 
+                      isNaN(parseInt(customDaysInput)) || 
+                      parseInt(customDaysInput) < 1 || 
+                      parseInt(customDaysInput) > 365 
+                        ? 'border-destructive focus-visible:ring-destructive' 
+                        : ''
+                    }`}
                   />
                   <span className="text-sm text-muted-foreground">dias</span>
                 </div>
