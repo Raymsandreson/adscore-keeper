@@ -215,9 +215,16 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-sm break-words">
-                                    {lead.lead_name || 'Sem nome'}
-                                  </p>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <p className="font-medium text-sm break-words cursor-default">
+                                        {lead.lead_name || 'Sem nome'}
+                                      </p>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs">
+                                      <p>{lead.lead_name || 'Sem nome'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
                                   {lead.campaign_name && (
                                     <Badge variant="outline" className="text-xs mt-1 truncate max-w-full">
                                       {lead.campaign_name}
