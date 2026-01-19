@@ -516,13 +516,22 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
       return true;
     };
 
+    // Safe format helper to handle undefined/null values
+    const safeFormat = (v: number | undefined | null) => (v ?? 0).toLocaleString('pt-BR');
+    const safeFormatPercent = (v: number | undefined | null) => `${(v ?? 0).toFixed(2)}%`;
+    const safeFormatChange = (v: number | undefined | null) => {
+      const safeV = v ?? 0;
+      const prefix = safeV > 0 ? '+' : '';
+      return `${prefix}${safeV.toLocaleString('pt-BR')}`;
+    };
+
     const compareMetrics = [
       {
         label: 'Seguidores',
         icon: Users,
         instagram: instagramData.insights.totalFollowers,
         facebook: facebookData.insights.totalFollowers,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'followers',
         tooltip: 'Número total de pessoas que seguem seu perfil.'
       },
@@ -531,7 +540,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: UserCheck,
         instagram: instagramData.insights.followingCount || 0,
         facebook: 0, // Facebook pages don't follow others
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'following',
         fbUnavailable: true,
         tooltip: 'Número de contas que você está seguindo. (Apenas Instagram)'
@@ -541,10 +550,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: TrendingUp,
         instagram: instagramData.insights.netFollowerChange,
         facebook: facebookData.insights.netFollowerChange,
-        format: (v: number) => {
-          const prefix = v > 0 ? '+' : '';
-          return `${prefix}${v.toLocaleString('pt-BR')}`;
-        },
+        format: safeFormatChange,
         colorClass: undefined, // Will be determined dynamically
         getColorClass: (v: number) => v >= 0 ? 'text-green-600 font-bold' : 'text-red-500 font-bold',
         metricName: 'netFollowerChange',
@@ -557,7 +563,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Eye,
         instagram: instagramData.insights.reach,
         facebook: facebookData.insights.reach,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'reach',
         igUnavailable: igUnavailable.reach,
         fbUnavailableReason: fbUnavailable.reach,
@@ -568,7 +574,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Eye,
         instagram: instagramData.insights.impressions,
         facebook: facebookData.insights.impressions,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'impressions',
         igUnavailable: igUnavailable.impressions,
         tooltip: 'Número total de vezes que seu conteúdo foi exibido (inclui visualizações repetidas).'
@@ -578,7 +584,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Heart,
         instagram: instagramData.insights.engagementRate,
         facebook: facebookData.insights.engagementRate,
-        format: (v: number) => `${v.toFixed(2)}%`,
+        format: safeFormatPercent,
         metricName: 'engagementRate',
         hasBreakdown: true,
         instagramBreakdown: {
@@ -605,7 +611,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Heart,
         instagram: instagramData.insights.likes,
         facebook: facebookData.insights.likes,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'likes',
         tooltip: 'Total de curtidas recebidas em posts do período.'
       },
@@ -614,7 +620,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: MessageCircle,
         instagram: instagramData.insights.comments,
         facebook: facebookData.insights.comments,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'comments',
         tooltip: 'Total de comentários recebidos em posts do período.'
       },
@@ -623,7 +629,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Share2,
         instagram: instagramData.insights.shares,
         facebook: facebookData.insights.shares,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'shares',
         igUnavailable: igUnavailable.shares,
         tooltip: 'Número de vezes que seu conteúdo foi compartilhado. Para Instagram, disponível apenas para Reels com permissões específicas. Zero pode indicar falta de permissão ou realmente nenhum compartilhamento.'
@@ -633,7 +639,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Bookmark,
         instagram: instagramData.insights.saves,
         facebook: 0,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'saves',
         fbUnavailable: true,
         igUnavailable: igUnavailable.saves,
@@ -644,7 +650,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Play,
         instagram: instagramData.insights.videoViews,
         facebook: 0,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'videoViews',
         fbUnavailable: true,
         tooltip: 'Total de reproduções de vídeos e Reels no período. Zero pode indicar que não há vídeos publicados no período ou falta de permissão.'
@@ -654,7 +660,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: Eye,
         instagram: instagramData.insights.profileViews,
         facebook: facebookData.insights.profileViews,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'profileViews',
         igUnavailable: igUnavailable.profileViews,
         tooltip: 'Número de vezes que seu perfil foi visitado no período.'
@@ -664,7 +670,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         icon: ExternalLink,
         instagram: instagramData.insights.websiteClicks,
         facebook: facebookData.insights.websiteClicks,
-        format: (v: number) => v.toLocaleString('pt-BR'),
+        format: safeFormat,
         metricName: 'websiteClicks',
         igUnavailable: igUnavailable.websiteClicks,
         tooltip: 'Número de cliques no link do site na bio/perfil.'
@@ -672,8 +678,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
     ];
 
     // Render unavailable indicator for a metric value
-    const renderMetricValue = (value: number, format: (v: number) => string, unavailableReason?: string, colorClass?: string) => {
-      const isUnavailable = value === 0 && unavailableReason;
+    const renderMetricValue = (value: number | undefined | null, format: (v: number | undefined | null) => string, unavailableReason?: string, colorClass?: string) => {
+      const safeValue = value ?? 0;
+      const isUnavailable = safeValue === 0 && unavailableReason;
       
       if (isUnavailable) {
         return (
@@ -693,7 +700,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
         );
       }
       
-      return <span className={colorClass}>{format(value)}</span>;
+      return <span className={colorClass}>{format(safeValue)}</span>;
     };
 
     return (
