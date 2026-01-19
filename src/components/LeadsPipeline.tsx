@@ -43,6 +43,7 @@ interface LeadsPipelineProps {
   loading: boolean;
   onStatusChange: (leadId: string, status: LeadStatus, conversionValue?: number) => void;
   onDeleteLead: (id: string) => void;
+  onEditLead?: (lead: Lead) => void;
   onToggleFollower?: (leadId: string, isFollower: boolean) => void;
   onNavigateToComment?: (commentId: string) => void;
   onClassificationChange?: (leadId: string, classification: ClientClassification) => void;
@@ -72,7 +73,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleFollower, onNavigateToComment, onClassificationChange }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -230,7 +231,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onToggleF
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onEditLead?.(lead)}>
                                       <Edit2 className="h-3 w-3 mr-2" />
                                       Editar
                                     </DropdownMenuItem>
