@@ -946,7 +946,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                 <Instagram className="h-5 w-5 text-pink-500" />
                 <span className="font-medium text-sm">{instagramData.accountName}</span>
               </div>
-              <p className="text-2xl font-bold">{instagramData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-2xl font-bold">{(instagramData.insights.totalFollowers ?? 0).toLocaleString('pt-BR')}</p>
               <p className="text-xs text-muted-foreground">seguidores</p>
             </div>
             <div className="p-4 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-200/50 dark:border-blue-800/50">
@@ -954,7 +954,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                 <Facebook className="h-5 w-5 text-blue-600" />
                 <span className="font-medium text-sm">{facebookData.accountName}</span>
               </div>
-              <p className="text-2xl font-bold">{facebookData.insights.totalFollowers.toLocaleString('pt-BR')}</p>
+              <p className="text-2xl font-bold">{(facebookData.insights.totalFollowers ?? 0).toLocaleString('pt-BR')}</p>
               <p className="text-xs text-muted-foreground">seguidores</p>
             </div>
           </div>
@@ -963,7 +963,7 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
           <div className="p-4 rounded-lg bg-muted/30 text-center">
             <p className="text-sm text-muted-foreground mb-1">Total Combinado</p>
             <p className="text-3xl font-bold text-primary">
-              {(instagramData.insights.totalFollowers + facebookData.insights.totalFollowers).toLocaleString('pt-BR')}
+              {((instagramData.insights.totalFollowers ?? 0) + (facebookData.insights.totalFollowers ?? 0)).toLocaleString('pt-BR')}
             </p>
             <p className="text-xs text-muted-foreground">seguidores nas duas plataformas</p>
           </div>
