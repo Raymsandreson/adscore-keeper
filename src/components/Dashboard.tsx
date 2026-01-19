@@ -13,6 +13,7 @@ import UnifiedMetaStatus from "./UnifiedMetaStatus";
 import ViewsBreakdown from "./ViewsBreakdown";
 import SmartInsights from "./SmartInsights";
 import MultiAccountSelector from "./MultiAccountSelector";
+import { AccountBreakdownTable } from "./AccountBreakdownTable";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -124,7 +125,8 @@ const Dashboard = () => {
     dailyData: aggregatedDailyData,
     placementData: aggregatedPlacementData,
     isLoading: aggregatedLoading,
-    refreshData: refreshAggregatedData
+    refreshData: refreshAggregatedData,
+    accountBreakdown
   } = useAggregatedMetrics(dateRange as DateRangeOption);
 
   // Decide which data to use: aggregated (multi-account) or single account
@@ -562,20 +564,29 @@ const Dashboard = () => {
           <TabsContent value="paid" className="space-y-8 mt-6">
             {/* Multi-Account Indicator */}
             {useAggregated && (
-              <Card className="border-primary/50 bg-primary/5">
-                <CardContent className="py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Layers className="h-5 w-5 text-primary" />
-                      <span className="font-medium text-primary">Dados Combinados</span>
-                      <Badge variant="secondary">{selectedCount} contas</Badge>
+              <>
+                <Card className="border-primary/50 bg-primary/5">
+                  <CardContent className="py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-5 w-5 text-primary" />
+                        <span className="font-medium text-primary">Dados Combinados</span>
+                        <Badge variant="secondary">{selectedCount} contas</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Métricas agregadas de: {activeAccounts.map(a => a.name).join(', ')}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Métricas agregadas de: {activeAccounts.map(a => a.name).join(', ')}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+                
+                {/* Account Breakdown Table */}
+                <AccountBreakdownTable 
+                  accountBreakdown={accountBreakdown}
+                  activeAccounts={activeAccounts}
+                  aggregatedMetrics={aggregatedMetrics}
+                />
+              </>
             )}
             
             {/* Data Source Indicator */}
