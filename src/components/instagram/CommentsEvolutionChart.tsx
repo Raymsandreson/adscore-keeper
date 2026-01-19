@@ -105,6 +105,12 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
     );
   }, [chartData]);
 
+  // Maximum 14 days visible at a time, rest requires scrolling
+  const MAX_VISIBLE_DAYS = 14;
+  const BAR_WIDTH = 40; // Width per day in pixels
+  const chartWidth = Math.max(chartData.length * BAR_WIDTH, 100);
+  const needsScroll = chartData.length > MAX_VISIBLE_DAYS;
+
   const chartConfig = {
     received: {
       label: "Recebidos",
@@ -194,46 +200,53 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
         </div>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="h-[200px] w-full">
-          <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-            <XAxis 
-              dataKey="dateLabel" 
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis 
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              allowDecimals={false}
-            />
-            <ChartTooltip 
-              content={
-                <ChartTooltipContent 
-                  labelFormatter={(value) => `Data: ${value}`}
+        <div 
+          className={needsScroll ? "overflow-x-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent" : ""}
+          style={{ maxWidth: '100%' }}
+        >
+          <div style={{ width: needsScroll ? chartWidth : '100%', minWidth: needsScroll ? chartWidth : 'auto' }}>
+            <ChartContainer config={chartConfig} className="h-[200px] w-full">
+              <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="dateLabel" 
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
                 />
-              }
-            />
-            <Bar
-              dataKey="received"
-              fill="hsl(var(--primary))"
-              radius={[4, 4, 0, 0]}
-              name="Recebidos"
-            >
-              <LabelList dataKey="received" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
-            </Bar>
-            <Bar
-              dataKey="sent"
-              fill="hsl(142 76% 36%)"
-              radius={[4, 4, 0, 0]}
-              name="Enviados"
-            >
-              <LabelList dataKey="sent" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
-            </Bar>
-          </BarChart>
-        </ChartContainer>
+                <YAxis 
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <ChartTooltip 
+                  content={
+                    <ChartTooltipContent 
+                      labelFormatter={(value) => `Data: ${value}`}
+                    />
+                  }
+                />
+                <Bar
+                  dataKey="received"
+                  fill="hsl(var(--primary))"
+                  radius={[4, 4, 0, 0]}
+                  name="Recebidos"
+                >
+                  <LabelList dataKey="received" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+                </Bar>
+                <Bar
+                  dataKey="sent"
+                  fill="hsl(142 76% 36%)"
+                  radius={[4, 4, 0, 0]}
+                  name="Enviados"
+                >
+                  <LabelList dataKey="sent" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
