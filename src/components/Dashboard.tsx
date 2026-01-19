@@ -12,6 +12,7 @@ import GoalBiasIndicator from "./GoalBiasIndicator";
 import UnifiedMetaStatus from "./UnifiedMetaStatus";
 import ViewsBreakdown from "./ViewsBreakdown";
 import SmartInsights from "./SmartInsights";
+import MultiAccountSelector from "./MultiAccountSelector";
 
 import BMConnection from "./BMConnection";
 import SegmentAnalysis from "./SegmentAnalysis";
@@ -31,6 +32,7 @@ import { useMetaAPI } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
 import { useUnifiedMetaConnection, GoalBias } from "@/hooks/useUnifiedMetaConnection";
+import { useMultiAccountSelection } from "@/hooks/useMultiAccountSelection";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -258,6 +260,8 @@ const Dashboard = () => {
                 )}
               </Button>
             </Link>
+            
+            <MultiAccountSelector compact />
             
             <div className="flex items-center gap-2 bg-muted/50 rounded-full px-4 py-2 border border-border/50">
               <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
