@@ -32,6 +32,7 @@ const periodOptions = [
 export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps) => {
   const [period, setPeriod] = useState<PeriodType>('week');
   const [customDays, setCustomDays] = useState(14);
+  const [customDaysInput, setCustomDaysInput] = useState("14");
 
   const chartData = useMemo(() => {
     const endDate = new Date();
@@ -140,11 +141,32 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
               {period === 'custom' && (
                 <div className="flex items-center gap-1">
                   <Input
-                    type="number"
-                    min={1}
-                    max={365}
-                    value={customDays}
-                    onChange={(e) => setCustomDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={customDaysInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Allow empty string or numbers only
+                      if (value === '' || /^\d+$/.test(value)) {
+                        setCustomDaysInput(value);
+                        const numValue = parseInt(value);
+                        if (!isNaN(numValue) && numValue >= 1 && numValue <= 365) {
+                          setCustomDays(numValue);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      // On blur, reset to valid value if empty or invalid
+                      const numValue = parseInt(customDaysInput);
+                      if (isNaN(numValue) || numValue < 1) {
+                        setCustomDaysInput("1");
+                        setCustomDays(1);
+                      } else if (numValue > 365) {
+                        setCustomDaysInput("365");
+                        setCustomDays(365);
+                      }
+                    }}
                     className="w-16 h-8"
                   />
                   <span className="text-sm text-muted-foreground">dias</span>
