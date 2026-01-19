@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LabelList } from "recharts";
 import { format, subDays, startOfDay, eachDayOfInterval, startOfWeek, startOfMonth, startOfQuarter, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { TrendingUp } from "lucide-react";
@@ -112,7 +112,7 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
     },
     sent: {
       label: "Enviados", 
-      color: "hsl(var(--secondary))"
+      color: "hsl(142 76% 36%)" // green-600
     }
   };
 
@@ -187,7 +187,7 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
               <span className="text-muted-foreground">Recebidos: <strong className="text-foreground">{totals.received}</strong></span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-secondary" />
+              <div className="w-3 h-3 rounded-full bg-green-600" />
               <span className="text-muted-foreground">Enviados: <strong className="text-foreground">{totals.sent}</strong></span>
             </div>
           </div>
@@ -221,13 +221,17 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
               fill="hsl(var(--primary))"
               radius={[4, 4, 0, 0]}
               name="Recebidos"
-            />
+            >
+              <LabelList dataKey="received" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+            </Bar>
             <Bar
               dataKey="sent"
-              fill="hsl(var(--secondary))"
+              fill="hsl(142 76% 36%)"
               radius={[4, 4, 0, 0]}
               name="Enviados"
-            />
+            >
+              <LabelList dataKey="sent" position="top" fontSize={10} fill="hsl(var(--foreground))" formatter={(value: number) => value > 0 ? value : ''} />
+            </Bar>
           </BarChart>
         </ChartContainer>
       </CardContent>
