@@ -333,14 +333,46 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
       console.log('📊 Dados recebidos para', periodDays, 'dias:', data);
 
       if (data.success && data.platforms?.length > 0) {
-        const processedPlatforms = data.platforms.map((p: PlatformData & { unavailableMetrics?: UnavailableMetrics }) => ({
-          ...p,
-          unavailableMetrics: p.unavailableMetrics,
-          dailyData: p.dailyData.map((d: any) => ({
-            ...d,
-            date: new Date(d.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })
-          }))
-        }));
+        const processedPlatforms = data.platforms.map((p: any) => {
+          // Normalize insights from API response to match OrganicInsights interface
+          const apiInsights = p.insights || {};
+          const normalizedInsights: OrganicInsights = {
+            // Map API fields to expected interface fields
+            totalFollowers: apiInsights.followers ?? apiInsights.totalFollowers ?? 0,
+            followingCount: apiInsights.followingCount ?? 0,
+            netFollowerChange: apiInsights.followersChange ?? apiInsights.netFollowerChange ?? 0,
+            followerChangePercent: apiInsights.followersChangePercent ?? apiInsights.followerChangePercent ?? 0,
+            reach: apiInsights.reach ?? 0,
+            impressions: apiInsights.impressions ?? 0,
+            engagementRate: apiInsights.engagementRate ?? 0,
+            likes: apiInsights.likes ?? 0,
+            comments: apiInsights.comments ?? 0,
+            shares: apiInsights.shares ?? 0,
+            saves: apiInsights.saves ?? 0,
+            totalInteractions: apiInsights.totalInteractions ?? apiInsights.engagement ?? (
+              (apiInsights.likes ?? 0) + (apiInsights.comments ?? 0) + (apiInsights.saves ?? 0) + (apiInsights.shares ?? 0)
+            ),
+            profileViews: apiInsights.profileViews ?? 0,
+            websiteClicks: apiInsights.websiteClicks ?? 0,
+            storiesViews: apiInsights.storiesViews ?? 0,
+            storiesReplies: apiInsights.storiesReplies ?? 0,
+            storiesExits: apiInsights.storiesExits ?? 0,
+            storiesReach: apiInsights.storiesReach ?? 0,
+            videoViews: apiInsights.videoViews ?? 0,
+            dataUpdatedAt: apiInsights.dataUpdatedAt,
+            contentBreakdown: apiInsights.contentBreakdown,
+          };
+
+          return {
+            ...p,
+            insights: normalizedInsights,
+            unavailableMetrics: p.unavailableMetrics || {},
+            dailyData: (p.dailyData || []).map((d: any) => ({
+              ...d,
+              date: new Date(d.date).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })
+            }))
+          };
+        });
         setPlatforms(processedPlatforms);
         setIsRealData(!data.simulated);
         
