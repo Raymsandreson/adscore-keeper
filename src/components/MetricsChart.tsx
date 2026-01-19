@@ -67,9 +67,9 @@ export const MetricsChart = ({ data, isLoading }: MetricsChartProps) => {
     return `${firstDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${lastDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`;
   };
 
-  const formatCurrency = (value: number) => `R$ ${value.toFixed(2)}`;
-  const formatPercent = (value: number) => `${value.toFixed(2)}%`;
-  const formatNumber = (value: number) => value.toLocaleString('pt-BR');
+  const formatCurrency = (value: number | undefined | null) => `R$ ${(value ?? 0).toFixed(2)}`;
+  const formatPercent = (value: number | undefined | null) => `${(value ?? 0).toFixed(2)}%`;
+  const formatNumber = (value: number | undefined | null) => (value ?? 0).toLocaleString('pt-BR');
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {

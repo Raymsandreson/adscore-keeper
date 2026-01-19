@@ -137,10 +137,11 @@ export const InstagramMetricsChart = () => {
     setLoading(false);
   };
 
-  const formatNumber = (value: number) => {
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-    return value.toString();
+  const formatNumber = (value: number | undefined | null) => {
+    const safeValue = value ?? 0;
+    if (safeValue >= 1000000) return `${(safeValue / 1000000).toFixed(1)}M`;
+    if (safeValue >= 1000) return `${(safeValue / 1000).toFixed(1)}K`;
+    return safeValue.toString();
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
