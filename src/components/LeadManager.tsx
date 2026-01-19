@@ -983,6 +983,48 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                 />
               </div>
               <div>
+                <Label>Data da Classificação</Label>
+                <Input
+                  type="date"
+                  value={editingLead.classification_date || format(new Date(), 'yyyy-MM-dd')}
+                  onChange={(e) => setEditingLead({ ...editingLead, classification_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Data que Virou Cliente</Label>
+                <Input
+                  type="date"
+                  value={editingLead.became_client_date || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, became_client_date: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label>Cidade</Label>
+                  <Input
+                    placeholder="Cidade"
+                    value={editingLead.city || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, city: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Estado</Label>
+                  <Input
+                    placeholder="UF"
+                    value={editingLead.state || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, state: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Bairro</Label>
+                  <Input
+                    placeholder="Bairro"
+                    value={editingLead.neighborhood || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, neighborhood: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
                 <Label>Observações</Label>
                 <Textarea
                   placeholder="Anotações sobre o lead..."

@@ -37,6 +37,11 @@ export interface Lead {
   instagram_username: string | null;
   is_follower: boolean | null;
   client_classification: ClientClassification;
+  classification_date: string | null;
+  became_client_date: string | null;
+  city: string | null;
+  state: string | null;
+  neighborhood: string | null;
 }
 
 export interface LeadStats {
