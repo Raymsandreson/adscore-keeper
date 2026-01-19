@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +27,13 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter } from "lucide-react";
-import { useMetaAPI } from "@/hooks/useMetaAPI";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers } from "lucide-react";
+import { useMetaAPI, DateRangeOption } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
 import { useUnifiedMetaConnection, GoalBias } from "@/hooks/useUnifiedMetaConnection";
 import { useMultiAccountSelection } from "@/hooks/useMultiAccountSelection";
+import { useAggregatedMetrics } from "@/hooks/useAggregatedMetrics";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -95,22 +96,73 @@ const Dashboard = () => {
   }, []);
   
   const {
-    metrics,
-    campaigns,
-    adSets,
-    creatives,
-    dailyData,
-    placementData,
+    metrics: singleMetrics,
+    campaigns: singleCampaigns,
+    adSets: singleAdSets,
+    creatives: singleCreatives,
+    dailyData: singleDailyData,
+    placementData: singlePlacementData,
     dateRange,
     changeDateRange,
-    isLoading,
+    isLoading: singleLoading,
     isConnected,
     error,
     config: metaConfig,
     connectToMeta,
     disconnect,
-    refreshMetrics
+    refreshMetrics: refreshSingleMetrics
   } = useMetaAPI();
+
+  // Multi-account selection and aggregation
+  const { activeAccounts, hasMultipleSelected, selectedCount } = useMultiAccountSelection();
+  
+  const {
+    metrics: aggregatedMetrics,
+    campaigns: aggregatedCampaigns,
+    adSets: aggregatedAdSets,
+    creatives: aggregatedCreatives,
+    dailyData: aggregatedDailyData,
+    placementData: aggregatedPlacementData,
+    isLoading: aggregatedLoading,
+    refreshData: refreshAggregatedData
+  } = useAggregatedMetrics(dateRange as DateRangeOption);
+
+  // Decide which data to use: aggregated (multi-account) or single account
+  const useAggregated = hasMultipleSelected && activeAccounts.length > 1;
+  
+  const metrics = useMemo(() => 
+    useAggregated ? aggregatedMetrics : singleMetrics,
+    [useAggregated, aggregatedMetrics, singleMetrics]
+  );
+  
+  const campaigns = useMemo(() => 
+    useAggregated ? aggregatedCampaigns : singleCampaigns,
+    [useAggregated, aggregatedCampaigns, singleCampaigns]
+  );
+  
+  const adSets = useMemo(() => 
+    useAggregated ? aggregatedAdSets : singleAdSets,
+    [useAggregated, aggregatedAdSets, singleAdSets]
+  );
+  
+  const creatives = useMemo(() => 
+    useAggregated ? aggregatedCreatives : singleCreatives,
+    [useAggregated, aggregatedCreatives, singleCreatives]
+  );
+  
+  const dailyData = useMemo(() => 
+    useAggregated ? aggregatedDailyData : singleDailyData,
+    [useAggregated, aggregatedDailyData, singleDailyData]
+  );
+  
+  const placementData = useMemo(() => 
+    useAggregated ? aggregatedPlacementData : singlePlacementData,
+    [useAggregated, aggregatedPlacementData, singlePlacementData]
+  );
+  
+  const isLoading = useAggregated ? aggregatedLoading : singleLoading;
+  
+  const refreshMetrics = useAggregated ? refreshAggregatedData : refreshSingleMetrics;
 
   // Debug log para verificar se token está sendo passado para OrganicMetrics
   useEffect(() => {
@@ -118,9 +170,11 @@ const Dashboard = () => {
       hasAccessToken: !!metaConfig?.accessToken,
       accessTokenLength: metaConfig?.accessToken?.length || 0,
       accountId: metaConfig?.accountId || 'não definido',
-      isConnected
+      isConnected,
+      useAggregated,
+      selectedCount
     });
-  }, [metaConfig, isConnected]);
+  }, [metaConfig, isConnected, useAggregated, selectedCount]);
 
   const { stats: leadStats, loading: leadsLoading } = useLeads();
 
@@ -135,7 +189,7 @@ const Dashboard = () => {
     saveThresholds,
     requestNotificationPermission,
     hasNotificationPermission,
-  } = useMetricAlerts(metrics, isConnected);
+  } = useMetricAlerts(singleMetrics, isConnected);
 
   // Calculate goal biases when metrics change
   useEffect(() => {
@@ -506,14 +560,32 @@ const Dashboard = () => {
 
           {/* Tab: Tráfego Pago */}
           <TabsContent value="paid" className="space-y-8 mt-6">
+            {/* Multi-Account Indicator */}
+            {useAggregated && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-5 w-5 text-primary" />
+                      <span className="font-medium text-primary">Dados Combinados</span>
+                      <Badge variant="secondary">{selectedCount} contas</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Métricas agregadas de: {activeAccounts.map(a => a.name).join(', ')}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
             {/* Data Source Indicator */}
             <div className="flex items-center justify-between">
               <DataSourceIndicator 
-                isRealData={isConnected} 
-                source="Meta Ads API"
+                isRealData={isConnected || useAggregated} 
+                source={useAggregated ? `Meta Ads (${selectedCount} contas)` : "Meta Ads API"}
               />
               <DataSourceIndicator 
-                isRealData={isConnected} 
+                isRealData={isConnected || useAggregated} 
                 source="Meta Ads"
                 compact
               />
