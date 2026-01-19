@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Plus, 
   Users, 
@@ -35,7 +36,8 @@ import {
   Calendar,
   PlayCircle,
   Filter,
-  X
+  X,
+  Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -44,6 +46,9 @@ import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
 import { format, differenceInDays, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
+import { CustomFieldsManager } from './leads/CustomFieldsManager';
+import { CustomFieldsForm } from './leads/CustomFieldsForm';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -73,6 +78,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
+  const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -80,6 +86,8 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   const [isImporting, setIsImporting] = useState(false);
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
+  const [activeTab, setActiveTab] = useState('leads');
   const [newLead, setNewLead] = useState({
     lead_name: '',
     lead_phone: '',
@@ -329,9 +337,24 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       campaign_name: editingLead.campaign_name,
       ad_name: editingLead.ad_name,
       notes: editingLead.notes,
+      classification_date: editingLead.classification_date,
+      became_client_date: editingLead.became_client_date,
+      city: editingLead.city,
+      state: editingLead.state,
+      neighborhood: editingLead.neighborhood,
     });
+
+    // Save custom field values
+    if (Object.keys(customFieldValues).length > 0) {
+      try {
+        await saveAllFieldValues(editingLead.id, customFieldValues);
+      } catch (error) {
+        console.error('Error saving custom fields:', error);
+      }
+    }
     
     setEditingLead(null);
+    setCustomFieldValues({});
     toast.success('Lead atualizado com sucesso!');
   };
 
@@ -493,19 +516,33 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
         </CardContent>
       </Card>
 
-      {/* Leads Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Leads do WhatsApp
-              </CardTitle>
-              <CardDescription>
-                Registre e acompanhe seus leads para calcular o custo real por conversão
-              </CardDescription>
-            </div>
+      {/* Main Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="leads" className="gap-2">
+            <Users className="h-4 w-4" />
+            Leads
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Configurações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="leads" className="mt-4">
+          {/* Leads Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Leads do WhatsApp
+                  </CardTitle>
+                  <CardDescription>
+                    Registre e acompanhe seus leads para calcular o custo real por conversão
+                  </CardDescription>
+                </div>
             <div className="flex items-center gap-2">
               {/* View Toggle */}
               <div className="flex items-center border rounded-lg p-1">
@@ -932,8 +969,12 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           )}
         </CardContent>
       </Card>
+        </TabsContent>
 
-      {/* Edit Lead Dialog */}
+        <TabsContent value="settings" className="mt-4">
+          <CustomFieldsManager adAccountId={adAccountId} />
+        </TabsContent>
+      </Tabs>
       <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1032,8 +1073,19 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                   onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
                 />
               </div>
+
+              {/* Custom Fields */}
+              {customFields.length > 0 && (
+                <CustomFieldsForm
+                  customFields={customFields}
+                  leadId={editingLead.id}
+                  getFieldValues={getFieldValues}
+                  onValuesChange={setCustomFieldValues}
+                />
+              )}
+
               <DialogFooter>
-                <Button variant="outline" onClick={() => setEditingLead(null)}>
+                <Button variant="outline" onClick={() => { setEditingLead(null); setCustomFieldValues({}); }}>
                   Cancelar
                 </Button>
                 <Button onClick={handleEditLead}>

@@ -643,6 +643,93 @@ export type Database = {
           },
         ]
       }
+      lead_custom_field_values: {
+        Row: {
+          created_at: string
+          field_id: string
+          id: string
+          lead_id: string
+          updated_at: string
+          value_boolean: boolean | null
+          value_date: string | null
+          value_number: number | null
+          value_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          field_id: string
+          id?: string
+          lead_id: string
+          updated_at?: string
+          value_boolean?: boolean | null
+          value_date?: string | null
+          value_number?: number | null
+          value_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          field_id?: string
+          id?: string
+          lead_id?: string
+          updated_at?: string
+          value_boolean?: boolean | null
+          value_date?: string | null
+          value_number?: number | null
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_custom_field_values_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "lead_custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_custom_field_values_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_custom_fields: {
+        Row: {
+          ad_account_id: string | null
+          created_at: string
+          display_order: number | null
+          field_name: string
+          field_options: string[] | null
+          field_type: string
+          id: string
+          is_required: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          created_at?: string
+          display_order?: number | null
+          field_name: string
+          field_options?: string[] | null
+          field_type?: string
+          id?: string
+          is_required?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          created_at?: string
+          display_order?: number | null
+          field_name?: string
+          field_options?: string[] | null
+          field_type?: string
+          id?: string
+          is_required?: boolean | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           ad_account_id: string | null
