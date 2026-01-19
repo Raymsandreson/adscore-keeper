@@ -382,9 +382,9 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
     }
   };
 
-  const formatCurrency = (value: number) => `R$ ${value.toFixed(2)}`;
-  const formatPercent = (value: number) => `${value.toFixed(2)}%`;
-  const formatNumber = (value: number) => value.toLocaleString('pt-BR');
+  const formatCurrency = (value: number | undefined | null) => `R$ ${(value ?? 0).toFixed(2)}`;
+  const formatPercent = (value: number | undefined | null) => `${(value ?? 0).toFixed(2)}%`;
+  const formatNumber = (value: number | undefined | null) => (value ?? 0).toLocaleString('pt-BR');
 
   const ChangeIndicator = ({ change, inverted = false }: { change: number; inverted?: boolean }) => {
     const isPositive = inverted ? change < 0 : change > 0;

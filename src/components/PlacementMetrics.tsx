@@ -86,8 +86,8 @@ export const PlacementMetrics = ({ placementData }: PlacementMetricsProps) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
-  const formatNumber = (value: number) => {
-    return new Intl.NumberFormat('pt-BR').format(value);
+  const formatNumber = (value: number | undefined | null) => {
+    return new Intl.NumberFormat('pt-BR').format(value ?? 0);
   };
 
   return (
