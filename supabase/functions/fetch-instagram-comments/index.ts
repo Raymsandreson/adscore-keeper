@@ -142,11 +142,53 @@ serve(async (req) => {
 
     console.log(`💬 Total de comentários encontrados: ${allComments.length}`);
 
+    // Fetch mentions on third-party posts (where someone tagged us)
+    const mentions: any[] = [];
+    try {
+      console.log("🏷️ Buscando menções em posts de terceiros...");
+      
+      const mentionsResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_comment?fields=id,text,timestamp,username,media{id,permalink,caption,owner{username}}&limit=50&access_token=${token}`
+      );
+      const mentionsData = await mentionsResponse.json();
+      
+      if (mentionsData.error) {
+        console.log("⚠️ Erro ao buscar menções (pode ser permissão):", mentionsData.error.message);
+      } else if (mentionsData.data) {
+        console.log(`🏷️ Menções encontradas: ${mentionsData.data.length}`);
+        
+        for (const mention of mentionsData.data) {
+          mentions.push({
+            comment_id: mention.id,
+            comment_text: mention.text,
+            author_username: mention.username,
+            created_at: mention.timestamp,
+            post_id: mention.media?.id || null,
+            post_url: mention.media?.permalink || null,
+            comment_type: "mention",
+            metadata: {
+              post_owner: mention.media?.owner?.username || null,
+              post_caption: mention.media?.caption || null,
+              is_third_party: true
+            }
+          });
+        }
+      }
+    } catch (mentionErr) {
+      console.log("⚠️ Não foi possível buscar menções:", mentionErr);
+    }
+
+    // Combine all comments and mentions
+    const allData = [...allComments, ...mentions];
+    console.log(`📊 Total (comentários + menções): ${allData.length}`);
+
     return new Response(
       JSON.stringify({ 
         success: true, 
-        comments: allComments,
-        total: allComments.length,
+        comments: allData,
+        total: allData.length,
+        commentsCount: allComments.length,
+        mentionsCount: mentions.length,
         instagramAccountId: igAccountId
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
