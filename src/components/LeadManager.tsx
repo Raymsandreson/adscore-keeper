@@ -319,6 +319,22 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     }
   };
 
+  const handleEditLead = async () => {
+    if (!editingLead) return;
+    
+    await updateLead(editingLead.id, {
+      lead_name: editingLead.lead_name,
+      lead_phone: editingLead.lead_phone,
+      lead_email: editingLead.lead_email,
+      campaign_name: editingLead.campaign_name,
+      ad_name: editingLead.ad_name,
+      notes: editingLead.notes,
+    });
+    
+    setEditingLead(null);
+    toast.success('Lead atualizado com sucesso!');
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
@@ -741,6 +757,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               loading={loading}
               onStatusChange={handleStatusChange}
               onDeleteLead={handleDeleteLead}
+              onEditLead={(lead) => setEditingLead(lead)}
               onToggleFollower={toggleFollower}
               onClassificationChange={updateClientClassification}
             />
@@ -915,6 +932,76 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Lead Dialog */}
+      <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Lead</DialogTitle>
+          </DialogHeader>
+          {editingLead && (
+            <div className="space-y-4">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  placeholder="Nome do lead"
+                  value={editingLead.lead_name || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, lead_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Telefone (WhatsApp)</Label>
+                <Input
+                  placeholder="(11) 99999-9999"
+                  value={editingLead.lead_phone || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, lead_phone: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={editingLead.lead_email || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, lead_email: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Campanha</Label>
+                <Input
+                  placeholder="Nome da campanha"
+                  value={editingLead.campaign_name || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, campaign_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Anúncio</Label>
+                <Input
+                  placeholder="Nome do anúncio"
+                  value={editingLead.ad_name || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, ad_name: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Observações</Label>
+                <Textarea
+                  placeholder="Anotações sobre o lead..."
+                  value={editingLead.notes || ''}
+                  onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingLead(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleEditLead}>
+                  Salvar Alterações
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
