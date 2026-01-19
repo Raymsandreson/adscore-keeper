@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import LeadsCenter from "./pages/LeadsCenter";
 import EditorialCalendarPage from "./pages/EditorialCalendarPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import LeaderboardPage from "./pages/LeaderboardPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/leads" element={<LeadsCenter />} />
             <Route path="/editorial" element={<EditorialCalendarPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
