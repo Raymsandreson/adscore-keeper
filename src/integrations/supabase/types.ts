@@ -83,6 +83,99 @@ export type Database = {
         }
         Relationships: []
       }
+      engagement_champions: {
+        Row: {
+          ad_account_id: string | null
+          badge_level: string
+          comments_count: number | null
+          created_at: string
+          final_position: number
+          id: string
+          mentions_count: number | null
+          profile_picture_url: string | null
+          total_points: number
+          user_id: string | null
+          username: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          badge_level: string
+          comments_count?: number | null
+          created_at?: string
+          final_position: number
+          id?: string
+          mentions_count?: number | null
+          profile_picture_url?: string | null
+          total_points: number
+          user_id?: string | null
+          username: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          badge_level?: string
+          comments_count?: number | null
+          created_at?: string
+          final_position?: number
+          id?: string
+          mentions_count?: number | null
+          profile_picture_url?: string | null
+          total_points?: number
+          user_id?: string | null
+          username?: string
+          week_end?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
+      engagement_championship_settings: {
+        Row: {
+          ad_account_id: string | null
+          bronze_threshold: number | null
+          created_at: string
+          diamond_threshold: number | null
+          gold_threshold: number | null
+          id: string
+          notify_on_new_champion: boolean | null
+          notify_on_rank_change: boolean | null
+          points_per_comment: number | null
+          points_per_mention: number | null
+          silver_threshold: number | null
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          bronze_threshold?: number | null
+          created_at?: string
+          diamond_threshold?: number | null
+          gold_threshold?: number | null
+          id?: string
+          notify_on_new_champion?: boolean | null
+          notify_on_rank_change?: boolean | null
+          points_per_comment?: number | null
+          points_per_mention?: number | null
+          silver_threshold?: number | null
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          bronze_threshold?: number | null
+          created_at?: string
+          diamond_threshold?: number | null
+          gold_threshold?: number | null
+          id?: string
+          notify_on_new_champion?: boolean | null
+          notify_on_rank_change?: boolean | null
+          points_per_comment?: number | null
+          points_per_mention?: number | null
+          silver_threshold?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       engagement_daily_stats: {
         Row: {
           ad_account_id: string | null
@@ -182,6 +275,60 @@ export type Database = {
           start_date?: string
           target_value?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_rankings: {
+        Row: {
+          ad_account_id: string | null
+          badge_level: string | null
+          comments_count: number | null
+          created_at: string
+          id: string
+          mentions_count: number | null
+          previous_rank_position: number | null
+          profile_picture_url: string | null
+          rank_position: number | null
+          total_points: number | null
+          updated_at: string
+          user_id: string | null
+          username: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          badge_level?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          mentions_count?: number | null
+          previous_rank_position?: number | null
+          profile_picture_url?: string | null
+          rank_position?: number | null
+          total_points?: number | null
+          updated_at?: string
+          user_id?: string | null
+          username: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          badge_level?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          mentions_count?: number | null
+          previous_rank_position?: number | null
+          profile_picture_url?: string | null
+          rank_position?: number | null
+          total_points?: number | null
+          updated_at?: string
+          user_id?: string | null
+          username?: string
+          week_end?: string
+          week_start?: string
         }
         Relationships: []
       }

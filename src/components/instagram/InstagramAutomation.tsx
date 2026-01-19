@@ -12,7 +12,8 @@ import {
   Plus,
   RefreshCw,
   BarChart3,
-  Filter
+  Filter,
+  Trophy
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
@@ -20,6 +21,7 @@ import { CommentsTracker } from "./CommentsTracker";
 import { EngagementStats } from "./EngagementStats";
 import { CommentsDashboard } from "./CommentsDashboard";
 import { ProspectingFunnel } from "./ProspectingFunnel";
+import { EngagementChampionship } from "./EngagementChampionship";
 interface InstagramAutomationProps {
   isConnected: boolean;
   pageId?: string;
@@ -50,10 +52,14 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="funnel" className="gap-2">
             <Filter className="h-4 w-4" />
             Funil
+          </TabsTrigger>
+          <TabsTrigger value="championship" className="gap-2">
+            <Trophy className="h-4 w-4" />
+            Campeonato
           </TabsTrigger>
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" />
@@ -79,6 +85,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
         <TabsContent value="funnel" className="mt-6">
           <ProspectingFunnel />
+        </TabsContent>
+
+        <TabsContent value="championship" className="mt-6">
+          <EngagementChampionship />
         </TabsContent>
 
         <TabsContent value="dashboard" className="mt-6">
