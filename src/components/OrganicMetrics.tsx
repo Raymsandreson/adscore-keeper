@@ -974,9 +974,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                     
                     const isInstagram = platform === 'instagram';
                     // Use totalInteractions from API if available, otherwise calculate manually
-                    const totalInteractions = breakdown.totalInteractions || (isInstagram 
-                      ? (breakdown.likes + breakdown.comments + (breakdown.saves || 0))
-                      : (breakdown.likes + breakdown.comments + (breakdown.shares || 0)));
+                    const totalInteractions = breakdown.totalInteractions ?? (isInstagram 
+                      ? ((breakdown.likes ?? 0) + (breakdown.comments ?? 0) + (breakdown.saves ?? 0))
+                      : ((breakdown.likes ?? 0) + (breakdown.comments ?? 0) + (breakdown.shares ?? 0)));
                     
                     return (
                       <TooltipProvider>
@@ -997,13 +997,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                                   <span className="flex items-center gap-1">
                                     <Heart className="h-3 w-3" /> Curtidas:
                                   </span>
-                                  <span className="font-semibold">{breakdown.likes.toLocaleString('pt-BR')}</span>
+                                  <span className="font-semibold">{(breakdown.likes ?? 0).toLocaleString('pt-BR')}</span>
                                 </div>
                                 <div className="flex justify-between gap-4">
                                   <span className="flex items-center gap-1">
                                     <MessageCircle className="h-3 w-3" /> Comentários:
                                   </span>
-                                  <span className="font-semibold">{breakdown.comments.toLocaleString('pt-BR')}</span>
+                                  <span className="font-semibold">{(breakdown.comments ?? 0).toLocaleString('pt-BR')}</span>
                                 </div>
                                 {isInstagram ? (
                                   <>
@@ -1031,13 +1031,13 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                                 <div className="border-t pt-1 mt-1">
                                   <div className="flex justify-between gap-4">
                                     <span>Total interações:</span>
-                                    <span className="font-semibold">{totalInteractions.toLocaleString('pt-BR')}</span>
+                                    <span className="font-semibold">{(totalInteractions ?? 0).toLocaleString('pt-BR')}</span>
                                   </div>
                                   <div className="flex justify-between gap-4">
                                     <span className="flex items-center gap-1">
                                       <Users className="h-3 w-3" /> Seguidores:
                                     </span>
-                                    <span className="font-semibold">{breakdown.followers.toLocaleString('pt-BR')}</span>
+                                    <span className="font-semibold">{(breakdown.followers ?? 0).toLocaleString('pt-BR')}</span>
                                   </div>
                                 </div>
                               </div>
@@ -1046,9 +1046,9 @@ const OrganicMetrics = ({ pageId, accessToken, isConnected, onMetricsChange, ext
                                   {breakdown.formula}
                                 </p>
                                 <p className="text-xs font-medium mt-1">
-                                  = {totalInteractions.toLocaleString('pt-BR')} / {breakdown.followers.toLocaleString('pt-BR')} × 100 = <span className="text-primary">{value.toFixed(2)}%</span>
+                                  = {(totalInteractions ?? 0).toLocaleString('pt-BR')} / {(breakdown.followers ?? 0).toLocaleString('pt-BR')} × 100 = <span className="text-primary">{(value ?? 0).toFixed(2)}%</span>
                                 </p>
-                                {isInstagram && breakdown.totalInteractions > 0 && (
+                                {isInstagram && (breakdown.totalInteractions ?? 0) > 0 && (
                                   <p className="text-[10px] text-muted-foreground mt-1.5 pt-1.5 border-t border-dashed">
                                     💡 Total de interações da API do Instagram (inclui curtidas, comentários, salvos, compartilhamentos e respostas)
                                   </p>
