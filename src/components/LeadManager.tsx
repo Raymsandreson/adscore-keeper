@@ -49,7 +49,9 @@ import { ptBR } from 'date-fns/locale';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { CustomFieldsManager } from './leads/CustomFieldsManager';
 import { CustomFieldsForm } from './leads/CustomFieldsForm';
+import { CardFieldsSettings } from './leads/CardFieldsSettings';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useCardFieldsSettings } from '@/hooks/useCardFieldsSettings';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -81,6 +83,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
   const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { config: cardFieldsConfig, updateField: updateCardField, resetToDefaults: resetCardFields } = useCardFieldsSettings();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -861,6 +864,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               onEditLead={(lead) => setEditingLead(lead)}
               onToggleFollower={toggleFollower}
               onClassificationChange={updateClientClassification}
+              cardFieldsConfig={cardFieldsConfig}
             />
           ) : (
             <>
@@ -1035,7 +1039,12 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       </Card>
         </TabsContent>
 
-        <TabsContent value="settings" className="mt-4">
+        <TabsContent value="settings" className="mt-4 space-y-6">
+          <CardFieldsSettings 
+            config={cardFieldsConfig} 
+            onUpdateField={updateCardField} 
+            onReset={resetCardFields} 
+          />
           <CustomFieldsManager adAccountId={adAccountId} />
         </TabsContent>
       </Tabs>

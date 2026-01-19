@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import { CardFieldsConfig } from '@/hooks/useCardFieldsSettings';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -47,6 +48,7 @@ interface LeadsPipelineProps {
   onToggleFollower?: (leadId: string, isFollower: boolean) => void;
   onNavigateToComment?: (commentId: string) => void;
   onClassificationChange?: (leadId: string, classification: ClientClassification) => void;
+  cardFieldsConfig?: CardFieldsConfig;
 }
 
 const classificationConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -73,7 +75,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -225,7 +227,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                                       <p>{lead.lead_name || 'Sem nome'}</p>
                                     </TooltipContent>
                                   </Tooltip>
-                                  {lead.campaign_name && (
+                                  {cardFieldsConfig?.campaign !== false && lead.campaign_name && (
                                     <Badge variant="outline" className="text-xs mt-1 truncate max-w-full">
                                       {lead.campaign_name}
                                     </Badge>
@@ -333,21 +335,34 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                               </div>
 
                               <div className="mt-2 space-y-1">
-                                {lead.lead_phone && (
+                                {cardFieldsConfig?.phone !== false && lead.lead_phone && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Phone className="h-3 w-3" />
                                     <span className="truncate">{lead.lead_phone}</span>
                                   </div>
                                 )}
-                                {lead.lead_email && (
+                                {cardFieldsConfig?.email !== false && lead.lead_email && (
                                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                     <Mail className="h-3 w-3" />
                                     <span className="truncate">{lead.lead_email}</span>
                                   </div>
                                 )}
+                                {cardFieldsConfig?.state && lead.state && (
+                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span className="font-medium">{lead.state}</span>
+                                    {cardFieldsConfig?.city && lead.city && (
+                                      <span>- {lead.city}</span>
+                                    )}
+                                  </div>
+                                )}
+                                {cardFieldsConfig?.city && !cardFieldsConfig?.state && lead.city && (
+                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <span>{lead.city}</span>
+                                  </div>
+                                )}
                               </div>
 
-                              {lead.status === 'converted' && (lead.conversion_value ?? 0) > 0 && (
+                              {cardFieldsConfig?.conversionValue !== false && lead.status === 'converted' && (lead.conversion_value ?? 0) > 0 && (
                                 <div className="mt-2">
                                   <Badge className="bg-emerald-500 text-white text-xs">
                                     R$ {(lead.conversion_value ?? 0).toLocaleString('pt-BR')}
@@ -356,7 +371,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                               )}
 
                               {/* Follower badge for Instagram leads */}
-                              {lead.is_follower !== null && (lead.instagram_username || lead.source === 'instagram') && (
+                              {cardFieldsConfig?.followerBadge !== false && lead.is_follower !== null && (lead.instagram_username || lead.source === 'instagram') && (
                                 <div className="mt-2">
                                   <Badge 
                                     variant="outline" 
@@ -372,7 +387,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                               )}
 
                               {/* Client Classification Badge */}
-                              {lead.client_classification && classificationConfig[lead.client_classification] && (
+                              {cardFieldsConfig?.classification !== false && lead.client_classification && classificationConfig[lead.client_classification] && (
                                 <div className="mt-2">
                                   <Badge 
                                     variant="outline" 
@@ -385,35 +400,39 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                               )}
 
                               {/* Sync Status & Date */}
-                              <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
-                                {lead.facebook_lead_id && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="flex items-center gap-1">
-                                        {lead.sync_status === 'synced' && (
-                                          <Cloud className="h-3 w-3 text-green-500" />
-                                        )}
-                                        {lead.sync_status === 'syncing' && (
-                                          <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
-                                        )}
-                                        {lead.sync_status === 'error' && (
-                                          <AlertCircle className="h-3 w-3 text-red-500" />
-                                        )}
-                                        {lead.sync_status === 'local' && (
-                                          <CloudOff className="h-3 w-3 text-muted-foreground" />
-                                        )}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      {lead.sync_status === 'synced' && 'Sincronizado com Facebook'}
-                                      {lead.sync_status === 'syncing' && 'Sincronizando...'}
-                                      {lead.sync_status === 'error' && 'Erro na sincronização'}
-                                      {lead.sync_status === 'local' && 'Aguardando sincronização'}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
+                              {(cardFieldsConfig?.createdAt !== false || cardFieldsConfig?.syncStatus !== false) && (
+                                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                                  {cardFieldsConfig?.createdAt !== false && (
+                                    <span>{new Date(lead.created_at).toLocaleDateString('pt-BR')}</span>
+                                  )}
+                                  {cardFieldsConfig?.syncStatus !== false && lead.facebook_lead_id && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="flex items-center gap-1">
+                                          {lead.sync_status === 'synced' && (
+                                            <Cloud className="h-3 w-3 text-green-500" />
+                                          )}
+                                          {lead.sync_status === 'syncing' && (
+                                            <Loader2 className="h-3 w-3 text-blue-500 animate-spin" />
+                                          )}
+                                          {lead.sync_status === 'error' && (
+                                            <AlertCircle className="h-3 w-3 text-red-500" />
+                                          )}
+                                          {lead.sync_status === 'local' && (
+                                            <CloudOff className="h-3 w-3 text-muted-foreground" />
+                                          )}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        {lead.sync_status === 'synced' && 'Sincronizado com Facebook'}
+                                        {lead.sync_status === 'syncing' && 'Sincronizando...'}
+                                        {lead.sync_status === 'error' && 'Erro na sincronização'}
+                                        {lead.sync_status === 'local' && 'Aguardando sincronização'}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </CardContent>
