@@ -651,8 +651,11 @@ export type Database = {
           ad_start_date: string | null
           adset_id: string | null
           adset_name: string | null
+          became_client_date: string | null
           campaign_id: string | null
           campaign_name: string | null
+          city: string | null
+          classification_date: string | null
           client_classification: string | null
           conversion_value: number | null
           converted_at: string | null
@@ -668,9 +671,11 @@ export type Database = {
           lead_email: string | null
           lead_name: string | null
           lead_phone: string | null
+          neighborhood: string | null
           notes: string | null
           qualified_at: string | null
           source: string | null
+          state: string | null
           status: string | null
           sync_status: string | null
           updated_at: string
@@ -682,8 +687,11 @@ export type Database = {
           ad_start_date?: string | null
           adset_id?: string | null
           adset_name?: string | null
+          became_client_date?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          city?: string | null
+          classification_date?: string | null
           client_classification?: string | null
           conversion_value?: number | null
           converted_at?: string | null
@@ -699,9 +707,11 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          neighborhood?: string | null
           notes?: string | null
           qualified_at?: string | null
           source?: string | null
+          state?: string | null
           status?: string | null
           sync_status?: string | null
           updated_at?: string
@@ -713,8 +723,11 @@ export type Database = {
           ad_start_date?: string | null
           adset_id?: string | null
           adset_name?: string | null
+          became_client_date?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          city?: string | null
+          classification_date?: string | null
           client_classification?: string | null
           conversion_value?: number | null
           converted_at?: string | null
@@ -730,9 +743,11 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          neighborhood?: string | null
           notes?: string | null
           qualified_at?: string | null
           source?: string | null
+          state?: string | null
           status?: string | null
           sync_status?: string | null
           updated_at?: string
