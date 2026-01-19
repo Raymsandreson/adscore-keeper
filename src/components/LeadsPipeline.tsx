@@ -159,7 +159,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
           return (
             <div
               key={column.id}
-              className={`flex-shrink-0 w-72 rounded-lg border transition-all ${
+              className={`flex-shrink-0 w-80 rounded-lg border transition-all ${
                 isDropTarget ? 'ring-2 ring-primary ring-offset-2' : ''
               }`}
               onDragOver={(e) => handleDragOver(e, column.id)}
@@ -214,8 +214,8 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
-                                <div className="truncate">
-                                  <p className="font-medium text-sm truncate">
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-sm break-words">
                                     {lead.lead_name || 'Sem nome'}
                                   </p>
                                   {lead.campaign_name && (
@@ -255,17 +255,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                                       </DropdownMenuItem>
                                     )}
                                     
-                                    {/* Extract username from lead_name if starts with @ */}
-                                    {!lead.instagram_username && lead.lead_name?.startsWith('@') && (
-                                      <DropdownMenuItem
-                                        onClick={() => window.open(`https://instagram.com/${lead.lead_name?.replace('@', '')}`, '_blank')}
-                                      >
-                                        <Instagram className="h-3 w-3 mr-2" />
-                                        Ver perfil Instagram
-                                      </DropdownMenuItem>
-                                    )}
-                                    
-                                    {(lead.instagram_username || lead.lead_name?.startsWith('@') || lead.source === 'instagram') && onToggleFollower && (
+                                    {(lead.instagram_username || lead.source === 'instagram') && onToggleFollower && (
                                       <>
                                         <DropdownMenuSeparator />
                                         {lead.is_follower ? (
@@ -359,7 +349,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                               )}
 
                               {/* Follower badge for Instagram leads */}
-                              {lead.is_follower !== null && (lead.instagram_username || lead.lead_name?.startsWith('@') || lead.source === 'instagram') && (
+                              {lead.is_follower !== null && (lead.instagram_username || lead.source === 'instagram') && (
                                 <div className="mt-2">
                                   <Badge 
                                     variant="outline" 
