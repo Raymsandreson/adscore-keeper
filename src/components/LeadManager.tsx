@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +49,7 @@ import { ptBR } from 'date-fns/locale';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { CustomFieldsManager } from './leads/CustomFieldsManager';
 import { CustomFieldsForm } from './leads/CustomFieldsForm';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -79,6 +80,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
   const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -115,7 +117,13 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     { day: -1, count: 0 }
   );
 
-  // Filter leads by day of week
+  // Load cities when editing a lead with a state already set
+  useEffect(() => {
+    if (editingLead?.state) {
+      fetchCities(editingLead.state);
+    }
+  }, [editingLead?.id]);
+
   const filteredLeads = dayOfWeekFilter !== null
     ? leads.filter(lead => getDay(new Date(lead.created_at)) === dayOfWeekFilter)
     : leads;
@@ -1041,20 +1049,44 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <Label>Cidade</Label>
-                  <Input
-                    placeholder="Cidade"
-                    value={editingLead.city || ''}
-                    onChange={(e) => setEditingLead({ ...editingLead, city: e.target.value })}
-                  />
+                  <Label>Estado</Label>
+                  <Select
+                    value={editingLead.state || ''}
+                    onValueChange={(value) => {
+                      setEditingLead({ ...editingLead, state: value, city: '' });
+                      fetchCities(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o estado" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50 max-h-60">
+                      {states.map((state) => (
+                        <SelectItem key={state.sigla} value={state.sigla}>
+                          {state.sigla} - {state.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
-                  <Label>Estado</Label>
-                  <Input
-                    placeholder="UF"
-                    value={editingLead.state || ''}
-                    onChange={(e) => setEditingLead({ ...editingLead, state: e.target.value })}
-                  />
+                  <Label>Cidade</Label>
+                  <Select
+                    value={editingLead.city || ''}
+                    onValueChange={(value) => setEditingLead({ ...editingLead, city: value })}
+                    disabled={!editingLead.state || loadingCities}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingCities ? 'Carregando...' : 'Selecione a cidade'} />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50 max-h-60">
+                      {cities.map((city) => (
+                        <SelectItem key={city.id} value={city.nome}>
+                          {city.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Bairro</Label>
