@@ -26,8 +26,10 @@ import {
   CalendarIcon,
   X,
   Timer,
-  CheckCheck
+  CheckCheck,
+  Image
 } from "lucide-react";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -880,15 +882,38 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                               </div>
                               <p className="text-sm">{comment.comment_text}</p>
                               {comment.post_url && (
-                                <a
-                                  href={comment.post_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline flex items-center gap-1 mt-2"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  Ver post
-                                </a>
+                                <HoverCard openDelay={200} closeDelay={100}>
+                                  <HoverCardTrigger asChild>
+                                    <a
+                                      href={comment.post_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-2 group"
+                                    >
+                                      <Image className="h-3 w-3" />
+                                      Ver post
+                                      <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </a>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent side="top" className="w-80 p-0 overflow-hidden">
+                                    <div className="relative">
+                                      <div className="aspect-square w-full bg-muted flex items-center justify-center">
+                                        <iframe
+                                          src={`${comment.post_url}embed/captioned/`}
+                                          className="w-full h-[320px] border-0"
+                                          scrolling="no"
+                                          allowTransparency={true}
+                                          loading="lazy"
+                                        />
+                                      </div>
+                                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+                                        <p className="text-xs text-white truncate">
+                                          {comment.post_url}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </HoverCardContent>
+                                </HoverCard>
                               )}
                             </div>
                             <div className="flex flex-col items-end gap-2">
