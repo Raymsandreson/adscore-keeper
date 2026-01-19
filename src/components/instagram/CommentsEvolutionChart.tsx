@@ -87,9 +87,11 @@ export const CommentsEvolutionChart = ({ comments }: CommentsEvolutionChartProps
     return days.map(day => {
       const dayKey = format(day, 'yyyy-MM-dd');
       const dayData = commentsByDay[dayKey] || { received: 0, sent: 0 };
+      const dayOfWeek = format(day, 'EEE', { locale: ptBR });
+      const capitalizedDay = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
       return {
         date: dayKey,
-        dateLabel: format(day, 'dd/MM', { locale: ptBR }),
+        dateLabel: `${format(day, 'dd/MM', { locale: ptBR })} (${capitalizedDay})`,
         received: dayData.received,
         sent: dayData.sent,
         total: dayData.received + dayData.sent
