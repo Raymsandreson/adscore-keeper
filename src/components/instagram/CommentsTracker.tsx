@@ -38,6 +38,7 @@ import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
+import { InstagramAccountSelector, InstagramAccount } from "./InstagramAccountSelector";
 
 type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
 
@@ -63,6 +64,7 @@ interface Comment {
   created_at: string;
   converted_to_lead?: boolean;
   prospect_classification?: string[] | null;
+  ad_account_id?: string | null;
 }
 
 interface CommentsTrackerProps {
@@ -80,6 +82,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [stats, setStats] = useState({ received: 0, sent: 0 });
   const [convertedUsers, setConvertedUsers] = useState<Set<string>>(new Set());
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  
+  // Instagram account selection
+  const [selectedAccounts, setSelectedAccounts] = useState<InstagramAccount[]>([]);
   
   // Classification + Lead conversion dialog states
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
@@ -213,21 +218,90 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }
   };
 
-  // Sync comments from Instagram API
+  // Sync comments from Instagram API for all selected accounts
   const syncFromInstagram = useCallback(async () => {
     if (isSyncing) return;
     
+    // Check if we have accounts to sync
+    if (selectedAccounts.length === 0) {
+      toast.error('Selecione pelo menos uma conta para sincronizar');
+      return;
+    }
+    
     setIsSyncing(true);
+    let totalSaved = 0;
+    let accountsWithErrors = 0;
+    
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
-        body: { accessToken, pageId }
-      });
+      for (const account of selectedAccounts) {
+        try {
+          // Get the access token for this account
+          const tokenToUse = account.access_token === 'USE_GLOBAL_TOKEN' 
+            ? accessToken 
+            : account.access_token;
+          
+          const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
+            body: { 
+              accessToken: tokenToUse, 
+              instagramAccountId: account.instagram_id 
+            }
+          });
 
-      if (error) throw error;
+          if (error) {
+            console.error(`Error syncing ${account.account_name}:`, error);
+            accountsWithErrors++;
+            continue;
+          }
 
-      if (!data.success) {
-        toast.error(data.error || 'Erro ao sincronizar comentários');
-        return;
+          if (!data.success) {
+            console.error(`Failed to sync ${account.account_name}:`, data.error);
+            accountsWithErrors++;
+            continue;
+          }
+
+          // Save comments to database
+          if (data.comments && data.comments.length > 0) {
+            // First check existing comment_ids to avoid duplicates
+            const { data: existingComments } = await supabase
+              .from('instagram_comments')
+              .select('comment_id')
+              .not('comment_id', 'is', null);
+            
+            const existingIds = new Set((existingComments || []).map(c => c.comment_id));
+            
+            // Filter new comments
+            const newComments = data.comments.filter((c: any) => !existingIds.has(c.comment_id));
+            
+            if (newComments.length > 0) {
+              // Insert new comments with account reference
+              const commentsToInsert = newComments.map((comment: any) => ({
+                comment_id: comment.comment_id,
+                comment_text: comment.comment_text,
+                author_username: comment.author_username,
+                created_at: comment.created_at,
+                post_id: comment.post_id,
+                post_url: comment.post_url,
+                comment_type: comment.comment_type,
+                parent_comment_id: comment.parent_comment_id || null,
+                platform: 'instagram',
+                ad_account_id: account.instagram_id, // Track which account this came from
+                metadata: { account_name: account.account_name }
+              }));
+              
+              const { error: insertError, data: inserted } = await supabase
+                .from('instagram_comments')
+                .insert(commentsToInsert)
+                .select();
+
+              if (!insertError && inserted) {
+                totalSaved += inserted.length;
+              }
+            }
+          }
+        } catch (accountError) {
+          console.error(`Error syncing account ${account.account_name}:`, accountError);
+          accountsWithErrors++;
+        }
       }
 
       // Update last sync time
@@ -235,55 +309,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       setLastSyncTime(now);
       localStorage.setItem('comments_last_sync', now.toISOString());
 
-      // Save comments to database
-      if (data.comments && data.comments.length > 0) {
-        // First check existing comment_ids to avoid duplicates
-        const { data: existingComments } = await supabase
-          .from('instagram_comments')
-          .select('comment_id')
-          .not('comment_id', 'is', null);
-        
-        const existingIds = new Set((existingComments || []).map(c => c.comment_id));
-        
-        // Filter new comments
-        const newComments = data.comments.filter((c: any) => !existingIds.has(c.comment_id));
-        
-        if (newComments.length === 0) {
-          toast.info('Todos os comentários já estão sincronizados');
-          return;
-        }
-        
-        // Insert new comments
-        const commentsToInsert = newComments.map((comment: any) => ({
-          comment_id: comment.comment_id,
-          comment_text: comment.comment_text,
-          author_username: comment.author_username,
-          created_at: comment.created_at,
-          post_id: comment.post_id,
-          post_url: comment.post_url,
-          comment_type: comment.comment_type,
-          parent_comment_id: comment.parent_comment_id || null,
-          platform: 'instagram'
-        }));
-        
-        const { error: insertError, data: inserted } = await supabase
-          .from('instagram_comments')
-          .insert(commentsToInsert)
-          .select();
-
-        const saved = inserted?.length || 0;
-        if (insertError) {
-          console.error('Error inserting comments:', insertError);
-          toast.error('Erro ao salvar comentários no banco');
-          return;
-        }
-        
-        toast.success(`${saved} comentários sincronizados do Instagram!`);
+      if (totalSaved > 0) {
+        toast.success(`${totalSaved} comentários sincronizados de ${selectedAccounts.length - accountsWithErrors} conta(s)!`);
         await fetchComments();
         await fetchStats();
         await checkExistingLeads();
+      } else if (accountsWithErrors === selectedAccounts.length) {
+        toast.error('Erro ao sincronizar todas as contas');
       } else {
-        toast.info('Nenhum comentário encontrado no Instagram');
+        toast.info('Todos os comentários já estão sincronizados');
       }
     } catch (error: any) {
       console.error('Erro ao sincronizar:', error);
@@ -291,7 +325,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     } finally {
       setIsSyncing(false);
     }
-  }, [accessToken, pageId, isSyncing]);
+  }, [accessToken, selectedAccounts, isSyncing]);
 
   // Format time ago for last sync
   const formatLastSync = (date: Date | null): string => {
@@ -722,6 +756,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Instagram Account Selector */}
+              <InstagramAccountSelector
+                selectedAccounts={selectedAccounts}
+                onSelectionChange={setSelectedAccounts}
+              />
+              
               {/* Last Sync Indicator */}
               <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-md text-sm">
                 <CheckCheck className="h-4 w-4 text-muted-foreground" />
@@ -737,7 +777,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <Switch
                   checked={autoRefreshEnabled}
                   onCheckedChange={setAutoRefreshEnabled}
-                  disabled={!isConnected}
+                  disabled={selectedAccounts.length === 0}
                 />
                 {autoRefreshEnabled && (
                   <select
@@ -754,7 +794,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 )}
               </div>
               
-              <Button variant="outline" size="sm" onClick={syncFromInstagram} disabled={isSyncing || !isConnected}>
+              <Button variant="outline" size="sm" onClick={syncFromInstagram} disabled={isSyncing || selectedAccounts.length === 0}>
                 {isSyncing ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
