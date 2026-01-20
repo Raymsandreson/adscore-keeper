@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { differenceInHours } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 import { 
   User, 
   ChevronRight,
@@ -216,9 +217,18 @@ export function RecentProspects() {
 
                 {/* User Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">
-                    {prospect.prospect_name || prospect.author_username || 'Desconhecido'}
-                  </p>
+                  {prospect.author_username ? (
+                    <InstagramProfileHoverCard 
+                      username={prospect.author_username}
+                      className="font-medium text-sm truncate"
+                    >
+                      <span>{prospect.prospect_name || prospect.author_username}</span>
+                    </InstagramProfileHoverCard>
+                  ) : (
+                    <p className="font-medium text-sm truncate">
+                      {prospect.prospect_name || 'Desconhecido'}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground truncate">
                     {prospect.comment_text?.slice(0, 50) || 'Sem comentário'}
                     {prospect.comment_text && prospect.comment_text.length > 50 ? '...' : ''}
