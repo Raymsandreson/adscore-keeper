@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Dialog,
   DialogContent,
@@ -22,7 +25,9 @@ import {
   TrendingUp,
   AlertCircle,
   CheckCircle2,
-  Loader2
+  Loader2,
+  KeyRound,
+  Link2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -68,6 +73,12 @@ export const InstagramAccountsManager = () => {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [addingAccount, setAddingAccount] = useState<string | null>(null);
+  
+  // Manual account form state
+  const [manualUsername, setManualUsername] = useState("");
+  const [manualInstagramId, setManualInstagramId] = useState("");
+  const [manualAccessToken, setManualAccessToken] = useState("");
+  const [addingManual, setAddingManual] = useState(false);
 
   useEffect(() => {
     fetchAccounts();
@@ -129,7 +140,65 @@ export const InstagramAccountsManager = () => {
 
   const openDialog = () => {
     setDialogOpen(true);
-    fetchAvailableAccounts();
+    // Don't auto-fetch, let user choose the tab
+  };
+
+  const addManualAccount = async () => {
+    if (!manualUsername.trim()) {
+      toast.error('Digite o username da conta');
+      return;
+    }
+    if (!manualInstagramId.trim()) {
+      toast.error('Digite o ID numérico do Instagram Business');
+      return;
+    }
+    if (!/^\d+$/.test(manualInstagramId.trim())) {
+      toast.error('O ID deve ser numérico (ex: 17841400000000000)');
+      return;
+    }
+    if (!manualAccessToken.trim()) {
+      toast.error('Digite o Access Token');
+      return;
+    }
+
+    setAddingManual(true);
+
+    try {
+      const username = manualUsername.trim().replace('@', '');
+      
+      const { data, error } = await supabase
+        .from('instagram_accounts' as any)
+        .insert({
+          account_name: `@${username}`,
+          instagram_id: manualInstagramId.trim(),
+          access_token: manualAccessToken.trim(),
+          is_active: true,
+          followers_count: 0,
+          following_count: 0,
+          media_count: 0,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        toast.error('Erro ao adicionar conta', { description: error.message });
+      } else {
+        const newAccountData = data as unknown as InstagramAccount;
+        toast.success(`@${username} adicionado com sucesso!`);
+        setAccounts([newAccountData, ...accounts]);
+        setManualUsername("");
+        setManualInstagramId("");
+        setManualAccessToken("");
+        setDialogOpen(false);
+        
+        // Sync the account immediately
+        syncAccount(newAccountData.id);
+      }
+    } catch (err: any) {
+      toast.error('Erro ao adicionar conta', { description: err.message });
+    }
+
+    setAddingManual(false);
   };
 
   const addAccount = async (availableAccount: AvailableAccount) => {
@@ -262,68 +331,152 @@ export const InstagramAccountsManager = () => {
               <DialogHeader>
                 <DialogTitle>Conectar Conta do Instagram</DialogTitle>
                 <DialogDescription>
-                  Selecione uma conta do Instagram Business conectada ao seu Meta Business
+                  Conecte via Meta Business ou adicione manualmente
                 </DialogDescription>
               </DialogHeader>
-              <div className="py-4">
-                {loadingAvailable ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Buscando contas...</span>
+              
+              <Tabs defaultValue="manual" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="manual" className="gap-2">
+                    <KeyRound className="h-4 w-4" />
+                    Adicionar Manual
+                  </TabsTrigger>
+                  <TabsTrigger value="meta" className="gap-2" onClick={fetchAvailableAccounts}>
+                    <Link2 className="h-4 w-4" />
+                    Via Meta Business
+                  </TabsTrigger>
+                </TabsList>
+                
+                {/* Manual Tab */}
+                <TabsContent value="manual" className="space-y-4 mt-4">
+                  <div className="bg-muted/50 p-4 rounded-lg text-sm space-y-2">
+                    <p className="font-medium">Como obter os dados:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                      <li>Acesse o <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="text-primary underline">Graph API Explorer</a></li>
+                      <li>Gere um token com as permissões: <code className="bg-muted px-1 rounded">instagram_basic</code>, <code className="bg-muted px-1 rounded">instagram_manage_insights</code></li>
+                      <li>O ID numérico pode ser encontrado fazendo uma chamada GET para <code className="bg-muted px-1 rounded">/me/accounts</code></li>
+                    </ol>
                   </div>
-                ) : availableAccounts.length === 0 ? (
-                  <div className="text-center py-8">
-                    <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">
-                      Nenhuma conta disponível para conectar.
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Certifique-se de que o token Meta tem acesso a páginas com Instagram Business.
-                    </p>
+                  
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-username">Username do Instagram</Label>
+                      <Input
+                        id="manual-username"
+                        placeholder="@seuusuario"
+                        value={manualUsername}
+                        onChange={(e) => setManualUsername(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-id">ID Numérico do Instagram Business</Label>
+                      <Input
+                        id="manual-id"
+                        placeholder="17841400000000000"
+                        value={manualInstagramId}
+                        onChange={(e) => setManualInstagramId(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        ID numérico da conta (não é o username)
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="manual-token">Access Token</Label>
+                      <Input
+                        id="manual-token"
+                        type="password"
+                        placeholder="EAAxxxxxx..."
+                        value={manualAccessToken}
+                        onChange={(e) => setManualAccessToken(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Token de acesso com permissões de Instagram Business
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="grid gap-3">
-                    {availableAccounts.map((account) => (
-                      <div 
-                        key={account.instagram_id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <img 
-                            src={account.profile_picture_url} 
-                            alt={account.username}
-                            className="w-12 h-12 rounded-full object-cover"
-                          />
-                          <div>
-                            <p className="font-medium">@{account.username}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {account.followers_count.toLocaleString('pt-BR')} seguidores • 
-                              {account.media_count.toLocaleString('pt-BR')} posts
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Página: {account.page_name}
-                            </p>
-                          </div>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          onClick={() => addAccount(account)}
-                          disabled={addingAccount === account.instagram_id}
+                  
+                  <Button 
+                    className="w-full" 
+                    onClick={addManualAccount}
+                    disabled={addingManual}
+                  >
+                    {addingManual ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    Adicionar Conta
+                  </Button>
+                </TabsContent>
+                
+                {/* Meta Business Tab */}
+                <TabsContent value="meta" className="mt-4">
+                  {loadingAvailable ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-muted-foreground">Buscando contas...</span>
+                    </div>
+                  ) : availableAccounts.length === 0 ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">
+                        Nenhuma conta disponível para conectar.
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Certifique-se de que o META_ACCESS_TOKEN está configurado e tem acesso a páginas com Instagram Business.
+                      </p>
+                      <Button variant="outline" size="sm" className="mt-4" onClick={fetchAvailableAccounts}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Tentar Novamente
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {availableAccounts.map((account) => (
+                        <div 
+                          key={account.instagram_id}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                         >
-                          {addingAccount === account.instagram_id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Conectar
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          <div className="flex items-center gap-4">
+                            <img 
+                              src={account.profile_picture_url} 
+                              alt={account.username}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                            <div>
+                              <p className="font-medium">@{account.username}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {account.followers_count.toLocaleString('pt-BR')} seguidores • 
+                                {account.media_count.toLocaleString('pt-BR')} posts
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Página: {account.page_name}
+                              </p>
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            onClick={() => addAccount(account)}
+                            disabled={addingAccount === account.instagram_id}
+                          >
+                            {addingAccount === account.instagram_id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Conectar
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+              
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   Fechar
