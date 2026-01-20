@@ -41,6 +41,7 @@ import {
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
+import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -565,9 +566,16 @@ export function ProspectingFunnel() {
                           <span className="ml-1">{stageConfig.label}</span>
                         </Badge>
                         <div>
-                          <p className="font-medium text-sm">
-                            {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
-                          </p>
+                          {prospect.author_username ? (
+                            <InstagramProfileHoverCard 
+                              username={prospect.author_username}
+                              className="font-medium text-sm"
+                            >
+                              <span>{prospect.prospect_name || `@${prospect.author_username}`}</span>
+                            </InstagramProfileHoverCard>
+                          ) : (
+                            <p className="font-medium text-sm">{prospect.prospect_name || 'Sem nome'}</p>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             {prospect.daysSinceCreated} dias parado
                           </p>
@@ -708,9 +716,16 @@ export function ProspectingFunnel() {
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1 flex-wrap">
-                                    <p className="font-medium text-sm truncate">
-                                      {prospect.prospect_name || `@${prospect.author_username}` || 'Sem nome'}
-                                    </p>
+                                    {prospect.author_username ? (
+                                      <InstagramProfileHoverCard 
+                                        username={prospect.author_username}
+                                        className="font-medium text-sm truncate"
+                                      >
+                                        <span>{prospect.prospect_name || `@${prospect.author_username}`}</span>
+                                      </InstagramProfileHoverCard>
+                                    ) : (
+                                      <p className="font-medium text-sm truncate">{prospect.prospect_name || 'Sem nome'}</p>
+                                    )}
                                     {isStagnant && (
                                       <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                                     )}

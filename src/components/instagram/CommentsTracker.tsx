@@ -39,6 +39,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
 import { InstagramAccountSelector, InstagramAccount } from "./InstagramAccountSelector";
+import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 
 type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
 
@@ -1032,10 +1033,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                   {comment.platform}
                                 </Badge>
                                 {comment.author_username && (
-                                  <span className="text-sm font-medium flex items-center gap-1">
-                                    <User className="h-3 w-3" />
-                                    {comment.author_username}
-                                  </span>
+                                  <InstagramProfileHoverCard 
+                                    username={comment.author_username}
+                                    className="text-sm font-medium"
+                                  />
                                 )}
                                 {isConverted && (
                                   <Badge variant="outline" className="text-green-600 border-green-600">
