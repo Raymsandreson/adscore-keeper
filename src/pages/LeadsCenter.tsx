@@ -18,7 +18,8 @@ import {
   Info,
   Zap,
   MessageSquare,
-  AlertTriangle
+  AlertTriangle,
+  Instagram
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -28,6 +29,7 @@ import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import LeadManager from "@/components/LeadManager";
 import { useLeads } from "@/hooks/useLeads";
+import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -190,10 +192,14 @@ const LeadsCenter = () => {
 
           {/* Tabs for Lead Management and Analytics */}
           <Tabs defaultValue="leads" className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsList className="grid w-full grid-cols-4 mb-4">
               <TabsTrigger value="leads" className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Leads WhatsApp
+              </TabsTrigger>
+              <TabsTrigger value="instagram" className="flex items-center gap-2">
+                <Instagram className="h-4 w-4" />
+                Contas Instagram
               </TabsTrigger>
               <TabsTrigger value="analytics" className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4" />
@@ -208,6 +214,11 @@ const LeadsCenter = () => {
             {/* Lead Manager Tab */}
             <TabsContent value="leads">
               <LeadManager adAccountId={adAccountId || undefined} />
+            </TabsContent>
+
+            {/* Instagram Accounts Tab */}
+            <TabsContent value="instagram">
+              <InstagramAccountsManager />
             </TabsContent>
 
             {/* Analytics Tab */}
