@@ -47,9 +47,14 @@ const Dashboard = () => {
   const [pendingProspectsCount, setPendingProspectsCount] = useState(0);
   
   // Read tab from URL params
-  const initialTab = searchParams.get('tab') || 'paid';
-  const initialSubTab = searchParams.get('subtab') || undefined;
-  const [activeMainTab, setActiveMainTab] = useState(initialTab);
+  const urlTab = searchParams.get('tab') || 'paid';
+  const urlSubTab = searchParams.get('subtab') || undefined;
+  const [activeMainTab, setActiveMainTab] = useState(urlTab);
+
+  // Sync activeMainTab with URL changes
+  useEffect(() => {
+    setActiveMainTab(urlTab);
+  }, [urlTab]);
 
   // Fetch unclassified comments count and pending prospects count
   useEffect(() => {
@@ -758,7 +763,7 @@ const Dashboard = () => {
 
           {/* Tab: Automação Instagram */}
           <TabsContent value="automation" className="mt-6">
-            <InstagramAutomation isConnected={isConnected} initialTab={initialSubTab} />
+            <InstagramAutomation isConnected={isConnected} initialTab={urlSubTab} />
           </TabsContent>
 
           {/* Tab: Metas e Prazos */}
