@@ -8,8 +8,14 @@ import {
   Trophy, Medal, Crown, Star, TrendingUp, TrendingDown, Minus,
   RefreshCw, Settings, Share2, Bell, Users, MessageCircle, AtSign,
   Award, Flame, Sparkles, ChevronUp, ChevronDown, Calendar, History,
-  Download, Image
+  Download, Image, Copy, ChevronDownIcon
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, subWeeks, differenceInDays } from 'date-fns';
@@ -440,6 +446,71 @@ export const EngagementChampionship: React.FC = () => {
     }
   };
 
+  const copyToClipboard = async () => {
+    if (!exportRef.current || rankings.length === 0) {
+      toast.error('Nenhum ranking para copiar');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      // Create a temporary container for the export card
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      document.body.appendChild(container);
+
+      // Render the export card
+      const { createRoot } = await import('react-dom/client');
+      const root = createRoot(container);
+      
+      await new Promise<void>((resolve) => {
+        root.render(
+          <RankingExportCard
+            ref={exportRef}
+            rankings={rankings}
+            weekStart={currentWeekStart}
+            weekEnd={currentWeekEnd}
+            settings={settings}
+          />
+        );
+        setTimeout(resolve, 100);
+      });
+
+      // Capture the image
+      const canvas = await html2canvas(container.firstChild as HTMLElement, {
+        backgroundColor: null,
+        scale: 2,
+        useCORS: true,
+      });
+
+      // Clean up
+      root.unmount();
+      document.body.removeChild(container);
+
+      // Copy to clipboard
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            toast.success('Imagem copiada para a área de transferência!');
+          } catch (clipboardError) {
+            console.error('Erro ao copiar para clipboard:', clipboardError);
+            toast.error('Seu navegador não suporta copiar imagens. Use a opção Baixar.');
+          }
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error('Erro ao copiar imagem:', error);
+      toast.error('Erro ao copiar imagem');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     // Prevent multiple initial fetches
     if (hasFetched.current) return;
@@ -636,19 +707,33 @@ export const EngagementChampionship: React.FC = () => {
                   calculateRankings();
                 }} 
               />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={exportAsImage} 
-                disabled={exporting || rankings.length === 0}
-              >
-                {exporting ? (
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Image className="w-4 h-4 mr-2" />
-                )}
-                Exportar
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    disabled={exporting || rankings.length === 0}
+                  >
+                    {exporting ? (
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Image className="w-4 h-4 mr-2" />
+                    )}
+                    Exportar
+                    <ChevronDownIcon className="w-4 h-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={exportAsImage}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Baixar imagem
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={copyToClipboard}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copiar para área de transferência
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button variant="outline" size="sm" onClick={shareLeaderboard}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Compartilhar
