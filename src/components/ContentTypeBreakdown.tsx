@@ -62,6 +62,25 @@ const formatNumber = (num: number | undefined | null): string => {
   return num.toLocaleString('pt-BR');
 };
 
+// Default empty content type data
+const emptyContentType = {
+  views: 0,
+  likes: 0,
+  comments: 0,
+  shares: 0,
+  saves: 0,
+  reach: 0,
+  count: 0
+};
+
+const emptyStoryType = {
+  views: 0,
+  replies: 0,
+  exits: 0,
+  reach: 0,
+  count: 0
+};
+
 export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: ContentTypeBreakdownProps) => {
   if (!breakdown) {
     return (
@@ -81,11 +100,17 @@ export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: Conten
     );
   }
 
+  // Safe access with fallback to empty objects
+  const reelsData = breakdown.reels ?? emptyContentType;
+  const feedData = breakdown.feed ?? emptyContentType;
+  const carouselData = breakdown.carousel ?? emptyContentType;
+  const storiesData = breakdown.stories ?? emptyStoryType;
+
   const totalViews = 
-    breakdown.reels.views + 
-    breakdown.feed.views + 
-    breakdown.carousel.views + 
-    breakdown.stories.views;
+    (reelsData.views ?? 0) + 
+    (feedData.views ?? 0) + 
+    (carouselData.views ?? 0) + 
+    (storiesData.views ?? 0);
 
   const contentTypes = [
     {
@@ -95,10 +120,10 @@ export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: Conten
       color: 'bg-pink-500',
       textColor: 'text-pink-500',
       bgLight: 'bg-pink-500/10',
-      data: breakdown.reels,
+      data: reelsData,
       hasShares: true,
       isStory: false,
-      percentage: totalViews > 0 ? (breakdown.reels.views / totalViews) * 100 : 0
+      percentage: totalViews > 0 ? ((reelsData.views ?? 0) / totalViews) * 100 : 0
     },
     {
       key: 'feed' as const,
@@ -107,10 +132,10 @@ export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: Conten
       color: 'bg-blue-500',
       textColor: 'text-blue-500',
       bgLight: 'bg-blue-500/10',
-      data: breakdown.feed,
+      data: feedData,
       hasShares: false,
       isStory: false,
-      percentage: totalViews > 0 ? (breakdown.feed.views / totalViews) * 100 : 0
+      percentage: totalViews > 0 ? ((feedData.views ?? 0) / totalViews) * 100 : 0
     },
     {
       key: 'carousel' as const,
@@ -119,10 +144,10 @@ export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: Conten
       color: 'bg-purple-500',
       textColor: 'text-purple-500',
       bgLight: 'bg-purple-500/10',
-      data: breakdown.carousel,
+      data: carouselData,
       hasShares: false,
       isStory: false,
-      percentage: totalViews > 0 ? (breakdown.carousel.views / totalViews) * 100 : 0
+      percentage: totalViews > 0 ? ((carouselData.views ?? 0) / totalViews) * 100 : 0
     },
     {
       key: 'stories' as const,
@@ -131,15 +156,15 @@ export const ContentTypeBreakdownComponent = ({ breakdown, periodLabel }: Conten
       color: 'bg-orange-500',
       textColor: 'text-orange-500',
       bgLight: 'bg-orange-500/10',
-      data: breakdown.stories,
+      data: storiesData,
       hasShares: false,
       isStory: true,
-      percentage: totalViews > 0 ? (breakdown.stories.views / totalViews) * 100 : 0
+      percentage: totalViews > 0 ? ((storiesData.views ?? 0) / totalViews) * 100 : 0
     }
   ];
 
-  // Filter out content types with no data
-  const activeContentTypes = contentTypes.filter(type => type.data.count > 0 || type.data.views > 0);
+  // Filter out content types with no data - with safe access
+  const activeContentTypes = contentTypes.filter(type => (type.data?.count ?? 0) > 0 || (type.data?.views ?? 0) > 0);
 
   if (activeContentTypes.length === 0) {
     return (
