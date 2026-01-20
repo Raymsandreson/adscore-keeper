@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   MessageCircle, 
   Send, 
@@ -27,7 +28,8 @@ import {
   X,
   Timer,
   CheckCheck,
-  Image
+  Image,
+  Tag
 } from "lucide-react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,6 +38,18 @@ import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
+
+type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
+
+const CLASSIFICATIONS: { key: ProspectClassification; label: string; color: string; bgColor: string }[] = [
+  { key: null, label: 'Sem classificação', color: 'text-muted-foreground', bgColor: 'bg-muted' },
+  { key: 'prospect', label: 'Prospecto', color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  { key: 'client', label: 'Cliente', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+  { key: 'closer', label: 'Acolhedor', color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  { key: 'sdr', label: 'SDR', color: 'text-orange-600', bgColor: 'bg-orange-100' },
+  { key: 'team', label: 'Equipe', color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  { key: 'other', label: 'Outro', color: 'text-slate-600', bgColor: 'bg-slate-100' },
+];
 
 interface Comment {
   id: string;
@@ -48,6 +62,7 @@ interface Comment {
   author_id: string | null;
   created_at: string;
   converted_to_lead?: boolean;
+  prospect_classification?: string | null;
 }
 
 interface CommentsTrackerProps {
@@ -65,6 +80,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [stats, setStats] = useState({ received: 0, sent: 0 });
   const [convertedUsers, setConvertedUsers] = useState<Set<string>>(new Set());
   const [convertingId, setConvertingId] = useState<string | null>(null);
+  
+  // Classification + Lead conversion dialog states
+  const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
+  const [pendingClassification, setPendingClassification] = useState<ProspectClassification>(null);
+  const [showLeadConfirmDialog, setShowLeadConfirmDialog] = useState(false);
+  
   // Filter states
   const [searchText, setSearchText] = useState('');
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
@@ -286,7 +307,43 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     return `Há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
   };
 
-  // Convert a commenter to a lead
+  // Classify a comment and optionally ask to convert to lead
+  const handleClassifyComment = async (comment: Comment, classification: ProspectClassification) => {
+    try {
+      // Update classification in database
+      const { error } = await supabase
+        .from('instagram_comments')
+        .update({ prospect_classification: classification })
+        .eq('id', comment.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setComments(prev => 
+        prev.map(c => c.id === comment.id ? { ...c, prospect_classification: classification } : c)
+      );
+
+      const classLabel = CLASSIFICATIONS.find(c => c.key === classification)?.label || 'Classificado';
+      toast.success(`Comentário classificado como ${classLabel}`);
+
+      // After classification, ask if user wants to convert to lead
+      if (comment.author_username) {
+        const username = comment.author_username.replace('@', '').toLowerCase();
+        const isAlreadyLead = convertedUsers.has(username);
+        
+        if (!isAlreadyLead) {
+          setClassifyingComment(comment);
+          setPendingClassification(classification);
+          setShowLeadConfirmDialog(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error classifying comment:', error);
+      toast.error('Erro ao classificar comentário');
+    }
+  };
+
+  // Convert a commenter to a lead (internal function)
   const convertToLead = async (comment: Comment) => {
     if (!comment.author_username) {
       toast.error('Este comentário não tem usuário identificado');
@@ -334,6 +391,16 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     } finally {
       setConvertingId(null);
     }
+  };
+
+  // Handle lead confirm dialog response
+  const handleLeadConfirmResponse = async (confirmLead: boolean) => {
+    if (confirmLead && classifyingComment) {
+      await convertToLead(classifyingComment);
+    }
+    setShowLeadConfirmDialog(false);
+    setClassifyingComment(null);
+    setPendingClassification(null);
   };
 
   // Convert all commenters to leads
@@ -921,23 +988,51 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 <Clock className="h-3 w-3" />
                                 {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
                               </div>
-                              {activeTab === 'received' && comment.author_username && !isConverted && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 text-xs"
-                                  onClick={() => convertToLead(comment)}
-                                  disabled={isConverting}
-                                >
-                                  {isConverting ? (
-                                    <RefreshCw className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <>
-                                      <UserPlus className="h-3 w-3 mr-1" />
-                                      Converter em Lead
-                                    </>
+                              
+                              {/* Classification badge */}
+                              {comment.prospect_classification && (
+                                <Badge 
+                                  variant="outline" 
+                                  className={cn(
+                                    "text-xs",
+                                    CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.bgColor,
+                                    CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.color
                                   )}
-                                </Button>
+                                >
+                                  {CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.label}
+                                </Badge>
+                              )}
+                              
+                              {/* Classification dropdown for received comments */}
+                              {activeTab === 'received' && comment.author_username && (
+                                <Select
+                                  value={comment.prospect_classification || 'none'}
+                                  onValueChange={(value) => handleClassifyComment(comment, value === 'none' ? null : value as ProspectClassification)}
+                                >
+                                  <SelectTrigger className="h-7 w-[130px] text-xs">
+                                    <Tag className="h-3 w-3 mr-1" />
+                                    <SelectValue placeholder="Classificar" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {CLASSIFICATIONS.map((cls) => (
+                                      <SelectItem 
+                                        key={cls.key || 'none'} 
+                                        value={cls.key || 'none'}
+                                        className={cn("text-xs", cls.color)}
+                                      >
+                                        {cls.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              
+                              {/* Already converted indicator */}
+                              {isConverted && (
+                                <Badge variant="outline" className="text-xs bg-emerald-100 text-emerald-600">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  Lead
+                                </Badge>
                               )}
                             </div>
                           </div>
@@ -951,6 +1046,48 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Lead Confirmation Dialog */}
+      <Dialog open={showLeadConfirmDialog} onOpenChange={setShowLeadConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-primary" />
+              Converter em Lead?
+            </DialogTitle>
+            <DialogDescription>
+              Você classificou o comentário de <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong> como{' '}
+              <strong className="text-foreground">{CLASSIFICATIONS.find(c => c.key === pendingClassification)?.label}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Deseja também adicionar este usuário à sua Central de Leads para acompanhamento?
+            </p>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => handleLeadConfirmResponse(false)}
+            >
+              Não, apenas classificar
+            </Button>
+            <Button
+              onClick={() => handleLeadConfirmResponse(true)}
+              disabled={convertingId === classifyingComment?.id}
+            >
+              {convertingId === classifyingComment?.id ? (
+                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <UserPlus className="h-4 w-4 mr-2" />
+              )}
+              Sim, criar lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
