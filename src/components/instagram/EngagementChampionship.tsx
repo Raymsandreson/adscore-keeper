@@ -7,7 +7,8 @@ import { Progress } from '@/components/ui/progress';
 import { 
   Trophy, Medal, Crown, Star, TrendingUp, TrendingDown, Minus,
   RefreshCw, Settings, Share2, Bell, Users, MessageCircle, AtSign,
-  Award, Flame, Sparkles, ChevronUp, ChevronDown, Calendar, History
+  Award, Flame, Sparkles, ChevronUp, ChevronDown, Calendar, History,
+  Download, Image
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -15,6 +16,8 @@ import { format, startOfWeek, endOfWeek, subWeeks, differenceInDays } from 'date
 import { ptBR } from 'date-fns/locale';
 import { ChampionshipSettingsDialog } from './ChampionshipSettingsDialog';
 import { EngagementEvolutionChart } from './EngagementEvolutionChart';
+import { RankingExportCard } from './RankingExportCard';
+import html2canvas from 'html2canvas';
 
 interface RankingEntry {
   id: string;
@@ -114,8 +117,10 @@ export const EngagementChampionship: React.FC = () => {
   const [settings, setSettings] = useState<ChampionshipSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState('ranking');
   const hasFetched = useRef(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   
   // Memoize dates to prevent infinite re-renders
   const currentWeekStart = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), []);
@@ -377,6 +382,64 @@ export const EngagementChampionship: React.FC = () => {
     toast.success('Link do leaderboard copiado!');
   };
 
+  const exportAsImage = async () => {
+    if (!exportRef.current || rankings.length === 0) {
+      toast.error('Nenhum ranking para exportar');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      // Create a temporary container for the export card
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '0';
+      document.body.appendChild(container);
+
+      // Render the export card
+      const { createRoot } = await import('react-dom/client');
+      const root = createRoot(container);
+      
+      await new Promise<void>((resolve) => {
+        root.render(
+          <RankingExportCard
+            ref={exportRef}
+            rankings={rankings}
+            weekStart={currentWeekStart}
+            weekEnd={currentWeekEnd}
+            settings={settings}
+          />
+        );
+        setTimeout(resolve, 100);
+      });
+
+      // Capture the image
+      const canvas = await html2canvas(container.firstChild as HTMLElement, {
+        backgroundColor: null,
+        scale: 2,
+        useCORS: true,
+      });
+
+      // Clean up
+      root.unmount();
+      document.body.removeChild(container);
+
+      // Download the image
+      const link = document.createElement('a');
+      link.download = `ranking-engajamento-${format(currentWeekStart, 'yyyy-MM-dd')}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+
+      toast.success('Imagem exportada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao exportar imagem:', error);
+      toast.error('Erro ao exportar imagem');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   useEffect(() => {
     // Prevent multiple initial fetches
     if (hasFetched.current) return;
@@ -565,7 +628,7 @@ export const EngagementChampionship: React.FC = () => {
                 </CardDescription>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <ChampionshipSettingsDialog 
                 settings={settings} 
                 onSettingsUpdate={(newSettings) => {
@@ -573,6 +636,19 @@ export const EngagementChampionship: React.FC = () => {
                   calculateRankings();
                 }} 
               />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={exportAsImage} 
+                disabled={exporting || rankings.length === 0}
+              >
+                {exporting ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Image className="w-4 h-4 mr-2" />
+                )}
+                Exportar
+              </Button>
               <Button variant="outline" size="sm" onClick={shareLeaderboard}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Compartilhar
