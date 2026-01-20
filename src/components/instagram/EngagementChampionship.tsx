@@ -159,8 +159,28 @@ export const EngagementChampionship: React.FC = () => {
 
       if (settingsData && !settingsError) {
         setSettings(settingsData as unknown as ChampionshipSettings);
+      } else if (!settingsData && !settingsError) {
+        // No settings exist - create default settings automatically
+        const { data: newSettings, error: insertError } = await supabase
+          .from('engagement_championship_settings')
+          .insert({
+            points_per_mention: DEFAULT_SETTINGS.points_per_mention,
+            points_per_comment: DEFAULT_SETTINGS.points_per_comment,
+            bronze_threshold: DEFAULT_SETTINGS.bronze_threshold,
+            silver_threshold: DEFAULT_SETTINGS.silver_threshold,
+            gold_threshold: DEFAULT_SETTINGS.gold_threshold,
+            diamond_threshold: DEFAULT_SETTINGS.diamond_threshold,
+            notify_on_rank_change: DEFAULT_SETTINGS.notify_on_rank_change,
+            notify_on_new_champion: DEFAULT_SETTINGS.notify_on_new_champion
+          })
+          .select()
+          .single();
+
+        if (newSettings && !insertError) {
+          setSettings(newSettings as unknown as ChampionshipSettings);
+          console.log('Configurações padrão criadas automaticamente');
+        }
       }
-      // If no settings exist, keep using DEFAULT_SETTINGS
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar ranking');
