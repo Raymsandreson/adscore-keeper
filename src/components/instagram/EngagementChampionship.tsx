@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, subWeeks, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ChampionshipSettingsDialog } from './ChampionshipSettingsDialog';
 
 interface RankingEntry {
   id: string;
@@ -43,6 +44,7 @@ interface Champion {
 }
 
 interface ChampionshipSettings {
+  id?: string;
   points_per_mention: number;
   points_per_comment: number;
   bronze_threshold: number;
@@ -158,7 +160,7 @@ export const EngagementChampionship: React.FC = () => {
         .maybeSingle();
 
       if (settingsData && !settingsError) {
-        setSettings(settingsData as unknown as ChampionshipSettings);
+        setSettings({ ...settingsData, id: settingsData.id } as unknown as ChampionshipSettings);
       } else if (!settingsData && !settingsError) {
         // No settings exist - create default settings automatically
         const { data: newSettings, error: insertError } = await supabase
@@ -177,7 +179,7 @@ export const EngagementChampionship: React.FC = () => {
           .single();
 
         if (newSettings && !insertError) {
-          setSettings(newSettings as unknown as ChampionshipSettings);
+          setSettings({ ...newSettings, id: newSettings.id } as unknown as ChampionshipSettings);
           console.log('Configurações padrão criadas automaticamente');
         }
       }
@@ -498,6 +500,13 @@ export const EngagementChampionship: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <ChampionshipSettingsDialog 
+                settings={settings} 
+                onSettingsUpdate={(newSettings) => {
+                  setSettings(newSettings);
+                  calculateRankings();
+                }} 
+              />
               <Button variant="outline" size="sm" onClick={shareLeaderboard}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Compartilhar
