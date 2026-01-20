@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, Legend 
 } from 'recharts';
-import { TrendingUp, Users, RefreshCw } from 'lucide-react';
+import { TrendingUp, Users, RefreshCw, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subWeeks, startOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -17,10 +18,6 @@ interface WeeklyData {
   [username: string]: number | string;
 }
 
-interface EngagementEvolutionChartProps {
-  weeksToShow?: number;
-}
-
 const CHART_COLORS = [
   'hsl(var(--primary))',
   'hsl(142, 76%, 36%)',
@@ -29,14 +26,19 @@ const CHART_COLORS = [
   'hsl(200, 98%, 50%)',
 ];
 
-export const EngagementEvolutionChart: React.FC<EngagementEvolutionChartProps> = ({
-  weeksToShow = 8
-}) => {
+const PERIOD_OPTIONS = [
+  { value: '4', label: '4 sem' },
+  { value: '8', label: '8 sem' },
+  { value: '12', label: '12 sem' },
+];
+
+export const EngagementEvolutionChart: React.FC = () => {
+  const [weeksToShow, setWeeksToShow] = useState(8);
   const [chartData, setChartData] = useState<WeeklyData[]>([]);
   const [topUsers, setTopUsers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchEvolutionData = async () => {
+  const fetchEvolutionData = async (weeks: number) => {
     setLoading(true);
     try {
       // Get the current week start
@@ -44,7 +46,7 @@ export const EngagementEvolutionChart: React.FC<EngagementEvolutionChartProps> =
       
       // Generate week starts for the past N weeks
       const weekStarts: string[] = [];
-      for (let i = weeksToShow - 1; i >= 0; i--) {
+      for (let i = weeks - 1; i >= 0; i--) {
         const weekStart = subWeeks(currentWeekStart, i);
         weekStarts.push(format(weekStart, 'yyyy-MM-dd'));
       }
@@ -100,8 +102,14 @@ export const EngagementEvolutionChart: React.FC<EngagementEvolutionChartProps> =
   };
 
   useEffect(() => {
-    fetchEvolutionData();
+    fetchEvolutionData(weeksToShow);
   }, [weeksToShow]);
+
+  const handlePeriodChange = (value: string) => {
+    if (value) {
+      setWeeksToShow(parseInt(value));
+    }
+  };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload || !payload.length) return null;
@@ -158,7 +166,7 @@ export const EngagementEvolutionChart: React.FC<EngagementEvolutionChartProps> =
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
@@ -168,20 +176,44 @@ export const EngagementEvolutionChart: React.FC<EngagementEvolutionChartProps> =
               Pontos acumulados nas últimas {weeksToShow} semanas
             </CardDescription>
           </div>
-          <div className="flex gap-2">
-            {topUsers.map((user, index) => (
-              <Badge 
-                key={user} 
-                variant="outline"
-                className="text-xs"
-                style={{ 
-                  borderColor: CHART_COLORS[index],
-                  color: CHART_COLORS[index]
-                }}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {/* Period Selector */}
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <ToggleGroup 
+                type="single" 
+                value={weeksToShow.toString()} 
+                onValueChange={handlePeriodChange}
+                className="bg-muted rounded-lg p-1"
               >
-                @{user}
-              </Badge>
-            ))}
+                {PERIOD_OPTIONS.map((option) => (
+                  <ToggleGroupItem 
+                    key={option.value} 
+                    value={option.value}
+                    className="text-xs px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm"
+                  >
+                    {option.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+            
+            {/* User Badges */}
+            <div className="flex gap-1 flex-wrap">
+              {topUsers.map((user, index) => (
+                <Badge 
+                  key={user} 
+                  variant="outline"
+                  className="text-xs"
+                  style={{ 
+                    borderColor: CHART_COLORS[index],
+                    color: CHART_COLORS[index]
+                  }}
+                >
+                  @{user}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
       </CardHeader>

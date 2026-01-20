@@ -718,7 +718,7 @@ export const EngagementChampionship: React.FC = () => {
       </div>
 
       {/* Evolution Chart */}
-      <EngagementEvolutionChart weeksToShow={8} />
+      <EngagementEvolutionChart />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
