@@ -1,15 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, Legend 
 } from 'recharts';
-import { TrendingUp, Users, RefreshCw, Calendar } from 'lucide-react';
+import { TrendingUp, Users, RefreshCw, Calendar, Settings2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { format, subWeeks, startOfWeek } from 'date-fns';
+import { format, subWeeks, subDays, startOfWeek, startOfMonth, endOfMonth, startOfYear, startOfQuarter } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface WeeklyData {
@@ -26,32 +38,96 @@ const CHART_COLORS = [
   'hsl(200, 98%, 50%)',
 ];
 
-const PERIOD_OPTIONS = [
-  { value: '4', label: '4 sem' },
-  { value: '8', label: '8 sem' },
-  { value: '12', label: '12 sem' },
+type PeriodType = 
+  | 'this_week' 
+  | 'last_week' 
+  | 'this_month' 
+  | 'last_month'
+  | 'this_quarter'
+  | 'last_30_days'
+  | 'last_60_days'
+  | 'last_90_days'
+  | '4_weeks'
+  | '8_weeks'
+  | '12_weeks'
+  | 'custom_days';
+
+const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
+  { value: 'this_week', label: 'Esta semana' },
+  { value: 'last_week', label: 'Semana passada' },
+  { value: 'this_month', label: 'Este mês' },
+  { value: 'last_month', label: 'Mês passado' },
+  { value: 'this_quarter', label: 'Este trimestre' },
+  { value: 'last_30_days', label: 'Últimos 30 dias' },
+  { value: 'last_60_days', label: 'Últimos 60 dias' },
+  { value: 'last_90_days', label: 'Últimos 90 dias' },
+  { value: '4_weeks', label: '4 semanas' },
+  { value: '8_weeks', label: '8 semanas' },
+  { value: '12_weeks', label: '12 semanas' },
+  { value: 'custom_days', label: 'Personalizado' },
 ];
 
+const calculateWeeksFromPeriod = (period: PeriodType, customDays: number): number => {
+  const now = new Date();
+  
+  switch (period) {
+    case 'this_week':
+      return 1;
+    case 'last_week':
+      return 2;
+    case 'this_month': {
+      const monthStart = startOfMonth(now);
+      const weeksInMonth = Math.ceil((now.getTime() - monthStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      return Math.max(1, weeksInMonth);
+    }
+    case 'last_month': {
+      return 5; // Approximate
+    }
+    case 'this_quarter': {
+      const quarterStart = startOfQuarter(now);
+      const weeksInQuarter = Math.ceil((now.getTime() - quarterStart.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      return Math.max(1, weeksInQuarter);
+    }
+    case 'last_30_days':
+      return 5;
+    case 'last_60_days':
+      return 9;
+    case 'last_90_days':
+      return 13;
+    case '4_weeks':
+      return 4;
+    case '8_weeks':
+      return 8;
+    case '12_weeks':
+      return 12;
+    case 'custom_days':
+      return Math.max(1, Math.ceil(customDays / 7));
+    default:
+      return 8;
+  }
+};
+
 export const EngagementEvolutionChart: React.FC = () => {
-  const [weeksToShow, setWeeksToShow] = useState(8);
+  const [period, setPeriod] = useState<PeriodType>('8_weeks');
+  const [customDays, setCustomDays] = useState(30);
+  const [customDaysInput, setCustomDaysInput] = useState('30');
   const [chartData, setChartData] = useState<WeeklyData[]>([]);
   const [topUsers, setTopUsers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const weeksToShow = calculateWeeksFromPeriod(period, customDays);
+
   const fetchEvolutionData = async (weeks: number) => {
     setLoading(true);
     try {
-      // Get the current week start
       const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       
-      // Generate week starts for the past N weeks
       const weekStarts: string[] = [];
       for (let i = weeks - 1; i >= 0; i--) {
         const weekStart = subWeeks(currentWeekStart, i);
         weekStarts.push(format(weekStart, 'yyyy-MM-dd'));
       }
 
-      // Fetch all rankings for these weeks
       const { data: rankingsData, error } = await supabase
         .from('engagement_rankings')
         .select('username, total_points, week_start')
@@ -60,7 +136,6 @@ export const EngagementEvolutionChart: React.FC = () => {
 
       if (error) throw error;
 
-      // Find top 5 users by total points across all weeks
       const userTotals: Record<string, number> = {};
       for (const entry of rankingsData || []) {
         const points = entry.total_points ?? 0;
@@ -74,7 +149,6 @@ export const EngagementEvolutionChart: React.FC = () => {
 
       setTopUsers(top5Users);
 
-      // Build chart data
       const weeklyData: WeeklyData[] = weekStarts.map(weekStart => {
         const weekDate = new Date(weekStart);
         const dataPoint: WeeklyData = {
@@ -82,7 +156,6 @@ export const EngagementEvolutionChart: React.FC = () => {
           weekLabel: format(weekDate, "dd/MM", { locale: ptBR }),
         };
 
-        // Add each top user's points for this week
         for (const username of top5Users) {
           const entry = rankingsData?.find(
             r => r.week_start === weekStart && r.username === username
@@ -105,10 +178,34 @@ export const EngagementEvolutionChart: React.FC = () => {
     fetchEvolutionData(weeksToShow);
   }, [weeksToShow]);
 
-  const handlePeriodChange = (value: string) => {
-    if (value) {
-      setWeeksToShow(parseInt(value));
+  const handlePeriodChange = (value: PeriodType) => {
+    setPeriod(value);
+  };
+
+  const handleCustomDaysChange = (value: string) => {
+    setCustomDaysInput(value);
+  };
+
+  const handleCustomDaysBlur = () => {
+    const days = parseInt(customDaysInput);
+    if (!isNaN(days) && days >= 1 && days <= 365) {
+      setCustomDays(days);
+    } else {
+      setCustomDaysInput(customDays.toString());
     }
+  };
+
+  const handleCustomDaysKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleCustomDaysBlur();
+    }
+  };
+
+  const getPeriodLabel = (): string => {
+    if (period === 'custom_days') {
+      return `Últimos ${customDays} dias`;
+    }
+    return PERIOD_OPTIONS.find(p => p.value === period)?.label || '';
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -173,29 +270,53 @@ export const EngagementEvolutionChart: React.FC = () => {
               Evolução dos Top 5 Engajadores
             </CardTitle>
             <CardDescription>
-              Pontos acumulados nas últimas {weeksToShow} semanas
+              {getPeriodLabel()} ({weeksToShow} semanas)
             </CardDescription>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {/* Period Selector */}
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-muted-foreground" />
-              <ToggleGroup 
-                type="single" 
-                value={weeksToShow.toString()} 
-                onValueChange={handlePeriodChange}
-                className="bg-muted rounded-lg p-1"
-              >
-                {PERIOD_OPTIONS.map((option) => (
-                  <ToggleGroupItem 
-                    key={option.value} 
-                    value={option.value}
-                    className="text-xs px-3 data-[state=on]:bg-background data-[state=on]:shadow-sm"
-                  >
-                    {option.label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              <Select value={period} onValueChange={(value) => handlePeriodChange(value as PeriodType)}>
+                <SelectTrigger className="w-[180px]">
+                  <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <div className="text-xs font-semibold text-muted-foreground px-2 py-1">Rápido</div>
+                  <SelectItem value="this_week">Esta semana</SelectItem>
+                  <SelectItem value="last_week">Semana passada</SelectItem>
+                  <SelectItem value="this_month">Este mês</SelectItem>
+                  <SelectItem value="last_month">Mês passado</SelectItem>
+                  <SelectItem value="this_quarter">Este trimestre</SelectItem>
+                  <div className="text-xs font-semibold text-muted-foreground px-2 py-1 mt-2">Últimos dias</div>
+                  <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
+                  <SelectItem value="last_60_days">Últimos 60 dias</SelectItem>
+                  <SelectItem value="last_90_days">Últimos 90 dias</SelectItem>
+                  <div className="text-xs font-semibold text-muted-foreground px-2 py-1 mt-2">Semanas</div>
+                  <SelectItem value="4_weeks">4 semanas</SelectItem>
+                  <SelectItem value="8_weeks">8 semanas</SelectItem>
+                  <SelectItem value="12_weeks">12 semanas</SelectItem>
+                  <div className="text-xs font-semibold text-muted-foreground px-2 py-1 mt-2">Personalizado</div>
+                  <SelectItem value="custom_days">Dias personalizados</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {period === 'custom_days' && (
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={customDaysInput}
+                    onChange={(e) => handleCustomDaysChange(e.target.value)}
+                    onBlur={handleCustomDaysBlur}
+                    onKeyDown={handleCustomDaysKeyDown}
+                    className="w-20 h-9"
+                    placeholder="Dias"
+                  />
+                  <span className="text-sm text-muted-foreground">dias</span>
+                </div>
+              )}
             </div>
             
             {/* User Badges */}
