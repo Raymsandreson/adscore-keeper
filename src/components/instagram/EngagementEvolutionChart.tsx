@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { 
   Select,
   SelectContent,
@@ -17,17 +19,25 @@ import {
 } from '@/components/ui/popover';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  ResponsiveContainer, Legend 
+  ResponsiveContainer, Legend, BarChart, Bar, ReferenceLine
 } from 'recharts';
-import { TrendingUp, Users, RefreshCw, Calendar, Settings2 } from 'lucide-react';
+import { TrendingUp, Users, RefreshCw, Calendar, Settings2, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { format, subWeeks, subDays, startOfWeek, startOfMonth, endOfMonth, startOfYear, startOfQuarter } from 'date-fns';
+import { format, subWeeks, subDays, startOfWeek, startOfMonth, endOfMonth, startOfYear, startOfQuarter, subMonths, subQuarters } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface WeeklyData {
   week: string;
   weekLabel: string;
   [username: string]: number | string;
+}
+
+interface ComparisonData {
+  user: string;
+  current: number;
+  previous: number;
+  change: number;
+  changePercent: number;
 }
 
 const CHART_COLORS = [
@@ -66,6 +76,24 @@ const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: '12_weeks', label: '12 semanas' },
   { value: 'custom_days', label: 'Personalizado' },
 ];
+
+const getComparisonPeriodLabel = (period: PeriodType): string => {
+  switch (period) {
+    case 'this_week': return 'vs Semana anterior';
+    case 'last_week': return 'vs 2 semanas atrás';
+    case 'this_month': return 'vs Mês passado';
+    case 'last_month': return 'vs 2 meses atrás';
+    case 'this_quarter': return 'vs Trimestre passado';
+    case 'last_30_days': return 'vs 30 dias anteriores';
+    case 'last_60_days': return 'vs 60 dias anteriores';
+    case 'last_90_days': return 'vs 90 dias anteriores';
+    case '4_weeks': return 'vs 4 semanas anteriores';
+    case '8_weeks': return 'vs 8 semanas anteriores';
+    case '12_weeks': return 'vs 12 semanas anteriores';
+    case 'custom_days': return 'vs Período anterior';
+    default: return 'vs Período anterior';
+  }
+};
 
 const calculateWeeksFromPeriod = (period: PeriodType, customDays: number): number => {
   const now = new Date();
@@ -114,6 +142,8 @@ export const EngagementEvolutionChart: React.FC = () => {
   const [chartData, setChartData] = useState<WeeklyData[]>([]);
   const [topUsers, setTopUsers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonData, setComparisonData] = useState<ComparisonData[]>([]);
 
   const weeksToShow = calculateWeeksFromPeriod(period, customDays);
 
@@ -122,24 +152,46 @@ export const EngagementEvolutionChart: React.FC = () => {
     try {
       const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
       
+      // Current period week starts
       const weekStarts: string[] = [];
       for (let i = weeks - 1; i >= 0; i--) {
         const weekStart = subWeeks(currentWeekStart, i);
         weekStarts.push(format(weekStart, 'yyyy-MM-dd'));
       }
 
+      // Previous period week starts (for comparison)
+      const previousWeekStarts: string[] = [];
+      for (let i = weeks * 2 - 1; i >= weeks; i--) {
+        const weekStart = subWeeks(currentWeekStart, i);
+        previousWeekStarts.push(format(weekStart, 'yyyy-MM-dd'));
+      }
+
+      const allWeekStarts = [...weekStarts, ...previousWeekStarts];
+
       const { data: rankingsData, error } = await supabase
         .from('engagement_rankings')
         .select('username, total_points, week_start')
-        .in('week_start', weekStarts)
+        .in('week_start', allWeekStarts)
         .order('total_points', { ascending: false });
 
       if (error) throw error;
 
+      // Calculate totals for current period
       const userTotals: Record<string, number> = {};
       for (const entry of rankingsData || []) {
-        const points = entry.total_points ?? 0;
-        userTotals[entry.username] = (userTotals[entry.username] || 0) + points;
+        if (weekStarts.includes(entry.week_start)) {
+          const points = entry.total_points ?? 0;
+          userTotals[entry.username] = (userTotals[entry.username] || 0) + points;
+        }
+      }
+
+      // Calculate totals for previous period
+      const previousUserTotals: Record<string, number> = {};
+      for (const entry of rankingsData || []) {
+        if (previousWeekStarts.includes(entry.week_start)) {
+          const points = entry.total_points ?? 0;
+          previousUserTotals[entry.username] = (previousUserTotals[entry.username] || 0) + points;
+        }
       }
 
       const top5Users = Object.entries(userTotals)
@@ -148,6 +200,16 @@ export const EngagementEvolutionChart: React.FC = () => {
         .map(([username]) => username);
 
       setTopUsers(top5Users);
+
+      // Build comparison data
+      const comparison: ComparisonData[] = top5Users.map(user => {
+        const current = userTotals[user] || 0;
+        const previous = previousUserTotals[user] || 0;
+        const change = current - previous;
+        const changePercent = previous > 0 ? ((change / previous) * 100) : (current > 0 ? 100 : 0);
+        return { user, current, previous, change, changePercent };
+      });
+      setComparisonData(comparison);
 
       const weeklyData: WeeklyData[] = weekStarts.map(weekStart => {
         const weekDate = new Date(weekStart);
@@ -234,6 +296,35 @@ export const EngagementEvolutionChart: React.FC = () => {
     );
   };
 
+  const ComparisonTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+
+    const data = payload[0]?.payload as ComparisonData;
+    if (!data) return null;
+
+    return (
+      <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
+        <p className="font-semibold text-sm mb-2">@{data.user}</p>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Período atual:</span>
+            <span className="font-semibold">{data.current.toLocaleString('pt-BR')} pts</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground">Período anterior:</span>
+            <span className="font-semibold">{data.previous.toLocaleString('pt-BR')} pts</span>
+          </div>
+          <div className="flex justify-between gap-4 pt-1 border-t border-border mt-1">
+            <span className="text-muted-foreground">Variação:</span>
+            <span className={`font-semibold ${data.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              {data.change >= 0 ? '+' : ''}{data.change.toLocaleString('pt-BR')} ({data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(1)}%)
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <Card>
@@ -269,11 +360,26 @@ export const EngagementEvolutionChart: React.FC = () => {
               <TrendingUp className="w-5 h-5 text-primary" />
               Evolução dos Top 5 Engajadores
             </CardTitle>
-            <CardDescription>
-              {getPeriodLabel()} ({weeksToShow} semanas)
+            <CardDescription className="flex items-center gap-2">
+              {showComparison 
+                ? `${getPeriodLabel()} ${getComparisonPeriodLabel(period)}`
+                : `${getPeriodLabel()} (${weeksToShow} semanas)`
+              }
             </CardDescription>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {/* Comparison Toggle */}
+            <div className="flex items-center gap-2">
+              <Switch 
+                id="comparison-mode" 
+                checked={showComparison} 
+                onCheckedChange={setShowComparison}
+              />
+              <Label htmlFor="comparison-mode" className="text-sm flex items-center gap-1 cursor-pointer">
+                <ArrowLeftRight className="w-4 h-4" />
+                Comparar
+              </Label>
+            </div>
             {/* Period Selector */}
             <div className="flex items-center gap-2">
               <Select value={period} onValueChange={(value) => handlePeriodChange(value as PeriodType)}>
@@ -339,40 +445,112 @@ export const EngagementEvolutionChart: React.FC = () => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis 
-                dataKey="weekLabel" 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-              />
-              <YAxis 
-                tick={{ fontSize: 12 }}
-                className="text-muted-foreground"
-                tickFormatter={(value) => value.toLocaleString('pt-BR')}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                formatter={(value) => `@${value}`}
-                wrapperStyle={{ fontSize: '12px' }}
-              />
-              {topUsers.map((username, index) => (
-                <Line
-                  key={username}
-                  type="monotone"
-                  dataKey={username}
-                  stroke={CHART_COLORS[index]}
-                  strokeWidth={2}
-                  dot={{ fill: CHART_COLORS[index], strokeWidth: 2, r: 4 }}
-                  activeDot={{ r: 6, strokeWidth: 2 }}
-                  connectNulls
-                />
+        {showComparison ? (
+          <div className="space-y-4">
+            {/* Comparison Bar Chart */}
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={comparisonData} 
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" horizontal={true} vertical={false} />
+                  <XAxis 
+                    type="number"
+                    tick={{ fontSize: 12 }}
+                    className="text-muted-foreground"
+                    tickFormatter={(value) => value.toLocaleString('pt-BR')}
+                  />
+                  <YAxis 
+                    type="category"
+                    dataKey="user"
+                    tick={{ fontSize: 12 }}
+                    className="text-muted-foreground"
+                    tickFormatter={(value) => `@${value}`}
+                    width={80}
+                  />
+                  <Tooltip content={<ComparisonTooltip />} />
+                  <Legend />
+                  <Bar 
+                    dataKey="current" 
+                    name="Período Atual" 
+                    fill="hsl(var(--primary))" 
+                    radius={[0, 4, 4, 0]}
+                  />
+                  <Bar 
+                    dataKey="previous" 
+                    name="Período Anterior" 
+                    fill="hsl(var(--muted-foreground))" 
+                    opacity={0.5}
+                    radius={[0, 4, 4, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            
+            {/* Comparison Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {comparisonData.map((data, index) => (
+                <div 
+                  key={data.user}
+                  className="p-3 rounded-lg border bg-card"
+                  style={{ borderLeftColor: CHART_COLORS[index], borderLeftWidth: 3 }}
+                >
+                  <div className="text-sm font-medium truncate">@{data.user}</div>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-lg font-bold">{data.current.toLocaleString('pt-BR')}</span>
+                    <span 
+                      className={`text-xs font-medium ${
+                        data.change > 0 ? 'text-green-500' : data.change < 0 ? 'text-red-500' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {data.change > 0 ? '↑' : data.change < 0 ? '↓' : '='} {data.change >= 0 ? '+' : ''}{data.changePercent.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    anterior: {data.previous.toLocaleString('pt-BR')}
+                  </div>
+                </div>
               ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis 
+                  dataKey="weekLabel" 
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                />
+                <YAxis 
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                  tickFormatter={(value) => value.toLocaleString('pt-BR')}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend 
+                  formatter={(value) => `@${value}`}
+                  wrapperStyle={{ fontSize: '12px' }}
+                />
+                {topUsers.map((username, index) => (
+                  <Line
+                    key={username}
+                    type="monotone"
+                    dataKey={username}
+                    stroke={CHART_COLORS[index]}
+                    strokeWidth={2}
+                    dot={{ fill: CHART_COLORS[index], strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, strokeWidth: 2 }}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
