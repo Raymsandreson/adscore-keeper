@@ -32,6 +32,13 @@ interface InstagramAutomationProps {
 const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: InstagramAutomationProps) => {
   const [activeTab, setActiveTab] = useState(initialTab || "funnel");
 
+  // Sync activeTab with initialTab prop changes (from URL)
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
