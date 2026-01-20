@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -112,10 +112,12 @@ export const EngagementChampionship: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('ranking');
+  const hasFetched = useRef(false);
   
-  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const currentWeekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
-  const daysRemaining = differenceInDays(currentWeekEnd, new Date());
+  // Memoize dates to prevent infinite re-renders
+  const currentWeekStart = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), []);
+  const currentWeekEnd = useMemo(() => endOfWeek(new Date(), { weekStartsOn: 1 }), []);
+  const daysRemaining = useMemo(() => differenceInDays(currentWeekEnd, new Date()), [currentWeekEnd]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -288,8 +290,11 @@ export const EngagementChampionship: React.FC = () => {
   };
 
   useEffect(() => {
+    // Prevent multiple initial fetches
+    if (hasFetched.current) return;
+    hasFetched.current = true;
     fetchData();
-  }, [fetchData]);
+  }, []);
 
   const RankChangeIndicator: React.FC<{ current: number | null; previous: number | null }> = ({ current, previous }) => {
     if (!current || !previous || current === previous) {
