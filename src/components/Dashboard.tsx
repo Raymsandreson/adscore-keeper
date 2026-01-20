@@ -178,6 +178,40 @@ const Dashboard = () => {
     });
   }, [metaConfig, isConnected, useAggregated, selectedCount]);
 
+  // Fetch organic data on mount to update status indicator
+  useEffect(() => {
+    const fetchOrganicStatus = async () => {
+      if (!metaConfig?.accessToken || !isConnected) return;
+      
+      try {
+        console.log('📊 [Dashboard] Fetching organic insights for status...');
+        const { data, error } = await supabase.functions.invoke('fetch-organic-insights', {
+          body: { 
+            pageId: metaConfig.accountId,
+            accessToken: metaConfig.accessToken,
+            period: 7
+          }
+        });
+
+        if (error) {
+          console.error('❌ [Dashboard] Error fetching organic insights:', error);
+          return;
+        }
+
+        if (data?.success && data?.platforms?.length > 0) {
+          const totalImpressions = data.platforms.reduce((sum: number, p: any) => sum + (p.insights?.impressions || 0), 0);
+          const totalReach = data.platforms.reduce((sum: number, p: any) => sum + (p.insights?.reach || 0), 0);
+          console.log('✅ [Dashboard] Organic status updated:', { impressions: totalImpressions, reach: totalReach });
+          setOrganicMetricsData({ impressions: totalImpressions, reach: totalReach });
+        }
+      } catch (err) {
+        console.error('❌ [Dashboard] Exception fetching organic insights:', err);
+      }
+    };
+
+    fetchOrganicStatus();
+  }, [metaConfig?.accessToken, metaConfig?.accountId, isConnected]);
+
   const { stats: leadStats, loading: leadsLoading } = useLeads();
 
   const {
