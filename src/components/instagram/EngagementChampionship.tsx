@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, subWeeks, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChampionshipSettingsDialog } from './ChampionshipSettingsDialog';
+import { EngagementEvolutionChart } from './EngagementEvolutionChart';
 
 interface RankingEntry {
   id: string;
@@ -639,6 +640,9 @@ export const EngagementChampionship: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Evolution Chart */}
+      <EngagementEvolutionChart weeksToShow={8} />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
