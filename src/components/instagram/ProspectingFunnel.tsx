@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { 
   MessageSquare, 
   Send, 
@@ -43,7 +44,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
-type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
+type ProspectClassification = string | null;
 
 interface Prospect {
   id: string;
@@ -55,10 +56,12 @@ interface Prospect {
   prospect_name: string | null;
   notes: string | null;
   post_url: string | null;
-  prospect_classification: ProspectClassification;
+  prospect_classification: string[] | null;
 }
 
-const CLASSIFICATIONS: { key: ProspectClassification; label: string; color: string; bgColor: string }[] = [
+type ClassificationKey = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other';
+
+const CLASSIFICATIONS: { key: ClassificationKey | null; label: string; color: string; bgColor: string }[] = [
   { key: null, label: 'Sem classificação', color: 'text-gray-600', bgColor: 'bg-gray-100' },
   { key: 'prospect', label: 'Prospecto', color: 'text-blue-600', bgColor: 'bg-blue-100' },
   { key: 'client', label: 'Cliente', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
@@ -68,7 +71,7 @@ const CLASSIFICATIONS: { key: ProspectClassification; label: string; color: stri
   { key: 'other', label: 'Outro', color: 'text-slate-600', bgColor: 'bg-slate-100' },
 ];
 
-const getClassificationConfig = (classification: ProspectClassification) => {
+const getClassificationConfig = (classification: string | null) => {
   return CLASSIFICATIONS.find(c => c.key === classification) || CLASSIFICATIONS[0];
 };
 
@@ -115,11 +118,11 @@ export function ProspectingFunnel() {
   const [period, setPeriod] = useState('30');
   const [activeTab, setActiveTab] = useState('overview');
   const [editingProspect, setEditingProspect] = useState<Prospect | null>(null);
-  const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage, prospect_classification: null as ProspectClassification });
+  const [editForm, setEditForm] = useState({ prospect_name: '', notes: '', funnel_stage: '' as FunnelStage, prospect_classification: [] as string[] });
   const [draggedProspect, setDraggedProspect] = useState<Prospect | null>(null);
   const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
   const [showAlertSettings, setShowAlertSettings] = useState(false);
-  const [classificationFilter, setClassificationFilter] = useState<ProspectClassification | 'all'>('all');
+  const [classificationFilter, setClassificationFilter] = useState<string>('all');
   const [alertConfig, setAlertConfig] = useState<StageAlertConfig>(() => {
     const saved = localStorage.getItem('prospecting-alert-config');
     return saved ? JSON.parse(saved) : getDefaultAlertConfig();
@@ -144,13 +147,18 @@ export function ProspectingFunnel() {
     
     // Filter by visible classifications
     filtered = filtered.filter(p => {
-      const classKey = p.prospect_classification || 'null';
-      return visibleClassifications[classKey] !== false;
+      const classifications = p.prospect_classification || [];
+      if (classifications.length === 0) {
+        return visibleClassifications['null'] !== false;
+      }
+      return classifications.some(c => visibleClassifications[c] !== false);
     });
     
     // Apply classification filter (dropdown)
     if (classificationFilter !== 'all') {
-      filtered = filtered.filter(p => p.prospect_classification === classificationFilter);
+      filtered = filtered.filter(p => 
+        p.prospect_classification?.includes(classificationFilter) ?? false
+      );
     }
     
     return filtered;
@@ -197,7 +205,7 @@ export function ProspectingFunnel() {
       setProspects((data || []).map(p => ({
         ...p,
         funnel_stage: (p.funnel_stage as FunnelStage) || 'comment',
-        prospect_classification: (p.prospect_classification as ProspectClassification) || null
+        prospect_classification: Array.isArray(p.prospect_classification) ? p.prospect_classification : (p.prospect_classification ? [p.prospect_classification] : null)
       })));
     } catch (error) {
       console.error('Erro ao buscar prospectos:', error);
@@ -232,7 +240,10 @@ export function ProspectingFunnel() {
 
     // Classification breakdown
     const byClassification = CLASSIFICATIONS.reduce((acc, c) => {
-      acc[c.key || 'null'] = filteredProspects.filter(p => p.prospect_classification === c.key).length;
+      acc[c.key || 'null'] = filteredProspects.filter(p => {
+        if (c.key === null) return !p.prospect_classification || p.prospect_classification.length === 0;
+        return p.prospect_classification?.includes(c.key) ?? false;
+      }).length;
       return acc;
     }, {} as Record<string, number>);
 
@@ -326,21 +337,42 @@ export function ProspectingFunnel() {
     }
   };
 
-  const handleQuickClassify = async (prospect: Prospect, classification: ProspectClassification) => {
+  const handleQuickClassify = async (prospect: Prospect, classificationKey: string | null) => {
     try {
+      // Toggle classification: if already has it, remove it; otherwise add it
+      const currentClassifications = prospect.prospect_classification || [];
+      let newClassifications: string[];
+      
+      if (classificationKey === null) {
+        // Clear all classifications
+        newClassifications = [];
+      } else if (currentClassifications.includes(classificationKey)) {
+        // Remove this classification
+        newClassifications = currentClassifications.filter(c => c !== classificationKey);
+      } else {
+        // Add this classification
+        newClassifications = [...currentClassifications, classificationKey];
+      }
+      
       const { error } = await supabase
         .from('instagram_comments')
-        .update({ prospect_classification: classification })
+        .update({ prospect_classification: newClassifications.length > 0 ? newClassifications : null })
         .eq('id', prospect.id);
 
       if (error) throw error;
 
-      const config = getClassificationConfig(classification);
-      toast.success(`Classificado como ${config.label}`);
+      const config = getClassificationConfig(classificationKey);
+      if (classificationKey === null) {
+        toast.success('Classificações removidas');
+      } else if (newClassifications.includes(classificationKey)) {
+        toast.success(`Adicionado: ${config.label}`);
+      } else {
+        toast.success(`Removido: ${config.label}`);
+      }
       
       // Update local state immediately for better UX
       setProspects(prev => prev.map(p => 
-        p.id === prospect.id ? { ...p, prospect_classification: classification } : p
+        p.id === prospect.id ? { ...p, prospect_classification: newClassifications.length > 0 ? newClassifications : null } : p
       ));
     } catch (error) {
       console.error('Erro ao classificar:', error);
@@ -354,7 +386,7 @@ export function ProspectingFunnel() {
       prospect_name: prospect.prospect_name || '',
       notes: prospect.notes || '',
       funnel_stage: prospect.funnel_stage,
-      prospect_classification: prospect.prospect_classification
+      prospect_classification: prospect.prospect_classification || []
     });
   };
 
@@ -688,31 +720,36 @@ export function ProspectingFunnel() {
                                     <DropdownMenuTrigger asChild>
                                       <button 
                                         className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 h-5 mt-1 rounded-md border-0 cursor-pointer hover:opacity-80 transition-opacity ${
-                                          prospect.prospect_classification 
-                                            ? `${getClassificationConfig(prospect.prospect_classification).bgColor} ${getClassificationConfig(prospect.prospect_classification).color}` 
+                                          prospect.prospect_classification && prospect.prospect_classification.length > 0
+                                            ? `${getClassificationConfig(prospect.prospect_classification[0]).bgColor} ${getClassificationConfig(prospect.prospect_classification[0]).color}` 
                                             : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                         }`}
                                         onClick={(e) => e.stopPropagation()}
                                       >
                                         <Tag className="h-2.5 w-2.5" />
-                                        {prospect.prospect_classification 
-                                          ? getClassificationConfig(prospect.prospect_classification).label 
+                                        {prospect.prospect_classification && prospect.prospect_classification.length > 0
+                                          ? prospect.prospect_classification.length > 1 
+                                            ? `${prospect.prospect_classification.length} selecionados`
+                                            : getClassificationConfig(prospect.prospect_classification[0]).label
                                           : 'Classificar'}
                                       </button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="start" className="w-36" onClick={(e) => e.stopPropagation()}>
-                                      <DropdownMenuLabel className="text-xs">Classificação</DropdownMenuLabel>
+                                      <DropdownMenuLabel className="text-xs">Classificação (múltipla)</DropdownMenuLabel>
                                       <DropdownMenuSeparator />
                                       {CLASSIFICATIONS.map((c) => (
                                         <DropdownMenuItem
                                           key={c.key || 'none'}
                                           onClick={() => handleQuickClassify(prospect, c.key)}
                                           className={`text-xs cursor-pointer ${
-                                            prospect.prospect_classification === c.key ? 'bg-accent' : ''
+                                            c.key !== null && prospect.prospect_classification?.includes(c.key) ? 'bg-accent' : ''
                                           }`}
                                         >
                                           <span className={`w-2 h-2 rounded-full mr-2 ${c.bgColor}`} />
                                           {c.label}
+                                          {c.key !== null && prospect.prospect_classification?.includes(c.key) && (
+                                            <CheckCircle2 className="h-3 w-3 ml-auto" />
+                                          )}
                                         </DropdownMenuItem>
                                       ))}
                                     </DropdownMenuContent>
@@ -842,29 +879,35 @@ export function ProspectingFunnel() {
               </Select>
             </div>
             <div>
-              <Label>Classificação</Label>
-              <Select
-                value={editForm.prospect_classification || 'null'}
-                onValueChange={(value) => setEditForm({ 
-                  ...editForm, 
-                  prospect_classification: value === 'null' ? null : value as ProspectClassification 
+              <Label>Classificações</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {CLASSIFICATIONS.filter(c => c.key !== null).map(c => {
+                  const isSelected = editForm.prospect_classification.includes(c.key!);
+                  return (
+                    <Button
+                      key={c.key}
+                      type="button"
+                      size="sm"
+                      variant={isSelected ? "default" : "outline"}
+                      className={cn(
+                        "text-xs",
+                        isSelected && c.bgColor,
+                        isSelected && c.color
+                      )}
+                      onClick={() => {
+                        const newClassifications = isSelected
+                          ? editForm.prospect_classification.filter(k => k !== c.key)
+                          : [...editForm.prospect_classification, c.key!];
+                        setEditForm({ ...editForm, prospect_classification: newClassifications });
+                      }}
+                    >
+                      {isSelected && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                      {c.label}
+                    </Button>
+                  );
                 })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma classificação" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CLASSIFICATIONS.map(c => (
-                    <SelectItem key={c.key || 'null'} value={c.key || 'null'}>
-                      <span className={`flex items-center gap-2 ${c.color}`}>
-                        <Tag className="h-3 w-3" />
-                        {c.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
                 Use "Acolhedor", "SDR" ou "Equipe" para marcar comentários da sua equipe
               </p>
             </div>

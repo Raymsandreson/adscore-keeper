@@ -62,7 +62,7 @@ interface Comment {
   author_id: string | null;
   created_at: string;
   converted_to_lead?: boolean;
-  prospect_classification?: string | null;
+  prospect_classification?: string[] | null;
 }
 
 interface CommentsTrackerProps {
@@ -83,8 +83,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   
   // Classification + Lead conversion dialog states
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
-  const [pendingClassification, setPendingClassification] = useState<ProspectClassification>(null);
+  const [pendingClassifications, setPendingClassifications] = useState<string[]>([]);
   const [showLeadConfirmDialog, setShowLeadConfirmDialog] = useState(false);
+  const [showClassificationDialog, setShowClassificationDialog] = useState(false);
+  const [selectedClassifications, setSelectedClassifications] = useState<string[]>([]);
   
   // Filter states
   const [searchText, setSearchText] = useState('');
@@ -307,39 +309,93 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     return `Há ${diffDays} dia${diffDays > 1 ? 's' : ''}`;
   };
 
-  // Classify a comment and optionally ask to convert to lead
-  const handleClassifyComment = async (comment: Comment, classification: ProspectClassification) => {
+  // Open classification dialog for a comment
+  const openClassificationDialog = (comment: Comment) => {
+    setClassifyingComment(comment);
+    setSelectedClassifications(comment.prospect_classification || []);
+    setShowClassificationDialog(true);
+  };
+
+  // Toggle a classification in the selection
+  const toggleClassification = (key: string) => {
+    setSelectedClassifications(prev => 
+      prev.includes(key) 
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    );
+  };
+
+  // Apply classifications to comment and all comments from the same author
+  const handleApplyClassifications = async () => {
+    if (!classifyingComment) return;
+
+    const classifications = selectedClassifications.length > 0 ? selectedClassifications : null;
+    const username = classifyingComment.author_username?.replace('@', '').toLowerCase();
+
     try {
-      // Update classification in database
-      const { error } = await supabase
-        .from('instagram_comments')
-        .update({ prospect_classification: classification })
-        .eq('id', comment.id);
+      // Update all comments from the same author
+      if (username) {
+        const { error } = await supabase
+          .from('instagram_comments')
+          .update({ prospect_classification: classifications })
+          .ilike('author_username', username);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // Update local state
-      setComments(prev => 
-        prev.map(c => c.id === comment.id ? { ...c, prospect_classification: classification } : c)
-      );
+        // Update local state for all comments from this author
+        setComments(prev => 
+          prev.map(c => {
+            const commentUsername = c.author_username?.replace('@', '').toLowerCase();
+            if (commentUsername === username) {
+              return { ...c, prospect_classification: classifications };
+            }
+            return c;
+          })
+        );
 
-      const classLabel = CLASSIFICATIONS.find(c => c.key === classification)?.label || 'Classificado';
-      toast.success(`Comentário classificado como ${classLabel}`);
+        const classLabels = selectedClassifications
+          .map(k => CLASSIFICATIONS.find(c => c.key === k)?.label)
+          .filter(Boolean)
+          .join(', ');
+        
+        toast.success(
+          classLabels 
+            ? `Todos os comentários de @${username} classificados como: ${classLabels}`
+            : `Classificação removida de @${username}`
+        );
+      } else {
+        // Single comment update (no username)
+        const { error } = await supabase
+          .from('instagram_comments')
+          .update({ prospect_classification: classifications })
+          .eq('id', classifyingComment.id);
+
+        if (error) throw error;
+
+        setComments(prev => 
+          prev.map(c => c.id === classifyingComment.id ? { ...c, prospect_classification: classifications } : c)
+        );
+        toast.success('Comentário classificado!');
+      }
+
+      setShowClassificationDialog(false);
 
       // After classification, ask if user wants to convert to lead
-      if (comment.author_username) {
-        const username = comment.author_username.replace('@', '').toLowerCase();
+      if (username && selectedClassifications.length > 0) {
         const isAlreadyLead = convertedUsers.has(username);
         
         if (!isAlreadyLead) {
-          setClassifyingComment(comment);
-          setPendingClassification(classification);
+          setPendingClassifications(selectedClassifications);
           setShowLeadConfirmDialog(true);
+          return; // Keep classifyingComment for the lead dialog
         }
       }
+
+      setClassifyingComment(null);
+      setSelectedClassifications([]);
     } catch (error) {
-      console.error('Error classifying comment:', error);
-      toast.error('Erro ao classificar comentário');
+      console.error('Error classifying comments:', error);
+      toast.error('Erro ao classificar comentários');
     }
   };
 
@@ -400,7 +456,8 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }
     setShowLeadConfirmDialog(false);
     setClassifyingComment(null);
-    setPendingClassification(null);
+    setPendingClassifications([]);
+    setSelectedClassifications([]);
   };
 
   // Convert all commenters to leads
@@ -989,42 +1046,35 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
                               </div>
                               
-                              {/* Classification badge */}
-                              {comment.prospect_classification && (
-                                <Badge 
-                                  variant="outline" 
-                                  className={cn(
-                                    "text-xs",
-                                    CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.bgColor,
-                                    CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.color
-                                  )}
-                                >
-                                  {CLASSIFICATIONS.find(c => c.key === comment.prospect_classification)?.label}
-                                </Badge>
+                              {/* Classification badges */}
+                              {comment.prospect_classification && comment.prospect_classification.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {comment.prospect_classification.map(cls => {
+                                    const config = CLASSIFICATIONS.find(c => c.key === cls);
+                                    return config ? (
+                                      <Badge 
+                                        key={cls}
+                                        variant="outline" 
+                                        className={cn("text-xs", config.bgColor, config.color)}
+                                      >
+                                        {config.label}
+                                      </Badge>
+                                    ) : null;
+                                  })}
+                                </div>
                               )}
                               
-                              {/* Classification dropdown for received comments */}
+                              {/* Classification button for received comments */}
                               {activeTab === 'received' && comment.author_username && (
-                                <Select
-                                  value={comment.prospect_classification || 'none'}
-                                  onValueChange={(value) => handleClassifyComment(comment, value === 'none' ? null : value as ProspectClassification)}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => openClassificationDialog(comment)}
                                 >
-                                  <SelectTrigger className="h-7 w-[130px] text-xs">
-                                    <Tag className="h-3 w-3 mr-1" />
-                                    <SelectValue placeholder="Classificar" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {CLASSIFICATIONS.map((cls) => (
-                                      <SelectItem 
-                                        key={cls.key || 'none'} 
-                                        value={cls.key || 'none'}
-                                        className={cn("text-xs", cls.color)}
-                                      >
-                                        {cls.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  <Tag className="h-3 w-3 mr-1" />
+                                  Classificar
+                                </Button>
                               )}
                               
                               {/* Already converted indicator */}
@@ -1047,6 +1097,62 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         </CardContent>
       </Card>
 
+      {/* Classification Dialog */}
+      <Dialog open={showClassificationDialog} onOpenChange={setShowClassificationDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5 text-primary" />
+              Classificar Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Selecione uma ou mais classificações para <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong>.
+              Será aplicado a todos os comentários deste usuário.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="grid grid-cols-2 gap-2">
+              {CLASSIFICATIONS.filter(c => c.key !== null).map((cls) => (
+                <Button
+                  key={cls.key}
+                  variant={selectedClassifications.includes(cls.key!) ? "default" : "outline"}
+                  className={cn(
+                    "justify-start",
+                    selectedClassifications.includes(cls.key!) && cls.bgColor,
+                    selectedClassifications.includes(cls.key!) && cls.color
+                  )}
+                  onClick={() => toggleClassification(cls.key!)}
+                >
+                  <CheckCircle2 className={cn(
+                    "h-4 w-4 mr-2",
+                    selectedClassifications.includes(cls.key!) ? "opacity-100" : "opacity-0"
+                  )} />
+                  {cls.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowClassificationDialog(false);
+                setClassifyingComment(null);
+                setSelectedClassifications([]);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleApplyClassifications}>
+              <Tag className="h-4 w-4 mr-2" />
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Lead Confirmation Dialog */}
       <Dialog open={showLeadConfirmDialog} onOpenChange={setShowLeadConfirmDialog}>
         <DialogContent className="sm:max-w-md">
@@ -1056,8 +1162,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               Converter em Lead?
             </DialogTitle>
             <DialogDescription>
-              Você classificou o comentário de <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong> como{' '}
-              <strong className="text-foreground">{CLASSIFICATIONS.find(c => c.key === pendingClassification)?.label}</strong>.
+              Você classificou <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong> como{' '}
+              <strong className="text-foreground">
+                {pendingClassifications.map(k => CLASSIFICATIONS.find(c => c.key === k)?.label).filter(Boolean).join(', ')}
+              </strong>.
             </DialogDescription>
           </DialogHeader>
           
