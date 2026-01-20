@@ -29,8 +29,11 @@ import {
   Timer,
   CheckCheck,
   Image,
-  Tag
+  Tag,
+  Bot,
+  Sparkles
 } from "lucide-react";
+import { AIReplyDialog } from "./AIReplyDialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -93,6 +96,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [showLeadConfirmDialog, setShowLeadConfirmDialog] = useState(false);
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [selectedClassifications, setSelectedClassifications] = useState<string[]>([]);
+  
+  // AI Reply dialog state
+  const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
+  const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
   
   // Filter states
   const [searchText, setSearchText] = useState('');
@@ -1105,6 +1112,23 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 </div>
                               )}
                               
+                              {/* AI Reply button for received comments */}
+                              {activeTab === 'received' && (comment as any).comment_id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-300 hover:border-purple-400"
+                                  onClick={() => {
+                                    setReplyingToComment(comment);
+                                    setShowAIReplyDialog(true);
+                                  }}
+                                >
+                                  <Bot className="h-3 w-3 mr-1 text-purple-500" />
+                                  <Sparkles className="h-3 w-3 mr-1 text-pink-500" />
+                                  Responder IA
+                                </Button>
+                              )}
+                              
                               {/* Classification button for received comments */}
                               {activeTab === 'received' && comment.author_username && (
                                 <Button
@@ -1237,6 +1261,17 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Reply Dialog */}
+      <AIReplyDialog
+        open={showAIReplyDialog}
+        onOpenChange={setShowAIReplyDialog}
+        comment={replyingToComment}
+        accessToken={accessToken}
+        onReplyPosted={() => {
+          syncFromInstagram();
+        }}
+      />
     </div>
   );
 };
