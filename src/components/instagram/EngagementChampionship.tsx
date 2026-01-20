@@ -148,16 +148,17 @@ export const EngagementChampionship: React.FC = () => {
       if (championsError) throw championsError;
       setChampions(championsData || []);
 
-      // Fetch settings
-      const { data: settingsData } = await supabase
+      // Fetch settings - use maybeSingle to handle empty table
+      const { data: settingsData, error: settingsError } = await supabase
         .from('engagement_championship_settings')
         .select('*')
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (settingsData) {
+      if (settingsData && !settingsError) {
         setSettings(settingsData as unknown as ChampionshipSettings);
       }
+      // If no settings exist, keep using DEFAULT_SETTINGS
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar ranking');
