@@ -197,6 +197,11 @@ export const EngagementChampionship: React.FC = () => {
       const weekStart = format(currentWeekStart, 'yyyy-MM-dd');
       const weekEnd = format(currentWeekEnd, 'yyyy-MM-dd');
 
+      // Store previous rankings for comparison
+      const previousRankings = new Map(
+        rankings.map(r => [r.username, r.rank_position])
+      );
+
       // Fetch all comments from this week
       const { data: comments, error: commentsError } = await supabase
         .from('instagram_comments')
@@ -247,11 +252,71 @@ export const EngagementChampionship: React.FC = () => {
         };
       });
 
-      // Upsert rankings
-      for (const entry of entries) {
+      // Sort by points to get new positions
+      const sortedEntries = [...entries].sort((a, b) => b.total_points - a.total_points);
+
+      // Track position changes for notifications
+      const positionChanges: { username: string; oldPos: number; newPos: number; direction: 'up' | 'down' }[] = [];
+
+      // Upsert rankings with previous position tracking
+      for (let i = 0; i < sortedEntries.length; i++) {
+        const entry = sortedEntries[i];
+        const newPosition = i + 1;
+        const previousPosition = previousRankings.get(entry.username);
+
+        // Track significant position changes
+        if (previousPosition && previousPosition !== newPosition && settings.notify_on_rank_change) {
+          positionChanges.push({
+            username: entry.username,
+            oldPos: previousPosition,
+            newPos: newPosition,
+            direction: newPosition < previousPosition ? 'up' : 'down'
+          });
+        }
+
         await supabase
           .from('engagement_rankings')
-          .upsert(entry, { onConflict: 'username,week_start,ad_account_id' });
+          .upsert({
+            ...entry,
+            rank_position: newPosition,
+            previous_rank_position: previousPosition || null
+          }, { onConflict: 'username,week_start,ad_account_id' });
+      }
+
+      // Show notifications for position changes
+      if (positionChanges.length > 0 && settings.notify_on_rank_change) {
+        const movedUp = positionChanges.filter(c => c.direction === 'up');
+        const movedDown = positionChanges.filter(c => c.direction === 'down');
+
+        if (movedUp.length > 0) {
+          const topMover = movedUp.reduce((a, b) => 
+            (a.oldPos - a.newPos) > (b.oldPos - b.newPos) ? a : b
+          );
+          toast.success(
+            `🚀 @${topMover.username} subiu ${topMover.oldPos - topMover.newPos} posição(ões)!`,
+            { description: `Agora está em ${topMover.newPos}º lugar` }
+          );
+        }
+
+        if (movedDown.length > 0) {
+          const topFaller = movedDown.reduce((a, b) => 
+            (a.newPos - a.oldPos) > (b.newPos - b.oldPos) ? a : b
+          );
+          toast.info(
+            `📉 @${topFaller.username} desceu ${topFaller.newPos - topFaller.oldPos} posição(ões)`,
+            { description: `Agora está em ${topFaller.newPos}º lugar` }
+          );
+        }
+
+        // Check for new leader
+        const newLeader = sortedEntries[0];
+        const previousLeaderUsername = rankings[0]?.username;
+        if (newLeader && previousLeaderUsername && newLeader.username !== previousLeaderUsername) {
+          toast.success(
+            `👑 Novo líder: @${newLeader.username}!`,
+            { description: `Com ${newLeader.total_points} pontos`, duration: 5000 }
+          );
+        }
       }
 
       toast.success(`Ranking atualizado! ${entries.length} engajadores encontrados`);
@@ -262,7 +327,7 @@ export const EngagementChampionship: React.FC = () => {
     } finally {
       setSyncing(false);
     }
-  }, [currentWeekStart, currentWeekEnd, settings, fetchData]);
+  }, [currentWeekStart, currentWeekEnd, settings, fetchData, rankings]);
 
   const finalizeWeek = async () => {
     try {
