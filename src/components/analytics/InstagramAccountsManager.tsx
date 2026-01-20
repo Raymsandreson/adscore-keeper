@@ -75,10 +75,19 @@ export const InstagramAccountsManager = () => {
   const [addingAccount, setAddingAccount] = useState<string | null>(null);
   
   // Manual account form state
-  const [manualUsername, setManualUsername] = useState("");
-  const [manualInstagramId, setManualInstagramId] = useState("");
+  const [manualInput, setManualInput] = useState(""); // URL or username
   const [manualAccessToken, setManualAccessToken] = useState("");
   const [addingManual, setAddingManual] = useState(false);
+  const [validatingToken, setValidatingToken] = useState(false);
+  const [tokenValidation, setTokenValidation] = useState<{
+    valid: boolean;
+    instagramId?: string;
+    username?: string;
+    profilePicture?: string;
+    followersCount?: number;
+    mediaCount?: number;
+    error?: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchAccounts();
@@ -143,39 +152,120 @@ export const InstagramAccountsManager = () => {
     // Don't auto-fetch, let user choose the tab
   };
 
-  const addManualAccount = async () => {
-    if (!manualUsername.trim()) {
-      toast.error('Digite o username da conta');
-      return;
+  // Extract username from URL or input
+  const extractUsername = (input: string): string => {
+    const trimmed = input.trim();
+    // Handle Instagram URLs
+    const urlPatterns = [
+      /instagram\.com\/([^/?]+)/i,
+      /instagr\.am\/([^/?]+)/i,
+    ];
+    for (const pattern of urlPatterns) {
+      const match = trimmed.match(pattern);
+      if (match) return match[1].replace('@', '');
     }
-    if (!manualInstagramId.trim()) {
-      toast.error('Digite o ID numérico do Instagram Business');
-      return;
-    }
-    if (!/^\d+$/.test(manualInstagramId.trim())) {
-      toast.error('O ID deve ser numérico (ex: 17841400000000000)');
-      return;
-    }
+    // Direct username
+    return trimmed.replace('@', '');
+  };
+
+  // Validate token and discover Instagram Business Account
+  const validateTokenAndDiscover = async () => {
     if (!manualAccessToken.trim()) {
-      toast.error('Digite o Access Token');
+      toast.error('Digite o Access Token primeiro');
+      return;
+    }
+
+    setValidatingToken(true);
+    setTokenValidation(null);
+
+    try {
+      const token = manualAccessToken.trim();
+      
+      // First, check what this token has access to
+      const meResponse = await fetch(
+        `https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${token}`
+      );
+      const meData = await meResponse.json();
+
+      if (!meResponse.ok || meData.error) {
+        setTokenValidation({ valid: false, error: meData.error?.message || 'Token inválido' });
+        setValidatingToken(false);
+        return;
+      }
+
+      // Try to get pages with Instagram accounts
+      const pagesResponse = await fetch(
+        `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
+      );
+      const pagesData = await pagesResponse.json();
+
+      // Look for Instagram account in pages
+      if (pagesData.data) {
+        const pageWithIg = pagesData.data.find((p: any) => p.instagram_business_account);
+        if (pageWithIg) {
+          const ig = pageWithIg.instagram_business_account;
+          setTokenValidation({
+            valid: true,
+            instagramId: ig.id,
+            username: ig.username,
+            profilePicture: ig.profile_picture_url,
+            followersCount: ig.followers_count,
+            mediaCount: ig.media_count,
+          });
+          setValidatingToken(false);
+          return;
+        }
+      }
+
+      // If no pages, try direct page lookup (Page token)
+      const directIgResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${meData.id}?fields=instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
+      );
+      const directIgData = await directIgResponse.json();
+
+      if (directIgData.instagram_business_account) {
+        const ig = directIgData.instagram_business_account;
+        setTokenValidation({
+          valid: true,
+          instagramId: ig.id,
+          username: ig.username,
+          profilePicture: ig.profile_picture_url,
+          followersCount: ig.followers_count,
+          mediaCount: ig.media_count,
+        });
+      } else {
+        setTokenValidation({ 
+          valid: false, 
+          error: 'Nenhuma conta Instagram Business encontrada com este token. Certifique-se de que a conta está vinculada a uma Página do Facebook.' 
+        });
+      }
+    } catch (err: any) {
+      setTokenValidation({ valid: false, error: err.message || 'Erro ao validar token' });
+    }
+
+    setValidatingToken(false);
+  };
+
+  const addManualAccount = async () => {
+    if (!tokenValidation?.valid || !tokenValidation.instagramId) {
+      toast.error('Valide o token primeiro para descobrir a conta');
       return;
     }
 
     setAddingManual(true);
 
     try {
-      const username = manualUsername.trim().replace('@', '');
-      
       const { data, error } = await supabase
         .from('instagram_accounts' as any)
         .insert({
-          account_name: `@${username}`,
-          instagram_id: manualInstagramId.trim(),
+          account_name: `@${tokenValidation.username}`,
+          instagram_id: tokenValidation.instagramId,
           access_token: manualAccessToken.trim(),
           is_active: true,
-          followers_count: 0,
+          followers_count: tokenValidation.followersCount || 0,
           following_count: 0,
-          media_count: 0,
+          media_count: tokenValidation.mediaCount || 0,
+          profile_picture_url: tokenValidation.profilePicture,
         })
         .select()
         .single();
@@ -184,11 +274,11 @@ export const InstagramAccountsManager = () => {
         toast.error('Erro ao adicionar conta', { description: error.message });
       } else {
         const newAccountData = data as unknown as InstagramAccount;
-        toast.success(`@${username} adicionado com sucesso!`);
+        toast.success(`@${tokenValidation.username} adicionado com sucesso!`);
         setAccounts([newAccountData, ...accounts]);
-        setManualUsername("");
-        setManualInstagramId("");
+        setManualInput("");
         setManualAccessToken("");
+        setTokenValidation(null);
         setDialogOpen(false);
         
         // Sync the account immediately
@@ -350,57 +440,92 @@ export const InstagramAccountsManager = () => {
                 {/* Manual Tab */}
                 <TabsContent value="manual" className="space-y-4 mt-4">
                   <div className="bg-muted/50 p-4 rounded-lg text-sm space-y-2">
-                    <p className="font-medium">Como obter os dados:</p>
+                    <p className="font-medium">Como funciona:</p>
                     <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                       <li>Acesse o <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="text-primary underline">Graph API Explorer</a></li>
-                      <li>Gere um token com as permissões: <code className="bg-muted px-1 rounded">instagram_basic</code>, <code className="bg-muted px-1 rounded">instagram_manage_insights</code></li>
-                      <li>O ID numérico pode ser encontrado fazendo uma chamada GET para <code className="bg-muted px-1 rounded">/me/accounts</code></li>
+                      <li>Gere um token com as permissões: <code className="bg-muted px-1 rounded">instagram_basic</code>, <code className="bg-muted px-1 rounded">instagram_manage_insights</code>, <code className="bg-muted px-1 rounded">pages_read_engagement</code></li>
+                      <li>Cole o token abaixo e clique em "Validar" - detectaremos a conta automaticamente</li>
                     </ol>
                   </div>
                   
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="manual-username">Username do Instagram</Label>
-                      <Input
-                        id="manual-username"
-                        placeholder="@seuusuario"
-                        value={manualUsername}
-                        onChange={(e) => setManualUsername(e.target.value)}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="manual-id">ID Numérico do Instagram Business</Label>
-                      <Input
-                        id="manual-id"
-                        placeholder="17841400000000000"
-                        value={manualInstagramId}
-                        onChange={(e) => setManualInstagramId(e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        ID numérico da conta (não é o username)
-                      </p>
-                    </div>
-                    
-                    <div className="space-y-2">
                       <Label htmlFor="manual-token">Access Token</Label>
-                      <Input
-                        id="manual-token"
-                        type="password"
-                        placeholder="EAAxxxxxx..."
-                        value={manualAccessToken}
-                        onChange={(e) => setManualAccessToken(e.target.value)}
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          id="manual-token"
+                          type="password"
+                          placeholder="EAAxxxxxx..."
+                          value={manualAccessToken}
+                          onChange={(e) => {
+                            setManualAccessToken(e.target.value);
+                            setTokenValidation(null);
+                          }}
+                          className="flex-1"
+                        />
+                        <Button 
+                          variant="outline" 
+                          onClick={validateTokenAndDiscover}
+                          disabled={validatingToken || !manualAccessToken.trim()}
+                        >
+                          {validatingToken ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Validar"
+                          )}
+                        </Button>
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Token de acesso com permissões de Instagram Business
                       </p>
                     </div>
+
+                    {/* Validation Result */}
+                    {tokenValidation && (
+                      <div className={`p-4 rounded-lg border ${tokenValidation.valid ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+                        {tokenValidation.valid ? (
+                          <div className="flex items-center gap-4">
+                            {tokenValidation.profilePicture ? (
+                              <img 
+                                src={tokenValidation.profilePicture} 
+                                alt={tokenValidation.username}
+                                className="w-14 h-14 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 flex items-center justify-center text-white font-bold">
+                                {tokenValidation.username?.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                <span className="font-medium">@{tokenValidation.username}</span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                ID: {tokenValidation.instagramId}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {tokenValidation.followersCount?.toLocaleString('pt-BR')} seguidores • {tokenValidation.mediaCount?.toLocaleString('pt-BR')} posts
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-medium text-red-500">Token inválido</p>
+                              <p className="text-sm text-muted-foreground">{tokenValidation.error}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   <Button 
                     className="w-full" 
                     onClick={addManualAccount}
-                    disabled={addingManual}
+                    disabled={addingManual || !tokenValidation?.valid}
                   >
                     {addingManual ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
