@@ -62,6 +62,21 @@ serve(async (req) => {
       );
     }
 
+    const instagramId = account.instagram_id;
+    
+    // Validate Instagram ID format - must be numeric
+    if (!/^\d+$/.test(instagramId)) {
+      console.error('Invalid Instagram ID format:', instagramId, '- must be a numeric ID, not username');
+      return new Response(
+        JSON.stringify({ 
+          error: 'ID de conta Instagram inválido', 
+          details: `O ID "${instagramId}" parece ser um username em vez do ID numérico do Instagram Business. Por favor, delete esta conta e adicione novamente usando o botão "Conectar Conta" que buscará as contas do seu Meta Business.`,
+          invalid_format: true
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Use global META_ACCESS_TOKEN if account doesn't have its own token
     const accessToken = account.access_token === 'USE_GLOBAL_TOKEN' 
       ? Deno.env.get('META_ACCESS_TOKEN') 
@@ -73,8 +88,6 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    const instagramId = account.instagram_id;
 
     // Fetch user info using the Instagram Business Account ID
     const userResponse = await fetch(
