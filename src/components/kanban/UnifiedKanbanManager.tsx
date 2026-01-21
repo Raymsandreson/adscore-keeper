@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -24,31 +23,27 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Plus, 
-  Users, 
-  TrendingUp, 
   LayoutGrid, 
-  List,
   RefreshCw,
   Search,
-  Filter,
   Instagram,
-  Download,
 } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
 }
 
 export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
   
   // New lead form state
   const [newLeadName, setNewLeadName] = useState('');
@@ -267,10 +262,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           onMoveToStage={handleMoveToStage}
           onMoveToBoard={handleMoveToBoard}
           onDeleteLead={deleteLead}
-          onEditLead={(lead) => {
-            // TODO: Open edit dialog
-            console.log('Edit lead:', lead);
-          }}
+          onEditLead={(lead) => setEditingLead(lead)}
           availableBoards={boards}
         />
       ) : (
@@ -370,6 +362,18 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         boards={boards}
         targetBoardId={selectedBoardId}
         onImportComplete={fetchLeads}
+      />
+
+      {/* Lead Edit Dialog */}
+      <LeadEditDialog
+        open={!!editingLead}
+        onOpenChange={(open) => !open && setEditingLead(null)}
+        lead={editingLead}
+        onSave={async (leadId, updates) => {
+          await updateLead(leadId, updates);
+          fetchLeads();
+        }}
+        adAccountId={adAccountId}
       />
     </div>
   );
