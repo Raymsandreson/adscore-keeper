@@ -1,0 +1,317 @@
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+export type ContactClassification = 'client' | 'non_client' | 'prospect' | 'partner' | 'supplier';
+
+export interface Contact {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  instagram_username: string | null;
+  instagram_url: string | null;
+  classification: ContactClassification;
+  notes: string | null;
+  tags: string[];
+  city: string | null;
+  state: string | null;
+  lead_id: string | null;
+  converted_to_lead_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactStats {
+  total: number;
+  clients: number;
+  nonClients: number;
+  prospects: number;
+  partners: number;
+  suppliers: number;
+  withInstagram: number;
+  convertedToLead: number;
+}
+
+export const useContacts = () => {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState<ContactStats>({
+    total: 0,
+    clients: 0,
+    nonClients: 0,
+    prospects: 0,
+    partners: 0,
+    suppliers: 0,
+    withInstagram: 0,
+    convertedToLead: 0,
+  });
+
+  const fetchContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const typedContacts = (data || []) as Contact[];
+      setContacts(typedContacts);
+      calculateStats(typedContacts);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      toast.error('Erro ao carregar contatos');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const calculateStats = (contactsData: Contact[]) => {
+    const total = contactsData.length;
+    const clients = contactsData.filter(c => c.classification === 'client').length;
+    const nonClients = contactsData.filter(c => c.classification === 'non_client').length;
+    const prospects = contactsData.filter(c => c.classification === 'prospect').length;
+    const partners = contactsData.filter(c => c.classification === 'partner').length;
+    const suppliers = contactsData.filter(c => c.classification === 'supplier').length;
+    const withInstagram = contactsData.filter(c => c.instagram_username || c.instagram_url).length;
+    const convertedToLead = contactsData.filter(c => c.lead_id).length;
+
+    setStats({
+      total,
+      clients,
+      nonClients,
+      prospects,
+      partners,
+      suppliers,
+      withInstagram,
+      convertedToLead,
+    });
+  };
+
+  const addContact = async (contact: Partial<Contact> & { full_name: string }) => {
+    try {
+      // Extract Instagram username from URL if provided
+      let instagramUsername = contact.instagram_username;
+      if (contact.instagram_url && !instagramUsername) {
+        const match = contact.instagram_url.match(/instagram\.com\/([^/?]+)/);
+        if (match) {
+          instagramUsername = match[1].replace('@', '');
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([{
+          full_name: contact.full_name,
+          phone: contact.phone || null,
+          email: contact.email || null,
+          instagram_username: instagramUsername || null,
+          instagram_url: contact.instagram_url || null,
+          classification: contact.classification || 'prospect',
+          notes: contact.notes || null,
+          tags: contact.tags || [],
+          city: contact.city || null,
+          state: contact.state || null,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success('Contato adicionado com sucesso');
+      fetchContacts();
+      return data as Contact;
+    } catch (error) {
+      console.error('Error adding contact:', error);
+      toast.error('Erro ao adicionar contato');
+      throw error;
+    }
+  };
+
+  const updateContact = async (id: string, updates: Partial<Contact>) => {
+    try {
+      // Extract Instagram username from URL if provided
+      let instagramUsername = updates.instagram_username;
+      if (updates.instagram_url && !instagramUsername) {
+        const match = updates.instagram_url.match(/instagram\.com\/([^/?]+)/);
+        if (match) {
+          instagramUsername = match[1].replace('@', '');
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .update({
+          ...updates,
+          instagram_username: instagramUsername ?? updates.instagram_username,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success('Contato atualizado');
+      fetchContacts();
+      return data as Contact;
+    } catch (error) {
+      console.error('Error updating contact:', error);
+      toast.error('Erro ao atualizar contato');
+      throw error;
+    }
+  };
+
+  const deleteContact = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Contato removido');
+      fetchContacts();
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      toast.error('Erro ao remover contato');
+      throw error;
+    }
+  };
+
+  const updateClassification = async (id: string, classification: ContactClassification) => {
+    return updateContact(id, { classification });
+  };
+
+  const convertToLead = async (contactId: string, leadData?: Partial<any>) => {
+    try {
+      const contact = contacts.find(c => c.id === contactId);
+      if (!contact) throw new Error('Contato não encontrado');
+
+      // Create lead from contact
+      const { data: leadResult, error: leadError } = await supabase
+        .from('leads')
+        .insert({
+          lead_name: contact.full_name,
+          lead_phone: contact.phone,
+          lead_email: contact.email,
+          instagram_username: contact.instagram_username,
+          source: 'contact_import',
+          status: 'new',
+          client_classification: contact.classification === 'client' ? 'client' : 
+                                contact.classification === 'prospect' ? 'prospect' : null,
+          city: contact.city,
+          state: contact.state,
+          notes: contact.notes,
+          ...leadData,
+        })
+        .select()
+        .single();
+
+      if (leadError) throw leadError;
+
+      // Update contact with lead reference
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          lead_id: leadResult.id,
+          converted_to_lead_at: new Date().toISOString(),
+        })
+        .eq('id', contactId);
+
+      if (updateError) throw updateError;
+
+      toast.success('Contato convertido em lead');
+      fetchContacts();
+      return leadResult;
+    } catch (error) {
+      console.error('Error converting contact to lead:', error);
+      toast.error('Erro ao converter contato em lead');
+      throw error;
+    }
+  };
+
+  const importFromCSV = async (csvData: Partial<Contact>[]) => {
+    let imported = 0;
+    let errors = 0;
+    let duplicates = 0;
+
+    for (const contact of csvData) {
+      try {
+        // Check for duplicates by phone or email or instagram
+        let duplicateQuery = supabase.from('contacts').select('id');
+        
+        if (contact.phone) {
+          duplicateQuery = duplicateQuery.eq('phone', contact.phone);
+        } else if (contact.email) {
+          duplicateQuery = duplicateQuery.eq('email', contact.email);
+        } else if (contact.instagram_username) {
+          duplicateQuery = duplicateQuery.eq('instagram_username', contact.instagram_username);
+        }
+
+        const { data: existing } = await duplicateQuery.maybeSingle();
+
+        if (existing) {
+          duplicates++;
+          continue;
+        }
+
+        // Extract Instagram username from URL
+        let instagramUsername = contact.instagram_username;
+        if (contact.instagram_url && !instagramUsername) {
+          const match = contact.instagram_url.match(/instagram\.com\/([^/?]+)/);
+          if (match) {
+            instagramUsername = match[1].replace('@', '');
+          }
+        }
+
+        const { error } = await supabase
+          .from('contacts')
+          .insert({
+            full_name: contact.full_name || 'Sem nome',
+            phone: contact.phone,
+            email: contact.email,
+            instagram_username: instagramUsername,
+            instagram_url: contact.instagram_url,
+            classification: contact.classification || 'prospect',
+            city: contact.city,
+            state: contact.state,
+            notes: contact.notes,
+            tags: contact.tags || [],
+          });
+
+        if (error) {
+          console.error('Insert error:', error);
+          errors++;
+        } else {
+          imported++;
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        errors++;
+      }
+    }
+
+    fetchContacts();
+    return { imported, errors, duplicates };
+  };
+
+  useEffect(() => {
+    fetchContacts();
+  }, [fetchContacts]);
+
+  return {
+    contacts,
+    stats,
+    loading,
+    fetchContacts,
+    addContact,
+    updateContact,
+    deleteContact,
+    updateClassification,
+    convertToLead,
+    importFromCSV,
+  };
+};
