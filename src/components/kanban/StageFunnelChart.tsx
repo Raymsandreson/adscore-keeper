@@ -8,15 +8,24 @@ import {
   ChartConfig
 } from '@/components/ui/chart';
 import { FunnelChart, Funnel, LabelList, Cell, ResponsiveContainer } from 'recharts';
-import { TrendingDown, TrendingUp, Filter, ArrowDown } from 'lucide-react';
+import { TrendingDown, TrendingUp, Filter, ArrowDown, AlertTriangle } from 'lucide-react';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
+
+interface ConversionAlert {
+  fromStage: string;
+  toStage: string;
+  currentRate: number;
+  threshold: number;
+  severity: 'warning' | 'critical';
+}
 
 interface StageFunnelChartProps {
   board: KanbanBoard;
   leadsPerStage: Record<string, number>;
+  conversionAlerts?: ConversionAlert[];
 }
 
-export function StageFunnelChart({ board, leadsPerStage }: StageFunnelChartProps) {
+export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }: StageFunnelChartProps) {
   const funnelData = useMemo(() => {
     if (!board?.stages?.length) return [];
 
@@ -117,17 +126,28 @@ export function StageFunnelChart({ board, leadsPerStage }: StageFunnelChartProps
                     <div className="flex items-center justify-center py-1">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <ArrowDown className="h-3 w-3" />
-                        {funnelData[index + 1].dropOffRate > 0 ? (
-                          <span className="text-destructive flex items-center gap-0.5">
-                            <TrendingDown className="h-3 w-3" />
-                            -{funnelData[index + 1].dropOffRate}%
-                          </span>
-                        ) : (
-                          <span className="text-green-500 flex items-center gap-0.5">
-                            <TrendingUp className="h-3 w-3" />
-                            0%
-                          </span>
-                        )}
+                        {(() => {
+                          const nextStage = funnelData[index + 1];
+                          const hasAlert = conversionAlerts.some(
+                            a => a.fromStage === stage.name && a.toStage === nextStage.name
+                          );
+                          
+                          if (nextStage.dropOffRate > 0) {
+                            return (
+                              <span className={`flex items-center gap-0.5 ${hasAlert ? 'text-destructive font-medium' : 'text-destructive'}`}>
+                                {hasAlert && <AlertTriangle className="h-3 w-3" />}
+                                <TrendingDown className="h-3 w-3" />
+                                -{nextStage.dropOffRate}%
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-green-500 flex items-center gap-0.5">
+                              <TrendingUp className="h-3 w-3" />
+                              0%
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -142,35 +162,48 @@ export function StageFunnelChart({ board, leadsPerStage }: StageFunnelChartProps
               Detalhamento por Estágio
             </div>
             <div className="space-y-1.5">
-              {funnelData.map((stage, index) => (
-                <div 
-                  key={stage.name}
-                  className="flex items-center justify-between p-2 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
+                {funnelData.map((stage, index) => {
+                  const hasAlert = index > 0 && conversionAlerts.some(
+                    a => a.fromStage === funnelData[index - 1].name && a.toStage === stage.name
+                  );
+                  
+                  return (
                     <div 
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: stage.color }}
-                    />
-                    <span className="text-xs font-medium truncate max-w-[120px]">
-                      {stage.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="font-mono font-medium">
-                      {stage.value} leads
-                    </span>
-                    {!stage.isFirst && (
-                      <Badge 
-                        variant={stage.conversionRate >= 50 ? "default" : "secondary"}
-                        className="text-[10px] px-1.5"
-                      >
-                        {stage.conversionRate}%
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      key={stage.name}
+                      className={`flex items-center justify-between p-2 rounded-md transition-colors ${
+                        hasAlert 
+                          ? 'bg-destructive/10 border border-destructive/20' 
+                          : 'bg-muted/30 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: stage.color }}
+                        />
+                        <span className="text-xs font-medium truncate max-w-[120px]">
+                          {stage.name}
+                        </span>
+                        {hasAlert && (
+                          <AlertTriangle className="h-3 w-3 text-destructive" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="font-mono font-medium">
+                          {stage.value} leads
+                        </span>
+                        {!stage.isFirst && (
+                          <Badge 
+                            variant={stage.conversionRate >= 50 ? "default" : hasAlert ? "destructive" : "secondary"}
+                            className="text-[10px] px-1.5"
+                          >
+                            {stage.conversionRate}%
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
 
             {/* Summary */}
