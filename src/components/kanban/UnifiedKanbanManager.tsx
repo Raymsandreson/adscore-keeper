@@ -37,6 +37,7 @@ import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramPro
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
+import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
 }
@@ -291,6 +292,14 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             <p className="text-sm text-muted-foreground">{selectedBoard.description}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Board Comparison Metrics */}
+      {boards.length >= 2 && allLeads.length > 0 && (
+        <BoardComparisonMetrics
+          boards={boards}
+          allLeads={allLeads}
+        />
       )}
 
       {/* Analytics: Funnel Chart and Stage Time Metrics */}
