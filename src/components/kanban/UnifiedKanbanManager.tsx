@@ -35,7 +35,7 @@ import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
-
+import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
 }
@@ -281,6 +281,14 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             <p className="text-sm text-muted-foreground">{selectedBoard.description}</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Stage Time Metrics */}
+      {selectedBoard && boardLeads.length > 0 && (
+        <StageTimeMetrics
+          board={selectedBoard}
+          leadIds={boardLeads.map(l => l.id)}
+        />
       )}
 
       {/* Kanban Board */}
