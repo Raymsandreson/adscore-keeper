@@ -52,6 +52,8 @@ import { CustomFieldsForm } from './leads/CustomFieldsForm';
 import { CardFieldsSettings } from './leads/CardFieldsSettings';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useCardFieldsSettings } from '@/hooks/useCardFieldsSettings';
+import { FollowupAnalytics } from './leads/FollowupAnalytics';
+import { BarChart3 } from 'lucide-react';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -540,6 +542,10 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
             <Users className="h-4 w-4" />
             Leads
           </TabsTrigger>
+          <TabsTrigger value="followups" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Análise Follow-ups
+          </TabsTrigger>
           <TabsTrigger value="settings" className="gap-2">
             <Settings className="h-4 w-4" />
             Configurações
@@ -865,6 +871,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               onToggleFollower={toggleFollower}
               onClassificationChange={updateClientClassification}
               cardFieldsConfig={cardFieldsConfig}
+              onLeadsRefresh={fetchLeads}
             />
           ) : (
             <>
@@ -1037,6 +1044,10 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="followups" className="mt-4">
+          <FollowupAnalytics />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4 space-y-6">
