@@ -31,6 +31,7 @@ import {
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
+import { useConversionAlerts } from '@/hooks/useConversionAlerts';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
@@ -38,6 +39,8 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
+import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
+
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
 }
@@ -129,6 +132,18 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     });
     return counts;
   }, [boardLeads, selectedBoard]);
+
+  // Conversion alerts hook
+  const {
+    settings: conversionSettings,
+    saveSettings: saveConversionSettings,
+    checkConversionRates,
+  } = useConversionAlerts(selectedBoard, leadsPerStage);
+
+  // Get current alerts for display
+  const currentConversionAlerts = useMemo(() => {
+    return checkConversionRates();
+  }, [checkConversionRates]);
 
   const handleMoveToStage = async (leadId: string, stageId: string) => {
     try {
@@ -302,12 +317,23 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         />
       )}
 
+      {/* Conversion Alert Settings */}
+      {selectedBoard && (
+        <ConversionAlertSettings
+          board={selectedBoard}
+          settings={conversionSettings}
+          onSave={saveConversionSettings}
+          currentAlerts={currentConversionAlerts}
+        />
+      )}
+
       {/* Analytics: Funnel Chart and Stage Time Metrics */}
       {selectedBoard && boardLeads.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <StageFunnelChart
             board={selectedBoard}
             leadsPerStage={leadsPerStage}
+            conversionAlerts={currentConversionAlerts}
           />
           <StageTimeMetrics
             board={selectedBoard}
