@@ -35,9 +35,12 @@ import {
   Briefcase,
   CircleOff,
   Target,
+  Clock,
 } from 'lucide-react';
 import { DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Lead, LeadStatus, SyncStatus, ClientClassification } from '@/hooks/useLeads';
+import { QuickFollowupButton } from '@/components/leads/QuickFollowupButton';
+import { FollowupDialog } from '@/components/leads/FollowupDialog';
 
 interface LeadsPipelineProps {
   leads: Lead[];
@@ -49,6 +52,7 @@ interface LeadsPipelineProps {
   onNavigateToComment?: (commentId: string) => void;
   onClassificationChange?: (leadId: string, classification: ClientClassification) => void;
   cardFieldsConfig?: CardFieldsConfig;
+  onLeadsRefresh?: () => void;
 }
 
 const classificationConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -75,7 +79,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig, onLeadsRefresh }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -83,6 +87,7 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
     leadId: null,
   });
   const [conversionValue, setConversionValue] = useState('');
+  const [followupDialogLead, setFollowupDialogLead] = useState<Lead | null>(null);
 
   const getLeadsByStatus = (status: LeadStatus) => {
     return leads.filter((lead) => lead.status === status);
@@ -399,6 +404,28 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                                 </div>
                               )}
 
+                              {/* Follow-up Quick Button */}
+                              <div className="mt-2 flex items-center justify-between">
+                                <QuickFollowupButton
+                                  leadId={lead.id}
+                                  followupCount={lead.followup_count || 0}
+                                  onFollowupAdded={onLeadsRefresh}
+                                  onViewHistory={() => setFollowupDialogLead(lead)}
+                                  variant="compact"
+                                />
+                                {lead.last_followup_at && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {new Date(lead.last_followup_at).toLocaleDateString('pt-BR')}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Último follow-up</TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+
                               {/* Sync Status & Date */}
                               {(cardFieldsConfig?.createdAt !== false || cardFieldsConfig?.syncStatus !== false) && (
                                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -474,6 +501,14 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Followup Dialog */}
+      <FollowupDialog
+        lead={followupDialogLead}
+        open={!!followupDialogLead}
+        onOpenChange={(open) => !open && setFollowupDialogLead(null)}
+        onFollowupAdded={onLeadsRefresh}
+      />
       </>
     </TooltipProvider>
   );

@@ -42,6 +42,11 @@ export interface Lead {
   city: string | null;
   state: string | null;
   neighborhood: string | null;
+  // Follow-up tracking fields
+  followup_count: number | null;
+  last_followup_at: string | null;
+  first_visit_at: string | null;
+  first_meeting_at: string | null;
 }
 
 export interface LeadStats {

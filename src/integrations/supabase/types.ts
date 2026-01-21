@@ -730,6 +730,44 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_followups: {
+        Row: {
+          created_at: string
+          followup_date: string
+          followup_type: string
+          id: string
+          lead_id: string
+          notes: string | null
+          outcome: string | null
+        }
+        Insert: {
+          created_at?: string
+          followup_date?: string
+          followup_type?: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+          outcome?: string | null
+        }
+        Update: {
+          created_at?: string
+          followup_date?: string
+          followup_type?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          outcome?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_followups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           ad_account_id: string | null
@@ -750,10 +788,14 @@ export type Database = {
           creative_id: string | null
           creative_name: string | null
           facebook_lead_id: string | null
+          first_meeting_at: string | null
+          first_visit_at: string | null
+          followup_count: number | null
           id: string
           instagram_comment_id: string | null
           instagram_username: string | null
           is_follower: boolean | null
+          last_followup_at: string | null
           last_sync_at: string | null
           lead_email: string | null
           lead_name: string | null
@@ -786,10 +828,14 @@ export type Database = {
           creative_id?: string | null
           creative_name?: string | null
           facebook_lead_id?: string | null
+          first_meeting_at?: string | null
+          first_visit_at?: string | null
+          followup_count?: number | null
           id?: string
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
+          last_followup_at?: string | null
           last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
@@ -822,10 +868,14 @@ export type Database = {
           creative_id?: string | null
           creative_name?: string | null
           facebook_lead_id?: string | null
+          first_meeting_at?: string | null
+          first_visit_at?: string | null
+          followup_count?: number | null
           id?: string
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
+          last_followup_at?: string | null
           last_sync_at?: string | null
           lead_email?: string | null
           lead_name?: string | null
