@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,8 @@ import {
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays } from 'date-fns';
+import { supabase } from '@/integrations/supabase/client';
+import { LeadContactsManager } from './LeadContactsManager';
 
 interface DynamicKanbanBoardProps {
   board: KanbanBoard;
@@ -42,7 +44,7 @@ interface DynamicKanbanBoardProps {
   onMoveToBoard: (leadId: string, boardId: string, stageId?: string) => void;
   onDeleteLead: (id: string) => void;
   onEditLead?: (lead: Lead) => void;
-  onAddContact?: (lead: Lead) => void;
+  onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
 }
 
@@ -54,7 +56,7 @@ export function DynamicKanbanBoard({
   onMoveToBoard,
   onDeleteLead,
   onEditLead,
-  onAddContact,
+  onManageContacts,
   availableBoards = [],
 }: DynamicKanbanBoardProps) {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
@@ -65,6 +67,36 @@ export function DynamicKanbanBoard({
     stageId: null,
   });
   const [conversionValue, setConversionValue] = useState('');
+  const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
+  const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
+
+  // Fetch contact counts for all leads
+  useEffect(() => {
+    const fetchContactCounts = async () => {
+      const leadIds = leads.map(l => l.id);
+      if (leadIds.length === 0) return;
+
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('lead_id')
+        .in('lead_id', leadIds);
+
+      if (error) {
+        console.error('Error fetching contact counts:', error);
+        return;
+      }
+
+      const counts: Record<string, number> = {};
+      data?.forEach(contact => {
+        if (contact.lead_id) {
+          counts[contact.lead_id] = (counts[contact.lead_id] || 0) + 1;
+        }
+      });
+      setContactCounts(counts);
+    };
+
+    fetchContactCounts();
+  }, [leads]);
 
   // Group leads by stage
   const leadsByStage = useMemo(() => {
@@ -266,12 +298,15 @@ export function DynamicKanbanBoard({
                                           Editar
                                         </DropdownMenuItem>
                                         
-                                        {onAddContact && (
-                                          <DropdownMenuItem onClick={() => onAddContact(lead)}>
-                                            <UserPlus className="h-3 w-3 mr-2" />
-                                            Adicionar Contato
-                                          </DropdownMenuItem>
-                                        )}
+                                        <DropdownMenuItem onClick={() => setContactsManagerLead(lead)}>
+                                          <Users className="h-3 w-3 mr-2" />
+                                          Gerenciar Contatos
+                                          {contactCounts[lead.id] > 0 && (
+                                            <Badge variant="secondary" className="ml-auto text-xs">
+                                              {contactCounts[lead.id]}
+                                            </Badge>
+                                          )}
+                                        </DropdownMenuItem>
                                         
                                         {lead.instagram_username && (
                                           <DropdownMenuItem
@@ -341,12 +376,27 @@ export function DynamicKanbanBoard({
                                     )}
                                   </div>
 
-                                  {/* Conversion value badge */}
-                                  {lead.conversion_value > 0 && (
-                                    <Badge variant="secondary" className="mt-2 bg-emerald-100 text-emerald-700">
-                                      R$ {lead.conversion_value.toLocaleString('pt-BR')}
-                                    </Badge>
-                                  )}
+                                  {/* Badges row */}
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {/* Contacts count badge */}
+                                    {contactCounts[lead.id] > 0 && (
+                                      <Badge 
+                                        variant="outline" 
+                                        className="text-xs cursor-pointer hover:bg-muted"
+                                        onClick={() => setContactsManagerLead(lead)}
+                                      >
+                                        <Users className="h-3 w-3 mr-1" />
+                                        {contactCounts[lead.id]} contato{contactCounts[lead.id] > 1 ? 's' : ''}
+                                      </Badge>
+                                    )}
+                                    
+                                    {/* Conversion value badge */}
+                                    {lead.conversion_value > 0 && (
+                                      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+                                        R$ {lead.conversion_value.toLocaleString('pt-BR')}
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </CardContent>
@@ -389,6 +439,13 @@ export function DynamicKanbanBoard({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Lead Contacts Manager */}
+        <LeadContactsManager
+          lead={contactsManagerLead}
+          open={!!contactsManagerLead}
+          onOpenChange={(open) => !open && setContactsManagerLead(null)}
+        />
       </>
     </TooltipProvider>
   );
