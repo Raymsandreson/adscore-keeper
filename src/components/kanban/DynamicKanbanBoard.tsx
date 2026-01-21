@@ -29,6 +29,7 @@ import {
   ArrowRightLeft,
   UserPlus,
   Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -133,6 +134,32 @@ export function DynamicKanbanBoard({
     return differenceInDays(new Date(), new Date(lead.updated_at));
   };
 
+  const isLeadStagnant = (lead: Lead, stageId: string) => {
+    const stage = board.stages.find(s => s.id === stageId);
+    if (!stage?.stagnationDays) return false;
+    const daysInStage = getDaysInStage(lead);
+    return daysInStage >= stage.stagnationDays;
+  };
+
+  // Calculate stagnant leads for the alert panel
+  const stagnantLeads = useMemo(() => {
+    const stagnant: { lead: Lead; stage: typeof board.stages[0]; daysInStage: number }[] = [];
+    
+    board.stages.forEach(stage => {
+      if (!stage.stagnationDays) return;
+      
+      const stageLeads = leadsByStage[stage.id] || [];
+      stageLeads.forEach(lead => {
+        const daysInStage = getDaysInStage(lead);
+        if (daysInStage >= stage.stagnationDays!) {
+          stagnant.push({ lead, stage, daysInStage });
+        }
+      });
+    });
+
+    return stagnant.sort((a, b) => b.daysInStage - a.daysInStage);
+  }, [leadsByStage, board.stages]);
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead);
     e.dataTransfer.effectAllowed = 'move';
@@ -189,6 +216,48 @@ export function DynamicKanbanBoard({
   return (
     <TooltipProvider>
       <>
+        {/* Stagnant Leads Alert Panel */}
+        {stagnantLeads.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <h4 className="font-medium text-sm text-red-700 dark:text-red-400">
+                {stagnantLeads.length} lead{stagnantLeads.length > 1 ? 's' : ''} parado{stagnantLeads.length > 1 ? 's' : ''}
+              </h4>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {stagnantLeads.slice(0, 5).map(({ lead, stage, daysInStage }) => (
+                <div 
+                  key={lead.id}
+                  className="flex items-center gap-2 px-2 py-1 rounded-md bg-white dark:bg-background border border-red-200 dark:border-red-800"
+                >
+                  <span className="text-xs font-medium truncate max-w-[120px]">
+                    {lead.lead_name || 'Sem nome'}
+                  </span>
+                  <Badge variant="outline" className="text-xs text-red-600 border-red-300">
+                    {daysInStage}d em {stage.name}
+                  </Badge>
+                  {lead.lead_phone && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={() => window.open(`https://wa.me/${lead.lead_phone?.replace(/\D/g, '')}`, '_blank')}
+                    >
+                      <Phone className="h-3 w-3 text-green-600" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {stagnantLeads.length > 5 && (
+                <Badge variant="secondary" className="text-xs">
+                  +{stagnantLeads.length - 5} mais
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-4 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
             const stageLeads = leadsByStage[stage.id] || [];
@@ -244,13 +313,14 @@ export function DynamicKanbanBoard({
                     ) : (
                       stageLeads.map((lead) => {
                         const daysInStage = getDaysInStage(lead);
+                        const isStagnant = isLeadStagnant(lead, stage.id);
                         
                         return (
                           <Card
                             key={lead.id}
                             className={`cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
                               draggedLead?.id === lead.id ? 'opacity-50' : ''
-                            }`}
+                            } ${isStagnant ? 'ring-2 ring-red-400 bg-red-50/50 dark:bg-red-950/20' : ''}`}
                             draggable
                             onDragStart={(e) => handleDragStart(e, lead)}
                           >
@@ -259,7 +329,7 @@ export function DynamicKanbanBoard({
                                 <div className="flex items-center gap-1">
                                   <GripVertical className="h-4 w-4 text-muted-foreground/50" />
                                   <Avatar className="h-8 w-8">
-                                    <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                                    <AvatarFallback className={`text-xs ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
                                       {getInitials(lead.lead_name)}
                                     </AvatarFallback>
                                   </Avatar>
@@ -278,11 +348,18 @@ export function DynamicKanbanBoard({
                                         </TooltipContent>
                                       </Tooltip>
                                       
-                                      {/* Days in stage indicator */}
-                                      {daysInStage > 3 && (
-                                        <Badge variant="outline" className="text-xs mt-1 text-amber-600 border-amber-300">
+                                      {/* Days in stage indicator - enhanced for stagnant leads */}
+                                      {(daysInStage > 3 || isStagnant) && (
+                                        <Badge 
+                                          variant="outline" 
+                                          className={`text-xs mt-1 ${
+                                            isStagnant 
+                                              ? 'text-red-600 border-red-400 bg-red-100 dark:bg-red-950' 
+                                              : 'text-amber-600 border-amber-300'
+                                          }`}
+                                        >
                                           <Clock className="h-3 w-3 mr-1" />
-                                          {daysInStage}d
+                                          {daysInStage}d {isStagnant && '⚠️'}
                                         </Badge>
                                       )}
                                     </div>
