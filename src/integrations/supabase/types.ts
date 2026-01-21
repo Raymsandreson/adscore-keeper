@@ -83,6 +83,68 @@ export type Database = {
         }
         Relationships: []
       }
+      contacts: {
+        Row: {
+          city: string | null
+          classification: string | null
+          converted_to_lead_at: string | null
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          instagram_url: string | null
+          instagram_username: string | null
+          lead_id: string | null
+          notes: string | null
+          phone: string | null
+          state: string | null
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          city?: string | null
+          classification?: string | null
+          converted_to_lead_at?: string | null
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          instagram_url?: string | null
+          instagram_username?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          state?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          city?: string | null
+          classification?: string | null
+          converted_to_lead_at?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          instagram_url?: string | null
+          instagram_username?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          phone?: string | null
+          state?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       engagement_champions: {
         Row: {
           ad_account_id: string | null
