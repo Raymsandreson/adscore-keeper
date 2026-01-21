@@ -31,11 +31,14 @@ import {
   RefreshCw,
   Search,
   Filter,
+  Instagram,
+  Download,
 } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
+import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -45,6 +48,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
+  const [showImportInstagram, setShowImportInstagram] = useState(false);
   
   // New lead form state
   const [newLeadName, setNewLeadName] = useState('');
@@ -205,6 +209,11 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             <RefreshCw className="h-4 w-4" />
           </Button>
           
+          <Button variant="outline" onClick={() => setShowImportInstagram(true)}>
+            <Instagram className="h-4 w-4 mr-2" />
+            Importar Instagram
+          </Button>
+          
           <Button onClick={() => setShowAddLeadDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Lead
@@ -353,6 +362,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Instagram Prospects Sheet */}
+      <ImportInstagramProspects
+        open={showImportInstagram}
+        onOpenChange={setShowImportInstagram}
+        boards={boards}
+        targetBoardId={selectedBoardId}
+        onImportComplete={fetchLeads}
+      />
     </div>
   );
 }
