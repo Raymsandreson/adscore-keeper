@@ -872,6 +872,39 @@ export type Database = {
           },
         ]
       }
+      lead_stage_history: {
+        Row: {
+          changed_at: string
+          from_board_id: string | null
+          from_stage: string | null
+          id: string
+          lead_id: string
+          notes: string | null
+          to_board_id: string | null
+          to_stage: string
+        }
+        Insert: {
+          changed_at?: string
+          from_board_id?: string | null
+          from_stage?: string | null
+          id?: string
+          lead_id: string
+          notes?: string | null
+          to_board_id?: string | null
+          to_stage: string
+        }
+        Update: {
+          changed_at?: string
+          from_board_id?: string | null
+          from_stage?: string | null
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          to_board_id?: string | null
+          to_stage?: string
+        }
+        Relationships: []
+      }
       leads: {
         Row: {
           ad_account_id: string | null
