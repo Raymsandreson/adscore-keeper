@@ -35,6 +35,7 @@ import { Lead } from '@/hooks/useLeads';
 import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactsManager } from './LeadContactsManager';
+import { toast } from 'sonner';
 
 interface DynamicKanbanBoardProps {
   board: KanbanBoard;
@@ -317,11 +318,23 @@ export function DynamicKanbanBoard({
                                           </DropdownMenuItem>
                                         )}
                                         
+                                        {lead.instagram_comment_id && (
+                                          <DropdownMenuItem
+                                            onClick={() => {
+                                              // Navigate to comment tracker with this comment highlighted
+                                              toast.info('Acessar via Automação > Comentários para ver histórico completo');
+                                            }}
+                                          >
+                                            <MessageSquare className="h-3 w-3 mr-2" />
+                                            Comentário original
+                                          </DropdownMenuItem>
+                                        )}
+                                        
                                         {lead.lead_phone && (
                                           <DropdownMenuItem
                                             onClick={() => window.open(`https://wa.me/${lead.lead_phone?.replace(/\D/g, '')}`, '_blank')}
                                           >
-                                            <MessageSquare className="h-3 w-3 mr-2" />
+                                            <Phone className="h-3 w-3 mr-2" />
                                             WhatsApp
                                           </DropdownMenuItem>
                                         )}
