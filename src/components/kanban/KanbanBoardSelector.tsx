@@ -1,0 +1,457 @@
+import { useState } from 'react';
+import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  Plus, 
+  Settings, 
+  LayoutGrid, 
+  Inbox, 
+  Instagram, 
+  Briefcase,
+  Trash2,
+  GripVertical,
+  X,
+} from 'lucide-react';
+
+interface KanbanBoardSelectorProps {
+  boards: KanbanBoard[];
+  selectedBoardId: string | null;
+  onSelectBoard: (boardId: string) => void;
+  onCreateBoard: (board: Partial<KanbanBoard>) => Promise<KanbanBoard>;
+  onUpdateBoard: (id: string, updates: Partial<KanbanBoard>) => Promise<KanbanBoard>;
+  onDeleteBoard: (id: string) => Promise<void>;
+  leadsCountByBoard?: Record<string, number>;
+}
+
+const BOARD_ICONS: Record<string, React.ReactNode> = {
+  'layout-grid': <LayoutGrid className="h-4 w-4" />,
+  'inbox': <Inbox className="h-4 w-4" />,
+  'instagram': <Instagram className="h-4 w-4" />,
+  'briefcase': <Briefcase className="h-4 w-4" />,
+};
+
+const DEFAULT_COLORS = [
+  '#3b82f6', '#8b5cf6', '#22c55e', '#f97316', '#ef4444', '#06b6d4', '#ec4899',
+];
+
+export function KanbanBoardSelector({
+  boards,
+  selectedBoardId,
+  onSelectBoard,
+  onCreateBoard,
+  onUpdateBoard,
+  onDeleteBoard,
+  leadsCountByBoard = {},
+}: KanbanBoardSelectorProps) {
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingBoard, setEditingBoard] = useState<KanbanBoard | null>(null);
+  
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formColor, setFormColor] = useState('#3b82f6');
+  const [formIcon, setFormIcon] = useState('layout-grid');
+  const [formStages, setFormStages] = useState<KanbanStage[]>([]);
+  const [newStageName, setNewStageName] = useState('');
+  const [newStageColor, setNewStageColor] = useState('#3b82f6');
+
+  const resetForm = () => {
+    setFormName('');
+    setFormDescription('');
+    setFormColor('#3b82f6');
+    setFormIcon('layout-grid');
+    setFormStages([]);
+    setNewStageName('');
+    setNewStageColor('#3b82f6');
+  };
+
+  const handleOpenCreate = () => {
+    resetForm();
+    // Add default stages
+    setFormStages([
+      { id: 'new', name: 'Novo', color: '#3b82f6' },
+      { id: 'in_progress', name: 'Em Andamento', color: '#f97316' },
+      { id: 'done', name: 'Concluído', color: '#22c55e' },
+    ]);
+    setShowCreateDialog(true);
+  };
+
+  const handleOpenEdit = (board: KanbanBoard) => {
+    setEditingBoard(board);
+    setFormName(board.name);
+    setFormDescription(board.description || '');
+    setFormColor(board.color);
+    setFormIcon(board.icon);
+    setFormStages([...board.stages]);
+    setShowEditDialog(true);
+  };
+
+  const handleCreate = async () => {
+    if (!formName.trim()) return;
+    
+    await onCreateBoard({
+      name: formName,
+      description: formDescription || null,
+      color: formColor,
+      icon: formIcon,
+      stages: formStages,
+    });
+    
+    setShowCreateDialog(false);
+    resetForm();
+  };
+
+  const handleUpdate = async () => {
+    if (!editingBoard || !formName.trim()) return;
+    
+    await onUpdateBoard(editingBoard.id, {
+      name: formName,
+      description: formDescription || null,
+      color: formColor,
+      icon: formIcon,
+      stages: formStages,
+    });
+    
+    setShowEditDialog(false);
+    setEditingBoard(null);
+    resetForm();
+  };
+
+  const handleDelete = async () => {
+    if (!editingBoard) return;
+    if (!confirm(`Tem certeza que deseja excluir o quadro "${editingBoard.name}"? Os leads serão desvinculados.`)) return;
+    
+    await onDeleteBoard(editingBoard.id);
+    setShowEditDialog(false);
+    setEditingBoard(null);
+    resetForm();
+  };
+
+  const handleAddStage = () => {
+    if (!newStageName.trim()) return;
+    
+    const newStage: KanbanStage = {
+      id: newStageName.toLowerCase().replace(/\s+/g, '_'),
+      name: newStageName,
+      color: newStageColor,
+    };
+    
+    setFormStages([...formStages, newStage]);
+    setNewStageName('');
+    setNewStageColor('#3b82f6');
+  };
+
+  const handleRemoveStage = (stageId: string) => {
+    setFormStages(formStages.filter(s => s.id !== stageId));
+  };
+
+  const handleMoveStage = (index: number, direction: 'up' | 'down') => {
+    const newStages = [...formStages];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newStages.length) return;
+    
+    [newStages[index], newStages[targetIndex]] = [newStages[targetIndex], newStages[index]];
+    setFormStages(newStages);
+  };
+
+  const selectedBoard = boards.find(b => b.id === selectedBoardId);
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <Select value={selectedBoardId || ''} onValueChange={onSelectBoard}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Selecionar quadro">
+              {selectedBoard && (
+                <span className="flex items-center gap-2">
+                  {BOARD_ICONS[selectedBoard.icon] || BOARD_ICONS['layout-grid']}
+                  {selectedBoard.name}
+                </span>
+              )}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {boards.map((board) => (
+              <SelectItem key={board.id} value={board.id}>
+                <span className="flex items-center gap-2">
+                  {BOARD_ICONS[board.icon] || BOARD_ICONS['layout-grid']}
+                  {board.name}
+                  {leadsCountByBoard[board.id] !== undefined && (
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      {leadsCountByBoard[board.id]}
+                    </Badge>
+                  )}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button variant="outline" size="icon" onClick={handleOpenCreate} title="Criar quadro">
+          <Plus className="h-4 w-4" />
+        </Button>
+
+        {selectedBoard && (
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => handleOpenEdit(selectedBoard)}
+            title="Configurar quadro"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+
+      {/* Create Board Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Criar Novo Quadro</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label>Nome do Quadro</Label>
+              <Input 
+                value={formName} 
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Ex: Prospecção Instagram"
+              />
+            </div>
+
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea 
+                value={formDescription} 
+                onChange={(e) => setFormDescription(e.target.value)}
+                placeholder="Descreva o propósito deste quadro..."
+                rows={2}
+              />
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <Label>Cor</Label>
+                <div className="flex gap-2 mt-1">
+                  {DEFAULT_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`w-6 h-6 rounded-full border-2 ${formColor === color ? 'border-foreground' : 'border-transparent'}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setFormColor(color)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Ícone</Label>
+                <div className="flex gap-2 mt-1">
+                  {Object.entries(BOARD_ICONS).map(([key, icon]) => (
+                    <button
+                      key={key}
+                      className={`p-2 rounded border ${formIcon === key ? 'border-primary bg-primary/10' : 'border-border'}`}
+                      onClick={() => setFormIcon(key)}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label>Estágios do Funil</Label>
+              <ScrollArea className="h-[150px] border rounded-md p-2 mt-1">
+                {formStages.map((stage, index) => (
+                  <div key={stage.id} className="flex items-center gap-2 py-1">
+                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: stage.color }}
+                    />
+                    <span className="flex-1 text-sm">{stage.name}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6"
+                      onClick={() => handleRemoveStage(stage.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </ScrollArea>
+              
+              <div className="flex gap-2 mt-2">
+                <Input 
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="Nome do estágio"
+                  className="flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddStage()}
+                />
+                <input
+                  type="color"
+                  value={newStageColor}
+                  onChange={(e) => setNewStageColor(e.target.value)}
+                  className="w-10 h-9 rounded border cursor-pointer"
+                />
+                <Button variant="outline" onClick={handleAddStage}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreate} disabled={!formName.trim() || formStages.length === 0}>
+              Criar Quadro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Board Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Quadro</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label>Nome do Quadro</Label>
+              <Input 
+                value={formName} 
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="Ex: Prospecção Instagram"
+              />
+            </div>
+
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea 
+                value={formDescription} 
+                onChange={(e) => setFormDescription(e.target.value)}
+                placeholder="Descreva o propósito deste quadro..."
+                rows={2}
+              />
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <Label>Cor</Label>
+                <div className="flex gap-2 mt-1">
+                  {DEFAULT_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`w-6 h-6 rounded-full border-2 ${formColor === color ? 'border-foreground' : 'border-transparent'}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setFormColor(color)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Ícone</Label>
+                <div className="flex gap-2 mt-1">
+                  {Object.entries(BOARD_ICONS).map(([key, icon]) => (
+                    <button
+                      key={key}
+                      className={`p-2 rounded border ${formIcon === key ? 'border-primary bg-primary/10' : 'border-border'}`}
+                      onClick={() => setFormIcon(key)}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label>Estágios do Funil</Label>
+              <ScrollArea className="h-[150px] border rounded-md p-2 mt-1">
+                {formStages.map((stage, index) => (
+                  <div key={stage.id} className="flex items-center gap-2 py-1">
+                    <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: stage.color }}
+                    />
+                    <span className="flex-1 text-sm">{stage.name}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6"
+                      onClick={() => handleRemoveStage(stage.id)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </ScrollArea>
+              
+              <div className="flex gap-2 mt-2">
+                <Input 
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="Nome do estágio"
+                  className="flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddStage()}
+                />
+                <input
+                  type="color"
+                  value={newStageColor}
+                  onChange={(e) => setNewStageColor(e.target.value)}
+                  className="w-10 h-10 rounded border cursor-pointer"
+                />
+                <Button variant="outline" onClick={handleAddStage}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex justify-between">
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleUpdate} disabled={!formName.trim() || formStages.length === 0}>
+                Salvar
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
