@@ -66,17 +66,22 @@ const classificationConfig: Record<ContactClassification, { label: string; color
 };
 
 export const ContactsManager: React.FC = () => {
-  const { contacts, stats, loading, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV } = useContacts();
+  const { contacts, stats, loading, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all'>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [isMetaImportDialogOpen, setIsMetaImportDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [csvPreview, setCsvPreview] = useState<Partial<Contact>[]>([]);
+  const [metaImportData, setMetaImportData] = useState<{ followers: any[]; following: any[] }>({ followers: [], following: [] });
+  const [metaImportType, setMetaImportType] = useState<'followers' | 'following' | 'both'>('followers');
+  const [metaImportClassification, setMetaImportClassification] = useState<ContactClassification>('prospect');
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const metaFileInputRef = useRef<HTMLInputElement>(null);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -271,6 +276,135 @@ export const ContactsManager: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Handle Meta export file (JSON format)
+  const handleMetaFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        
+        // Try to parse as JSON first
+        let data: any = null;
+        
+        try {
+          data = JSON.parse(text);
+        } catch {
+          // If not JSON, try to parse HTML format
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(text, 'text/html');
+          
+          // Look for links with instagram.com
+          const links = doc.querySelectorAll('a[href*="instagram.com"]');
+          const usernames: string[] = [];
+          
+          links.forEach(link => {
+            const href = link.getAttribute('href') || '';
+            const match = href.match(/instagram\.com\/([^/?]+)/);
+            if (match && match[1] !== 'accounts') {
+              usernames.push(match[1]);
+            }
+          });
+          
+          if (usernames.length > 0) {
+            setMetaImportData({
+              followers: usernames.map(u => ({ username: u })),
+              following: [],
+            });
+            setIsMetaImportDialogOpen(true);
+            if (metaFileInputRef.current) metaFileInputRef.current.value = '';
+            return;
+          }
+          
+          toast.error('Formato de arquivo não reconhecido');
+          return;
+        }
+
+        // Parse Meta JSON export structure
+        let followers: any[] = [];
+        let following: any[] = [];
+
+        // Handle different possible structures
+        if (data.relationships_followers) {
+          followers = data.relationships_followers;
+        } else if (data.followers) {
+          followers = Array.isArray(data.followers) ? data.followers : [data.followers];
+        } else if (Array.isArray(data) && data[0]?.string_list_data) {
+          // Direct array of follower objects
+          followers = data;
+        }
+
+        if (data.relationships_following) {
+          following = data.relationships_following;
+        } else if (data.following) {
+          following = Array.isArray(data.following) ? data.following : [data.following];
+        }
+
+        // If it's a simple array, assume it's followers
+        if (Array.isArray(data) && !data[0]?.string_list_data) {
+          followers = data;
+        }
+
+        if (followers.length === 0 && following.length === 0) {
+          // Try to find any array in the data
+          const findArrays = (obj: any): any[] => {
+            if (Array.isArray(obj)) return obj;
+            if (typeof obj === 'object' && obj !== null) {
+              for (const key of Object.keys(obj)) {
+                const result = findArrays(obj[key]);
+                if (result.length > 0) return result;
+              }
+            }
+            return [];
+          };
+          followers = findArrays(data);
+        }
+
+        setMetaImportData({ followers, following });
+        setIsMetaImportDialogOpen(true);
+      } catch (error) {
+        console.error('Parse error:', error);
+        toast.error('Erro ao processar arquivo. Verifique se é um arquivo JSON válido da exportação Meta.');
+      }
+    };
+
+    reader.readAsText(file);
+    if (metaFileInputRef.current) metaFileInputRef.current.value = '';
+  };
+
+  const handleMetaImport = async () => {
+    let dataToImport: any[] = [];
+    
+    if (metaImportType === 'followers') {
+      dataToImport = metaImportData.followers;
+    } else if (metaImportType === 'following') {
+      dataToImport = metaImportData.following;
+    } else {
+      dataToImport = [...metaImportData.followers, ...metaImportData.following];
+    }
+
+    if (dataToImport.length === 0) {
+      toast.error('Nenhum dado para importar');
+      return;
+    }
+
+    setIsImporting(true);
+    const result = await importFromMetaExport(dataToImport, metaImportType, metaImportClassification);
+    setIsImporting(false);
+    setMetaImportData({ followers: [], following: [] });
+    setIsMetaImportDialogOpen(false);
+
+    if (result.duplicates > 0) {
+      toast.info(`${result.imported} importados, ${result.duplicates} duplicados ignorados`);
+    } else if (result.errors > 0) {
+      toast.warning(`${result.imported} importados, ${result.errors} erros`);
+    } else {
+      toast.success(`${result.imported} contatos do Instagram importados!`);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Stats Cards */}
@@ -345,7 +479,7 @@ export const ContactsManager: React.FC = () => {
               </Select>
             </div>
             
-            <div className="flex gap-2 w-full md:w-auto justify-end">
+            <div className="flex gap-2 w-full md:w-auto justify-end flex-wrap">
               <Button variant="outline" size="sm" onClick={downloadTemplate}>
                 <Download className="h-4 w-4 mr-1" />
                 Modelo CSV
@@ -357,9 +491,20 @@ export const ContactsManager: React.FC = () => {
                 onChange={handleFileUpload}
                 className="hidden"
               />
+              <input
+                ref={metaFileInputRef}
+                type="file"
+                accept=".json,.html"
+                onChange={handleMetaFileUpload}
+                className="hidden"
+              />
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                 <Upload className="h-4 w-4 mr-1" />
-                Importar CSV
+                CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
+                <Instagram className="h-4 w-4 mr-1 text-pink-500" />
+                Meta Export
               </Button>
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
@@ -782,6 +927,100 @@ export const ContactsManager: React.FC = () => {
               </Button>
               <Button onClick={handleImportCSV} disabled={isImporting}>
                 {isImporting ? 'Importando...' : `Importar ${csvPreview.length} Contatos`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Meta Import Dialog */}
+      <Dialog open={isMetaImportDialogOpen} onOpenChange={setIsMetaImportDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Instagram className="h-5 w-5 text-pink-500" />
+              Importar do Meta (Instagram)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg border border-pink-500/20">
+              <h4 className="font-medium text-sm mb-2">📥 Dados Encontrados</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-pink-500 border-pink-500/50">
+                    {metaImportData.followers.length}
+                  </Badge>
+                  <span>Seguidores</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-purple-500 border-purple-500/50">
+                    {metaImportData.following.length}
+                  </Badge>
+                  <span>Seguindo</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label>O que importar?</Label>
+              <Select value={metaImportType} onValueChange={(v) => setMetaImportType(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="followers">
+                    Apenas Seguidores ({metaImportData.followers.length})
+                  </SelectItem>
+                  <SelectItem value="following">
+                    Apenas Seguindo ({metaImportData.following.length})
+                  </SelectItem>
+                  <SelectItem value="both">
+                    Ambos ({metaImportData.followers.length + metaImportData.following.length})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Classificação inicial</Label>
+              <Select value={metaImportClassification} onValueChange={(v) => setMetaImportClassification(v as ContactClassification)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(classificationConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center gap-2">
+                        {config.icon}
+                        {config.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
+              <p className="font-medium mb-1">💡 Como obter os dados:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Acesse a Central de Contas da Meta</li>
+                <li>Vá em "Suas informações e permissões"</li>
+                <li>Clique em "Exportar suas informações"</li>
+                <li>Selecione "Seguidores e Seguindo"</li>
+                <li>Escolha formato JSON e baixe o arquivo</li>
+              </ol>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setIsMetaImportDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleMetaImport} 
+                disabled={isImporting || (metaImportData.followers.length === 0 && metaImportData.following.length === 0)}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              >
+                {isImporting ? 'Importando...' : 'Importar Contatos'}
               </Button>
             </div>
           </div>

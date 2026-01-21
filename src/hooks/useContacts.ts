@@ -298,6 +298,81 @@ export const useContacts = () => {
     return { imported, errors, duplicates };
   };
 
+  // Import from Meta export (JSON format with followers/following)
+  const importFromMetaExport = async (data: any[], importType: 'followers' | 'following' | 'both', classification: ContactClassification = 'prospect') => {
+    let imported = 0;
+    let errors = 0;
+    let duplicates = 0;
+
+    for (const item of data) {
+      try {
+        // Extract username from the item - Meta export format varies
+        let username = '';
+        let displayName = '';
+        let profileUrl = '';
+
+        // Handle different Meta export formats
+        if (typeof item === 'string') {
+          username = item.replace('@', '');
+        } else if (item.string_list_data) {
+          // Format: { string_list_data: [{ href: "...", value: "username", timestamp: ... }] }
+          const listData = item.string_list_data[0];
+          username = listData?.value || '';
+          profileUrl = listData?.href || '';
+        } else if (item.value) {
+          username = item.value.replace('@', '');
+          profileUrl = item.href || '';
+        } else if (item.username) {
+          username = item.username.replace('@', '');
+          displayName = item.name || item.full_name || '';
+        } else if (item.href) {
+          const match = item.href.match(/instagram\.com\/([^/?]+)/);
+          if (match) username = match[1];
+          profileUrl = item.href;
+        }
+
+        if (!username) continue;
+
+        // Check for duplicates
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('instagram_username', username.toLowerCase())
+          .maybeSingle();
+
+        if (existing) {
+          duplicates++;
+          continue;
+        }
+
+        const instagramUrl = profileUrl || `https://instagram.com/${username}`;
+
+        const { error } = await supabase
+          .from('contacts')
+          .insert({
+            full_name: displayName || `@${username}`,
+            instagram_username: username.toLowerCase(),
+            instagram_url: instagramUrl,
+            classification,
+            tags: [importType === 'followers' ? 'seguidor' : importType === 'following' ? 'seguindo' : 'instagram'],
+          });
+
+        if (error) {
+          console.error('Insert error:', error);
+          errors++;
+        } else {
+          imported++;
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        errors++;
+      }
+    }
+
+    fetchContacts();
+    return { imported, errors, duplicates };
+  };
+
   useEffect(() => {
     fetchContacts();
   }, [fetchContacts]);
@@ -313,5 +388,6 @@ export const useContacts = () => {
     updateClassification,
     convertToLead,
     importFromCSV,
+    importFromMetaExport,
   };
 };
