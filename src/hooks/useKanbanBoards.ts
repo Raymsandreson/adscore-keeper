@@ -6,6 +6,7 @@ export interface KanbanStage {
   id: string;
   name: string;
   color: string;
+  stagnationDays?: number; // Days before marking as stagnant (null = disabled)
 }
 
 export interface KanbanBoard {

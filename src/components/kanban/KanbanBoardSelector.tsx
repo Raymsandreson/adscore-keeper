@@ -282,19 +282,36 @@ export function KanbanBoardSelector({
 
             <div>
               <Label>Estágios do Funil</Label>
-              <ScrollArea className="h-[150px] border rounded-md p-2 mt-1">
+              <p className="text-xs text-muted-foreground mb-2">
+                Configure os dias de alerta de estagnação por estágio (deixe vazio para desativar)
+              </p>
+              <ScrollArea className="h-[180px] border rounded-md p-2 mt-1">
                 {formStages.map((stage, index) => (
-                  <div key={stage.id} className="flex items-center gap-2 py-1">
+                  <div key={stage.id} className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
                     <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
                     <div 
-                      className="w-3 h-3 rounded-full" 
+                      className="w-3 h-3 rounded-full shrink-0" 
                       style={{ backgroundColor: stage.color }}
                     />
-                    <span className="flex-1 text-sm">{stage.name}</span>
+                    <span className="flex-1 text-sm truncate">{stage.name}</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="dias"
+                      value={stage.stagnationDays || ''}
+                      onChange={(e) => {
+                        const value = e.target.value ? parseInt(e.target.value) : undefined;
+                        const newStages = [...formStages];
+                        newStages[index] = { ...stage, stagnationDays: value };
+                        setFormStages(newStages);
+                      }}
+                      className="w-16 h-7 text-xs text-center"
+                      title="Dias para alerta de estagnação"
+                    />
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => handleRemoveStage(stage.id)}
                     >
                       <X className="h-3 w-3" />
@@ -394,19 +411,36 @@ export function KanbanBoardSelector({
 
             <div>
               <Label>Estágios do Funil</Label>
-              <ScrollArea className="h-[150px] border rounded-md p-2 mt-1">
+              <p className="text-xs text-muted-foreground mb-2">
+                Configure os dias de alerta de estagnação por estágio (deixe vazio para desativar)
+              </p>
+              <ScrollArea className="h-[180px] border rounded-md p-2 mt-1">
                 {formStages.map((stage, index) => (
-                  <div key={stage.id} className="flex items-center gap-2 py-1">
+                  <div key={stage.id} className="flex items-center gap-2 py-1.5 border-b border-border/50 last:border-0">
                     <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
                     <div 
-                      className="w-3 h-3 rounded-full" 
+                      className="w-3 h-3 rounded-full shrink-0" 
                       style={{ backgroundColor: stage.color }}
                     />
-                    <span className="flex-1 text-sm">{stage.name}</span>
+                    <span className="flex-1 text-sm truncate">{stage.name}</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="dias"
+                      value={stage.stagnationDays || ''}
+                      onChange={(e) => {
+                        const value = e.target.value ? parseInt(e.target.value) : undefined;
+                        const newStages = [...formStages];
+                        newStages[index] = { ...stage, stagnationDays: value };
+                        setFormStages(newStages);
+                      }}
+                      className="w-16 h-7 text-xs text-center"
+                      title="Dias para alerta de estagnação"
+                    />
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="h-6 w-6"
+                      className="h-6 w-6 shrink-0"
                       onClick={() => handleRemoveStage(stage.id)}
                     >
                       <X className="h-3 w-3" />
