@@ -36,6 +36,7 @@ import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
+import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
 }
@@ -118,6 +119,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       conversionRate: total > 0 ? (converted / total * 100).toFixed(1) : '0',
     };
   }, [boardLeads]);
+
+  // Leads per stage for funnel chart
+  const leadsPerStage = useMemo(() => {
+    const counts: Record<string, number> = {};
+    selectedBoard?.stages?.forEach(stage => {
+      counts[stage.id] = boardLeads.filter(l => l.status === stage.id).length;
+    });
+    return counts;
+  }, [boardLeads, selectedBoard]);
 
   const handleMoveToStage = async (leadId: string, stageId: string) => {
     try {
@@ -283,12 +293,18 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         </Card>
       )}
 
-      {/* Stage Time Metrics */}
+      {/* Analytics: Funnel Chart and Stage Time Metrics */}
       {selectedBoard && boardLeads.length > 0 && (
-        <StageTimeMetrics
-          board={selectedBoard}
-          leadIds={boardLeads.map(l => l.id)}
-        />
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <StageFunnelChart
+            board={selectedBoard}
+            leadsPerStage={leadsPerStage}
+          />
+          <StageTimeMetrics
+            board={selectedBoard}
+            leadIds={boardLeads.map(l => l.id)}
+          />
+        </div>
       )}
 
       {/* Kanban Board */}
