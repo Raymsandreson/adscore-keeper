@@ -24,6 +24,8 @@ import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
+import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
+import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
   Phone, 
@@ -34,6 +36,7 @@ import {
   Settings, 
   Calendar,
   Clock,
+  History,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -44,6 +47,7 @@ interface LeadEditDialogProps {
   lead: Lead | null;
   onSave: (leadId: string, updates: Partial<Lead>) => Promise<void>;
   adAccountId?: string;
+  boards?: KanbanBoard[];
 }
 
 export function LeadEditDialog({
@@ -52,6 +56,7 @@ export function LeadEditDialog({
   lead,
   onSave,
   adAccountId,
+  boards = [],
 }: LeadEditDialogProps) {
   // Core fields state
   const [leadName, setLeadName] = useState('');
@@ -180,7 +185,7 @@ export function LeadEditDialog({
         </DialogHeader>
 
         <Tabs defaultValue="info" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="info">
               <User className="h-4 w-4 mr-2" />
               Informações
@@ -189,11 +194,15 @@ export function LeadEditDialog({
               <MapPin className="h-4 w-4 mr-2" />
               Localização
             </TabsTrigger>
+            <TabsTrigger value="history">
+              <History className="h-4 w-4 mr-2" />
+              Histórico
+            </TabsTrigger>
             <TabsTrigger value="custom" disabled={customFields.length === 0}>
               <Settings className="h-4 w-4 mr-2" />
-              Personalizados
+              Campos
               {customFields.length > 0 && (
-                <Badge variant="secondary" className="ml-2 text-xs">
+                <Badge variant="secondary" className="ml-1 text-xs">
                   {customFields.length}
                 </Badge>
               )}
@@ -377,6 +386,10 @@ export function LeadEditDialog({
                   />
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-0">
+              <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
             </TabsContent>
 
             <TabsContent value="custom" className="space-y-4 mt-0">

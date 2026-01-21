@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
+import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
@@ -74,6 +75,9 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     deleteLead,
   } = useLeads(adAccountId);
 
+  // Stage history hook
+  const { addHistoryEntry } = useLeadStageHistory();
+
   // Filter leads by selected board
   const boardLeads = useMemo(() => {
     if (!selectedBoardId) return allLeads;
@@ -117,7 +121,22 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   const handleMoveToStage = async (leadId: string, stageId: string) => {
     try {
+      // Find the current lead to get the old stage
+      const currentLead = allLeads.find(l => l.id === leadId);
+      const oldStage = currentLead?.status || null;
+      
       await updateLead(leadId, { status: stageId as LeadStatus });
+      
+      // Record history if stage actually changed
+      if (oldStage !== stageId) {
+        await addHistoryEntry(
+          leadId,
+          oldStage,
+          stageId,
+          currentLead?.board_id,
+          currentLead?.board_id
+        );
+      }
     } catch (error) {
       console.error('Error moving lead:', error);
     }
@@ -125,16 +144,27 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   const handleMoveToBoard = async (leadId: string, boardId: string, stageId?: string) => {
     try {
+      const currentLead = allLeads.find(l => l.id === leadId);
       const targetBoard = boards.find(b => b.id === boardId);
       const firstStage = targetBoard?.stages[0]?.id || 'new';
+      const newStage = stageId || firstStage;
       
       await supabase
         .from('leads')
         .update({ 
           board_id: boardId,
-          status: stageId || firstStage,
+          status: newStage,
         })
         .eq('id', leadId);
+      
+      // Record history
+      await addHistoryEntry(
+        leadId,
+        currentLead?.status || null,
+        newStage,
+        currentLead?.board_id || null,
+        boardId
+      );
       
       toast.success('Lead movido para outro quadro');
       fetchLeads();
@@ -374,6 +404,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           fetchLeads();
         }}
         adAccountId={adAccountId}
+        boards={boards}
       />
     </div>
   );
