@@ -53,6 +53,9 @@ import { CardFieldsSettings } from './leads/CardFieldsSettings';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useCardFieldsSettings } from '@/hooks/useCardFieldsSettings';
 import { FollowupAnalytics } from './leads/FollowupAnalytics';
+import { StagnationSettings } from './leads/StagnationSettings';
+import { StagnantLeadsList } from './leads/StagnantLeadsList';
+import { useStagnationAlerts, StagnantLead } from '@/hooks/useStagnationAlerts';
 import { BarChart3 } from 'lucide-react';
 
 const daysOfWeek = [
@@ -86,6 +89,17 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { config: cardFieldsConfig, updateField: updateCardField, resetToDefaults: resetCardFields } = useCardFieldsSettings();
+  const {
+    thresholds,
+    enabledStatuses,
+    updateThreshold,
+    toggleStatusAlert,
+    resetToDefaults: resetStagnationDefaults,
+    stagnantLeads,
+    stagnantCount,
+    stagnantByStatus,
+    isLeadStagnant,
+  } = useStagnationAlerts(leads);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -589,6 +603,16 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                 </Button>
               </div>
 
+              {/* Stagnation Settings */}
+              <StagnationSettings
+                thresholds={thresholds}
+                enabledStatuses={enabledStatuses}
+                onUpdateThreshold={updateThreshold}
+                onToggleStatus={toggleStatusAlert}
+                onReset={resetStagnationDefaults}
+                stagnantCount={stagnantCount}
+              />
+
               {/* Facebook Import */}
               <Button
                 variant="outline"
@@ -861,6 +885,17 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
           </div>
         </CardHeader>
         <CardContent>
+          {/* Stagnant Leads Alert */}
+          {stagnantCount > 0 && (
+            <div className="mb-4">
+              <StagnantLeadsList
+                stagnantLeads={stagnantLeads}
+                stagnantByStatus={stagnantByStatus}
+                onOpenLead={(lead) => setEditingLead(lead)}
+              />
+            </div>
+          )}
+
           {viewMode === 'pipeline' ? (
             <LeadsPipeline
               leads={filteredLeads}
@@ -872,6 +907,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               onClassificationChange={updateClientClassification}
               cardFieldsConfig={cardFieldsConfig}
               onLeadsRefresh={fetchLeads}
+              isLeadStagnant={isLeadStagnant}
             />
           ) : (
             <>
