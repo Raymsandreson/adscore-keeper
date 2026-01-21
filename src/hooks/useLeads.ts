@@ -47,6 +47,8 @@ export interface Lead {
   last_followup_at: string | null;
   first_visit_at: string | null;
   first_meeting_at: string | null;
+  // Kanban board
+  board_id: string | null;
 }
 
 export interface LeadStats {

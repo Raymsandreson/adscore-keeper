@@ -705,6 +705,48 @@ export type Database = {
           },
         ]
       }
+      kanban_boards: {
+        Row: {
+          ad_account_id: string | null
+          color: string | null
+          created_at: string
+          description: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          stages: Json
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          stages?: Json
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          stages?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_custom_field_values: {
         Row: {
           created_at: string
@@ -839,6 +881,7 @@ export type Database = {
           adset_id: string | null
           adset_name: string | null
           became_client_date: string | null
+          board_id: string | null
           campaign_id: string | null
           campaign_name: string | null
           city: string | null
@@ -879,6 +922,7 @@ export type Database = {
           adset_id?: string | null
           adset_name?: string | null
           became_client_date?: string | null
+          board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
           city?: string | null
@@ -919,6 +963,7 @@ export type Database = {
           adset_id?: string | null
           adset_name?: string | null
           became_client_date?: string | null
+          board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
           city?: string | null
@@ -952,6 +997,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_instagram_comment_id_fkey"
             columns: ["instagram_comment_id"]

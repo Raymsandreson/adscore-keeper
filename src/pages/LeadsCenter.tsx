@@ -19,7 +19,8 @@ import {
   Zap,
   MessageSquare,
   AlertTriangle,
-  Instagram
+  Instagram,
+  LayoutGrid,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -31,6 +32,7 @@ import LeadManager from "@/components/LeadManager";
 import { useLeads } from "@/hooks/useLeads";
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { ContactsManager } from "@/components/contacts/ContactsManager";
+import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -192,8 +194,12 @@ const LeadsCenter = () => {
           )}
 
           {/* Tabs for Lead Management and Analytics */}
-          <Tabs defaultValue="leads" className="w-full">
-            <TabsList className="grid w-full grid-cols-5 mb-4">
+          <Tabs defaultValue="kanban" className="w-full">
+            <TabsList className="grid w-full grid-cols-6 mb-4">
+              <TabsTrigger value="kanban" className="flex items-center gap-2">
+                <LayoutGrid className="h-4 w-4" />
+                Kanbans
+              </TabsTrigger>
               <TabsTrigger value="leads" className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Leads WhatsApp
@@ -215,6 +221,11 @@ const LeadsCenter = () => {
                 Integrar Facebook
               </TabsTrigger>
             </TabsList>
+
+            {/* Unified Kanban Manager Tab */}
+            <TabsContent value="kanban">
+              <UnifiedKanbanManager adAccountId={adAccountId || undefined} />
+            </TabsContent>
 
             {/* Lead Manager Tab */}
             <TabsContent value="leads">
