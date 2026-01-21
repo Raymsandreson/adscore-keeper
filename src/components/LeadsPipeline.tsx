@@ -53,6 +53,7 @@ interface LeadsPipelineProps {
   onClassificationChange?: (leadId: string, classification: ClientClassification) => void;
   cardFieldsConfig?: CardFieldsConfig;
   onLeadsRefresh?: () => void;
+  isLeadStagnant?: (lead: Lead) => { isStagnant: boolean; daysSinceLastActivity: number; threshold: number };
 }
 
 const classificationConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -79,7 +80,7 @@ const columns: PipelineColumn[] = [
   { id: 'lost', title: 'Perdido', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
 ];
 
-const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig, onLeadsRefresh }: LeadsPipelineProps) => {
+const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLead, onToggleFollower, onNavigateToComment, onClassificationChange, cardFieldsConfig, onLeadsRefresh, isLeadStagnant }: LeadsPipelineProps) => {
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
   const [conversionDialog, setConversionDialog] = useState<{ open: boolean; leadId: string | null }>({
@@ -200,12 +201,16 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                       </p>
                     </div>
                   ) : (
-                    columnLeads.map((lead) => (
+                    columnLeads.map((lead) => {
+                      const stagnationInfo = isLeadStagnant?.(lead);
+                      const isStagnant = stagnationInfo?.isStagnant ?? false;
+                      
+                      return (
                       <Card
                         key={lead.id}
                         className={`cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
                           draggedLead?.id === lead.id ? 'opacity-50' : ''
-                        }`}
+                        } ${isStagnant ? 'border-destructive/50 bg-destructive/5 ring-1 ring-destructive/20' : ''}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead)}
                       >
@@ -404,6 +409,23 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                                 </div>
                               )}
 
+                              {/* Stagnation Alert */}
+                              {isStagnant && stagnationInfo && (
+                                <div className="mt-2">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-destructive border-destructive/50 bg-destructive/10 text-xs">
+                                        <AlertCircle className="h-3 w-3 mr-1" />
+                                        {stagnationInfo.daysSinceLastActivity}d sem atividade
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Lead sem atividade há {stagnationInfo.daysSinceLastActivity} dias (limite: {stagnationInfo.threshold}d)
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              )}
+
                               {/* Follow-up Quick Button */}
                               <div className="mt-2 flex items-center justify-between">
                                 <QuickFollowupButton
@@ -464,7 +486,8 @@ const LeadsPipeline = ({ leads, loading, onStatusChange, onDeleteLead, onEditLea
                           </div>
                         </CardContent>
                       </Card>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </ScrollArea>
