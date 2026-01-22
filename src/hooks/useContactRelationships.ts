@@ -268,3 +268,75 @@ export const useContactRelationshipCounts = (contactIds: string[]) => {
 
   return { counts, loading, refetch: fetchCounts };
 };
+
+// Hook to fetch relationship types list
+export const useRelationshipTypes = () => {
+  const [relationshipTypes, setRelationshipTypes] = useState<ContactRelationshipType[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchRelationshipTypes = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('contact_relationship_types')
+        .select('*')
+        .order('display_order');
+
+      if (error) throw error;
+      setRelationshipTypes(data || []);
+    } catch (error) {
+      console.error('Error fetching relationship types:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRelationshipTypes();
+  }, [fetchRelationshipTypes]);
+
+  return { relationshipTypes, loading, refetch: fetchRelationshipTypes };
+};
+
+// Hook to fetch contact IDs that have a specific relationship type
+export const useContactsByRelationshipType = (relationshipType: string | null) => {
+  const [contactIds, setContactIds] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+
+  const fetchContactIds = useCallback(async () => {
+    if (!relationshipType) {
+      setContactIds(new Set());
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Fetch all relationships of this type
+      const { data, error } = await (supabase as any)
+        .from('contact_relationships')
+        .select('contact_id, related_contact_id')
+        .eq('relationship_type', relationshipType);
+
+      if (error) throw error;
+
+      // Collect all contact IDs (both sides of the relationship)
+      const ids = new Set<string>();
+      (data || []).forEach((r: any) => {
+        ids.add(r.contact_id);
+        ids.add(r.related_contact_id);
+      });
+
+      setContactIds(ids);
+    } catch (error) {
+      console.error('Error fetching contacts by relationship type:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [relationshipType]);
+
+  useEffect(() => {
+    fetchContactIds();
+  }, [fetchContactIds]);
+
+  return { contactIds, loading, refetch: fetchContactIds };
+};

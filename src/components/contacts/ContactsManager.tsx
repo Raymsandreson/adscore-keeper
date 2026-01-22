@@ -85,7 +85,7 @@ import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
 import { ContactNetworkGraph } from '@/components/contacts/ContactNetworkGraph';
-import { useContactRelationshipCounts } from '@/hooks/useContactRelationships';
+import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -325,6 +325,13 @@ export const ContactsManager: React.FC = () => {
   const contactIds = contacts.map(c => c.id);
   const { counts: relationshipCounts } = useContactRelationshipCounts(contactIds);
   
+  // Fetch relationship types for filter
+  const { relationshipTypes } = useRelationshipTypes();
+  
+  // Relationship type filter state
+  const [filterRelationshipType, setFilterRelationshipType] = useState<string | null>(null);
+  const { contactIds: filteredByRelationshipIds, loading: loadingRelationshipFilter } = useContactsByRelationshipType(filterRelationshipType);
+  
   // Build classifications list for the inline select
   const classificationsList = classifications.map(c => ({
     name: c.name,
@@ -432,10 +439,17 @@ export const ContactsManager: React.FC = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterClassification, filterTag]);
+  }, [searchTerm, filterClassification, filterTag, filterRelationshipType]);
 
-  // Pagination calculations (server-side)
-  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  // Filter contacts by relationship type (client-side since it's a join)
+  const displayedContacts = React.useMemo(() => {
+    if (!filterRelationshipType) return contacts;
+    return contacts.filter(c => filteredByRelationshipIds.has(c.id));
+  }, [contacts, filterRelationshipType, filteredByRelationshipIds]);
+
+  // Pagination calculations (server-side for main filters, adjusted for relationship filter)
+  const effectiveCount = filterRelationshipType ? displayedContacts.length : totalCount;
+  const totalPages = Math.ceil(effectiveCount / itemsPerPage);
 
   // Generate page numbers for pagination
   const getPageNumbers = () => {
@@ -1013,6 +1027,27 @@ export const ContactsManager: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Relationship Type Filter */}
+              <Select 
+                value={filterRelationshipType || 'all'} 
+                onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="Vínculo" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os vínculos</SelectItem>
+                  {relationshipTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.name}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             {/* Quick Tag Filters */}
@@ -1071,6 +1106,26 @@ export const ContactsManager: React.FC = () => {
                 >
                   <X className="h-3 w-3" />
                 </Button>
+              )}
+              
+              {/* Active relationship filter badge */}
+              {filterRelationshipType && (
+                <Badge 
+                  variant="secondary" 
+                  className="h-8 px-3 gap-2 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20"
+                  onClick={() => setFilterRelationshipType(null)}
+                >
+                  <Link2 className="h-3 w-3" />
+                  {filterRelationshipType}
+                  {loadingRelationshipFilter ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <span className="text-xs">({filteredByRelationshipIds.size})</span>
+                      <X className="h-3 w-3" />
+                    </>
+                  )}
+                </Badge>
               )}
             </div>
             
@@ -1423,14 +1478,16 @@ export const ContactsManager: React.FC = () => {
                       Carregando...
                     </TableCell>
                   </TableRow>
-                ) : contacts.length === 0 ? (
+                ) : displayedContacts.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                      Nenhum contato encontrado
+                      {filterRelationshipType 
+                        ? `Nenhum contato com vínculo "${filterRelationshipType}" encontrado`
+                        : 'Nenhum contato encontrado'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  contacts.map((contact) => {
+                  displayedContacts.map((contact) => {
                     const classConfig = classificationConfig[contact.classification || 'none'];
                     const isSelected = selectedContacts.has(contact.id);
                     return (
