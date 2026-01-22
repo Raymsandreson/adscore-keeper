@@ -10,6 +10,11 @@ export interface ContactRelationshipType {
   display_order: number;
 }
 
+export interface RelationshipCount {
+  contact_id: string;
+  count: number;
+}
+
 export interface ContactRelationship {
   id: string;
   contact_id: string;
@@ -207,4 +212,59 @@ export const useContactRelationships = (contactId?: string) => {
     addRelationshipType,
     fetchRelationshipTypes,
   };
+};
+
+// Hook to fetch relationship counts for multiple contacts at once
+export const useContactRelationshipCounts = (contactIds: string[]) => {
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
+
+  const fetchCounts = useCallback(async () => {
+    if (!contactIds.length) {
+      setCounts({});
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Fetch counts where contact is the source
+      const { data: outgoing, error: outError } = await (supabase as any)
+        .from('contact_relationships')
+        .select('contact_id')
+        .in('contact_id', contactIds);
+
+      if (outError) throw outError;
+
+      // Fetch counts where contact is the target
+      const { data: incoming, error: inError } = await (supabase as any)
+        .from('contact_relationships')
+        .select('related_contact_id')
+        .in('related_contact_id', contactIds);
+
+      if (inError) throw inError;
+
+      // Count relationships per contact
+      const countMap: Record<string, number> = {};
+      
+      (outgoing || []).forEach((r: any) => {
+        countMap[r.contact_id] = (countMap[r.contact_id] || 0) + 1;
+      });
+      
+      (incoming || []).forEach((r: any) => {
+        countMap[r.related_contact_id] = (countMap[r.related_contact_id] || 0) + 1;
+      });
+
+      setCounts(countMap);
+    } catch (error) {
+      console.error('Error fetching relationship counts:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [contactIds.join(',')]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
+
+  return { counts, loading, refetch: fetchCounts };
 };
