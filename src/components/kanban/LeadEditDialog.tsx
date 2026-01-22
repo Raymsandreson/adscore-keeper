@@ -38,7 +38,10 @@ import {
   Calendar,
   Clock,
   History,
+  Plus,
+  X,
 } from 'lucide-react';
+import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -73,10 +76,15 @@ export function LeadEditDialog({
   
   // Custom fields
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
-  const { classifications, classificationConfig } = useContactClassifications();
+  const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
+  
+  // New classification creation
+  const [isAddingClassification, setIsAddingClassification] = useState(false);
+  const [newClassificationName, setNewClassificationName] = useState('');
+  const [newClassificationColor, setNewClassificationColor] = useState('bg-blue-500');
 
   // Load lead data when dialog opens
   useEffect(() => {
@@ -133,6 +141,18 @@ export function LeadEditDialog({
       ...prev,
       [fieldId]: { type, value },
     }));
+  };
+
+  const handleAddClassification = async () => {
+    if (!newClassificationName.trim()) return;
+    
+    const result = await addClassification(newClassificationName, newClassificationColor);
+    if (result) {
+      setClientClassification(result.name);
+      setIsAddingClassification(false);
+      setNewClassificationName('');
+      setNewClassificationColor('bg-blue-500');
+    }
   };
 
   const handleSave = async () => {
@@ -298,24 +318,82 @@ export function LeadEditDialog({
                   </Select>
                 </div>
 
-                <div>
+                <div className="space-y-2">
                   <Label>Classificação</Label>
-                  <Select 
-                    value={clientClassification || '__none__'} 
-                    onValueChange={(val) => setClientClassification(val === '__none__' ? '' : val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sem classificação</SelectItem>
-                      {classifications.map((c) => (
-                        <SelectItem key={c.id} value={c.name}>
-                          {classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {!isAddingClassification ? (
+                    <div className="flex gap-2">
+                      <Select 
+                        value={clientClassification || '__none__'} 
+                        onValueChange={(val) => setClientClassification(val === '__none__' ? '' : val)}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sem classificação</SelectItem>
+                          {classifications.map((c) => (
+                            <SelectItem key={c.id} value={c.name}>
+                              <div className="flex items-center gap-2">
+                                <div className={`w-2 h-2 rounded-full ${c.color}`} />
+                                {classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ')}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="icon"
+                        onClick={() => setIsAddingClassification(true)}
+                        title="Nova classificação"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+                      <Input
+                        placeholder="Nome da classificação..."
+                        value={newClassificationName}
+                        onChange={(e) => setNewClassificationName(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {classificationColors.slice(0, 10).map((color) => (
+                          <button
+                            key={color.value}
+                            type="button"
+                            className={`w-5 h-5 rounded-full transition-all ${color.value} ${
+                              newClassificationColor === color.value ? 'ring-2 ring-offset-1 ring-primary' : ''
+                            }`}
+                            onClick={() => setNewClassificationColor(color.value)}
+                            title={color.label}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={handleAddClassification} 
+                          disabled={!newClassificationName.trim()}
+                        >
+                          Criar
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => {
+                            setIsAddingClassification(false);
+                            setNewClassificationName('');
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-span-2">
