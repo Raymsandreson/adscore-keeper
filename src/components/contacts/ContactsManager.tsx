@@ -76,6 +76,9 @@ import {
   Loader2,
   Link2,
   Network,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -338,6 +341,9 @@ export const ContactsManager: React.FC = () => {
   const [filterRelationshipType, setFilterRelationshipType] = useState<string | null>(null);
   const { contactIds: filteredByRelationshipIds, loading: loadingRelationshipFilter } = useContactsByRelationshipType(filterRelationshipType);
   
+  // Sorting state for leads column
+  const [sortByLeads, setSortByLeads] = useState<'asc' | 'desc' | null>(null);
+  
   // Build classifications list for the inline select
   const classificationsList = classifications.map(c => ({
     name: c.name,
@@ -450,11 +456,26 @@ export const ContactsManager: React.FC = () => {
     setCurrentPage(1);
   }, [searchTerm, filterClassification, filterTag, filterRelationshipType]);
 
-  // Filter contacts by relationship type (client-side since it's a join)
+  // Filter contacts by relationship type (client-side since it's a join) and sort by leads
   const displayedContacts = React.useMemo(() => {
-    if (!filterRelationshipType) return contacts;
-    return contacts.filter(c => filteredByRelationshipIds.has(c.id));
-  }, [contacts, filterRelationshipType, filteredByRelationshipIds]);
+    let result = contacts;
+    
+    // Filter by relationship type
+    if (filterRelationshipType) {
+      result = result.filter(c => filteredByRelationshipIds.has(c.id));
+    }
+    
+    // Sort by lead count if enabled
+    if (sortByLeads) {
+      result = [...result].sort((a, b) => {
+        const countA = leadCounts[a.id] || 0;
+        const countB = leadCounts[b.id] || 0;
+        return sortByLeads === 'asc' ? countA - countB : countB - countA;
+      });
+    }
+    
+    return result;
+  }, [contacts, filterRelationshipType, filteredByRelationshipIds, sortByLeads, leadCounts]);
 
   // Pagination calculations (server-side for main filters, adjusted for relationship filter)
   const effectiveCount = filterRelationshipType ? displayedContacts.length : totalCount;
@@ -1354,6 +1375,12 @@ export const ContactsManager: React.FC = () => {
                   >
                     Status
                   </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.leads}
+                    onCheckedChange={() => toggleColumn('leads')}
+                  >
+                    Leads Vinculados
+                  </DropdownMenuCheckboxItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={resetToDefault}>
                     Restaurar padrão
@@ -1477,6 +1504,23 @@ export const ContactsManager: React.FC = () => {
                   {(visibility.city || visibility.state) && <TableHead>Localização</TableHead>}
                   {visibility.classification && <TableHead>Classificação</TableHead>}
                   {visibility.status && <TableHead>Status</TableHead>}
+                  {visibility.leads && (
+                    <TableHead 
+                      className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                      onClick={() => {
+                        setSortByLeads(prev => 
+                          prev === null ? 'desc' : prev === 'desc' ? 'asc' : null
+                        );
+                      }}
+                    >
+                      <div className="flex items-center gap-1">
+                        Leads
+                        {sortByLeads === null && <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                        {sortByLeads === 'desc' && <ArrowDown className="h-3.5 w-3.5 text-primary" />}
+                        {sortByLeads === 'asc' && <ArrowUp className="h-3.5 w-3.5 text-primary" />}
+                      </div>
+                    </TableHead>
+                  )}
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1675,6 +1719,28 @@ export const ContactsManager: React.FC = () => {
                                 </Button>
                               )}
                             </div>
+                          </TableCell>
+                        )}
+                        {visibility.leads && (
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 gap-1"
+                              onClick={() => {
+                                setLeadsContact(contact);
+                                setIsLeadsManagerOpen(true);
+                              }}
+                            >
+                              {(leadCounts[contact.id] || 0) > 0 ? (
+                                <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {leadCounts[contact.id]}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">0</span>
+                              )}
+                            </Button>
                           </TableCell>
                         )}
                         <TableCell>
