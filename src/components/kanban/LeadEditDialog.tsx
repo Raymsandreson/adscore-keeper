@@ -23,6 +23,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -72,6 +73,7 @@ export function LeadEditDialog({
   
   // Custom fields
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
+  const { classifications, classificationConfig } = useContactClassifications();
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
@@ -299,16 +301,19 @@ export function LeadEditDialog({
                 <div>
                   <Label>Classificação</Label>
                   <Select 
-                    value={clientClassification || ''} 
-                    onValueChange={setClientClassification}
+                    value={clientClassification || '__none__'} 
+                    onValueChange={(val) => setClientClassification(val === '__none__' ? '' : val)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="prospect">Prospecto</SelectItem>
-                      <SelectItem value="client">Cliente</SelectItem>
-                      <SelectItem value="non_client">Não-Cliente</SelectItem>
+                      <SelectItem value="__none__">Sem classificação</SelectItem>
+                      {classifications.map((c) => (
+                        <SelectItem key={c.id} value={c.name}>
+                          {classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
