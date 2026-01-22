@@ -68,9 +68,11 @@ import {
   X,
   Tag,
   ChevronDown,
+  Eye,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { toast } from 'sonner';
+import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 
 const classificationConfig: Record<NonNullable<ContactClassification> | 'none', { label: string; color: string; icon: React.ReactNode }> = {
   client: { label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
@@ -1095,15 +1097,30 @@ export const ContactsManager: React.FC = () => {
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             {contact.instagram_username ? (
-                              <a
-                                href={contact.instagram_url || `https://instagram.com/${contact.instagram_username}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-pink-500 hover:underline text-sm"
-                              >
-                                <Instagram className="h-3 w-3" />
-                                @{contact.instagram_username}
-                              </a>
+                              <div className="flex items-center gap-2">
+                                <InstagramProfileHoverCard 
+                                  username={contact.instagram_username}
+                                  className="text-pink-500 text-sm"
+                                >
+                                  <Instagram className="h-3 w-3" />
+                                  <span>@{contact.instagram_username}</span>
+                                </InstagramProfileHoverCard>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  asChild
+                                >
+                                  <a
+                                    href={`https://instagram.com/${contact.instagram_username}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="Abrir perfil no Instagram"
+                                  >
+                                    <Eye className="h-3 w-3 text-pink-500" />
+                                  </a>
+                                </Button>
+                              </div>
                             ) : (
                               <span className="text-xs text-muted-foreground">-</span>
                             )}
