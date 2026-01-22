@@ -1616,9 +1616,24 @@ export const ContactsManager: React.FC = () => {
                   <Label>Instagram URL</Label>
                   <Input
                     value={editingContact.instagram_url || ''}
-                    onChange={(e) => setEditingContact({ ...editingContact, instagram_url: e.target.value })}
-                    placeholder="https://instagram.com/..."
+                    onChange={(e) => {
+                      const url = e.target.value;
+                      setEditingContact({ ...editingContact, instagram_url: url });
+                      
+                      // Auto-extract username from URL
+                      const match = url.match(/(?:instagram\.com|instagr\.am)\/([^/?#]+)/i);
+                      if (match && match[1] && !['p', 'reel', 'stories', 'explore', 'accounts'].includes(match[1].toLowerCase())) {
+                        const extractedUsername = match[1].replace(/^@/, '');
+                        if (extractedUsername && extractedUsername !== editingContact.instagram_username) {
+                          setEditingContact(prev => ({ ...prev!, instagram_url: url, instagram_username: extractedUsername }));
+                        }
+                      }
+                    }}
+                    placeholder="Cole a URL do perfil aqui"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Cole a URL e o username será preenchido automaticamente
+                  </p>
                 </div>
               </div>
               
