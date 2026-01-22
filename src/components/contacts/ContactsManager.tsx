@@ -74,6 +74,129 @@ import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/h
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 
+// Inline editable text component
+interface InlineEditableTextProps {
+  value: string;
+  onSave: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  renderDisplay?: (value: string) => React.ReactNode;
+}
+
+const InlineEditableText: React.FC<InlineEditableTextProps> = ({ 
+  value, 
+  onSave, 
+  placeholder = 'Clique para editar',
+  className = '',
+  renderDisplay 
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    if (editValue !== value) {
+      onSave(editValue);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setEditValue(value);
+      setIsEditing(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <Input
+        ref={inputRef}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className={`h-7 text-xs px-2 ${className}`}
+      />
+    );
+  }
+
+  const displayContent = renderDisplay ? renderDisplay(value) : value;
+
+  return (
+    <div
+      onClick={() => {
+        setEditValue(value);
+        setIsEditing(true);
+      }}
+      className={`cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5 min-w-[40px] ${className}`}
+      title="Clique para editar"
+    >
+      {displayContent || <span className="text-muted-foreground italic text-xs">{placeholder}</span>}
+    </div>
+  );
+};
+
+// Inline classification select component
+interface InlineClassificationSelectProps {
+  value: ContactClassification;
+  onChange: (value: ContactClassification) => void;
+}
+
+const classificationOptions: { value: ContactClassification; label: string; color: string; icon: React.ReactNode }[] = [
+  { value: 'client', label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
+  { value: 'non_client', label: 'Não-Cliente', color: 'bg-gray-500', icon: <Users className="h-3 w-3" /> },
+  { value: 'prospect', label: 'Prospect', color: 'bg-blue-500', icon: <UserPlus className="h-3 w-3" /> },
+  { value: 'partner', label: 'Parceiro', color: 'bg-purple-500', icon: <Handshake className="h-3 w-3" /> },
+  { value: 'supplier', label: 'Fornecedor', color: 'bg-orange-500', icon: <Package className="h-3 w-3" /> },
+  { value: null, label: 'Sem classificação', color: 'bg-slate-400', icon: <X className="h-3 w-3" /> },
+];
+
+const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({ value, onChange }) => {
+  const current = classificationOptions.find(opt => opt.value === value) || classificationOptions[classificationOptions.length - 1];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 hover:bg-muted/50"
+        >
+          <Badge className={`${current.color} text-white text-xs cursor-pointer`}>
+            {current.icon}
+            <span className="ml-1">{current.label}</span>
+            <ChevronDown className="h-3 w-3 ml-1" />
+          </Badge>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {classificationOptions.map((option) => (
+          <DropdownMenuItem
+            key={option.value || 'none'}
+            onClick={() => onChange(option.value)}
+            className={value === option.value ? 'bg-muted' : ''}
+          >
+            <Badge className={`${option.color} text-white text-xs mr-2`}>
+              {option.icon}
+              <span className="ml-1">{option.label}</span>
+            </Badge>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
 const classificationConfig: Record<NonNullable<ContactClassification> | 'none', { label: string; color: string; icon: React.ReactNode }> = {
   client: { label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
   non_client: { label: 'Não-Cliente', color: 'bg-gray-500', icon: <Users className="h-3 w-3" /> },
@@ -1072,26 +1195,45 @@ export const ContactsManager: React.FC = () => {
                             aria-label={`Selecionar ${contact.full_name}`}
                           />
                         </TableCell>
-                        <TableCell className="font-medium">{contact.full_name}</TableCell>
+                        <TableCell>
+                          <InlineEditableText
+                            value={contact.full_name}
+                            onSave={(value) => updateContact(contact.id, { full_name: value })}
+                            className="font-medium"
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            {contact.phone && (
-                              <a 
-                                href={`https://wa.me/55${contact.phone.replace(/\D/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs text-green-600 hover:underline"
-                              >
-                                <Phone className="h-3 w-3" />
-                                {contact.phone}
-                              </a>
-                            )}
-                            {contact.email && (
-                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Mail className="h-3 w-3" />
-                                {contact.email}
-                              </span>
-                            )}
+                            <InlineEditableText
+                              value={contact.phone || ''}
+                              onSave={(value) => updateContact(contact.id, { phone: value || null })}
+                              placeholder="Telefone"
+                              className="text-xs"
+                              renderDisplay={(val) => val ? (
+                                <a 
+                                  href={`https://wa.me/55${val.replace(/\D/g, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-green-600 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  {val}
+                                </a>
+                              ) : null}
+                            />
+                            <InlineEditableText
+                              value={contact.email || ''}
+                              onSave={(value) => updateContact(contact.id, { email: value || null })}
+                              placeholder="Email"
+                              className="text-xs text-muted-foreground"
+                              renderDisplay={(val) => val ? (
+                                <span className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  {val}
+                                </span>
+                              ) : null}
+                            />
                           </div>
                         </TableCell>
                         <TableCell>
@@ -1134,17 +1276,27 @@ export const ContactsManager: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {contact.city || contact.state ? (
-                            <span className="text-xs text-muted-foreground">
-                              {[contact.city, contact.state].filter(Boolean).join(', ')}
-                            </span>
-                          ) : '-'}
+                          <div className="flex gap-1">
+                            <InlineEditableText
+                              value={contact.city || ''}
+                              onSave={(value) => updateContact(contact.id, { city: value || null })}
+                              placeholder="Cidade"
+                              className="text-xs text-muted-foreground"
+                            />
+                            <span className="text-muted-foreground">,</span>
+                            <InlineEditableText
+                              value={contact.state || ''}
+                              onSave={(value) => updateContact(contact.id, { state: value || null })}
+                              placeholder="UF"
+                              className="text-xs text-muted-foreground w-8"
+                            />
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${classConfig.color} text-white text-xs`}>
-                            {classConfig.icon}
-                            <span className="ml-1">{classConfig.label}</span>
-                          </Badge>
+                          <InlineClassificationSelect
+                            value={contact.classification}
+                            onChange={(value) => updateContact(contact.id, { classification: value })}
+                          />
                         </TableCell>
                         <TableCell>
                           {contact.lead_id ? (
