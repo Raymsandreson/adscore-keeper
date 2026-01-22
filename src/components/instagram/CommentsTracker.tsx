@@ -108,6 +108,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   // Filter states
   const [searchText, setSearchText] = useState('');
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [showOnlyLinked, setShowOnlyLinked] = useState<'all' | 'leads' | 'connections' | 'any'>('all');
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   
   // Auto-refresh states
@@ -615,17 +616,31 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if (dateTo && commentDate > endOfDay(dateTo)) return false;
       }
       
+      // Filter by linked leads/connections
+      if (showOnlyLinked !== 'all') {
+        const contactData = c.author_username ? getContactData(c.author_username) : null;
+        if (!contactData) return false;
+        
+        const hasLeads = contactData.linkedLeads.length > 0;
+        const hasConnections = contactData.relationships.length > 0;
+        
+        if (showOnlyLinked === 'leads' && !hasLeads) return false;
+        if (showOnlyLinked === 'connections' && !hasConnections) return false;
+        if (showOnlyLinked === 'any' && !hasLeads && !hasConnections) return false;
+      }
+      
       return true;
     });
-  }, [comments, activeTab, searchText, dateFrom, dateTo]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, getContactData]);
 
   const clearFilters = () => {
     setSearchText('');
     setDateFrom(undefined);
     setDateTo(undefined);
+    setShowOnlyLinked('all');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo;
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all';
 
   return (
     <div className="space-y-6">
@@ -884,6 +899,19 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 />
               </PopoverContent>
             </Popover>
+
+            {/* Linked filter */}
+            <Select value={showOnlyLinked} onValueChange={(val: 'all' | 'leads' | 'connections' | 'any') => setShowOnlyLinked(val)}>
+              <SelectTrigger className={cn("w-[160px] h-9", showOnlyLinked !== 'all' && "border-primary")}>
+                <SelectValue placeholder="Filtrar vínculos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="any">Com vínculos</SelectItem>
+                <SelectItem value="leads">Com leads</SelectItem>
+                <SelectItem value="connections">Com conexões</SelectItem>
+              </SelectContent>
+            </Select>
 
             {hasActiveFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
