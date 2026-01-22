@@ -49,6 +49,7 @@ import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { OutboundNotificationSettings } from './OutboundNotificationSettings';
 import { OutboundRepliesHistory } from './OutboundRepliesHistory';
+import { OutboundResponseChart } from './OutboundResponseChart';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -976,6 +977,9 @@ export function ProspectingFunnel() {
         </TabsContent>
 
         <TabsContent value="chart" className="space-y-4">
+          {/* Outbound Response Rate Evolution Chart */}
+          <OutboundResponseChart prospects={prospects} period={period} />
+          
           <Card>
             <CardHeader>
               <CardTitle>Evolução Diária</CardTitle>
