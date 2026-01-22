@@ -11,7 +11,10 @@ import {
   Phone,
   Instagram,
   Loader2,
-  Tag
+  Tag,
+  UserCheck,
+  UserPlus,
+  Users2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
@@ -31,6 +34,7 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   const { classificationConfig } = useContactClassifications();
   
   const contactClassifications = contact?.classifications || [];
+  const followerStatus = contact?.follower_status;
 
   if (loading) {
     return (
@@ -44,6 +48,33 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
     return null;
   }
 
+  const getFollowerStatusConfig = (status: string | null | undefined) => {
+    switch (status) {
+      case 'follower':
+        return { 
+          icon: UserCheck, 
+          label: 'Te segue', 
+          className: 'bg-green-50 text-green-700 border-green-200' 
+        };
+      case 'following':
+        return { 
+          icon: UserPlus, 
+          label: 'Você segue', 
+          className: 'bg-orange-50 text-orange-700 border-orange-200' 
+        };
+      case 'mutual':
+        return { 
+          icon: Users2, 
+          label: 'Mútuo', 
+          className: 'bg-cyan-50 text-cyan-700 border-cyan-200' 
+        };
+      default:
+        return null;
+    }
+  };
+
+  const followerStatusConfig = getFollowerStatusConfig(followerStatus);
+
   const formatPhoneForWhatsApp = (phone: string) => {
     return phone.replace(/\D/g, '');
   };
@@ -55,6 +86,22 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1 flex-wrap">
+        {/* Follower Status Indicator */}
+        {followerStatusConfig && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge 
+                variant="outline" 
+                className={`text-xs gap-1 ${followerStatusConfig.className}`}
+              >
+                <followerStatusConfig.icon className="h-3 w-3" />
+                {followerStatusConfig.label}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>Status de seguidor</TooltipContent>
+          </Tooltip>
+        )}
+
         {/* Linked Leads - Show directly on card */}
         {linkedLeads.length > 0 && linkedLeads.slice(0, 2).map(lead => (
           <Badge 
