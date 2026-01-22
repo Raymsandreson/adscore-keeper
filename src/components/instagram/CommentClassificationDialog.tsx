@@ -102,6 +102,9 @@ export const CommentClassificationDialog = ({
   const [isCreatingNewContact, setIsCreatingNewContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [isCreatingContact, setIsCreatingContact] = useState(false);
+  
+  // Contact classification for new contacts created from Instagram flow
+  const [newContactClassifications, setNewContactClassifications] = useState<string[]>([]);
 
   const username = comment?.author_username?.replace('@', '').toLowerCase() || '';
 
@@ -127,6 +130,7 @@ export const CommentClassificationDialog = ({
       setSelectedRelatedContact(null);
       setIsCreatingNewContact(false);
       setNewContactName('');
+      setNewContactClassifications([]);
       // Pre-fill lead name with username
       const user = comment.author_username?.replace('@', '') || '';
       setNewLeadName(user ? `@${user}` : '');
@@ -330,12 +334,15 @@ export const CommentClassificationDialog = ({
           let authorContactId = existingContact?.id;
 
           if (!authorContactId) {
+            const contactClassificationsToSave = newContactClassifications.length > 0 
+              ? newContactClassifications 
+              : classificationsToSave;
             const { data: newContact, error: contactError } = await supabase
               .from('contacts')
               .insert({
                 full_name: comment.prospect_name || `@${username}`,
                 instagram_username: username,
-                classifications: classificationsToSave,
+                classifications: contactClassificationsToSave,
               })
               .select('id')
               .single();
@@ -531,11 +538,15 @@ export const CommentClassificationDialog = ({
         let authorContactId = existingContact?.id;
 
         if (!authorContactId && username) {
+          const contactClassificationsToSave = newContactClassifications.length > 0 
+            ? newContactClassifications 
+            : (selectedClassifications.length > 0 ? selectedClassifications : null);
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
               full_name: comment?.prospect_name || `@${username}`,
               instagram_username: username,
+              classifications: contactClassificationsToSave,
             })
             .select('id')
             .single();
@@ -577,11 +588,15 @@ export const CommentClassificationDialog = ({
         let authorContactId = existingContact?.id;
 
         if (!authorContactId) {
+          const contactClassificationsToSave = newContactClassifications.length > 0 
+            ? newContactClassifications 
+            : (selectedClassifications.length > 0 ? selectedClassifications : null);
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
               full_name: comment?.prospect_name || newLeadName.trim() || `@${username}`,
               instagram_username: username,
+              classifications: contactClassificationsToSave,
             })
             .select('id')
             .single();
@@ -1032,6 +1047,40 @@ export const CommentClassificationDialog = ({
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  {/* Contact classifications for the new contact */}
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Classificar contato vinculado</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {classifications.map((c) => {
+                        const isSelected = newContactClassifications.includes(c.name);
+                        return (
+                          <Badge
+                            key={c.name}
+                            variant={isSelected ? "default" : "outline"}
+                            className={cn(
+                              "cursor-pointer transition-all text-xs py-0.5",
+                              isSelected && c.color,
+                              isSelected && "text-white"
+                            )}
+                            onClick={() => {
+                              setNewContactClassifications(prev =>
+                                prev.includes(c.name)
+                                  ? prev.filter(k => k !== c.name)
+                                  : [...prev, c.name]
+                              );
+                            }}
+                          >
+                            {classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ')}
+                            {isSelected && <CheckCircle2 className="h-3 w-3 ml-1" />}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Essas classificações serão aplicadas ao contato criado automaticamente
+                    </p>
                   </div>
 
                   <Textarea
