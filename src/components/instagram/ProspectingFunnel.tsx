@@ -50,6 +50,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { OutboundNotificationSettings } from './OutboundNotificationSettings';
 import { OutboundRepliesHistory } from './OutboundRepliesHistory';
 import { OutboundResponseChart } from './OutboundResponseChart';
+import { OutboundGoalHistory } from './OutboundGoalHistory';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -978,7 +979,10 @@ export function ProspectingFunnel() {
 
         <TabsContent value="chart" className="space-y-4">
           {/* Outbound Response Rate Evolution Chart */}
-          <OutboundResponseChart prospects={prospects} period={period} />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <OutboundResponseChart prospects={prospects} period={period} />
+            <OutboundGoalHistory />
+          </div>
           
           <Card>
             <CardHeader>

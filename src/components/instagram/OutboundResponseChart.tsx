@@ -12,6 +12,7 @@ import { format, subDays, startOfDay, endOfDay, eachDayOfInterval } from 'date-f
 import { ptBR } from 'date-fns/locale';
 import { TrendingUp, TrendingDown, Minus, Target, Settings, Trophy, Bell, BellOff, PartyPopper } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Prospect {
   id: string;
@@ -131,9 +132,35 @@ export function OutboundResponseChart({ prospects, period }: OutboundResponseCha
     ? Math.min((currentRate / goalConfig.targetRate) * 100, 100).toFixed(0)
     : 0;
 
+  // Save goal achievement to database
+  const saveGoalAchievement = async () => {
+    if (totalSent === 0) return;
+    
+    const days = Math.min(parseInt(period), 30);
+    const endDate = new Date();
+    const startDate = subDays(endDate, days - 1);
+    
+    try {
+      const { error } = await supabase
+        .from('outbound_goal_history')
+        .insert({
+          target_rate: goalConfig.targetRate,
+          achieved_rate: currentRate,
+          total_sent: totalSent,
+          total_replies: totalReplies,
+          period_start: format(startDate, 'yyyy-MM-dd'),
+          period_end: format(endDate, 'yyyy-MM-dd'),
+        });
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao salvar conquista:', error);
+    }
+  };
+
   // Trigger notification when goal is achieved
   useEffect(() => {
-    if (!goalConfig.enabled || !goalConfig.notifyOnAchieve) return;
+    if (!goalConfig.enabled) return;
     
     const wasBelow = previousRateRef.current !== null && previousRateRef.current < goalConfig.targetRate;
     const isNowAbove = currentRate >= goalConfig.targetRate;
@@ -141,25 +168,30 @@ export function OutboundResponseChart({ prospects, period }: OutboundResponseCha
     if (wasBelow && isNowAbove && !hasNotifiedRef.current) {
       hasNotifiedRef.current = true;
       
-      // Show toast notification
-      toast.success(
-        <div className="flex items-center gap-2">
-          <PartyPopper className="h-5 w-5 text-yellow-500" />
-          <div>
-            <p className="font-semibold">Meta atingida! 🎉</p>
-            <p className="text-sm">Taxa de resposta outbound: {currentRate}%</p>
-          </div>
-        </div>,
-        { duration: 10000 }
-      );
+      // Save to database
+      saveGoalAchievement();
       
-      // Browser notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('🎯 Meta Outbound Atingida!', {
-          body: `Sua taxa de resposta chegou a ${currentRate}%, superando a meta de ${goalConfig.targetRate}%!`,
-          icon: '/favicon.ico',
-          tag: 'outbound-goal-achieved',
-        });
+      if (goalConfig.notifyOnAchieve) {
+        // Show toast notification
+        toast.success(
+          <div className="flex items-center gap-2">
+            <PartyPopper className="h-5 w-5 text-yellow-500" />
+            <div>
+              <p className="font-semibold">Meta atingida! 🎉</p>
+              <p className="text-sm">Taxa de resposta outbound: {currentRate}%</p>
+            </div>
+          </div>,
+          { duration: 10000 }
+        );
+        
+        // Browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('🎯 Meta Outbound Atingida!', {
+            body: `Sua taxa de resposta chegou a ${currentRate}%, superando a meta de ${goalConfig.targetRate}%!`,
+            icon: '/favicon.ico',
+            tag: 'outbound-goal-achieved',
+          });
+        }
       }
     }
     
@@ -169,7 +201,7 @@ export function OutboundResponseChart({ prospects, period }: OutboundResponseCha
     }
     
     previousRateRef.current = currentRate;
-  }, [currentRate, goalConfig]);
+  }, [currentRate, goalConfig, period, totalSent, totalReplies]);
 
   const handleSaveGoal = () => {
     setGoalConfig(tempGoal);

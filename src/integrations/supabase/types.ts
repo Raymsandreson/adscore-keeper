@@ -1199,6 +1199,48 @@ export type Database = {
           },
         ]
       }
+      outbound_goal_history: {
+        Row: {
+          achieved_at: string
+          achieved_rate: number
+          ad_account_id: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          period_end: string
+          period_start: string
+          target_rate: number
+          total_replies: number
+          total_sent: number
+        }
+        Insert: {
+          achieved_at?: string
+          achieved_rate: number
+          ad_account_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          period_end: string
+          period_start: string
+          target_rate: number
+          total_replies?: number
+          total_sent?: number
+        }
+        Update: {
+          achieved_at?: string
+          achieved_rate?: number
+          ad_account_id?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          period_end?: string
+          period_start?: string
+          target_rate?: number
+          total_replies?: number
+          total_sent?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
