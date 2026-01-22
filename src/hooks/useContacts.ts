@@ -317,13 +317,20 @@ export const useContacts = () => {
 
   // Import from Meta export (JSON format with followers/following)
   // Automatically detects mutual contacts when importing a second list
-  const importFromMetaExport = async (data: any[], importType: 'followers' | 'following' | 'both', classification: ContactClassification = 'prospect') => {
+  const importFromMetaExport = async (
+    data: any[], 
+    importType: 'followers' | 'following' | 'both', 
+    classification: ContactClassification = 'prospect',
+    onProgress?: (progress: { current: number; total: number; imported: number; errors: number; duplicates: number; upgradedToMutual: number }) => void
+  ) => {
     let imported = 0;
     let errors = 0;
     let duplicates = 0;
     let upgradedToMutual = 0;
+    const total = data.length;
 
-    for (const item of data) {
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
       try {
         // Extract username from the item - Meta export format varies
         let username = '';
@@ -350,7 +357,13 @@ export const useContacts = () => {
           profileUrl = item.href;
         }
 
-        if (!username) continue;
+        if (!username) {
+          // Report progress even for skipped items
+          if (onProgress) {
+            onProgress({ current: i + 1, total, imported, errors, duplicates, upgradedToMutual });
+          }
+          continue;
+        }
 
         // Check for existing contact with this username
         const { data: existing } = await supabase
@@ -393,6 +406,11 @@ export const useContacts = () => {
             // Already the same type or already mutual
             duplicates++;
           }
+          
+          // Report progress
+          if (onProgress) {
+            onProgress({ current: i + 1, total, imported, errors, duplicates, upgradedToMutual });
+          }
           continue;
         }
 
@@ -420,6 +438,11 @@ export const useContacts = () => {
       } catch (error) {
         console.error('Error:', error);
         errors++;
+      }
+
+      // Report progress after each item
+      if (onProgress) {
+        onProgress({ current: i + 1, total, imported, errors, duplicates, upgradedToMutual });
       }
     }
 

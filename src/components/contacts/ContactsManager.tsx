@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -95,6 +96,14 @@ export const ContactsManager: React.FC = () => {
   const [metaImportType, setMetaImportType] = useState<'followers' | 'following' | 'both'>('followers');
   const [metaImportClassification, setMetaImportClassification] = useState<ContactClassification>('prospect');
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{
+    current: number;
+    total: number;
+    imported: number;
+    errors: number;
+    duplicates: number;
+    upgradedToMutual: number;
+  } | null>(null);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
@@ -572,6 +581,10 @@ export const ContactsManager: React.FC = () => {
     if (metaFileInputRef.current) metaFileInputRef.current.value = '';
   };
 
+  const handleProgressUpdate = useCallback((progress: typeof importProgress) => {
+    setImportProgress(progress);
+  }, []);
+
   const handleMetaImport = async () => {
     let dataToImport: any[] = [];
     
@@ -589,8 +602,12 @@ export const ContactsManager: React.FC = () => {
     }
 
     setIsImporting(true);
-    const result = await importFromMetaExport(dataToImport, metaImportType, metaImportClassification);
+    setImportProgress({ current: 0, total: dataToImport.length, imported: 0, errors: 0, duplicates: 0, upgradedToMutual: 0 });
+    
+    const result = await importFromMetaExport(dataToImport, metaImportType, metaImportClassification, handleProgressUpdate);
+    
     setIsImporting(false);
+    setImportProgress(null);
     setMetaImportData({ followers: [], following: [] });
     setIsMetaImportDialogOpen(false);
 
@@ -1389,19 +1406,59 @@ export const ContactsManager: React.FC = () => {
               </Select>
             </div>
 
-            <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
-              <p className="font-medium mb-1">💡 Como obter os dados:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Acesse a Central de Contas da Meta</li>
-                <li>Vá em "Suas informações e permissões"</li>
-                <li>Clique em "Exportar suas informações"</li>
-                <li>Selecione "Seguidores e Seguindo"</li>
-                <li>Escolha formato JSON e baixe o arquivo</li>
-              </ol>
-            </div>
+            {!isImporting && (
+              <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                <p className="font-medium mb-1">💡 Como obter os dados:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Acesse a Central de Contas da Meta</li>
+                  <li>Vá em "Suas informações e permissões"</li>
+                  <li>Clique em "Exportar suas informações"</li>
+                  <li>Selecione "Seguidores e Seguindo"</li>
+                  <li>Escolha formato JSON e baixe o arquivo</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Progress indicator during import */}
+            {isImporting && importProgress && (
+              <div className="space-y-4 p-4 bg-gradient-to-r from-purple-500/5 to-pink-500/5 rounded-lg border border-pink-500/20">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Importando contatos...</span>
+                  <span className="text-muted-foreground">
+                    {importProgress.current} / {importProgress.total}
+                  </span>
+                </div>
+                <Progress 
+                  value={(importProgress.current / importProgress.total) * 100} 
+                  className="h-2"
+                />
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                    <span>{importProgress.imported} novos</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>{importProgress.upgradedToMutual} mútuos</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <span>{importProgress.duplicates} existentes</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <span>{importProgress.errors} erros</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setIsMetaImportDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsMetaImportDialogOpen(false)}
+                disabled={isImporting}
+              >
                 Cancelar
               </Button>
               <Button 
@@ -1409,7 +1466,12 @@ export const ContactsManager: React.FC = () => {
                 disabled={isImporting || (metaImportData.followers.length === 0 && metaImportData.following.length === 0)}
                 className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
               >
-                {isImporting ? 'Importando...' : 'Importar Contatos'}
+                {isImporting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                    Importando...
+                  </span>
+                ) : 'Importar Contatos'}
               </Button>
             </div>
           </div>
