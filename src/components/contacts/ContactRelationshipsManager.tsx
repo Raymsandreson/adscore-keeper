@@ -40,6 +40,7 @@ import {
   Smile,
   UserPlus,
   X,
+  Filter,
 } from 'lucide-react';
 import { 
   useContactRelationships, 
@@ -93,6 +94,17 @@ export const ContactRelationshipsManager: React.FC<ContactRelationshipsManagerPr
   // Add new type state
   const [isAddingType, setIsAddingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
+  
+  // Filter state
+  const [filterType, setFilterType] = useState<string>('all');
+  
+  // Filtered relationships
+  const filteredRelationships = filterType === 'all' 
+    ? relationships 
+    : relationships.filter(rel => rel.relationship_type === filterType);
+  
+  // Get unique types from current relationships for filter
+  const usedTypes = Array.from(new Set(relationships.map(r => r.relationship_type)));
 
   // Search for contacts
   useEffect(() => {
@@ -350,6 +362,36 @@ export const ContactRelationshipsManager: React.FC<ContactRelationshipsManagerPr
             </div>
           )}
 
+          {/* Filter by relationship type */}
+          {relationships.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Filtrar por tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os vínculos</SelectItem>
+                  {usedTypes.map((type) => {
+                    const typeInfo = relationshipTypes.find(t => t.name === type);
+                    const count = relationships.filter(r => r.relationship_type === type).length;
+                    return (
+                      <SelectItem key={type} value={type}>
+                        <div className="flex items-center gap-2">
+                          {getIcon(typeInfo?.icon || 'users')}
+                          {type}
+                          <Badge variant="secondary" className="ml-auto text-xs">
+                            {count}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Existing relationships */}
           <ScrollArea className="flex-1">
             <div className="space-y-2">
@@ -365,8 +407,13 @@ export const ContactRelationshipsManager: React.FC<ContactRelationshipsManagerPr
                     Adicione vínculos para rastrear indicações, parentesco e parcerias
                   </p>
                 </div>
+              ) : filteredRelationships.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Filter className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum vínculo deste tipo</p>
+                </div>
               ) : (
-                relationships.map((rel) => {
+                filteredRelationships.map((rel) => {
                   const typeInfo = relationshipTypes.find(t => t.name === rel.relationship_type);
                   return (
                     <div
