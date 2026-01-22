@@ -48,6 +48,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { OutboundNotificationSettings } from './OutboundNotificationSettings';
+import { OutboundRepliesHistory } from './OutboundRepliesHistory';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -740,6 +741,15 @@ export function ProspectingFunnel() {
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="chart">Gráficos</TabsTrigger>
+          <TabsTrigger value="replies" className="flex items-center gap-1.5">
+            <MessageCircleReply className="h-4 w-4" />
+            Respostas
+            {outboundRepliesCount > 0 && (
+              <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1 bg-green-100 text-green-700">
+                {outboundRepliesCount}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -986,6 +996,10 @@ export function ProspectingFunnel() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="replies">
+          <OutboundRepliesHistory />
         </TabsContent>
       </Tabs>
 
