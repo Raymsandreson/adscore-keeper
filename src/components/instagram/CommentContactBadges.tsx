@@ -4,11 +4,9 @@ import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
-  Briefcase, 
   Users, 
   ExternalLink, 
   MessageCircle, 
-  Phone,
   Instagram,
   Loader2,
   Tag,
@@ -19,15 +17,18 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { LeadStatusPopover } from './LeadStatusPopover';
 
 interface CommentContactBadgesProps {
   contactData: CommentContactData;
   username: string | null;
+  onLeadStatusChanged?: () => void;
 }
 
 export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   contactData,
-  username
+  username,
+  onLeadStatusChanged
 }) => {
   const navigate = useNavigate();
   const { contact, linkedLeads, relationships, loading } = contactData;
@@ -102,23 +103,16 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
           </Tooltip>
         )}
 
-        {/* Linked Leads - Show directly on card */}
+        {/* Linked Leads - Show directly on card with status popover */}
         {linkedLeads.length > 0 && linkedLeads.slice(0, 2).map(lead => (
-          <Badge 
+          <LeadStatusPopover
             key={lead.id}
-            variant="outline" 
-            className="cursor-pointer text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors gap-1"
-            onClick={() => navigate(`/leads?leadId=${lead.id}`)}
-          >
-            <Briefcase className="h-3 w-3" />
-            <span className="max-w-[100px] truncate">
-              {lead.lead_name || 'Sem nome'}
-            </span>
-            <span className="text-blue-500">
-              ({lead.status || 'new'})
-            </span>
-            <ExternalLink className="h-3 w-3 ml-0.5" />
-          </Badge>
+            leadId={lead.id}
+            leadName={lead.lead_name}
+            currentStatus={lead.status}
+            boardId={lead.board_id}
+            onStatusChanged={onLeadStatusChanged}
+          />
         ))}
         
         {/* Show "+X more" badge if more than 2 leads */}
