@@ -539,7 +539,10 @@ export const ContactsManager: React.FC = () => {
         } else if (data.followers) {
           followers = Array.isArray(data.followers) ? data.followers : [data.followers];
         } else if (Array.isArray(data) && data[0]?.string_list_data) {
-          // Direct array of follower objects
+          // Direct array of follower objects (Meta export format)
+          followers = data;
+        } else if (Array.isArray(data)) {
+          // Simple array without string_list_data, assume followers
           followers = data;
         }
 
@@ -547,11 +550,6 @@ export const ContactsManager: React.FC = () => {
           following = data.relationships_following;
         } else if (data.following) {
           following = Array.isArray(data.following) ? data.following : [data.following];
-        }
-
-        // If it's a simple array, assume it's followers
-        if (Array.isArray(data) && !data[0]?.string_list_data) {
-          followers = data;
         }
 
         if (followers.length === 0 && following.length === 0) {
