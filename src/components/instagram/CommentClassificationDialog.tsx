@@ -516,6 +516,9 @@ export const CommentClassificationDialog = ({
 
       if (error) throw error;
 
+      // Track linked contacts count
+      let linkedContactsCount = 0;
+
       // If there's a related contact selected, create contact and link to lead
       if (selectedRelatedContact && newLead) {
         // First, create or find the comment author as a contact
@@ -544,23 +547,25 @@ export const CommentClassificationDialog = ({
 
         // Link contact to the new lead via contact_leads junction table
         if (authorContactId) {
-          await supabase
+          const { error: linkError } = await supabase
             .from('contact_leads')
             .insert({
               contact_id: authorContactId,
               lead_id: newLead.id,
               notes: `Vinculado via criação de lead do comentário Instagram`
             });
+          if (!linkError) linkedContactsCount++;
         }
 
         // Also link the related contact to the lead
-        await supabase
+        const { error: relatedLinkError } = await supabase
           .from('contact_leads')
           .insert({
             contact_id: selectedRelatedContact.id,
             lead_id: newLead.id,
             notes: `Contato relacionado vinculado via classificação`
           });
+        if (!relatedLinkError) linkedContactsCount++;
       } else if (username && newLead) {
         // No related contact, but still create author contact and link
         const { data: existingContact } = await supabase
@@ -588,17 +593,23 @@ export const CommentClassificationDialog = ({
 
         // Link contact to the new lead
         if (authorContactId) {
-          await supabase
+          const { error: linkError } = await supabase
             .from('contact_leads')
             .insert({
               contact_id: authorContactId,
               lead_id: newLead.id,
               notes: `Vinculado via criação de lead do comentário Instagram`
             });
+          if (!linkError) linkedContactsCount++;
         }
       }
 
-      toast.success(`Lead "${newLeadName}" criado no quadro "${selectedBoard?.name}"!`);
+      // Build success message with contact count
+      const contactsMessage = linkedContactsCount > 0 
+        ? ` • ${linkedContactsCount} contato${linkedContactsCount > 1 ? 's' : ''} vinculado${linkedContactsCount > 1 ? 's' : ''}`
+        : '';
+      
+      toast.success(`Lead "${newLeadName}" criado no quadro "${selectedBoard?.name}"!${contactsMessage}`);
       setNewLeadName('');
       setNewLeadNotes('');
       await fetchLinkedLeads();
