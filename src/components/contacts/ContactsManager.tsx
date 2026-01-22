@@ -83,6 +83,7 @@ import { useContactClassifications, classificationColors } from '@/hooks/useCont
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
+import { useContactRelationshipCounts } from '@/hooks/useContactRelationships';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -317,6 +318,10 @@ export const ContactsManager: React.FC = () => {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   const { classifications, addClassification } = useContactClassifications();
+  
+  // Fetch relationship counts for displayed contacts
+  const contactIds = contacts.map(c => c.id);
+  const { counts: relationshipCounts } = useContactRelationshipCounts(contactIds);
   
   // Build classifications list for the inline select
   const classificationsList = classifications.map(c => ({
@@ -1425,11 +1430,28 @@ export const ContactsManager: React.FC = () => {
                         </TableCell>
                         {visibility.name && (
                           <TableCell>
-                            <InlineEditableText
-                              value={contact.full_name}
-                              onSave={(value) => updateContact(contact.id, { full_name: value })}
-                              className="font-medium"
-                            />
+                            <div className="flex items-center gap-2">
+                              <InlineEditableText
+                                value={contact.full_name}
+                                onSave={(value) => updateContact(contact.id, { full_name: value })}
+                                className="font-medium"
+                              />
+                              {relationshipCounts[contact.id] > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1.5 gap-1"
+                                  onClick={() => {
+                                    setRelationshipsContact(contact);
+                                    setIsRelationshipsOpen(true);
+                                  }}
+                                  title={`${relationshipCounts[contact.id]} vínculo(s)`}
+                                >
+                                  <Link2 className="h-3 w-3 text-primary" />
+                                  <span className="text-xs font-medium">{relationshipCounts[contact.id]}</span>
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         {(visibility.phone || visibility.email) && (
