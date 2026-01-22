@@ -346,12 +346,15 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
 
                 <div>
                   <Label>Classificação</Label>
-                  <Select value={formClassification} onValueChange={setFormClassification}>
+                  <Select 
+                    value={formClassification || '__none__'} 
+                    onValueChange={(val) => setFormClassification(val === '__none__' ? '' : val)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Sem classificação</SelectItem>
+                      <SelectItem value="__none__">Sem classificação</SelectItem>
                       {classifications.map((c) => (
                         <SelectItem key={c.id} value={c.name}>
                           {getClassificationLabel(c.name)}
