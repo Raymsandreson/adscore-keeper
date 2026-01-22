@@ -500,7 +500,7 @@ export const CommentClassificationDialog = ({
         }
       }
 
-      const { data, error } = await supabase
+      const { data: newLead, error } = await supabase
         .from('leads')
         .insert({
           lead_name: newLeadName.trim(),
@@ -515,6 +515,88 @@ export const CommentClassificationDialog = ({
         .single();
 
       if (error) throw error;
+
+      // If there's a related contact selected, create contact and link to lead
+      if (selectedRelatedContact && newLead) {
+        // First, create or find the comment author as a contact
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('instagram_username', username || '')
+          .maybeSingle();
+
+        let authorContactId = existingContact?.id;
+
+        if (!authorContactId && username) {
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: comment?.prospect_name || `@${username}`,
+              instagram_username: username,
+            })
+            .select('id')
+            .single();
+
+          if (!contactError && newContact) {
+            authorContactId = newContact.id;
+          }
+        }
+
+        // Link contact to the new lead via contact_leads junction table
+        if (authorContactId) {
+          await supabase
+            .from('contact_leads')
+            .insert({
+              contact_id: authorContactId,
+              lead_id: newLead.id,
+              notes: `Vinculado via criação de lead do comentário Instagram`
+            });
+        }
+
+        // Also link the related contact to the lead
+        await supabase
+          .from('contact_leads')
+          .insert({
+            contact_id: selectedRelatedContact.id,
+            lead_id: newLead.id,
+            notes: `Contato relacionado vinculado via classificação`
+          });
+      } else if (username && newLead) {
+        // No related contact, but still create author contact and link
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('instagram_username', username)
+          .maybeSingle();
+
+        let authorContactId = existingContact?.id;
+
+        if (!authorContactId) {
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: comment?.prospect_name || newLeadName.trim() || `@${username}`,
+              instagram_username: username,
+            })
+            .select('id')
+            .single();
+
+          if (!contactError && newContact) {
+            authorContactId = newContact.id;
+          }
+        }
+
+        // Link contact to the new lead
+        if (authorContactId) {
+          await supabase
+            .from('contact_leads')
+            .insert({
+              contact_id: authorContactId,
+              lead_id: newLead.id,
+              notes: `Vinculado via criação de lead do comentário Instagram`
+            });
+        }
+      }
 
       toast.success(`Lead "${newLeadName}" criado no quadro "${selectedBoard?.name}"!`);
       setNewLeadName('');
