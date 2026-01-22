@@ -113,6 +113,75 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_relationship_types: {
+        Row: {
+          created_at: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      contact_relationships: {
+        Row: {
+          contact_id: string
+          created_at: string | null
+          id: string
+          notes: string | null
+          related_contact_id: string
+          relationship_type: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          related_contact_id: string
+          relationship_type: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          related_contact_id?: string
+          relationship_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_relationships_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_relationships_related_contact_id_fkey"
+            columns: ["related_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           cep: string | null

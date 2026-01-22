@@ -74,6 +74,7 @@ import {
   Settings2,
   MapPin,
   Loader2,
+  Link2,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -81,6 +82,7 @@ import { useContactColumnVisibility } from '@/hooks/useContactColumnVisibility';
 import { useContactClassifications, classificationColors } from '@/hooks/useContactClassifications';
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
+import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -363,6 +365,10 @@ export const ContactsManager: React.FC = () => {
   // State for edit dialog location fields
   const [editCities, setEditCities] = useState<{ id: number; nome: string }[]>([]);
   const [loadingEditCities, setLoadingEditCities] = useState(false);
+
+  // State for relationships manager
+  const [relationshipsContact, setRelationshipsContact] = useState<Contact | null>(null);
+  const [isRelationshipsOpen, setIsRelationshipsOpen] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1581,6 +1587,13 @@ export const ContactsManager: React.FC = () => {
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => {
+                                setRelationshipsContact(contact);
+                                setIsRelationshipsOpen(true);
+                              }}>
+                                <Link2 className="h-4 w-4 mr-2" />
+                                Vínculos
+                              </DropdownMenuItem>
                               {!contact.lead_id && (
                                 <DropdownMenuItem onClick={() => handleConvertToLead(contact)}>
                                   <UserPlus className="h-4 w-4 mr-2" />
@@ -2119,6 +2132,13 @@ export const ContactsManager: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Contact Relationships Manager */}
+      <ContactRelationshipsManager
+        contact={relationshipsContact}
+        open={isRelationshipsOpen}
+        onOpenChange={setIsRelationshipsOpen}
+      />
     </div>
   );
 };
