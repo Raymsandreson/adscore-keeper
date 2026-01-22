@@ -85,7 +85,10 @@ import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
 import { ContactNetworkGraph } from '@/components/contacts/ContactNetworkGraph';
+import { ContactLeadsManager } from '@/components/contacts/ContactLeadsManager';
+import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
+import { useContactLeadCounts } from '@/hooks/useContactLeads';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -325,6 +328,9 @@ export const ContactsManager: React.FC = () => {
   const contactIds = contacts.map(c => c.id);
   const { counts: relationshipCounts } = useContactRelationshipCounts(contactIds);
   
+  // Fetch lead counts for displayed contacts
+  const { counts: leadCounts } = useContactLeadCounts(contactIds);
+  
   // Fetch relationship types for filter
   const { relationshipTypes } = useRelationshipTypes();
   
@@ -384,8 +390,11 @@ export const ContactsManager: React.FC = () => {
   const [relationshipsContact, setRelationshipsContact] = useState<Contact | null>(null);
   const [isRelationshipsOpen, setIsRelationshipsOpen] = useState(false);
   
-  // State for network graph
   const [isNetworkGraphOpen, setIsNetworkGraphOpen] = useState(false);
+  
+  // State for leads manager
+  const [leadsContact, setLeadsContact] = useState<Contact | null>(null);
+  const [isLeadsManagerOpen, setIsLeadsManagerOpen] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1631,13 +1640,41 @@ export const ContactsManager: React.FC = () => {
                         )}
                         {visibility.status && (
                           <TableCell>
-                            {contact.lead_id ? (
-                              <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs">
-                                Lead
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">Contato</span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {leadCounts[contact.id] > 0 ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 gap-1"
+                                  onClick={() => {
+                                    setLeadsContact(contact);
+                                    setIsLeadsManagerOpen(true);
+                                  }}
+                                  title={`${leadCounts[contact.id]} lead(s) vinculado(s)`}
+                                >
+                                  <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs gap-1">
+                                    <Users className="h-3 w-3" />
+                                    {leadCounts[contact.id]} Lead{leadCounts[contact.id] > 1 ? 's' : ''}
+                                  </Badge>
+                                </Button>
+                              ) : contact.lead_id ? (
+                                <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs">
+                                  Lead
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-muted-foreground hover:text-primary"
+                                  onClick={() => {
+                                    setLeadsContact(contact);
+                                    setIsLeadsManagerOpen(true);
+                                  }}
+                                >
+                                  + Vincular
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         )}
                         <TableCell>
@@ -2242,6 +2279,13 @@ export const ContactsManager: React.FC = () => {
           setRelationshipsContact(contact);
           setIsRelationshipsOpen(true);
         }}
+      />
+
+      {/* Contact Leads Manager */}
+      <ContactLeadsManager
+        contact={leadsContact}
+        open={isLeadsManagerOpen}
+        onOpenChange={setIsLeadsManagerOpen}
       />
     </div>
   );
