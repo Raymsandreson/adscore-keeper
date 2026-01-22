@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -91,6 +92,8 @@ export const ContactsManager: React.FC = () => {
   const [metaImportType, setMetaImportType] = useState<'followers' | 'following' | 'both'>('followers');
   const [metaImportClassification, setMetaImportClassification] = useState<ContactClassification>('prospect');
   const [isImporting, setIsImporting] = useState(false);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const metaFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -291,6 +294,57 @@ export const ContactsManager: React.FC = () => {
 
   const handleConvertToLead = async (contact: Contact) => {
     await convertToLead(contact.id);
+  };
+
+  // Selection handlers
+  const toggleSelectContact = (contactId: string) => {
+    const newSelected = new Set(selectedContacts);
+    if (newSelected.has(contactId)) {
+      newSelected.delete(contactId);
+    } else {
+      newSelected.add(contactId);
+    }
+    setSelectedContacts(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedContacts.size === filteredContacts.length) {
+      setSelectedContacts(new Set());
+    } else {
+      setSelectedContacts(new Set(filteredContacts.map(c => c.id)));
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedContacts.size === 0) return;
+    
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja excluir ${selectedContacts.size} contato(s)? Esta ação não pode ser desfeita.`
+    );
+    
+    if (!confirmDelete) return;
+    
+    setIsDeleting(true);
+    let deleted = 0;
+    let errors = 0;
+    
+    for (const contactId of selectedContacts) {
+      try {
+        await deleteContact(contactId);
+        deleted++;
+      } catch {
+        errors++;
+      }
+    }
+    
+    setIsDeleting(false);
+    setSelectedContacts(new Set());
+    
+    if (errors > 0) {
+      toast.warning(`${deleted} excluídos, ${errors} erros`);
+    } else {
+      toast.success(`${deleted} contatos excluídos!`);
+    }
   };
 
   const downloadTemplate = () => {
@@ -713,16 +767,48 @@ export const ContactsManager: React.FC = () => {
       {/* Contacts Table */}
       <Card>
         <CardHeader className="py-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Contatos ({filteredContacts.length})
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Contatos ({filteredContacts.length})
+            </CardTitle>
+            {selectedContacts.size > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {selectedContacts.size} selecionado(s)
+                </Badge>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBatchDelete}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  {isDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedContacts(new Set())}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]">
+                    <Checkbox
+                      checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Selecionar todos"
+                    />
+                  </TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Contato</TableHead>
                   <TableHead>Instagram</TableHead>
@@ -735,21 +821,29 @@ export const ContactsManager: React.FC = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Carregando...
                     </TableCell>
                   </TableRow>
                 ) : filteredContacts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Nenhum contato encontrado
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredContacts.map((contact) => {
                     const classConfig = classificationConfig[contact.classification];
+                    const isSelected = selectedContacts.has(contact.id);
                     return (
-                      <TableRow key={contact.id}>
+                      <TableRow key={contact.id} className={isSelected ? 'bg-muted/50' : ''}>
+                        <TableCell>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelectContact(contact.id)}
+                            aria-label={`Selecionar ${contact.full_name}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">{contact.full_name}</TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
