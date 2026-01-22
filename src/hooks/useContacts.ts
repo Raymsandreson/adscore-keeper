@@ -52,10 +52,12 @@ export const useContacts = () => {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
+      // Fetch all contacts without the default 1000 row limit
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(10000);
 
       if (error) throw error;
 
