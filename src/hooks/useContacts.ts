@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export type ContactClassification = 'client' | 'non_client' | 'prospect' | 'partner' | 'supplier';
+export type FollowerStatus = 'follower' | 'following' | 'mutual' | 'none';
 
 export interface Contact {
   id: string;
@@ -18,6 +19,7 @@ export interface Contact {
   state: string | null;
   lead_id: string | null;
   converted_to_lead_at: string | null;
+  follower_status: FollowerStatus;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +92,17 @@ export const useContacts = () => {
     });
   };
 
+  // Helper to determine follower_status from tags
+  const getFollowerStatusFromTags = (tags: string[] | null | undefined): FollowerStatus => {
+    const hasSeguidor = tags?.includes('seguidor') || false;
+    const hasSeguindo = tags?.includes('seguindo') || false;
+    
+    if (hasSeguidor && hasSeguindo) return 'mutual';
+    if (hasSeguidor) return 'follower';
+    if (hasSeguindo) return 'following';
+    return 'none';
+  };
+
   const addContact = async (contact: Partial<Contact> & { full_name: string }) => {
     try {
       // Extract Instagram username from URL if provided
@@ -100,6 +113,9 @@ export const useContacts = () => {
           instagramUsername = match[1].replace('@', '');
         }
       }
+
+      // Determine follower_status from tags
+      const followerStatus = contact.follower_status || getFollowerStatusFromTags(contact.tags);
 
       const { data, error } = await supabase
         .from('contacts')
@@ -114,6 +130,7 @@ export const useContacts = () => {
           tags: contact.tags || [],
           city: contact.city || null,
           state: contact.state || null,
+          follower_status: followerStatus,
         }])
         .select()
         .single();
@@ -346,6 +363,8 @@ export const useContacts = () => {
         }
 
         const instagramUrl = profileUrl || `https://instagram.com/${username}`;
+        const tags = [importType === 'followers' ? 'seguidor' : importType === 'following' ? 'seguindo' : 'instagram'];
+        const followerStatus: FollowerStatus = importType === 'followers' ? 'follower' : importType === 'following' ? 'following' : 'none';
 
         const { error } = await supabase
           .from('contacts')
@@ -354,7 +373,8 @@ export const useContacts = () => {
             instagram_username: username.toLowerCase(),
             instagram_url: instagramUrl,
             classification,
-            tags: [importType === 'followers' ? 'seguidor' : importType === 'following' ? 'seguindo' : 'instagram'],
+            tags,
+            follower_status: followerStatus,
           });
 
         if (error) {
