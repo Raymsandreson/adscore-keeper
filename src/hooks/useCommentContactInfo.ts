@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ContactInfo {
@@ -38,7 +38,7 @@ export interface CommentContactData {
 
 export const useCommentContactInfo = (instagramUsernames: string[]) => {
   const [contactsData, setContactsData] = useState<Record<string, CommentContactData>>({});
-  const [lastFetchedUsernames, setLastFetchedUsernames] = useState<string[]>([]);
+  const loadedUsernamesRef = useRef<Set<string>>(new Set());
 
   const fetchContactInfo = useCallback(async (usernames: string[], forceRefresh = false) => {
     if (usernames.length === 0) return;
@@ -46,21 +46,29 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
     // Normalize usernames (remove @)
     const normalizedUsernames = usernames.map(u => u.replace('@', '').toLowerCase());
     
+    // Filter out already loaded usernames unless forcing refresh
+    const usernamesToFetch = forceRefresh 
+      ? normalizedUsernames 
+      : normalizedUsernames.filter(u => !loadedUsernamesRef.current.has(u));
+    
+    if (usernamesToFetch.length === 0) return;
+    
+    // Mark as loading
+    usernamesToFetch.forEach(u => loadedUsernamesRef.current.add(u));
+    
     // Initialize loading state
     setContactsData(prev => {
       const loadingState: Record<string, CommentContactData> = { ...prev };
-      normalizedUsernames.forEach(username => {
-        if (forceRefresh || !prev[username]) {
-          loadingState[username] = { contact: null, linkedLeads: [], relationships: [], loading: true };
-        }
+      usernamesToFetch.forEach(username => {
+        loadingState[username] = { contact: null, linkedLeads: [], relationships: [], loading: true };
       });
       return loadingState;
     });
 
     try {
       // Fetch contacts by instagram_username - try both with and without @
-      const usernamesWithAt = normalizedUsernames.map(u => `@${u}`);
-      const usernamesWithoutAt = normalizedUsernames;
+      const usernamesWithAt = usernamesToFetch.map(u => `@${u}`);
+      const usernamesWithoutAt = usernamesToFetch;
       const allUsernamesToSearch = [...usernamesWithAt, ...usernamesWithoutAt];
       
       const { data: contacts, error: contactsError } = await supabase
@@ -159,7 +167,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
 
       // Build final data
       const newData: Record<string, CommentContactData> = {};
-      normalizedUsernames.forEach(username => {
+      usernamesToFetch.forEach(username => {
         const contact = contactMap.get(username);
         newData[username] = {
           contact: contact || null,
@@ -170,12 +178,11 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
       });
 
       setContactsData(prev => ({ ...prev, ...newData }));
-      setLastFetchedUsernames(normalizedUsernames);
     } catch (error) {
       console.error('Error fetching contact info:', error);
       // Set loading to false on error
       const errorState: Record<string, CommentContactData> = {};
-      normalizedUsernames.forEach(username => {
+      usernamesToFetch.forEach(username => {
         errorState[username] = { contact: null, linkedLeads: [], relationships: [], loading: false };
       });
       setContactsData(prev => ({ ...prev, ...errorState }));
@@ -184,15 +191,13 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
 
   useEffect(() => {
     const uniqueUsernames = [...new Set(instagramUsernames.filter(Boolean))];
-    const unloadedUsernames = uniqueUsernames.filter(u => {
-      const normalized = u.replace('@', '').toLowerCase();
-      return !contactsData[normalized];
-    });
+    const normalizedUsernames = uniqueUsernames.map(u => u.replace('@', '').toLowerCase());
+    const unloadedUsernames = normalizedUsernames.filter(u => !loadedUsernamesRef.current.has(u));
     
     if (unloadedUsernames.length > 0) {
       fetchContactInfo(unloadedUsernames);
     }
-  }, [instagramUsernames, fetchContactInfo, contactsData]);
+  }, [instagramUsernames, fetchContactInfo]);
 
   const getContactData = useCallback((username: string | null): CommentContactData => {
     if (!username) return { contact: null, linkedLeads: [], relationships: [], loading: false };
@@ -201,12 +206,11 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
   }, [contactsData]);
 
   const refetch = useCallback(() => {
-    // Use lastFetchedUsernames to avoid stale closure
-    const usernames = Object.keys(contactsData);
+    const usernames = Array.from(loadedUsernamesRef.current);
     if (usernames.length > 0) {
       fetchContactInfo(usernames, true);
     }
-  }, [fetchContactInfo, contactsData]);
+  }, [fetchContactInfo]);
 
   return { getContactData, refetch };
 };
