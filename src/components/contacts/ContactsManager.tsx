@@ -1604,12 +1604,76 @@ export const ContactsManager: React.FC = () => {
                 />
               </div>
               
-              {/* Location with cascading selects */}
+              {/* Location with CEP lookup */}
               <div className="space-y-3">
                 <Label className="flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
                   Localização
                 </Label>
+                
+                {/* CEP with auto-fill button */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground">CEP (digite para buscar endereço)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={(editingContact as any).cep || ''}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          const formatted = value.length > 5 
+                            ? `${value.slice(0, 5)}-${value.slice(5, 8)}`
+                            : value;
+                          setEditingContact({ ...editingContact, cep: formatted } as any);
+                        }}
+                        placeholder="00000-000"
+                        maxLength={9}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!((editingContact as any).cep?.replace(/\D/g, '')?.length === 8)}
+                        onClick={async () => {
+                          const cep = ((editingContact as any).cep || '').replace(/\D/g, '');
+                          if (cep.length !== 8) {
+                            toast.error('CEP deve ter 8 dígitos');
+                            return;
+                          }
+                          
+                          try {
+                            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+                            const data = await response.json();
+                            
+                            if (data.erro) {
+                              toast.error('CEP não encontrado');
+                              return;
+                            }
+                            
+                            setEditingContact({
+                              ...editingContact,
+                              state: data.uf || editingContact.state,
+                              city: data.localidade || editingContact.city,
+                              neighborhood: data.bairro || (editingContact as any).neighborhood,
+                              street: data.logradouro || (editingContact as any).street,
+                            } as any);
+                            
+                            toast.success('Endereço preenchido automaticamente!');
+                          } catch (error) {
+                            toast.error('Erro ao buscar CEP');
+                          }
+                        }}
+                      >
+                        <Search className="h-4 w-4 mr-1" />
+                        Buscar
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Digite o CEP e clique em Buscar para preencher o endereço automaticamente
+                    </p>
+                  </div>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs text-muted-foreground">Estado</Label>
@@ -1662,30 +1726,20 @@ export const ContactsManager: React.FC = () => {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <Label className="text-xs text-muted-foreground">Bairro</Label>
-                    <Input
-                      value={(editingContact as any).neighborhood || ''}
-                      onChange={(e) => setEditingContact({ ...editingContact, neighborhood: e.target.value } as any)}
-                      placeholder="Bairro"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">CEP</Label>
-                    <Input
-                      value={(editingContact as any).cep || ''}
-                      onChange={(e) => setEditingContact({ ...editingContact, cep: e.target.value } as any)}
-                      placeholder="00000-000"
-                    />
-                  </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Bairro</Label>
+                  <Input
+                    value={(editingContact as any).neighborhood || ''}
+                    onChange={(e) => setEditingContact({ ...editingContact, neighborhood: e.target.value } as any)}
+                    placeholder="Bairro"
+                  />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground">Rua</Label>
+                  <Label className="text-xs text-muted-foreground">Rua / Logradouro</Label>
                   <Input
                     value={(editingContact as any).street || ''}
                     onChange={(e) => setEditingContact({ ...editingContact, street: e.target.value } as any)}
-                    placeholder="Rua, número, complemento"
+                    placeholder="Rua, Avenida, etc."
                   />
                 </div>
               </div>
