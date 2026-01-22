@@ -67,6 +67,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
 
     try {
       // Fetch contacts by instagram_username - try both with and without @
+      // Also use ILIKE for case-insensitive matching
       const usernamesWithAt = usernamesToFetch.map(u => `@${u}`);
       const usernamesWithoutAt = usernamesToFetch;
       const allUsernamesToSearch = [...usernamesWithAt, ...usernamesWithoutAt];
@@ -78,13 +79,18 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
 
       if (contactsError) throw contactsError;
 
-      const contactMap = new Map<string, ContactInfo>();
       const contactIds: string[] = [];
+      
+      // Collect all contacts matching the username
+      const contactsByUsername = new Map<string, ContactInfo[]>();
       
       contacts?.forEach(contact => {
         const username = contact.instagram_username?.replace('@', '').toLowerCase();
-        if (username && !contactMap.has(username)) {
-          contactMap.set(username, contact);
+        if (username) {
+          if (!contactsByUsername.has(username)) {
+            contactsByUsername.set(username, []);
+          }
+          contactsByUsername.get(username)!.push(contact);
           contactIds.push(contact.id);
         }
       });
@@ -165,14 +171,60 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
         }
       }
 
-      // Build final data
+      // Build final data - for each username, prefer the contact that has linked leads
       const newData: Record<string, CommentContactData> = {};
       usernamesToFetch.forEach(username => {
-        const contact = contactMap.get(username);
+        const matchingContacts = contactsByUsername.get(username) || [];
+        
+        // Find the best contact - prefer one with linked leads
+        let bestContact: ContactInfo | null = null;
+        let bestLeads: LeadInfo[] = [];
+        let bestRelationships: RelationshipInfo[] = [];
+        
+        for (const contact of matchingContacts) {
+          const contactLeads = leadsByContact[contact.id] || [];
+          const contactRelationships = relationshipsByContact[contact.id] || [];
+          
+          // If this contact has leads, use it
+          if (contactLeads.length > 0) {
+            bestContact = contact;
+            bestLeads = contactLeads;
+            bestRelationships = contactRelationships;
+            break; // Found a contact with leads, use it
+          }
+          
+          // Otherwise, keep track of the first contact
+          if (!bestContact) {
+            bestContact = contact;
+            bestRelationships = contactRelationships;
+          }
+        }
+        
+        // Aggregate all leads and relationships from all matching contacts
+        const allLeads: LeadInfo[] = [];
+        const allRelationships: RelationshipInfo[] = [];
+        const seenLeadIds = new Set<string>();
+        const seenRelIds = new Set<string>();
+        
+        matchingContacts.forEach(contact => {
+          (leadsByContact[contact.id] || []).forEach(lead => {
+            if (!seenLeadIds.has(lead.id)) {
+              seenLeadIds.add(lead.id);
+              allLeads.push(lead);
+            }
+          });
+          (relationshipsByContact[contact.id] || []).forEach(rel => {
+            if (!seenRelIds.has(rel.id)) {
+              seenRelIds.add(rel.id);
+              allRelationships.push(rel);
+            }
+          });
+        });
+        
         newData[username] = {
-          contact: contact || null,
-          linkedLeads: contact ? (leadsByContact[contact.id] || []) : [],
-          relationships: contact ? (relationshipsByContact[contact.id] || []) : [],
+          contact: bestContact,
+          linkedLeads: allLeads,
+          relationships: allRelationships,
           loading: false
         };
       });
