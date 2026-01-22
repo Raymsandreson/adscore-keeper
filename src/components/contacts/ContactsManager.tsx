@@ -1596,12 +1596,30 @@ export const ContactsManager: React.FC = () => {
                   />
                 </div>
               </div>
-              <div>
-                <Label>Instagram URL</Label>
-                <Input
-                  value={editingContact.instagram_url || ''}
-                  onChange={(e) => setEditingContact({ ...editingContact, instagram_url: e.target.value })}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Instagram Username</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                    <Input
+                      value={editingContact.instagram_username?.replace(/^@/, '') || ''}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/^@/, '').replace(/\s/g, '');
+                        setEditingContact({ ...editingContact, instagram_username: value });
+                      }}
+                      className="pl-7"
+                      placeholder="username"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Instagram URL</Label>
+                  <Input
+                    value={editingContact.instagram_url || ''}
+                    onChange={(e) => setEditingContact({ ...editingContact, instagram_url: e.target.value })}
+                    placeholder="https://instagram.com/..."
+                  />
+                </div>
               </div>
               
               {/* Location with CEP lookup */}
