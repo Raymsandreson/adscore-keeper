@@ -29,10 +29,37 @@ export const useLeadContacts = (leadId?: string) => {
 
     setLoading(true);
     try {
+      // First get the contacts linked via contact_leads junction table
+      const { data: linkData, error: linkError } = await supabase
+        .from('contact_leads' as any)
+        .select('contact_id')
+        .eq('lead_id', leadId);
+
+      if (linkError) throw linkError;
+
+      const contactIds = ((linkData || []) as unknown as { contact_id: string }[]).map(l => l.contact_id);
+      
+      // Also check for legacy lead_id column
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('lead_id', leadId);
+
+      if (legacyError) throw legacyError;
+      
+      const legacyIds = (legacyData || []).map(c => c.id);
+      const allIds = [...new Set([...contactIds, ...legacyIds])];
+
+      if (allIds.length === 0) {
+        setContacts([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .eq('lead_id', leadId)
+        .in('id', allIds)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -89,12 +116,21 @@ export const useLeadContacts = (leadId?: string) => {
     if (!leadId) return;
 
     try {
+      // Use the new junction table
       const { error } = await supabase
-        .from('contacts')
-        .update({ lead_id: leadId })
-        .eq('id', contactId);
+        .from('contact_leads' as any)
+        .insert({
+          contact_id: contactId,
+          lead_id: leadId
+        });
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') {
+          toast.error('Este contato já está vinculado ao lead');
+          return;
+        }
+        throw error;
+      }
       
       toast.success('Contato vinculado ao lead');
       fetchContacts();
@@ -106,13 +142,24 @@ export const useLeadContacts = (leadId?: string) => {
   };
 
   const unlinkContact = async (contactId: string) => {
+    if (!leadId) return;
+
     try {
+      // Remove from junction table
       const { error } = await supabase
-        .from('contacts')
-        .update({ lead_id: null })
-        .eq('id', contactId);
+        .from('contact_leads' as any)
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('lead_id', leadId);
 
       if (error) throw error;
+      
+      // Also clear legacy lead_id if exists
+      await supabase
+        .from('contacts')
+        .update({ lead_id: null })
+        .eq('id', contactId)
+        .eq('lead_id', leadId);
       
       toast.success('Contato desvinculado');
       fetchContacts();

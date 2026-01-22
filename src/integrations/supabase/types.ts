@@ -113,6 +113,45 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_leads: {
+        Row: {
+          contact_id: string
+          created_at: string
+          id: string
+          lead_id: string
+          notes: string | null
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_leads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_leads_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_relationship_types: {
         Row: {
           created_at: string | null
@@ -187,6 +226,7 @@ export type Database = {
           cep: string | null
           city: string | null
           classification: string | null
+          classifications: string[] | null
           converted_to_lead_at: string | null
           created_at: string
           email: string | null
@@ -208,6 +248,7 @@ export type Database = {
           cep?: string | null
           city?: string | null
           classification?: string | null
+          classifications?: string[] | null
           converted_to_lead_at?: string | null
           created_at?: string
           email?: string | null
@@ -229,6 +270,7 @@ export type Database = {
           cep?: string | null
           city?: string | null
           classification?: string | null
+          classifications?: string[] | null
           converted_to_lead_at?: string | null
           created_at?: string
           email?: string | null
