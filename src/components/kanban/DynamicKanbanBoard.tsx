@@ -71,33 +71,89 @@ export function DynamicKanbanBoard({
   const [conversionValue, setConversionValue] = useState('');
   const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
+  const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string }[]>>({});
 
-  // Fetch contact counts for all leads
+  // Fetch contacts for all leads (using contact_leads junction + legacy lead_id)
   useEffect(() => {
-    const fetchContactCounts = async () => {
+    const fetchLeadContacts = async () => {
       const leadIds = leads.map(l => l.id);
       if (leadIds.length === 0) return;
 
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('lead_id')
+      // Fetch from contact_leads junction table
+      const { data: junctionData, error: junctionError } = await supabase
+        .from('contact_leads')
+        .select('lead_id, contact_id')
         .in('lead_id', leadIds);
 
-      if (error) {
-        console.error('Error fetching contact counts:', error);
+      if (junctionError) {
+        console.error('Error fetching contact_leads:', junctionError);
         return;
       }
 
+      // Fetch legacy contacts with lead_id
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('contacts')
+        .select('id, lead_id, full_name')
+        .in('lead_id', leadIds);
+
+      if (legacyError) {
+        console.error('Error fetching legacy contacts:', legacyError);
+      }
+
+      // Get all contact IDs from junction
+      const junctionContactIds = (junctionData || []).map(j => j.contact_id);
+      
+      // Fetch contact names for junction contacts
+      let junctionContacts: { id: string; full_name: string }[] = [];
+      if (junctionContactIds.length > 0) {
+        const { data: contactsData } = await supabase
+          .from('contacts')
+          .select('id, full_name')
+          .in('id', junctionContactIds);
+        junctionContacts = contactsData || [];
+      }
+
+      // Build contacts map per lead
+      const contactsMap: Record<string, { id: string; full_name: string }[]> = {};
       const counts: Record<string, number> = {};
-      data?.forEach(contact => {
-        if (contact.lead_id) {
-          counts[contact.lead_id] = (counts[contact.lead_id] || 0) + 1;
+
+      // Add junction contacts
+      (junctionData || []).forEach(junction => {
+        const contact = junctionContacts.find(c => c.id === junction.contact_id);
+        if (contact) {
+          if (!contactsMap[junction.lead_id]) {
+            contactsMap[junction.lead_id] = [];
+          }
+          // Avoid duplicates
+          if (!contactsMap[junction.lead_id].some(c => c.id === contact.id)) {
+            contactsMap[junction.lead_id].push(contact);
+          }
         }
       });
+
+      // Add legacy contacts
+      (legacyData || []).forEach(contact => {
+        if (contact.lead_id) {
+          if (!contactsMap[contact.lead_id]) {
+            contactsMap[contact.lead_id] = [];
+          }
+          // Avoid duplicates
+          if (!contactsMap[contact.lead_id].some(c => c.id === contact.id)) {
+            contactsMap[contact.lead_id].push({ id: contact.id, full_name: contact.full_name });
+          }
+        }
+      });
+
+      // Calculate counts
+      Object.keys(contactsMap).forEach(leadId => {
+        counts[leadId] = contactsMap[leadId].length;
+      });
+
+      setLeadContacts(contactsMap);
       setContactCounts(counts);
     };
 
-    fetchContactCounts();
+    fetchLeadContacts();
   }, [leads]);
 
   // Group leads by stage
@@ -466,20 +522,26 @@ export function DynamicKanbanBoard({
                                     )}
                                   </div>
 
-                                  {/* Badges row */}
-                                  <div className="mt-2 flex flex-wrap gap-1">
-                                    {/* Contacts count badge */}
-                                    {contactCounts[lead.id] > 0 && (
-                                      <Badge 
-                                        variant="outline" 
-                                        className="text-xs cursor-pointer hover:bg-muted"
+                                  {/* Linked contacts list */}
+                                  {leadContacts[lead.id]?.length > 0 && (
+                                    <div className="mt-2 space-y-1">
+                                      <div 
+                                        className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
                                         onClick={() => setContactsManagerLead(lead)}
                                       >
-                                        <Users className="h-3 w-3 mr-1" />
-                                        {contactCounts[lead.id]} contato{contactCounts[lead.id] > 1 ? 's' : ''}
-                                      </Badge>
-                                    )}
-                                    
+                                        <Users className="h-3 w-3 flex-shrink-0" />
+                                        <span className="truncate">
+                                          {leadContacts[lead.id].length <= 2 
+                                            ? leadContacts[lead.id].map(c => c.full_name).join(', ')
+                                            : `${leadContacts[lead.id].slice(0, 2).map(c => c.full_name).join(', ')} +${leadContacts[lead.id].length - 2}`
+                                          }
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Badges row */}
+                                  <div className="mt-2 flex flex-wrap gap-1">
                                     {/* Conversion value badge */}
                                     {lead.conversion_value > 0 && (
                                       <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
