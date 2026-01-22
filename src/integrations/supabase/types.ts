@@ -90,6 +90,7 @@ export type Database = {
           converted_to_lead_at: string | null
           created_at: string
           email: string | null
+          follower_status: string | null
           full_name: string
           id: string
           instagram_url: string | null
@@ -107,6 +108,7 @@ export type Database = {
           converted_to_lead_at?: string | null
           created_at?: string
           email?: string | null
+          follower_status?: string | null
           full_name: string
           id?: string
           instagram_url?: string | null
@@ -124,6 +126,7 @@ export type Database = {
           converted_to_lead_at?: string | null
           created_at?: string
           email?: string | null
+          follower_status?: string | null
           full_name?: string
           id?: string
           instagram_url?: string | null

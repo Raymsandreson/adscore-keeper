@@ -57,7 +57,7 @@ import {
   Users2,
   X,
 } from 'lucide-react';
-import { useContacts, Contact, ContactClassification } from '@/hooks/useContacts';
+import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { toast } from 'sonner';
 
 const classificationConfig: Record<ContactClassification, { label: string; color: string; icon: React.ReactNode }> = {
@@ -66,6 +66,13 @@ const classificationConfig: Record<ContactClassification, { label: string; color
   prospect: { label: 'Prospect', color: 'bg-blue-500', icon: <UserPlus className="h-3 w-3" /> },
   partner: { label: 'Parceiro', color: 'bg-purple-500', icon: <Handshake className="h-3 w-3" /> },
   supplier: { label: 'Fornecedor', color: 'bg-orange-500', icon: <Package className="h-3 w-3" /> },
+};
+
+const followerStatusConfig: Record<FollowerStatus, { label: string; color: string; icon: React.ReactNode }> = {
+  follower: { label: 'Seguidor', color: 'bg-pink-500', icon: <UserPlus className="h-3 w-3" /> },
+  following: { label: 'Seguindo', color: 'bg-indigo-500', icon: <UserMinus className="h-3 w-3" /> },
+  mutual: { label: 'Mútuo', color: 'bg-emerald-500', icon: <Users2 className="h-3 w-3" /> },
+  none: { label: '', color: '', icon: null },
 };
 
 export const ContactsManager: React.FC = () => {
@@ -98,11 +105,11 @@ export const ContactsManager: React.FC = () => {
     notes: '',
   });
 
-  // Calculate tag stats
+  // Calculate tag stats based on follower_status field
   const tagStats = {
-    seguidores: contacts.filter(c => c.tags?.includes('seguidor')).length,
-    seguindo: contacts.filter(c => c.tags?.includes('seguindo')).length,
-    mutuos: contacts.filter(c => c.tags?.includes('seguidor') && c.tags?.includes('seguindo')).length,
+    seguidores: contacts.filter(c => c.follower_status === 'follower' || c.follower_status === 'mutual').length,
+    seguindo: contacts.filter(c => c.follower_status === 'following' || c.follower_status === 'mutual').length,
+    mutuos: contacts.filter(c => c.follower_status === 'mutual').length,
   };
 
   const filteredContacts = contacts.filter(contact => {
@@ -114,14 +121,14 @@ export const ContactsManager: React.FC = () => {
     
     const matchesFilter = filterClassification === 'all' || contact.classification === filterClassification;
     
-    // Tag filter
+    // Tag filter using follower_status field
     let matchesTag = true;
     if (filterTag === 'seguidor') {
-      matchesTag = contact.tags?.includes('seguidor') || false;
+      matchesTag = contact.follower_status === 'follower' || contact.follower_status === 'mutual';
     } else if (filterTag === 'seguindo') {
-      matchesTag = contact.tags?.includes('seguindo') || false;
+      matchesTag = contact.follower_status === 'following' || contact.follower_status === 'mutual';
     } else if (filterTag === 'mutual') {
-      matchesTag = (contact.tags?.includes('seguidor') && contact.tags?.includes('seguindo')) || false;
+      matchesTag = contact.follower_status === 'mutual';
     }
     
     return matchesSearch && matchesFilter && matchesTag;
@@ -755,19 +762,28 @@ export const ContactsManager: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {contact.instagram_username ? (
-                            <a
-                              href={contact.instagram_url || `https://instagram.com/${contact.instagram_username}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-pink-500 hover:underline text-sm"
-                            >
-                              <Instagram className="h-3 w-3" />
-                              @{contact.instagram_username}
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            {contact.instagram_username ? (
+                              <a
+                                href={contact.instagram_url || `https://instagram.com/${contact.instagram_username}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-pink-500 hover:underline text-sm"
+                              >
+                                <Instagram className="h-3 w-3" />
+                                @{contact.instagram_username}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                            {/* Follower Status Badge */}
+                            {contact.follower_status && contact.follower_status !== 'none' && (
+                              <Badge className={`${followerStatusConfig[contact.follower_status].color} text-white text-xs w-fit`}>
+                                {followerStatusConfig[contact.follower_status].icon}
+                                <span className="ml-1">{followerStatusConfig[contact.follower_status].label}</span>
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {contact.city || contact.state ? (
