@@ -36,7 +36,10 @@ import {
   Tag,
   Filter,
   UserCheck,
-  Building
+  Building,
+  ArrowDownLeft,
+  ArrowUpRight,
+  MessageCircleReply
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -59,7 +62,11 @@ interface Prospect {
   notes: string | null;
   post_url: string | null;
   prospect_classification: string[] | null;
+  comment_type: string;
+  metadata: { is_third_party?: boolean; is_prospect_reply?: boolean } | null;
 }
+
+type SourceFilter = 'all' | 'inbound' | 'outbound' | 'outbound_replies';
 
 const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; color: string; bgColor: string; defaultAlertDays: number }[] = [
   { key: 'comment', label: 'Comentário', icon: <MessageSquare className="h-4 w-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100', defaultAlertDays: 2 },
@@ -107,6 +114,7 @@ export function ProspectingFunnel() {
   const [dragOverStage, setDragOverStage] = useState<FunnelStage | null>(null);
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [classificationFilter, setClassificationFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [alertConfig, setAlertConfig] = useState<StageAlertConfig>(() => {
     const saved = localStorage.getItem('prospecting-alert-config');
     return saved ? JSON.parse(saved) : getDefaultAlertConfig();
@@ -153,9 +161,28 @@ export function ProspectingFunnel() {
     localStorage.setItem('prospecting-visible-classifications', JSON.stringify(visibleClassifications));
   }, [visibleClassifications]);
 
-  // Filter prospects based on visible classifications
+  // Filter prospects based on visible classifications and source type
   const filteredProspects = useMemo(() => {
     let filtered = prospects;
+    
+    // Filter by source type (inbound/outbound)
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter(p => {
+        const isOutbound = p.comment_type === 'sent' || p.comment_type === 'reply_to_outbound' || p.metadata?.is_third_party;
+        const isOutboundReply = p.comment_type === 'reply_to_outbound' || p.metadata?.is_prospect_reply;
+        
+        switch (sourceFilter) {
+          case 'inbound':
+            return !isOutbound;
+          case 'outbound':
+            return isOutbound;
+          case 'outbound_replies':
+            return isOutboundReply;
+          default:
+            return true;
+        }
+      });
+    }
     
     // Filter by visible classifications
     filtered = filtered.filter(p => {
@@ -174,7 +201,14 @@ export function ProspectingFunnel() {
     }
     
     return filtered;
-  }, [prospects, classificationFilter, visibleClassifications]);
+  }, [prospects, classificationFilter, visibleClassifications, sourceFilter]);
+
+  // Count outbound replies for badge
+  const outboundRepliesCount = useMemo(() => {
+    return prospects.filter(p => 
+      p.comment_type === 'reply_to_outbound' || p.metadata?.is_prospect_reply
+    ).length;
+  }, [prospects]);
 
   // Calculate stagnant prospects
   const stagnantProspects = useMemo(() => {
@@ -208,7 +242,7 @@ export function ProspectingFunnel() {
       
       const { data, error } = await supabase
         .from('instagram_comments')
-        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url, prospect_classification')
+        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url, prospect_classification, comment_type, metadata')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false });
 
@@ -217,7 +251,9 @@ export function ProspectingFunnel() {
       setProspects((data || []).map(p => ({
         ...p,
         funnel_stage: (p.funnel_stage as FunnelStage) || 'comment',
-        prospect_classification: Array.isArray(p.prospect_classification) ? p.prospect_classification : (p.prospect_classification ? [p.prospect_classification] : null)
+        prospect_classification: Array.isArray(p.prospect_classification) ? p.prospect_classification : (p.prospect_classification ? [p.prospect_classification] : null),
+        comment_type: p.comment_type || 'received',
+        metadata: p.metadata as Prospect['metadata']
       })));
     } catch (error) {
       console.error('Erro ao buscar prospectos:', error);
@@ -469,16 +505,58 @@ export function ProspectingFunnel() {
           <h2 className="text-2xl font-bold">Funil de Prospecção</h2>
           <p className="text-muted-foreground">Acompanhe a jornada dos prospectos</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {stagnantProspects.length > 0 && (
             <Badge variant="destructive" className="gap-1">
               <AlertTriangle className="h-3 w-3" />
               {stagnantProspects.length} parado{stagnantProspects.length > 1 ? 's' : ''}
             </Badge>
           )}
+          {outboundRepliesCount > 0 && sourceFilter !== 'outbound_replies' && (
+            <Badge 
+              variant="secondary" 
+              className="gap-1 cursor-pointer bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-950 dark:text-green-300"
+              onClick={() => setSourceFilter('outbound_replies')}
+            >
+              <MessageCircleReply className="h-3 w-3" />
+              {outboundRepliesCount} resposta{outboundRepliesCount > 1 ? 's' : ''} outbound
+            </Badge>
+          )}
           <Button variant="outline" size="icon" onClick={() => setShowAlertSettings(true)} title="Configurações">
             <Settings className="h-4 w-4" />
           </Button>
+          <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as SourceFilter)}>
+            <SelectTrigger className="w-[160px]">
+              <Filter className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Origem" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  Todos
+                </span>
+              </SelectItem>
+              <SelectItem value="inbound">
+                <span className="flex items-center gap-2">
+                  <ArrowDownLeft className="h-4 w-4 text-blue-500" />
+                  Inbound (recebidos)
+                </span>
+              </SelectItem>
+              <SelectItem value="outbound">
+                <span className="flex items-center gap-2">
+                  <ArrowUpRight className="h-4 w-4 text-orange-500" />
+                  Outbound (enviados)
+                </span>
+              </SelectItem>
+              <SelectItem value="outbound_replies">
+                <span className="flex items-center gap-2">
+                  <MessageCircleReply className="h-4 w-4 text-green-500" />
+                  Respostas Outbound
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={classificationFilter} onValueChange={(v) => setClassificationFilter(v as ProspectClassification | 'all')}>
             <SelectTrigger className="w-[160px]">
               <Tag className="h-4 w-4 mr-2" />
@@ -727,6 +805,18 @@ export function ProspectingFunnel() {
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1 flex-wrap">
+                                    {/* Inbound/Outbound indicator */}
+                                    {(prospect.comment_type === 'reply_to_outbound' || prospect.metadata?.is_prospect_reply) ? (
+                                      <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" title="Resposta ao seu comentário outbound">
+                                        <MessageCircleReply className="h-2.5 w-2.5 mr-0.5" />
+                                        Resposta
+                                      </span>
+                                    ) : prospect.comment_type === 'sent' || prospect.metadata?.is_third_party ? (
+                                      <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300" title="Comentário enviado em post de terceiro">
+                                        <ArrowUpRight className="h-2.5 w-2.5 mr-0.5" />
+                                        Outbound
+                                      </span>
+                                    ) : null}
                                     {prospect.author_username ? (
                                       <InstagramProfileHoverCard 
                                         username={prospect.author_username}
