@@ -111,35 +111,30 @@ export const useContacts = () => {
     }
   }, []);
 
-  // Fetch stats separately for accuracy
+  // Fetch stats separately for accuracy using COUNT queries to bypass default limit
   const fetchStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('classification, instagram_username, instagram_url, lead_id, follower_status');
-
-      if (error) throw error;
-
-      const contactsData = (data || []) as Pick<Contact, 'classification' | 'instagram_username' | 'instagram_url' | 'lead_id' | 'follower_status'>[];
-      
-      const total = contactsData.length;
-      const clients = contactsData.filter(c => c.classification === 'client').length;
-      const nonClients = contactsData.filter(c => c.classification === 'non_client').length;
-      const prospects = contactsData.filter(c => c.classification === 'prospect').length;
-      const partners = contactsData.filter(c => c.classification === 'partner').length;
-      const suppliers = contactsData.filter(c => c.classification === 'supplier').length;
-      const withInstagram = contactsData.filter(c => c.instagram_username || c.instagram_url).length;
-      const convertedToLead = contactsData.filter(c => c.lead_id).length;
+      // Use individual count queries to bypass the 1000 row limit
+      const [totalRes, clientsRes, nonClientsRes, prospectsRes, partnersRes, suppliersRes, withInstagramRes, leadsRes] = await Promise.all([
+        supabase.from('contacts').select('*', { count: 'exact', head: true }),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'client'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'non_client'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'prospect'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'partner'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('classification', 'supplier'),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).not('instagram_username', 'is', null),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).not('lead_id', 'is', null),
+      ]);
 
       setStats({
-        total,
-        clients,
-        nonClients,
-        prospects,
-        partners,
-        suppliers,
-        withInstagram,
-        convertedToLead,
+        total: totalRes.count || 0,
+        clients: clientsRes.count || 0,
+        nonClients: nonClientsRes.count || 0,
+        prospects: prospectsRes.count || 0,
+        partners: partnersRes.count || 0,
+        suppliers: suppliersRes.count || 0,
+        withInstagram: withInstagramRes.count || 0,
+        convertedToLead: leadsRes.count || 0,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -155,17 +150,17 @@ export const useContacts = () => {
 
   const fetchTagStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('follower_status');
+      // Use count queries to bypass the 1000 row limit
+      const [followersRes, followingRes, mutualRes] = await Promise.all([
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['follower', 'mutual']),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).in('follower_status', ['following', 'mutual']),
+        supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('follower_status', 'mutual'),
+      ]);
 
-      if (error) throw error;
-
-      const contactsData = data || [];
       setTagStats({
-        seguidores: contactsData.filter(c => c.follower_status === 'follower' || c.follower_status === 'mutual').length,
-        seguindo: contactsData.filter(c => c.follower_status === 'following' || c.follower_status === 'mutual').length,
-        mutuos: contactsData.filter(c => c.follower_status === 'mutual').length,
+        seguidores: followersRes.count || 0,
+        seguindo: followingRes.count || 0,
+        mutuos: mutualRes.count || 0,
       });
     } catch (error) {
       console.error('Error fetching tag stats:', error);
