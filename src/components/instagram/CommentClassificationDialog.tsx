@@ -98,6 +98,9 @@ export const CommentClassificationDialog = ({
   const [contactSearchResults, setContactSearchResults] = useState<Contact[]>([]);
   const [selectedRelatedContact, setSelectedRelatedContact] = useState<Contact | null>(null);
   const [isSearchingContacts, setIsSearchingContacts] = useState(false);
+  const [isCreatingNewContact, setIsCreatingNewContact] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
 
   const username = comment?.author_username?.replace('@', '').toLowerCase() || '';
 
@@ -121,6 +124,8 @@ export const CommentClassificationDialog = ({
       setHasRelationship(false);
       setRelatedContactName('');
       setSelectedRelatedContact(null);
+      setIsCreatingNewContact(false);
+      setNewContactName('');
       fetchLinkedLeads();
     }
   }, [open, comment]);
@@ -219,6 +224,37 @@ export const CommentClassificationDialog = ({
       console.error('Error searching contacts:', error);
     } finally {
       setIsSearchingContacts(false);
+    }
+  };
+
+  // Create new contact for relationship
+  const handleCreateNewRelatedContact = async () => {
+    if (!newContactName.trim()) {
+      toast.error('Nome do contato é obrigatório');
+      return;
+    }
+
+    setIsCreatingContact(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert({
+          full_name: newContactName.trim(),
+        })
+        .select('id, full_name, instagram_username')
+        .single();
+
+      if (error) throw error;
+
+      toast.success(`Contato "${newContactName}" criado!`);
+      setSelectedRelatedContact(data);
+      setIsCreatingNewContact(false);
+      setNewContactName('');
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      toast.error('Erro ao criar contato');
+    } finally {
+      setIsCreatingContact(false);
     }
   };
 
@@ -484,43 +520,100 @@ export const CommentClassificationDialog = ({
 
             {hasRelationship && (
               <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
-                <Label className="text-sm font-medium">Buscar contato existente</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar contato..."
-                    className="pl-9"
-                    value={searchContactQuery}
-                    onChange={(e) => handleSearchContacts(e.target.value)}
-                  />
-                </div>
-                
-                {contactSearchResults.length > 0 && (
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {contactSearchResults.map((contact) => (
-                      <div 
-                        key={contact.id} 
-                        className={cn(
-                          "flex items-center justify-between p-2 border rounded cursor-pointer transition-colors",
-                          selectedRelatedContact?.id === contact.id 
-                            ? "bg-primary/10 border-primary" 
-                            : "hover:bg-muted/50"
-                        )}
-                        onClick={() => setSelectedRelatedContact(contact)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">{contact.full_name}</span>
-                          {contact.instagram_username && (
-                            <span className="text-xs text-muted-foreground">@{contact.instagram_username}</span>
-                          )}
-                        </div>
-                        {selectedRelatedContact?.id === contact.id && (
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                        )}
+                {!isCreatingNewContact ? (
+                  <>
+                    <Label className="text-sm font-medium">Buscar contato existente</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar contato..."
+                        className="pl-9"
+                        value={searchContactQuery}
+                        onChange={(e) => handleSearchContacts(e.target.value)}
+                      />
+                    </div>
+                    
+                    {contactSearchResults.length > 0 && (
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {contactSearchResults.map((contact) => (
+                          <div 
+                            key={contact.id} 
+                            className={cn(
+                              "flex items-center justify-between p-2 border rounded cursor-pointer transition-colors",
+                              selectedRelatedContact?.id === contact.id 
+                                ? "bg-primary/10 border-primary" 
+                                : "hover:bg-muted/50"
+                            )}
+                            onClick={() => setSelectedRelatedContact(contact)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-medium">{contact.full_name}</span>
+                              {contact.instagram_username && (
+                                <span className="text-xs text-muted-foreground">@{contact.instagram_username}</span>
+                              )}
+                            </div>
+                            {selectedRelatedContact?.id === contact.id && (
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+
+                    {searchContactQuery.length >= 2 && contactSearchResults.length === 0 && !isSearchingContacts && (
+                      <div className="text-center py-3 text-muted-foreground text-sm">
+                        Nenhum contato encontrado
+                      </div>
+                    )}
+
+                    {/* Button to create new contact */}
+                    <Button
+                      variant="outline"
+                      className="w-full border-dashed"
+                      onClick={() => {
+                        setIsCreatingNewContact(true);
+                        setNewContactName(searchContactQuery);
+                      }}
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Criar novo contato
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Label className="text-sm font-medium">Criar novo contato</Label>
+                    <Input
+                      placeholder="Nome completo do contato..."
+                      value={newContactName}
+                      onChange={(e) => setNewContactName(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        onClick={handleCreateNewRelatedContact} 
+                        disabled={!newContactName.trim() || isCreatingContact}
+                      >
+                        {isCreatingContact ? (
+                          <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4 mr-1" />
+                        )}
+                        Criar
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => {
+                          setIsCreatingNewContact(false);
+                          setNewContactName('');
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </>
                 )}
 
                 {selectedRelatedContact && (
