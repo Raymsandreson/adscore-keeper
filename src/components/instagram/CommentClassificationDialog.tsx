@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { 
   Tag, 
   CheckCircle2, 
@@ -18,7 +19,8 @@ import {
   Search, 
   UserPlus,
   RefreshCw,
-  ExternalLink
+  Users,
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContactClassifications, classificationColors } from "@/hooks/useContactClassifications";
@@ -33,6 +35,7 @@ interface Comment {
   post_url: string | null;
   platform: string;
   prospect_classification?: string[] | null;
+  prospect_name?: string | null;
 }
 
 interface LinkedLead {
@@ -40,6 +43,12 @@ interface LinkedLead {
   lead_name: string | null;
   status: string | null;
   board_id: string | null;
+}
+
+interface Contact {
+  id: string;
+  full_name: string;
+  instagram_username: string | null;
 }
 
 interface CommentClassificationDialogProps {
@@ -57,7 +66,7 @@ export const CommentClassificationDialog = ({
   onClassificationsApplied,
   onLeadLinked
 }: CommentClassificationDialogProps) => {
-  const { classifications, classificationConfig, addClassification } = useContactClassifications();
+  const { classifications, classificationConfig, addClassification, fetchClassifications } = useContactClassifications();
   const { boards } = useKanbanBoards();
 
   const [selectedClassifications, setSelectedClassifications] = useState<string[]>([]);
@@ -81,7 +90,23 @@ export const CommentClassificationDialog = ({
   const [searchResults, setSearchResults] = useState<LinkedLead[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Relationship / Contact creation
+  const [showRelationshipStep, setShowRelationshipStep] = useState(false);
+  const [hasRelationship, setHasRelationship] = useState(false);
+  const [relatedContactName, setRelatedContactName] = useState('');
+  const [searchContactQuery, setSearchContactQuery] = useState('');
+  const [contactSearchResults, setContactSearchResults] = useState<Contact[]>([]);
+  const [selectedRelatedContact, setSelectedRelatedContact] = useState<Contact | null>(null);
+  const [isSearchingContacts, setIsSearchingContacts] = useState(false);
+
   const username = comment?.author_username?.replace('@', '').toLowerCase() || '';
+
+  // Fetch classifications when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchClassifications();
+    }
+  }, [open, fetchClassifications]);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -92,6 +117,10 @@ export const CommentClassificationDialog = ({
       setNewName('');
       setSearchQuery('');
       setSearchResults([]);
+      setShowRelationshipStep(false);
+      setHasRelationship(false);
+      setRelatedContactName('');
+      setSelectedRelatedContact(null);
       fetchLinkedLeads();
     }
   }, [open, comment]);
@@ -168,6 +197,31 @@ export const CommentClassificationDialog = ({
     }
   };
 
+  // Search for contacts
+  const handleSearchContacts = async (query: string) => {
+    setSearchContactQuery(query);
+    if (query.length < 2) {
+      setContactSearchResults([]);
+      return;
+    }
+
+    setIsSearchingContacts(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, instagram_username')
+        .or(`full_name.ilike.%${query}%,instagram_username.ilike.%${query}%`)
+        .limit(10);
+      
+      if (error) throw error;
+      setContactSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+    } finally {
+      setIsSearchingContacts(false);
+    }
+  };
+
   // Toggle classification selection
   const toggleClassification = (name: string) => {
     setSelectedClassifications(prev => 
@@ -189,8 +243,25 @@ export const CommentClassificationDialog = ({
     }
   };
 
-  // Apply classifications to comment
-  const handleApplyClassifications = async () => {
+  // Check if any selected classification implies a relationship
+  const hasRelationshipClassification = useMemo(() => {
+    const relationshipKeywords = ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar'];
+    return selectedClassifications.some(cls => 
+      relationshipKeywords.some(keyword => cls.toLowerCase().includes(keyword))
+    );
+  }, [selectedClassifications]);
+
+  // Move to relationship step after classification
+  const handleProceedToRelationship = () => {
+    if (hasRelationshipClassification) {
+      setShowRelationshipStep(true);
+    } else {
+      handleApplyClassificationsAndContact();
+    }
+  };
+
+  // Apply classifications with optional contact creation
+  const handleApplyClassificationsAndContact = async () => {
     if (!comment) return;
 
     const classificationsToSave = selectedClassifications.length > 0 ? selectedClassifications : null;
@@ -206,8 +277,55 @@ export const CommentClassificationDialog = ({
 
         if (error) throw error;
 
+        // Create contact if relationship is defined
+        if (hasRelationship && (relatedContactName || selectedRelatedContact)) {
+          // First, create or find the comment author as a contact
+          const { data: existingContact } = await supabase
+            .from('contacts')
+            .select('id')
+            .ilike('instagram_username', username)
+            .maybeSingle();
+
+          let authorContactId = existingContact?.id;
+
+          if (!authorContactId) {
+            const { data: newContact, error: contactError } = await supabase
+              .from('contacts')
+              .insert({
+                full_name: comment.prospect_name || `@${username}`,
+                instagram_username: username,
+                classifications: classificationsToSave,
+              })
+              .select('id')
+              .single();
+
+            if (contactError) throw contactError;
+            authorContactId = newContact.id;
+            toast.success(`Contato @${username} criado!`);
+          }
+
+          // Create relationship if we have a related contact
+          if (authorContactId && selectedRelatedContact) {
+            const relationshipType = selectedClassifications.find(cls => 
+              ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
+                .some(keyword => cls.toLowerCase().includes(keyword))
+            ) || selectedClassifications[0];
+
+            await supabase
+              .from('contact_relationships')
+              .insert({
+                contact_id: authorContactId,
+                related_contact_id: selectedRelatedContact.id,
+                relationship_type: relationshipType,
+                notes: `Criado via classificação de comentário Instagram`
+              });
+
+            toast.success(`Vínculo criado: @${username} é ${relationshipType} de ${selectedRelatedContact.full_name}`);
+          }
+        }
+
         const classLabels = selectedClassifications
-          .map(k => classificationConfig[k]?.label || k)
+          .map(k => classificationConfig[k]?.label || k.replace(/_/g, ' '))
           .join(', ');
         
         toast.success(
@@ -334,6 +452,110 @@ export const CommentClassificationDialog = ({
     return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  // Relationship step content
+  if (showRelationshipStep) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Em relação a quem?
+            </DialogTitle>
+            <DialogDescription>
+              A classificação <strong>{selectedClassifications.filter(cls => 
+                ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
+                  .some(keyword => cls.toLowerCase().includes(keyword))
+              ).map(c => getLabel(c)).join(', ')}</strong> sugere um vínculo familiar. Deseja registrar em relação a quem é essa classificação?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="has-relationship" className="text-sm">
+                Este contato tem um vínculo com alguém?
+              </Label>
+              <Switch
+                id="has-relationship"
+                checked={hasRelationship}
+                onCheckedChange={setHasRelationship}
+              />
+            </div>
+
+            {hasRelationship && (
+              <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                <Label className="text-sm font-medium">Buscar contato existente</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar contato..."
+                    className="pl-9"
+                    value={searchContactQuery}
+                    onChange={(e) => handleSearchContacts(e.target.value)}
+                  />
+                </div>
+                
+                {contactSearchResults.length > 0 && (
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {contactSearchResults.map((contact) => (
+                      <div 
+                        key={contact.id} 
+                        className={cn(
+                          "flex items-center justify-between p-2 border rounded cursor-pointer transition-colors",
+                          selectedRelatedContact?.id === contact.id 
+                            ? "bg-primary/10 border-primary" 
+                            : "hover:bg-muted/50"
+                        )}
+                        onClick={() => setSelectedRelatedContact(contact)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{contact.full_name}</span>
+                          {contact.instagram_username && (
+                            <span className="text-xs text-muted-foreground">@{contact.instagram_username}</span>
+                          )}
+                        </div>
+                        {selectedRelatedContact?.id === contact.id && (
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {selectedRelatedContact && (
+                  <div className="p-2 bg-primary/10 rounded-lg flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <span className="text-sm">
+                      <strong>@{username}</strong> é <strong>{selectedClassifications.filter(cls => 
+                        ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
+                          .some(keyword => cls.toLowerCase().includes(keyword))
+                      ).map(c => getLabel(c)).join(', ')}</strong> de <strong>{selectedRelatedContact.full_name}</strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowRelationshipStep(false)}>
+              Voltar
+            </Button>
+            <Button onClick={handleApplyClassificationsAndContact} disabled={isSaving}>
+              {isSaving ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+              )}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
@@ -368,26 +590,34 @@ export const CommentClassificationDialog = ({
             <ScrollArea className="h-[300px] pr-4">
               <div className="space-y-4">
                 {/* Classifications grid */}
-                <div className="grid grid-cols-2 gap-2">
-                  {classifications.map((cls) => (
-                    <Button
-                      key={cls.id}
-                      variant={selectedClassifications.includes(cls.name) ? "default" : "outline"}
-                      className={cn(
-                        "justify-start h-auto py-2",
-                        selectedClassifications.includes(cls.name) && cls.color,
-                        selectedClassifications.includes(cls.name) && "text-white"
-                      )}
-                      onClick={() => toggleClassification(cls.name)}
-                    >
-                      <CheckCircle2 className={cn(
-                        "h-4 w-4 mr-2 flex-shrink-0",
-                        selectedClassifications.includes(cls.name) ? "opacity-100" : "opacity-0"
-                      )} />
-                      <span className="truncate">{getLabel(cls.name)}</span>
-                    </Button>
-                  ))}
-                </div>
+                {classifications.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhuma classificação cadastrada.</p>
+                    <p className="text-sm">Crie uma nova abaixo.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {classifications.map((cls) => (
+                      <Button
+                        key={cls.id}
+                        variant={selectedClassifications.includes(cls.name) ? "default" : "outline"}
+                        className={cn(
+                          "justify-start h-auto py-2",
+                          selectedClassifications.includes(cls.name) && cls.color,
+                          selectedClassifications.includes(cls.name) && "text-white"
+                        )}
+                        onClick={() => toggleClassification(cls.name)}
+                      >
+                        <CheckCircle2 className={cn(
+                          "h-4 w-4 mr-2 flex-shrink-0",
+                          selectedClassifications.includes(cls.name) ? "opacity-100" : "opacity-0"
+                        )} />
+                        <span className="truncate">{getLabel(cls.name)}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Add new classification */}
                 {isAddingNew ? (
@@ -591,7 +821,7 @@ export const CommentClassificationDialog = ({
             Fechar
           </Button>
           {activeTab === 'classify' && (
-            <Button onClick={handleApplyClassifications} disabled={isSaving}>
+            <Button onClick={handleProceedToRelationship} disabled={isSaving}>
               {isSaving ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               ) : (
