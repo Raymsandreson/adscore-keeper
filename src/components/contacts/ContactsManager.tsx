@@ -424,12 +424,23 @@ export const ContactsManager: React.FC = () => {
     setMetaImportData({ followers: [], following: [] });
     setIsMetaImportDialogOpen(false);
 
-    if (result.duplicates > 0) {
-      toast.info(`${result.imported} importados, ${result.duplicates} duplicados ignorados`);
-    } else if (result.errors > 0) {
-      toast.warning(`${result.imported} importados, ${result.errors} erros`);
-    } else {
+    // Build result message
+    const messages: string[] = [];
+    if (result.imported > 0) messages.push(`${result.imported} novos`);
+    if (result.upgradedToMutual > 0) messages.push(`${result.upgradedToMutual} promovidos a mútuo`);
+    if (result.duplicates > 0) messages.push(`${result.duplicates} já existentes`);
+    if (result.errors > 0) messages.push(`${result.errors} erros`);
+
+    if (result.upgradedToMutual > 0) {
+      toast.success(`🎉 ${messages.join(', ')}`, {
+        description: 'Contatos que seguem você e que você segue foram marcados como mútuos!'
+      });
+    } else if (result.imported > 0) {
       toast.success(`${result.imported} contatos do Instagram importados!`);
+    } else if (result.duplicates > 0) {
+      toast.info(messages.join(', '));
+    } else if (result.errors > 0) {
+      toast.warning(messages.join(', '));
     }
   };
 
