@@ -316,10 +316,12 @@ export const useContacts = () => {
   };
 
   // Import from Meta export (JSON format with followers/following)
+  // Automatically detects mutual contacts when importing a second list
   const importFromMetaExport = async (data: any[], importType: 'followers' | 'following' | 'both', classification: ContactClassification = 'prospect') => {
     let imported = 0;
     let errors = 0;
     let duplicates = 0;
+    let upgradedToMutual = 0;
 
     for (const item of data) {
       try {
@@ -350,15 +352,47 @@ export const useContacts = () => {
 
         if (!username) continue;
 
-        // Check for duplicates
+        // Check for existing contact with this username
         const { data: existing } = await supabase
           .from('contacts')
-          .select('id')
+          .select('id, follower_status, tags')
           .eq('instagram_username', username.toLowerCase())
           .maybeSingle();
 
         if (existing) {
-          duplicates++;
+          // Check if we can upgrade to mutual
+          const currentStatus = existing.follower_status as FollowerStatus;
+          const newImportType = importType === 'followers' ? 'follower' : 'following';
+          
+          // Determine if this should become mutual
+          const shouldUpgradeToMutual = 
+            (currentStatus === 'follower' && newImportType === 'following') ||
+            (currentStatus === 'following' && newImportType === 'follower');
+          
+          if (shouldUpgradeToMutual) {
+            // Upgrade to mutual - update both follower_status and tags
+            const currentTags = existing.tags || [];
+            const newTag = importType === 'followers' ? 'seguidor' : 'seguindo';
+            const updatedTags = currentTags.includes(newTag) ? currentTags : [...currentTags, newTag];
+            
+            const { error: updateError } = await supabase
+              .from('contacts')
+              .update({ 
+                follower_status: 'mutual',
+                tags: updatedTags
+              })
+              .eq('id', existing.id);
+            
+            if (updateError) {
+              console.error('Update to mutual error:', updateError);
+              errors++;
+            } else {
+              upgradedToMutual++;
+            }
+          } else {
+            // Already the same type or already mutual
+            duplicates++;
+          }
           continue;
         }
 
@@ -390,7 +424,7 @@ export const useContacts = () => {
     }
 
     fetchContacts();
-    return { imported, errors, duplicates };
+    return { imported, errors, duplicates, upgradedToMutual };
   };
 
   useEffect(() => {
