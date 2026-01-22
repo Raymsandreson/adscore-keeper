@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +42,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useContactLeads } from '@/hooks/useContactLeads';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { CampaignInsight } from '@/services/metaAPI';
 import LeadsPipeline from './LeadsPipeline';
@@ -85,6 +87,7 @@ const statusConfig: Record<LeadStatus, { label: string; color: string; icon: Rea
 };
 
 const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManagerProps) => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { leads, stats, loading, addLead, updateLead, deleteLead, updateLeadStatus, fetchLeads, toggleFollower, updateClientClassification } = useLeads(adAccountId);
   const { customFields, getFieldValues, saveAllFieldValues } = useLeadCustomFields(adAccountId);
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
@@ -100,6 +103,11 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     stagnantByStatus,
     isLeadStagnant,
   } = useStagnationAlerts(leads);
+  
+  // State for contact linking after lead creation
+  const [pendingContactLink, setPendingContactLink] = useState<string | null>(null);
+  const { linkLead } = useContactLeads(pendingContactLink || undefined);
+  
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
@@ -125,6 +133,45 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   });
   const [testEventCode, setTestEventCode] = useState('');
   const [dayOfWeekFilter, setDayOfWeekFilter] = useState<number | null>(null);
+
+  // Handle URL params for pre-filling lead form from contacts page
+  useEffect(() => {
+    const newLeadParam = searchParams.get('newLead');
+    const name = searchParams.get('name');
+    const phone = searchParams.get('phone');
+    const email = searchParams.get('email');
+    const city = searchParams.get('city');
+    const state = searchParams.get('state');
+    const linkContact = searchParams.get('linkContact');
+
+    if (newLeadParam === 'true') {
+      // Pre-fill form with contact data
+      setNewLead(prev => ({
+        ...prev,
+        lead_name: name || '',
+        lead_phone: phone || '',
+        lead_email: email || '',
+        city: city || '',
+        state: state || '',
+      }));
+      
+      // Set pending contact link if provided
+      if (linkContact) {
+        setPendingContactLink(linkContact);
+      }
+      
+      // Load cities if state is provided
+      if (state) {
+        fetchCities(state);
+      }
+      
+      // Open dialog
+      setIsAddDialogOpen(true);
+      
+      // Clean up URL params
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, fetchCities]);
 
   // Calculate leads by day of week
   const leadsByDayOfWeek = leads.reduce((acc, lead) => {
@@ -320,11 +367,27 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       return;
     }
 
-    await addLead({
+    const createdLead = await addLead({
       ...newLead,
       source: 'whatsapp',
       status: 'new',
     }, testEventCode || undefined);
+
+    // Link to contact if pending
+    if (createdLead && pendingContactLink) {
+      try {
+        await supabase
+          .from('contact_leads' as any)
+          .insert({
+            contact_id: pendingContactLink,
+            lead_id: createdLead.id,
+          });
+        toast.success('Lead criado e vinculado ao contato!');
+      } catch (error) {
+        console.error('Error linking lead to contact:', error);
+      }
+      setPendingContactLink(null);
+    }
 
     setNewLead({
       lead_name: '',

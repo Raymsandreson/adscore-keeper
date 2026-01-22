@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Sheet,
   SheetContent,
@@ -27,6 +28,7 @@ import {
   Sparkles,
   Loader2,
   ExternalLink,
+  UserPlus,
 } from 'lucide-react';
 import { useContactLeads, useSearchLeads } from '@/hooks/useContactLeads';
 import { useContactBridges } from '@/hooks/useContactBridges';
@@ -43,12 +45,28 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
   open,
   onOpenChange,
 }) => {
+  const navigate = useNavigate();
   const { leads, loading, linkLead, unlinkLead } = useContactLeads(contact?.id);
   const { results: searchResults, loading: searchLoading, searchLeads } = useSearchLeads();
   const { suggestions, loading: bridgesLoading, findBridgesForContact } = useContactBridges();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showBridges, setShowBridges] = useState(false);
+
+  const handleCreateNewLead = () => {
+    // Build query params with contact data pre-filled
+    const params = new URLSearchParams();
+    params.set('newLead', 'true');
+    if (contact?.full_name) params.set('name', contact.full_name);
+    if (contact?.phone) params.set('phone', contact.phone);
+    if (contact?.email) params.set('email', contact.email);
+    if (contact?.city) params.set('city', contact.city);
+    if (contact?.state) params.set('state', contact.state);
+    if (contact?.id) params.set('linkContact', contact.id);
+    
+    onOpenChange(false);
+    navigate(`/leads?${params.toString()}`);
+  };
 
   // Debounced search
   useEffect(() => {
@@ -89,7 +107,18 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
         <div className="mt-6 space-y-6">
           {/* Search to add new lead link */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Vincular novo lead</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Vincular lead</label>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCreateNewLead}
+                className="gap-1.5"
+              >
+                <UserPlus className="h-4 w-4" />
+                Criar novo lead
+              </Button>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
