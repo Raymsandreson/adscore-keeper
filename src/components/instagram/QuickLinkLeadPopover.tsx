@@ -207,11 +207,14 @@ export const QuickLinkLeadPopover: React.FC<QuickLinkLeadPopoverProps> = ({
                 {searchQuery ? 'Nenhum lead encontrado' : 'Digite para buscar leads'}
               </div>
             ) : (
-              <div className="space-y-2">
+                <div className="space-y-2">
                 {searchResults.map(lead => (
-                  <div
+                  <button
                     key={lead.id}
-                    className="flex items-center justify-between p-2 rounded-md border bg-card hover:bg-accent/50 transition-colors"
+                    type="button"
+                    className="w-full flex items-center justify-between p-2 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => handleLinkLead(lead.id)}
+                    disabled={linking}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
@@ -224,20 +227,14 @@ export const QuickLinkLeadPopover: React.FC<QuickLinkLeadPopoverProps> = ({
                         </Badge>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0"
-                      onClick={() => handleLinkLead(lead.id)}
-                      disabled={linking}
-                    >
+                    <div className="ml-2 flex-shrink-0">
                       {linking ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       ) : (
-                        <Link2 className="h-3 w-3" />
+                        <Link2 className="h-4 w-4 text-primary" />
                       )}
-                    </Button>
-                  </div>
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
