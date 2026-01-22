@@ -94,7 +94,7 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
           </HoverCard>
         )}
 
-        {/* Relationships Badge */}
+        {/* Relationships Badge - show first relationship directly */}
         {relationships.length > 0 && (
           <HoverCard openDelay={200} closeDelay={100}>
             <HoverCardTrigger asChild>
@@ -103,7 +103,15 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
                 className="cursor-pointer text-xs bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 transition-colors"
               >
                 <Users className="h-3 w-3 mr-1" />
-                {relationships.length} conexão{relationships.length > 1 ? 'ões' : ''}
+                {relationships.length === 1 ? (
+                  <span className="capitalize">
+                    {relationships[0].relationship_type.replace(/_/g, ' ')} de {relationships[0].related_contact.full_name.split(' ')[0]}
+                  </span>
+                ) : (
+                  <span>
+                    {relationships.length} conexões
+                  </span>
+                )}
               </Badge>
             </HoverCardTrigger>
             <HoverCardContent side="top" className="w-72 p-3">

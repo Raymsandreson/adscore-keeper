@@ -56,11 +56,15 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
     }
 
     try {
-      // Fetch contacts by instagram_username
+      // Fetch contacts by instagram_username - try both with and without @
+      const usernamesWithAt = normalizedUsernames.map(u => `@${u}`);
+      const usernamesWithoutAt = normalizedUsernames;
+      const allUsernamesToSearch = [...usernamesWithAt, ...usernamesWithoutAt];
+      
       const { data: contacts, error: contactsError } = await supabase
         .from('contacts')
         .select('id, full_name, instagram_username, phone, email')
-        .in('instagram_username', normalizedUsernames.map(u => `@${u}`));
+        .in('instagram_username', allUsernamesToSearch);
 
       if (contactsError) throw contactsError;
 
@@ -69,7 +73,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
       
       contacts?.forEach(contact => {
         const username = contact.instagram_username?.replace('@', '').toLowerCase();
-        if (username) {
+        if (username && !contactMap.has(username)) {
           contactMap.set(username, contact);
           contactIds.push(contact.id);
         }

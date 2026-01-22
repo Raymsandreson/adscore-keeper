@@ -1039,22 +1039,33 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
                               </div>
                               
-                              {/* Classification badges */}
+                              {/* Classification badges - enhanced with relationship context */}
                               {comment.prospect_classification && comment.prospect_classification.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {comment.prospect_classification.map(cls => {
                                     const config = classificationConfig[cls];
+                                    const contactData = getContactData(comment.author_username);
+                                    
+                                    // Check if this classification matches a relationship type
+                                    const matchingRelationship = contactData.relationships.find(
+                                      rel => rel.relationship_type.toLowerCase() === cls.toLowerCase()
+                                    );
+                                    
+                                    const displayLabel = matchingRelationship 
+                                      ? `${cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} de ${matchingRelationship.related_contact.full_name.split(' ')[0]}`
+                                      : config?.label || cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    
                                     return config ? (
                                       <Badge 
                                         key={cls}
                                         variant="outline" 
                                         className={cn("text-xs", config.color, "text-white")}
                                       >
-                                        {config.label}
+                                        {displayLabel}
                                       </Badge>
                                     ) : (
-                                      <Badge key={cls} variant="outline" className="text-xs">
-                                        {cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                      <Badge key={cls} variant="outline" className="text-xs bg-purple-500 text-white">
+                                        {displayLabel}
                                       </Badge>
                                     );
                                   })}
