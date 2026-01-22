@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
+import { CommentContactBadges } from "./CommentContactBadges";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -46,6 +47,7 @@ import { InstagramAccountSelector, InstagramAccount } from "./InstagramAccountSe
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 
 import { useContactClassifications } from "@/hooks/useContactClassifications";
+import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 
 interface Comment {
   id: string;
@@ -83,6 +85,16 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   
   // Classification hook
   const { classifications, classificationConfig } = useContactClassifications();
+  
+  // Comment contact info hook - get usernames from filtered comments
+  const commentUsernames = useMemo(() => {
+    return comments
+      .filter(c => c.author_username)
+      .map(c => c.author_username!)
+      .filter((v, i, a) => a.indexOf(v) === i);
+  }, [comments]);
+  
+  const { getContactData, refetch: refetchContactData } = useCommentContactInfo(commentUsernames);
   
   // Classification + Lead conversion dialog states
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
@@ -978,6 +990,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                     Lead
                                   </Badge>
                                 )}
+                                {/* Contact badges - linked leads and relationships */}
+                                <CommentContactBadges 
+                                  contactData={getContactData(comment.author_username)}
+                                  username={comment.author_username}
+                                />
                               </div>
                               <p className="text-sm">{comment.comment_text}</p>
                               {comment.post_url && (
