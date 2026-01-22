@@ -13,10 +13,10 @@ export interface BoardConversionSettings {
   enabled: boolean;
   globalMinRate: number; // default threshold for all stages
   stageThresholds: ConversionThreshold[]; // per-stage overrides
+  pushNotificationsEnabled: boolean; // browser push notifications
 }
 
 const STORAGE_KEY = 'conversion_alert_settings';
-const NOTIFIED_KEY = 'conversion_alerts_notified';
 
 const DEFAULT_GLOBAL_MIN_RATE = 30; // 30% default threshold
 
@@ -26,13 +26,25 @@ export const useConversionAlerts = (
 ) => {
   const notifiedRef = useRef<Set<string>>(new Set());
   const [settings, setSettings] = useState<BoardConversionSettings | null>(null);
+  const permissionRef = useRef<NotificationPermission>('default');
+
+  // Initialize permission check
+  useEffect(() => {
+    if ('Notification' in window) {
+      permissionRef.current = Notification.permission;
+    }
+  }, []);
 
   // Load settings from localStorage
   const loadSettings = useCallback((boardId: string): BoardConversionSettings => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY}_${boardId}`);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        return {
+          ...parsed,
+          pushNotificationsEnabled: parsed.pushNotificationsEnabled ?? false,
+        };
       }
     } catch (e) {
       console.error('Error loading conversion settings:', e);
@@ -42,6 +54,7 @@ export const useConversionAlerts = (
       enabled: true,
       globalMinRate: DEFAULT_GLOBAL_MIN_RATE,
       stageThresholds: [],
+      pushNotificationsEnabled: false,
     };
   }, []);
 
@@ -51,6 +64,43 @@ export const useConversionAlerts = (
     setSettings(newSettings);
     toast.success('Configurações de alerta salvas');
   }, []);
+
+  // Request browser notification permission
+  const requestNotificationPermission = useCallback(async (): Promise<boolean> => {
+    if (!('Notification' in window)) {
+      console.log('Browser does not support notifications');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') {
+      permissionRef.current = 'granted';
+      return true;
+    }
+
+    if (Notification.permission !== 'denied') {
+      const permission = await Notification.requestPermission();
+      permissionRef.current = permission;
+      return permission === 'granted';
+    }
+
+    return false;
+  }, []);
+
+  // Send browser push notification
+  const sendPushNotification = useCallback((title: string, body: string) => {
+    if (
+      permissionRef.current === 'granted' && 
+      'Notification' in window && 
+      settings?.pushNotificationsEnabled
+    ) {
+      new Notification(title, {
+        body,
+        icon: '/favicon.ico',
+        tag: `conversion_${title}`,
+        requireInteraction: true,
+      });
+    }
+  }, [settings?.pushNotificationsEnabled]);
 
   // Get threshold for a specific stage transition
   const getThresholdForStage = useCallback((
@@ -108,7 +158,7 @@ export const useConversionAlerts = (
     return alerts;
   }, [board, leadsPerStage, settings, getThresholdForStage]);
 
-  // Trigger toast notifications for new alerts
+  // Trigger toast and push notifications for new alerts
   const triggerNotifications = useCallback((alerts: ReturnType<typeof checkConversionRates>) => {
     alerts.forEach(alert => {
       if (!notifiedRef.current.has(alert.key)) {
@@ -120,14 +170,18 @@ export const useConversionAlerts = (
         
         const message = `${alert.fromStage} → ${alert.toStage}: ${alert.currentRate}% (mínimo: ${alert.threshold}%)`;
         
+        // Toast notification
         if (alert.severity === 'critical') {
           toast.error(title, { description: message, duration: 10000 });
         } else {
           toast.warning(title, { description: message, duration: 8000 });
         }
+
+        // Push notification
+        sendPushNotification(title, message);
       }
     });
-  }, []);
+  }, [sendPushNotification]);
 
   // Reset notifications when board changes
   const resetNotifications = useCallback(() => {
@@ -157,5 +211,7 @@ export const useConversionAlerts = (
     checkConversionRates,
     resetNotifications,
     getThresholdForStage,
+    requestNotificationPermission,
+    hasNotificationPermission: permissionRef.current === 'granted',
   };
 };

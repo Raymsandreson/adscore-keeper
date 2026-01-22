@@ -10,7 +10,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { Bell, BellOff, Settings2, Save, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Bell, BellOff, Settings2, Save, ChevronDown, AlertTriangle, BellRing } from 'lucide-react';
+import { toast } from 'sonner';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { BoardConversionSettings, ConversionThreshold } from '@/hooks/useConversionAlerts';
 
@@ -25,6 +26,8 @@ interface ConversionAlertSettingsProps {
     threshold: number;
     severity: 'warning' | 'critical';
   }>;
+  requestNotificationPermission: () => Promise<boolean>;
+  hasNotificationPermission: boolean;
 }
 
 export function ConversionAlertSettings({
@@ -32,6 +35,8 @@ export function ConversionAlertSettings({
   settings,
   onSave,
   currentAlerts,
+  requestNotificationPermission,
+  hasNotificationPermission,
 }: ConversionAlertSettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [localSettings, setLocalSettings] = useState<BoardConversionSettings>({
@@ -39,6 +44,7 @@ export function ConversionAlertSettings({
     enabled: true,
     globalMinRate: 30,
     stageThresholds: [],
+    pushNotificationsEnabled: false,
   });
 
   useEffect(() => {
@@ -49,6 +55,16 @@ export function ConversionAlertSettings({
 
   const handleSave = () => {
     onSave(localSettings);
+  };
+
+  const handleEnablePush = async () => {
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      setLocalSettings(prev => ({ ...prev, pushNotificationsEnabled: true }));
+      toast.success('Push habilitado', { description: 'Você receberá notificações de conversão baixa' });
+    } else {
+      toast.error('Permissão negada', { description: 'Habilite notificações nas configurações do navegador' });
+    }
   };
 
   const getStageThreshold = (fromId: string, toId: string): number => {
@@ -79,6 +95,7 @@ export function ConversionAlertSettings({
 
   const stages = board.stages || [];
   const hasAlerts = currentAlerts.length > 0;
+  const pushEnabled = localSettings.pushNotificationsEnabled && hasNotificationPermission;
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -100,6 +117,12 @@ export function ConversionAlertSettings({
                     {hasAlerts && (
                       <Badge variant="destructive" className="text-[10px] px-1.5">
                         {currentAlerts.length} {currentAlerts.length === 1 ? 'alerta' : 'alertas'}
+                      </Badge>
+                    )}
+                    {pushEnabled && (
+                      <Badge variant="outline" className="text-[10px] px-1.5">
+                        <BellRing className="h-2.5 w-2.5 mr-1" />
+                        Push
                       </Badge>
                     )}
                   </div>
@@ -129,6 +152,45 @@ export function ConversionAlertSettings({
                   setLocalSettings(prev => ({ ...prev, enabled: checked }))
                 }
               />
+            </div>
+
+            {/* Push Notification Toggle */}
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-3">
+                {pushEnabled ? (
+                  <BellRing className="h-4 w-4 text-primary" />
+                ) : (
+                  <BellOff className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">Push do Navegador</p>
+                  <p className="text-xs text-muted-foreground">
+                    Receba alertas mesmo com o app minimizado
+                  </p>
+                </div>
+              </div>
+              {pushEnabled ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-primary font-medium">Ativo</span>
+                  <Switch
+                    checked={localSettings.pushNotificationsEnabled}
+                    onCheckedChange={(checked) => 
+                      setLocalSettings(prev => ({ ...prev, pushNotificationsEnabled: checked }))
+                    }
+                  />
+                </div>
+              ) : hasNotificationPermission ? (
+                <Switch
+                  checked={localSettings.pushNotificationsEnabled}
+                  onCheckedChange={(checked) => 
+                    setLocalSettings(prev => ({ ...prev, pushNotificationsEnabled: checked }))
+                  }
+                />
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleEnablePush}>
+                  Habilitar
+                </Button>
+              )}
             </div>
 
             {/* Current Alerts Panel */}

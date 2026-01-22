@@ -138,6 +138,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     settings: conversionSettings,
     saveSettings: saveConversionSettings,
     checkConversionRates,
+    requestNotificationPermission,
+    hasNotificationPermission,
   } = useConversionAlerts(selectedBoard, leadsPerStage);
 
   // Get current alerts for display
@@ -324,6 +326,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           settings={conversionSettings}
           onSave={saveConversionSettings}
           currentAlerts={currentConversionAlerts}
+          requestNotificationPermission={requestNotificationPermission}
+          hasNotificationPermission={hasNotificationPermission}
         />
       )}
 
