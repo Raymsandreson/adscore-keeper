@@ -525,18 +525,39 @@ export function DynamicKanbanBoard({
                                   {/* Linked contacts list */}
                                   {leadContacts[lead.id]?.length > 0 && (
                                     <div className="mt-2 space-y-1">
-                                      <div 
-                                        className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-                                        onClick={() => setContactsManagerLead(lead)}
-                                      >
-                                        <Users className="h-3 w-3 flex-shrink-0" />
-                                        <span className="truncate">
-                                          {leadContacts[lead.id].length <= 2 
-                                            ? leadContacts[lead.id].map(c => c.full_name).join(', ')
-                                            : `${leadContacts[lead.id].slice(0, 2).map(c => c.full_name).join(', ')} +${leadContacts[lead.id].length - 2}`
-                                          }
-                                        </span>
-                                      </div>
+                                      {leadContacts[lead.id].length > 2 ? (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div 
+                                              className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                              onClick={() => setContactsManagerLead(lead)}
+                                            >
+                                              <Users className="h-3 w-3 flex-shrink-0" />
+                                              <span className="truncate">
+                                                {leadContacts[lead.id].slice(0, 2).map(c => c.full_name).join(', ')} +{leadContacts[lead.id].length - 2}
+                                              </span>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="bottom" className="max-w-xs">
+                                            <div className="space-y-1">
+                                              <p className="font-medium text-xs">Contatos vinculados:</p>
+                                              {leadContacts[lead.id].map(c => (
+                                                <p key={c.id} className="text-xs">• {c.full_name}</p>
+                                              ))}
+                                            </div>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      ) : (
+                                        <div 
+                                          className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
+                                          onClick={() => setContactsManagerLead(lead)}
+                                        >
+                                          <Users className="h-3 w-3 flex-shrink-0" />
+                                          <span className="truncate">
+                                            {leadContacts[lead.id].map(c => c.full_name).join(', ')}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
 
