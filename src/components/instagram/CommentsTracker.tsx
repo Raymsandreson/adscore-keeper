@@ -36,6 +36,7 @@ import {
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
 import { CommentContactBadges } from "./CommentContactBadges";
+import { QuickLinkLeadPopover } from "./QuickLinkLeadPopover";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -1075,6 +1076,14 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                   <Sparkles className="h-3 w-3 mr-1 text-pink-500" />
                                   Responder IA
                                 </Button>
+                              )}
+                              
+                              {/* Quick link lead button */}
+                              {activeTab === 'received' && comment.author_username && (
+                                <QuickLinkLeadPopover 
+                                  authorUsername={comment.author_username}
+                                  onLeadLinked={refetchContactData}
+                                />
                               )}
                               
                               {/* Classification button for received comments */}
