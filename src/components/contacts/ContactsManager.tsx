@@ -78,6 +78,7 @@ import {
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useContactColumnVisibility } from '@/hooks/useContactColumnVisibility';
+import { useContactClassifications, classificationColors } from '@/hooks/useContactClassifications';
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 
@@ -153,23 +154,51 @@ const InlineEditableText: React.FC<InlineEditableTextProps> = ({
   );
 };
 
-// Inline classification select component
+// Inline classification select component with dynamic options
 interface InlineClassificationSelectProps {
   value: ContactClassification;
   onChange: (value: ContactClassification) => void;
+  classifications: { name: string; color: string; label: string; isSystem: boolean }[];
+  onAddNew: (name: string, color: string) => Promise<any>;
 }
 
-const classificationOptions: { value: ContactClassification; label: string; color: string; icon: React.ReactNode }[] = [
-  { value: 'client', label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
-  { value: 'non_client', label: 'Não-Cliente', color: 'bg-gray-500', icon: <Users className="h-3 w-3" /> },
-  { value: 'prospect', label: 'Prospect', color: 'bg-blue-500', icon: <UserPlus className="h-3 w-3" /> },
-  { value: 'partner', label: 'Parceiro', color: 'bg-purple-500', icon: <Handshake className="h-3 w-3" /> },
-  { value: 'supplier', label: 'Fornecedor', color: 'bg-orange-500', icon: <Package className="h-3 w-3" /> },
-  { value: null, label: 'Sem classificação', color: 'bg-slate-400', icon: <X className="h-3 w-3" /> },
-];
+const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({ 
+  value, 
+  onChange, 
+  classifications,
+  onAddNew 
+}) => {
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState('bg-blue-500');
 
-const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({ value, onChange }) => {
-  const current = classificationOptions.find(opt => opt.value === value) || classificationOptions[classificationOptions.length - 1];
+  const getLabel = (name: string) => {
+    const systemLabels: Record<string, string> = {
+      client: 'Cliente',
+      non_client: 'Não-Cliente',
+      prospect: 'Prospect',
+      partner: 'Parceiro',
+      supplier: 'Fornecedor',
+    };
+    return systemLabels[name] || name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const current = classifications.find(c => c.name === value) || { 
+    name: 'none', 
+    color: 'bg-slate-400', 
+    label: 'Sem classificação',
+    isSystem: false 
+  };
+
+  const handleAddNew = async () => {
+    if (!newName.trim()) return;
+    const result = await onAddNew(newName, newColor);
+    if (result) {
+      onChange(result.name);
+      setIsAddingNew(false);
+      setNewName('');
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -180,30 +209,91 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
           className="h-7 px-2 hover:bg-muted/50"
         >
           <Badge className={`${current.color} text-white text-xs cursor-pointer`}>
-            {current.icon}
-            <span className="ml-1">{current.label}</span>
+            <Tag className="h-3 w-3" />
+            <span className="ml-1">{getLabel(current.name)}</span>
             <ChevronDown className="h-3 w-3 ml-1" />
           </Badge>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {classificationOptions.map((option) => (
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel>Classificação</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        
+        {/* None option */}
+        <DropdownMenuItem
+          onClick={() => onChange(null)}
+          className={value === null ? 'bg-muted' : ''}
+        >
+          <Badge className="bg-slate-400 text-white text-xs mr-2">
+            <X className="h-3 w-3" />
+            <span className="ml-1">Sem classificação</span>
+          </Badge>
+        </DropdownMenuItem>
+        
+        <DropdownMenuSeparator />
+        
+        {/* Existing classifications */}
+        {classifications.map((option) => (
           <DropdownMenuItem
-            key={option.value || 'none'}
-            onClick={() => onChange(option.value)}
-            className={value === option.value ? 'bg-muted' : ''}
+            key={option.name}
+            onClick={() => onChange(option.name as ContactClassification)}
+            className={value === option.name ? 'bg-muted' : ''}
           >
             <Badge className={`${option.color} text-white text-xs mr-2`}>
-              {option.icon}
-              <span className="ml-1">{option.label}</span>
+              <Tag className="h-3 w-3" />
+              <span className="ml-1">{getLabel(option.name)}</span>
             </Badge>
           </DropdownMenuItem>
         ))}
+        
+        <DropdownMenuSeparator />
+        
+        {/* Add new classification */}
+        {isAddingNew ? (
+          <div className="p-2 space-y-2">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nome da classificação"
+              className="h-8 text-sm"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAddNew();
+                if (e.key === 'Escape') setIsAddingNew(false);
+              }}
+            />
+            <div className="flex gap-1 flex-wrap">
+              {classificationColors.slice(0, 8).map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setNewColor(c.value)}
+                  className={`w-5 h-5 rounded-full ${c.value} ${newColor === c.value ? 'ring-2 ring-offset-1 ring-primary' : ''}`}
+                  title={c.label}
+                />
+              ))}
+            </div>
+            <div className="flex gap-1">
+              <Button size="sm" className="h-7 text-xs flex-1" onClick={handleAddNew}>
+                Criar
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setIsAddingNew(false)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <DropdownMenuItem onClick={() => setIsAddingNew(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova classificação...
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 };
 
+// Static fallback config for older code paths
 const classificationConfig: Record<NonNullable<ContactClassification> | 'none', { label: string; color: string; icon: React.ReactNode }> = {
   client: { label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
   non_client: { label: 'Não-Cliente', color: 'bg-gray-500', icon: <Users className="h-3 w-3" /> },
@@ -224,6 +314,20 @@ export const ContactsManager: React.FC = () => {
   const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
+  const { classifications, addClassification } = useContactClassifications();
+  
+  // Build classifications list for the inline select
+  const classificationsList = classifications.map(c => ({
+    name: c.name,
+    color: c.color,
+    label: c.name === 'client' ? 'Cliente' :
+           c.name === 'non_client' ? 'Não-Cliente' :
+           c.name === 'prospect' ? 'Prospect' :
+           c.name === 'partner' ? 'Parceiro' :
+           c.name === 'supplier' ? 'Fornecedor' :
+           c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+    isSystem: c.is_system
+  }));
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
@@ -1421,6 +1525,8 @@ export const ContactsManager: React.FC = () => {
                             <InlineClassificationSelect
                               value={contact.classification}
                               onChange={(value) => updateContact(contact.id, { classification: value })}
+                              classifications={classificationsList}
+                              onAddNew={addClassification}
                             />
                           </TableCell>
                         )}

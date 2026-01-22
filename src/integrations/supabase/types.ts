@@ -83,6 +83,36 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_classifications: {
+        Row: {
+          color: string
+          created_at: string
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          name: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           cep: string | null
