@@ -83,6 +83,7 @@ export const CommentClassificationDialog = ({
   // New lead creation
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [selectedStageId, setSelectedStageId] = useState<string>('');
+  const [newLeadName, setNewLeadName] = useState('');
   const [newLeadNotes, setNewLeadNotes] = useState('');
   
   // Search existing leads
@@ -126,6 +127,10 @@ export const CommentClassificationDialog = ({
       setSelectedRelatedContact(null);
       setIsCreatingNewContact(false);
       setNewContactName('');
+      // Pre-fill lead name with username
+      const user = comment.author_username?.replace('@', '') || '';
+      setNewLeadName(user ? `@${user}` : '');
+      setNewLeadNotes('');
       fetchLinkedLeads();
     }
   }, [open, comment]);
@@ -438,35 +443,64 @@ export const CommentClassificationDialog = ({
     }
   };
 
+  // Map stage name to valid status
+  const mapStageToStatus = (stageName: string): string => {
+    const validStatuses = ['new', 'contacted', 'qualified', 'converted', 'lost', 'comment'];
+    const normalized = stageName.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/\s+/g, '_');
+    
+    if (validStatuses.includes(normalized)) {
+      return normalized;
+    }
+    
+    // Map common Portuguese terms
+    if (normalized.includes('comentario')) return 'comment';
+    if (normalized.includes('contato') || normalized.includes('contata')) return 'contacted';
+    if (normalized.includes('qualifica')) return 'qualified';
+    if (normalized.includes('convert') || normalized.includes('cliente')) return 'converted';
+    if (normalized.includes('perdido') || normalized.includes('perda')) return 'lost';
+    
+    return 'new'; // Default fallback
+  };
+
   // Create new lead and link
   const handleCreateNewLead = async () => {
-    if (!username || !selectedBoardId) {
+    if (!selectedBoardId) {
       toast.error('Selecione um quadro');
+      return;
+    }
+
+    if (!newLeadName.trim()) {
+      toast.error('Informe o nome do lead');
       return;
     }
 
     const selectedBoard = boards.find(b => b.id === selectedBoardId);
     const selectedStage = selectedBoard?.stages.find(s => s.id === selectedStageId);
+    const status = mapStageToStatus(selectedStage?.name || 'new');
 
     setIsSaving(true);
     try {
       const { data, error } = await supabase
         .from('leads')
         .insert({
-          lead_name: `@${username}`,
+          lead_name: newLeadName.trim(),
           source: comment?.platform || 'instagram',
-          status: selectedStage?.name?.toLowerCase().replace(/\s+/g, '_') || 'new',
+          status: status,
           board_id: selectedBoardId,
-          instagram_username: username,
-          instagram_comment_id: comment?.id,
-          notes: newLeadNotes || `Capturado via ${comment?.platform} - Comentou: "${comment?.comment_text?.slice(0, 100)}..."${comment?.post_url ? ` | Post: ${comment?.post_url}` : ''}`
+          instagram_username: username || null,
+          instagram_comment_id: comment?.id || null,
+          notes: newLeadNotes || (comment ? `Capturado via ${comment?.platform} - Comentou: "${comment?.comment_text?.slice(0, 100)}..."${comment?.post_url ? ` | Post: ${comment?.post_url}` : ''}` : '')
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      toast.success(`Lead @${username} criado no quadro "${selectedBoard?.name}"!`);
+      toast.success(`Lead "${newLeadName}" criado no quadro "${selectedBoard?.name}"!`);
+      setNewLeadName('');
       setNewLeadNotes('');
       await fetchLinkedLeads();
       onLeadLinked?.();
@@ -837,6 +871,15 @@ export const CommentClassificationDialog = ({
                     <UserPlus className="h-4 w-4" />
                     Criar novo lead
                   </Label>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nome do Lead *</Label>
+                    <Input
+                      placeholder={username ? `@${username}` : "Nome do lead..."}
+                      value={newLeadName}
+                      onChange={(e) => setNewLeadName(e.target.value)}
+                    />
+                  </div>
                   
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
@@ -891,7 +934,7 @@ export const CommentClassificationDialog = ({
                   <Button 
                     className="w-full" 
                     onClick={handleCreateNewLead}
-                    disabled={isSaving || !selectedBoardId}
+                    disabled={isSaving || !selectedBoardId || !newLeadName.trim()}
                   >
                     {isSaving ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
