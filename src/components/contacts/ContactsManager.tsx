@@ -53,6 +53,9 @@ import {
   Handshake,
   Package,
   FileSpreadsheet,
+  UserMinus,
+  Users2,
+  X,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification } from '@/hooks/useContacts';
 import { toast } from 'sonner';
@@ -70,6 +73,7 @@ export const ContactsManager: React.FC = () => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all'>('all');
+  const [filterTag, setFilterTag] = useState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -94,6 +98,13 @@ export const ContactsManager: React.FC = () => {
     notes: '',
   });
 
+  // Calculate tag stats
+  const tagStats = {
+    seguidores: contacts.filter(c => c.tags?.includes('seguidor')).length,
+    seguindo: contacts.filter(c => c.tags?.includes('seguindo')).length,
+    mutuos: contacts.filter(c => c.tags?.includes('seguidor') && c.tags?.includes('seguindo')).length,
+  };
+
   const filteredContacts = contacts.filter(contact => {
     const matchesSearch = 
       contact.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -103,7 +114,17 @@ export const ContactsManager: React.FC = () => {
     
     const matchesFilter = filterClassification === 'all' || contact.classification === filterClassification;
     
-    return matchesSearch && matchesFilter;
+    // Tag filter
+    let matchesTag = true;
+    if (filterTag === 'seguidor') {
+      matchesTag = contact.tags?.includes('seguidor') || false;
+    } else if (filterTag === 'seguindo') {
+      matchesTag = contact.tags?.includes('seguindo') || false;
+    } else if (filterTag === 'mutual') {
+      matchesTag = (contact.tags?.includes('seguidor') && contact.tags?.includes('seguindo')) || false;
+    }
+    
+    return matchesSearch && matchesFilter && matchesTag;
   });
 
   const handleAddContact = async () => {
@@ -477,6 +498,65 @@ export const ContactsManager: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            
+            {/* Quick Tag Filters */}
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={filterTag === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('all')}
+                className="h-8"
+              >
+                <Users className="h-3 w-3 mr-1" />
+                Todos
+              </Button>
+              <Button
+                variant={filterTag === 'seguidor' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguidor')}
+                className="h-8"
+              >
+                <UserPlus className="h-3 w-3 mr-1" />
+                Seguidores
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {tagStats.seguidores}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'seguindo' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguindo')}
+                className="h-8"
+              >
+                <UserMinus className="h-3 w-3 mr-1" />
+                Seguindo
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {tagStats.seguindo}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'mutual' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('mutual')}
+                className="h-8"
+              >
+                <Users2 className="h-3 w-3 mr-1" />
+                Mútuos
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {tagStats.mutuos}
+                </Badge>
+              </Button>
+              {filterTag !== 'all' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilterTag('all')}
+                  className="h-8 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
             </div>
             
             <div className="flex gap-2 w-full md:w-auto justify-end flex-wrap">
