@@ -46,6 +46,7 @@ import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { OutboundNotificationSettings } from './OutboundNotificationSettings';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -1100,6 +1101,11 @@ export function ProspectingFunnel() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Push Notifications Section */}
+          <div className="border-t pt-4">
+            <OutboundNotificationSettings />
           </div>
 
           <div className="border-t pt-4 space-y-3">
