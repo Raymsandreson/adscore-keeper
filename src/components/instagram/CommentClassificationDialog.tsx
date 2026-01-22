@@ -483,6 +483,23 @@ export const CommentClassificationDialog = ({
 
     setIsSaving(true);
     try {
+      // Check for duplicate if username is provided
+      if (username) {
+        const { data: existingLeads, error: checkError } = await supabase
+          .from('leads')
+          .select('id, lead_name')
+          .eq('board_id', selectedBoardId)
+          .ilike('instagram_username', username);
+        
+        if (checkError) throw checkError;
+        
+        if (existingLeads && existingLeads.length > 0) {
+          toast.error(`Já existe um lead com @${username} neste quadro: "${existingLeads[0].lead_name}"`);
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const { data, error } = await supabase
         .from('leads')
         .insert({
