@@ -34,6 +34,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
+import { CommentClassificationDialog } from "./CommentClassificationDialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -44,17 +45,7 @@ import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
 import { InstagramAccountSelector, InstagramAccount } from "./InstagramAccountSelector";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 
-type ProspectClassification = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other' | null;
-
-const CLASSIFICATIONS: { key: ProspectClassification; label: string; color: string; bgColor: string }[] = [
-  { key: null, label: 'Sem classificação', color: 'text-muted-foreground', bgColor: 'bg-muted' },
-  { key: 'prospect', label: 'Prospecto', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  { key: 'client', label: 'Cliente', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
-  { key: 'closer', label: 'Acolhedor', color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  { key: 'sdr', label: 'SDR', color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  { key: 'team', label: 'Equipe', color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  { key: 'other', label: 'Outro', color: 'text-slate-600', bgColor: 'bg-slate-100' },
-];
+import { useContactClassifications } from "@/hooks/useContactClassifications";
 
 interface Comment {
   id: string;
@@ -90,12 +81,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   // Instagram account selection
   const [selectedAccounts, setSelectedAccounts] = useState<InstagramAccount[]>([]);
   
+  // Classification hook
+  const { classifications, classificationConfig } = useContactClassifications();
+  
   // Classification + Lead conversion dialog states
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
-  const [pendingClassifications, setPendingClassifications] = useState<string[]>([]);
-  const [showLeadConfirmDialog, setShowLeadConfirmDialog] = useState(false);
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
-  const [selectedClassifications, setSelectedClassifications] = useState<string[]>([]);
   
   // AI Reply dialog state
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
@@ -354,91 +345,37 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   // Open classification dialog for a comment
   const openClassificationDialog = (comment: Comment) => {
     setClassifyingComment(comment);
-    setSelectedClassifications(comment.prospect_classification || []);
     setShowClassificationDialog(true);
   };
 
-  // Toggle a classification in the selection
-  const toggleClassification = (key: string) => {
-    setSelectedClassifications(prev => 
-      prev.includes(key) 
-        ? prev.filter(k => k !== key)
-        : [...prev, key]
-    );
-  };
-
-  // Apply classifications to comment and all comments from the same author
-  const handleApplyClassifications = async () => {
-    if (!classifyingComment) return;
-
-    const classifications = selectedClassifications.length > 0 ? selectedClassifications : null;
-    const username = classifyingComment.author_username?.replace('@', '').toLowerCase();
-
-    try {
-      // Update all comments from the same author
+  // Handle classification applied from dialog
+  const handleClassificationsApplied = (newClassifications: string[] | null) => {
+    if (classifyingComment) {
+      const username = classifyingComment.author_username?.replace('@', '').toLowerCase();
+      
+      // Update local state for all comments from this author
       if (username) {
-        const { error } = await supabase
-          .from('instagram_comments')
-          .update({ prospect_classification: classifications })
-          .ilike('author_username', username);
-
-        if (error) throw error;
-
-        // Update local state for all comments from this author
         setComments(prev => 
           prev.map(c => {
             const commentUsername = c.author_username?.replace('@', '').toLowerCase();
             if (commentUsername === username) {
-              return { ...c, prospect_classification: classifications };
+              return { ...c, prospect_classification: newClassifications };
             }
             return c;
           })
         );
-
-        const classLabels = selectedClassifications
-          .map(k => CLASSIFICATIONS.find(c => c.key === k)?.label)
-          .filter(Boolean)
-          .join(', ');
-        
-        toast.success(
-          classLabels 
-            ? `Todos os comentários de @${username} classificados como: ${classLabels}`
-            : `Classificação removida de @${username}`
-        );
       } else {
-        // Single comment update (no username)
-        const { error } = await supabase
-          .from('instagram_comments')
-          .update({ prospect_classification: classifications })
-          .eq('id', classifyingComment.id);
-
-        if (error) throw error;
-
         setComments(prev => 
-          prev.map(c => c.id === classifyingComment.id ? { ...c, prospect_classification: classifications } : c)
+          prev.map(c => c.id === classifyingComment.id ? { ...c, prospect_classification: newClassifications } : c)
         );
-        toast.success('Comentário classificado!');
       }
-
-      setShowClassificationDialog(false);
-
-      // After classification, ask if user wants to convert to lead
-      if (username && selectedClassifications.length > 0) {
-        const isAlreadyLead = convertedUsers.has(username);
-        
-        if (!isAlreadyLead) {
-          setPendingClassifications(selectedClassifications);
-          setShowLeadConfirmDialog(true);
-          return; // Keep classifyingComment for the lead dialog
-        }
-      }
-
-      setClassifyingComment(null);
-      setSelectedClassifications([]);
-    } catch (error) {
-      console.error('Error classifying comments:', error);
-      toast.error('Erro ao classificar comentários');
     }
+    setClassifyingComment(null);
+  };
+
+  // Handle lead linked from dialog
+  const handleLeadLinked = () => {
+    checkExistingLeads();
   };
 
   // Convert a commenter to a lead (internal function)
@@ -491,16 +428,6 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }
   };
 
-  // Handle lead confirm dialog response
-  const handleLeadConfirmResponse = async (confirmLead: boolean) => {
-    if (confirmLead && classifyingComment) {
-      await convertToLead(classifyingComment);
-    }
-    setShowLeadConfirmDialog(false);
-    setClassifyingComment(null);
-    setPendingClassifications([]);
-    setSelectedClassifications([]);
-  };
 
   // Convert all commenters to leads
   const convertAllToLeads = async () => {
@@ -1098,16 +1025,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                               {comment.prospect_classification && comment.prospect_classification.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {comment.prospect_classification.map(cls => {
-                                    const config = CLASSIFICATIONS.find(c => c.key === cls);
+                                    const config = classificationConfig[cls];
                                     return config ? (
                                       <Badge 
                                         key={cls}
                                         variant="outline" 
-                                        className={cn("text-xs", config.bgColor, config.color)}
+                                        className={cn("text-xs", config.color, "text-white")}
                                       >
                                         {config.label}
                                       </Badge>
-                                    ) : null;
+                                    ) : (
+                                      <Badge key={cls} variant="outline" className="text-xs">
+                                        {cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                      </Badge>
+                                    );
                                   })}
                                 </div>
                               )}
@@ -1163,104 +1094,13 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       </Card>
 
       {/* Classification Dialog */}
-      <Dialog open={showClassificationDialog} onOpenChange={setShowClassificationDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Tag className="h-5 w-5 text-primary" />
-              Classificar Usuário
-            </DialogTitle>
-            <DialogDescription>
-              Selecione uma ou mais classificações para <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong>.
-              Será aplicado a todos os comentários deste usuário.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <div className="grid grid-cols-2 gap-2">
-              {CLASSIFICATIONS.filter(c => c.key !== null).map((cls) => (
-                <Button
-                  key={cls.key}
-                  variant={selectedClassifications.includes(cls.key!) ? "default" : "outline"}
-                  className={cn(
-                    "justify-start",
-                    selectedClassifications.includes(cls.key!) && cls.bgColor,
-                    selectedClassifications.includes(cls.key!) && cls.color
-                  )}
-                  onClick={() => toggleClassification(cls.key!)}
-                >
-                  <CheckCircle2 className={cn(
-                    "h-4 w-4 mr-2",
-                    selectedClassifications.includes(cls.key!) ? "opacity-100" : "opacity-0"
-                  )} />
-                  {cls.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <DialogFooter className="flex gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowClassificationDialog(false);
-                setClassifyingComment(null);
-                setSelectedClassifications([]);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleApplyClassifications}>
-              <Tag className="h-4 w-4 mr-2" />
-              Aplicar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Lead Confirmation Dialog */}
-      <Dialog open={showLeadConfirmDialog} onOpenChange={setShowLeadConfirmDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-primary" />
-              Converter em Lead?
-            </DialogTitle>
-            <DialogDescription>
-              Você classificou <strong className="text-foreground">@{classifyingComment?.author_username?.replace('@', '')}</strong> como{' '}
-              <strong className="text-foreground">
-                {pendingClassifications.map(k => CLASSIFICATIONS.find(c => c.key === k)?.label).filter(Boolean).join(', ')}
-              </strong>.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              Deseja também adicionar este usuário à sua Central de Leads para acompanhamento?
-            </p>
-          </div>
-
-          <DialogFooter className="flex gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => handleLeadConfirmResponse(false)}
-            >
-              Não, apenas classificar
-            </Button>
-            <Button
-              onClick={() => handleLeadConfirmResponse(true)}
-              disabled={convertingId === classifyingComment?.id}
-            >
-              {convertingId === classifyingComment?.id ? (
-                <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <UserPlus className="h-4 w-4 mr-2" />
-              )}
-              Sim, criar lead
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CommentClassificationDialog
+        open={showClassificationDialog}
+        onOpenChange={setShowClassificationDialog}
+        comment={classifyingComment}
+        onClassificationsApplied={handleClassificationsApplied}
+        onLeadLinked={handleLeadLinked}
+      />
 
       {/* AI Reply Dialog */}
       <AIReplyDialog
