@@ -57,6 +57,8 @@ import {
   UserMinus,
   Users2,
   X,
+  Tag,
+  ChevronDown,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { toast } from 'sonner';
@@ -94,6 +96,9 @@ export const ContactsManager: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchTagInput, setBatchTagInput] = useState('');
+  const [showBatchTagDialog, setShowBatchTagDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const metaFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -344,6 +349,114 @@ export const ContactsManager: React.FC = () => {
       toast.warning(`${deleted} excluídos, ${errors} erros`);
     } else {
       toast.success(`${deleted} contatos excluídos!`);
+    }
+  };
+
+  // Batch classification change
+  const handleBatchClassification = async (newClassification: ContactClassification) => {
+    if (selectedContacts.size === 0) return;
+    
+    setIsBatchProcessing(true);
+    let updated = 0;
+    let errors = 0;
+    
+    for (const contactId of selectedContacts) {
+      try {
+        await updateContact(contactId, { classification: newClassification });
+        updated++;
+      } catch {
+        errors++;
+      }
+    }
+    
+    setIsBatchProcessing(false);
+    setSelectedContacts(new Set());
+    
+    if (errors > 0) {
+      toast.warning(`${updated} atualizados, ${errors} erros`);
+    } else {
+      toast.success(`${updated} contatos classificados como ${classificationConfig[newClassification].label}!`);
+    }
+  };
+
+  // Batch add tags
+  const handleBatchAddTags = async () => {
+    if (selectedContacts.size === 0 || !batchTagInput.trim()) return;
+    
+    const newTags = batchTagInput.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (newTags.length === 0) return;
+    
+    setIsBatchProcessing(true);
+    let updated = 0;
+    let errors = 0;
+    
+    for (const contactId of selectedContacts) {
+      try {
+        const contact = contacts.find(c => c.id === contactId);
+        if (contact) {
+          const currentTags = contact.tags || [];
+          const mergedTags = [...new Set([...currentTags, ...newTags])];
+          await updateContact(contactId, { tags: mergedTags });
+          updated++;
+        }
+      } catch {
+        errors++;
+      }
+    }
+    
+    setIsBatchProcessing(false);
+    setSelectedContacts(new Set());
+    setBatchTagInput('');
+    setShowBatchTagDialog(false);
+    
+    if (errors > 0) {
+      toast.warning(`${updated} atualizados, ${errors} erros`);
+    } else {
+      toast.success(`Tags adicionadas a ${updated} contatos!`);
+    }
+  };
+
+  // Batch convert to leads
+  const handleBatchConvertToLeads = async () => {
+    if (selectedContacts.size === 0) return;
+    
+    // Filter only contacts not already converted
+    const contactsToConvert = Array.from(selectedContacts)
+      .map(id => contacts.find(c => c.id === id))
+      .filter(c => c && !c.lead_id);
+    
+    if (contactsToConvert.length === 0) {
+      toast.info('Todos os contatos selecionados já foram convertidos em leads');
+      return;
+    }
+    
+    const confirmConvert = window.confirm(
+      `Converter ${contactsToConvert.length} contato(s) em leads?`
+    );
+    
+    if (!confirmConvert) return;
+    
+    setIsBatchProcessing(true);
+    let converted = 0;
+    let errors = 0;
+    
+    for (const contact of contactsToConvert) {
+      if (!contact) continue;
+      try {
+        await convertToLead(contact.id);
+        converted++;
+      } catch {
+        errors++;
+      }
+    }
+    
+    setIsBatchProcessing(false);
+    setSelectedContacts(new Set());
+    
+    if (errors > 0) {
+      toast.warning(`${converted} convertidos, ${errors} erros`);
+    } else {
+      toast.success(`${converted} contatos convertidos em leads!`);
     }
   };
 
@@ -773,19 +886,91 @@ export const ContactsManager: React.FC = () => {
               Contatos ({filteredContacts.length})
             </CardTitle>
             {selectedContacts.size > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="secondary">
                   {selectedContacts.size} selecionado(s)
                 </Badge>
+                
+                {/* Classification dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isBatchProcessing}>
+                      <UserCheck className="h-4 w-4 mr-1" />
+                      Classificar
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {Object.entries(classificationConfig).map(([key, config]) => (
+                      <DropdownMenuItem
+                        key={key}
+                        onClick={() => handleBatchClassification(key as ContactClassification)}
+                      >
+                        {config.icon}
+                        <span className="ml-2">{config.label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Add tags button */}
+                <Dialog open={showBatchTagDialog} onOpenChange={setShowBatchTagDialog}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={isBatchProcessing}>
+                      <Tag className="h-4 w-4 mr-1" />
+                      Adicionar Tags
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Adicionar Tags em Lote</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Tags (separadas por vírgula)</Label>
+                        <Input
+                          value={batchTagInput}
+                          onChange={(e) => setBatchTagInput(e.target.value)}
+                          placeholder="tag1, tag2, tag3"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          As tags serão adicionadas a {selectedContacts.size} contato(s)
+                        </p>
+                      </div>
+                      <Button 
+                        onClick={handleBatchAddTags} 
+                        className="w-full"
+                        disabled={isBatchProcessing || !batchTagInput.trim()}
+                      >
+                        {isBatchProcessing ? 'Processando...' : 'Adicionar Tags'}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Convert to leads button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBatchConvertToLeads}
+                  disabled={isBatchProcessing}
+                >
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Converter em Leads
+                </Button>
+
+                {/* Delete button */}
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={handleBatchDelete}
-                  disabled={isDeleting}
+                  disabled={isDeleting || isBatchProcessing}
                 >
                   <Trash2 className="h-4 w-4 mr-1" />
-                  {isDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+                  {isDeleting ? 'Excluindo...' : 'Excluir'}
                 </Button>
+                
+                {/* Clear selection */}
                 <Button
                   variant="ghost"
                   size="sm"
