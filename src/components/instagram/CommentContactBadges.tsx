@@ -46,22 +46,40 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1 flex-wrap">
-        {/* Linked Leads Badge */}
-        {linkedLeads.length > 0 && (
+        {/* Linked Leads - Show directly on card */}
+        {linkedLeads.length > 0 && linkedLeads.slice(0, 2).map(lead => (
+          <Badge 
+            key={lead.id}
+            variant="outline" 
+            className="cursor-pointer text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors gap-1"
+            onClick={() => navigate(`/leads?leadId=${lead.id}`)}
+          >
+            <Briefcase className="h-3 w-3" />
+            <span className="max-w-[100px] truncate">
+              {lead.lead_name || 'Sem nome'}
+            </span>
+            <span className="text-blue-500">
+              ({lead.status || 'new'})
+            </span>
+            <ExternalLink className="h-3 w-3 ml-0.5" />
+          </Badge>
+        ))}
+        
+        {/* Show "+X more" badge if more than 2 leads */}
+        {linkedLeads.length > 2 && (
           <HoverCard openDelay={200} closeDelay={100}>
             <HoverCardTrigger asChild>
               <Badge 
                 variant="outline" 
                 className="cursor-pointer text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors"
               >
-                <Briefcase className="h-3 w-3 mr-1" />
-                {linkedLeads.length} lead{linkedLeads.length > 1 ? 's' : ''}
+                +{linkedLeads.length - 2} leads
               </Badge>
             </HoverCardTrigger>
             <HoverCardContent side="top" className="w-64 p-3">
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Leads vinculados:</p>
-                {linkedLeads.map(lead => (
+                <p className="text-xs font-medium text-muted-foreground">Mais leads vinculados:</p>
+                {linkedLeads.slice(2).map(lead => (
                   <div 
                     key={lead.id} 
                     className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors"
