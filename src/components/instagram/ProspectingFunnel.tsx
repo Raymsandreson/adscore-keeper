@@ -39,7 +39,8 @@ import {
   Building,
   ArrowDownLeft,
   ArrowUpRight,
-  MessageCircleReply
+  MessageCircleReply,
+  Percent
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -298,6 +299,26 @@ export function ProspectingFunnel() {
 
     return { byStage, totalProspects, closedCount, conversionRate, stageConversions, byClassification };
   }, [filteredProspects]);
+
+  // Outbound response rate calculation
+  const outboundStats = useMemo(() => {
+    // Count outbound comments sent (type 'sent' on third-party posts)
+    const sentOutbound = prospects.filter(p => 
+      p.comment_type === 'sent' && p.metadata?.is_third_party
+    ).length;
+    
+    // Count replies received to outbound comments
+    const repliesReceived = prospects.filter(p => 
+      p.comment_type === 'reply_to_outbound' || p.metadata?.is_prospect_reply
+    ).length;
+    
+    // Calculate response rate
+    const responseRate = sentOutbound > 0 
+      ? ((repliesReceived / sentOutbound) * 100).toFixed(1) 
+      : '0';
+    
+    return { sentOutbound, repliesReceived, responseRate };
+  }, [prospects]);
 
   const funnelData = useMemo(() => {
     return FUNNEL_STAGES.map(stage => ({
@@ -590,7 +611,7 @@ export function ProspectingFunnel() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2">
@@ -626,6 +647,18 @@ export function ProspectingFunnel() {
             </div>
             <p className="text-3xl font-bold mt-2">
               {stats.totalProspects - stats.byStage.comment - stats.closedCount}
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <Percent className="h-5 w-5 text-green-600" />
+              <span className="text-sm text-muted-foreground">Taxa Resposta Outbound</span>
+            </div>
+            <p className="text-3xl font-bold mt-2 text-green-600">{outboundStats.responseRate}%</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {outboundStats.repliesReceived} respostas / {outboundStats.sentOutbound} enviados
             </p>
           </CardContent>
         </Card>
