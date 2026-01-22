@@ -17,6 +17,9 @@ export interface Contact {
   tags: string[];
   city: string | null;
   state: string | null;
+  neighborhood: string | null;
+  street: string | null;
+  cep: string | null;
   lead_id: string | null;
   converted_to_lead_at: string | null;
   follower_status: FollowerStatus;
