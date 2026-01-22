@@ -38,24 +38,24 @@ export interface CommentContactData {
 
 export const useCommentContactInfo = (instagramUsernames: string[]) => {
   const [contactsData, setContactsData] = useState<Record<string, CommentContactData>>({});
+  const [lastFetchedUsernames, setLastFetchedUsernames] = useState<string[]>([]);
 
-  const fetchContactInfo = useCallback(async (usernames: string[]) => {
+  const fetchContactInfo = useCallback(async (usernames: string[], forceRefresh = false) => {
     if (usernames.length === 0) return;
 
     // Normalize usernames (remove @)
     const normalizedUsernames = usernames.map(u => u.replace('@', '').toLowerCase());
     
     // Initialize loading state
-    const loadingState: Record<string, CommentContactData> = {};
-    normalizedUsernames.forEach(username => {
-      if (!contactsData[username]) {
-        loadingState[username] = { contact: null, linkedLeads: [], relationships: [], loading: true };
-      }
+    setContactsData(prev => {
+      const loadingState: Record<string, CommentContactData> = { ...prev };
+      normalizedUsernames.forEach(username => {
+        if (forceRefresh || !prev[username]) {
+          loadingState[username] = { contact: null, linkedLeads: [], relationships: [], loading: true };
+        }
+      });
+      return loadingState;
     });
-    
-    if (Object.keys(loadingState).length > 0) {
-      setContactsData(prev => ({ ...prev, ...loadingState }));
-    }
 
     try {
       // Fetch contacts by instagram_username - try both with and without @
@@ -81,18 +81,16 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
         }
       });
 
-      // Fetch linked leads for these contacts using raw query approach
+      // Fetch linked leads for these contacts
       let leadsByContact: Record<string, LeadInfo[]> = {};
       if (contactIds.length > 0) {
-        // Use supabase client with type assertion
-        const supabaseAny = supabase as any;
-        const { data: contactLeads, error: leadsError } = await supabaseAny
+        const { data: contactLeads, error: leadsError } = await supabase
           .from('contact_leads')
           .select('contact_id, lead_id')
           .in('contact_id', contactIds);
 
         if (!leadsError && contactLeads && contactLeads.length > 0) {
-          const leadIds = contactLeads.map((cl: any) => cl.lead_id);
+          const leadIds = contactLeads.map((cl) => cl.lead_id);
           
           const { data: leads } = await supabase
             .from('leads')
@@ -100,7 +98,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
             .in('id', leadIds);
 
           if (leads) {
-            contactLeads.forEach((cl: any) => {
+            contactLeads.forEach((cl) => {
               const lead = leads.find(l => l.id === cl.lead_id);
               if (lead) {
                 if (!leadsByContact[cl.contact_id]) {
@@ -172,6 +170,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
       });
 
       setContactsData(prev => ({ ...prev, ...newData }));
+      setLastFetchedUsernames(normalizedUsernames);
     } catch (error) {
       console.error('Error fetching contact info:', error);
       // Set loading to false on error
@@ -193,7 +192,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
     if (unloadedUsernames.length > 0) {
       fetchContactInfo(unloadedUsernames);
     }
-  }, [instagramUsernames, fetchContactInfo]);
+  }, [instagramUsernames, fetchContactInfo, contactsData]);
 
   const getContactData = useCallback((username: string | null): CommentContactData => {
     if (!username) return { contact: null, linkedLeads: [], relationships: [], loading: false };
@@ -202,12 +201,12 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
   }, [contactsData]);
 
   const refetch = useCallback(() => {
+    // Use lastFetchedUsernames to avoid stale closure
     const usernames = Object.keys(contactsData);
     if (usernames.length > 0) {
-      setContactsData({});
-      fetchContactInfo(usernames);
+      fetchContactInfo(usernames, true);
     }
-  }, [contactsData, fetchContactInfo]);
+  }, [fetchContactInfo, contactsData]);
 
   return { getContactData, refetch };
 };
