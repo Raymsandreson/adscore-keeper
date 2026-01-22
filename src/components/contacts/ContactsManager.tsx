@@ -75,6 +75,7 @@ import {
   MapPin,
   Loader2,
   Link2,
+  Network,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -83,6 +84,7 @@ import { useContactClassifications, classificationColors } from '@/hooks/useCont
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
+import { ContactNetworkGraph } from '@/components/contacts/ContactNetworkGraph';
 import { useContactRelationshipCounts } from '@/hooks/useContactRelationships';
 
 // Inline editable text component
@@ -374,6 +376,9 @@ export const ContactsManager: React.FC = () => {
   // State for relationships manager
   const [relationshipsContact, setRelationshipsContact] = useState<Contact | null>(null);
   const [isRelationshipsOpen, setIsRelationshipsOpen] = useState(false);
+  
+  // State for network graph
+  const [isNetworkGraphOpen, setIsNetworkGraphOpen] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1070,6 +1075,15 @@ export const ContactsManager: React.FC = () => {
             </div>
             
             <div className="flex gap-2 w-full md:w-auto justify-end flex-wrap">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setIsNetworkGraphOpen(true)}
+                className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50"
+              >
+                <Network className="h-4 w-4 mr-1 text-blue-500" />
+                Rede de Vínculos
+              </Button>
               <Button variant="outline" size="sm" onClick={downloadTemplate}>
                 <Download className="h-4 w-4 mr-1" />
                 Modelo CSV
@@ -2160,6 +2174,17 @@ export const ContactsManager: React.FC = () => {
         contact={relationshipsContact}
         open={isRelationshipsOpen}
         onOpenChange={setIsRelationshipsOpen}
+      />
+
+      {/* Network Graph */}
+      <ContactNetworkGraph
+        isOpen={isNetworkGraphOpen}
+        onClose={() => setIsNetworkGraphOpen(false)}
+        contacts={contacts}
+        onSelectContact={(contact) => {
+          setRelationshipsContact(contact);
+          setIsRelationshipsOpen(true);
+        }}
       />
     </div>
   );
