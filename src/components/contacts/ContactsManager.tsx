@@ -92,6 +92,7 @@ import { ContactLeadsManager } from '@/components/contacts/ContactLeadsManager';
 import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
+import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -327,6 +328,9 @@ export const ContactsManager: React.FC = () => {
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   const { classifications, addClassification } = useContactClassifications();
   
+  // Fetch kanban boards for conversion dialog
+  const { boards: kanbanBoards, loading: loadingBoards } = useKanbanBoards();
+  
   // Fetch relationship counts for displayed contacts
   const contactIds = contacts.map(c => c.id);
   const { counts: relationshipCounts } = useContactRelationshipCounts(contactIds);
@@ -401,6 +405,12 @@ export const ContactsManager: React.FC = () => {
   // State for leads manager
   const [leadsContact, setLeadsContact] = useState<Contact | null>(null);
   const [isLeadsManagerOpen, setIsLeadsManagerOpen] = useState(false);
+  
+  // State for convert to lead dialog
+  const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false);
+  const [contactToConvert, setContactToConvert] = useState<Contact | null>(null);
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+  const [selectedStageId, setSelectedStageId] = useState<string>('');
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -664,8 +674,36 @@ export const ContactsManager: React.FC = () => {
     }
   };
 
-  const handleConvertToLead = async (contact: Contact) => {
-    await convertToLead(contact.id);
+  // Open convert dialog instead of converting directly
+  const handleConvertToLead = (contact: Contact) => {
+    setContactToConvert(contact);
+    // Pre-select default board if available
+    const defaultBoard = kanbanBoards.find(b => b.is_default) || kanbanBoards[0];
+    if (defaultBoard) {
+      setSelectedBoardId(defaultBoard.id);
+      if (defaultBoard.stages.length > 0) {
+        setSelectedStageId(defaultBoard.stages[0].id);
+      }
+    }
+    setIsConvertDialogOpen(true);
+  };
+
+  // Confirm conversion with board/stage selection
+  const handleConfirmConvert = async () => {
+    if (!contactToConvert) return;
+    
+    const selectedBoard = kanbanBoards.find(b => b.id === selectedBoardId);
+    const selectedStage = selectedBoard?.stages.find(s => s.id === selectedStageId);
+    
+    await convertToLead(contactToConvert.id, {
+      board_id: selectedBoardId || null,
+      status: selectedStage?.name?.toLowerCase().replace(/\s+/g, '_') || 'new',
+    });
+    
+    setIsConvertDialogOpen(false);
+    setContactToConvert(null);
+    setSelectedBoardId('');
+    setSelectedStageId('');
   };
 
   // Selection handlers
@@ -2353,6 +2391,104 @@ export const ContactsManager: React.FC = () => {
         open={isLeadsManagerOpen}
         onOpenChange={setIsLeadsManagerOpen}
       />
+
+      {/* Convert to Lead Dialog */}
+      <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Converter em Lead
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Escolha em qual quadro Kanban o lead <strong>{contactToConvert?.full_name}</strong> deve ser criado:
+            </p>
+            
+            <div className="space-y-3">
+              <div>
+                <Label>Quadro Kanban</Label>
+                <Select
+                  value={selectedBoardId}
+                  onValueChange={(value) => {
+                    setSelectedBoardId(value);
+                    const board = kanbanBoards.find(b => b.id === value);
+                    if (board && board.stages.length > 0) {
+                      setSelectedStageId(board.stages[0].id);
+                    } else {
+                      setSelectedStageId('');
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um quadro" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kanbanBoards.map((board) => (
+                      <SelectItem key={board.id} value={board.id}>
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: board.color || '#3b82f6' }}
+                          />
+                          {board.name}
+                          {board.is_default && (
+                            <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedBoardId && (
+                <div>
+                  <Label>Estágio inicial</Label>
+                  <Select
+                    value={selectedStageId}
+                    onValueChange={setSelectedStageId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o estágio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kanbanBoards
+                        .find(b => b.id === selectedBoardId)
+                        ?.stages.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            <div className="flex items-center gap-2">
+                              <div 
+                                className="w-3 h-3 rounded-full" 
+                                style={{ backgroundColor: stage.color }}
+                              />
+                              {stage.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsConvertDialogOpen(false);
+                setContactToConvert(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmConvert}>
+              Converter
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
