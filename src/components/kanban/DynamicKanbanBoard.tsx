@@ -71,7 +71,7 @@ export function DynamicKanbanBoard({
   const [conversionValue, setConversionValue] = useState('');
   const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
-  const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string }[]>>({});
+  const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[]>>({});
 
   // Fetch contacts for all leads (using contact_leads junction + legacy lead_id)
   useEffect(() => {
@@ -93,7 +93,7 @@ export function DynamicKanbanBoard({
       // Fetch legacy contacts with lead_id
       const { data: legacyData, error: legacyError } = await supabase
         .from('contacts')
-        .select('id, lead_id, full_name')
+        .select('id, lead_id, full_name, phone, instagram_username')
         .in('lead_id', leadIds);
 
       if (legacyError) {
@@ -104,17 +104,17 @@ export function DynamicKanbanBoard({
       const junctionContactIds = (junctionData || []).map(j => j.contact_id);
       
       // Fetch contact names for junction contacts
-      let junctionContacts: { id: string; full_name: string }[] = [];
+      let junctionContacts: { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[] = [];
       if (junctionContactIds.length > 0) {
         const { data: contactsData } = await supabase
           .from('contacts')
-          .select('id, full_name')
+          .select('id, full_name, phone, instagram_username')
           .in('id', junctionContactIds);
         junctionContacts = contactsData || [];
       }
 
       // Build contacts map per lead
-      const contactsMap: Record<string, { id: string; full_name: string }[]> = {};
+      const contactsMap: Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[]> = {};
       const counts: Record<string, number> = {};
 
       // Add junction contacts
@@ -139,7 +139,12 @@ export function DynamicKanbanBoard({
           }
           // Avoid duplicates
           if (!contactsMap[contact.lead_id].some(c => c.id === contact.id)) {
-            contactsMap[contact.lead_id].push({ id: contact.id, full_name: contact.full_name });
+            contactsMap[contact.lead_id].push({ 
+              id: contact.id, 
+              full_name: contact.full_name,
+              phone: contact.phone,
+              instagram_username: contact.instagram_username
+            });
           }
         }
       });
@@ -539,10 +544,38 @@ export function DynamicKanbanBoard({
                                             </div>
                                           </TooltipTrigger>
                                           <TooltipContent side="bottom" className="max-w-xs">
-                                            <div className="space-y-1">
-                                              <p className="font-medium text-xs">Contatos vinculados:</p>
+                                            <div className="space-y-2">
+                                              <p className="font-medium text-xs border-b pb-1">Contatos vinculados:</p>
                                               {leadContacts[lead.id].map(c => (
-                                                <p key={c.id} className="text-xs">• {c.full_name}</p>
+                                                <div key={c.id} className="flex items-center justify-between gap-3 text-xs">
+                                                  <span className="font-medium">{c.full_name}</span>
+                                                  <div className="flex items-center gap-1">
+                                                    {c.phone && (
+                                                      <a
+                                                        href={`https://wa.me/${c.phone.replace(/\D/g, '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors"
+                                                        title={`WhatsApp: ${c.phone}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        <Phone className="h-3 w-3" />
+                                                      </a>
+                                                    )}
+                                                    {c.instagram_username && (
+                                                      <a
+                                                        href={`https://instagram.com/${c.instagram_username.replace('@', '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1 rounded hover:bg-pink-100 text-pink-600 transition-colors"
+                                                        title={`Instagram: @${c.instagram_username.replace('@', '')}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                      >
+                                                        <Instagram className="h-3 w-3" />
+                                                      </a>
+                                                    )}
+                                                  </div>
+                                                </div>
                                               ))}
                                             </div>
                                           </TooltipContent>
