@@ -10,10 +10,12 @@ import {
   MessageCircle, 
   Phone,
   Instagram,
-  Loader2
+  Loader2,
+  Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 
 interface CommentContactBadgesProps {
   contactData: CommentContactData;
@@ -26,6 +28,9 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
 }) => {
   const navigate = useNavigate();
   const { contact, linkedLeads, relationships, loading } = contactData;
+  const { classificationConfig } = useContactClassifications();
+  
+  const contactClassifications = contact?.classifications || [];
 
   if (loading) {
     return (
@@ -35,12 +40,16 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
     );
   }
 
-  if (!contact && linkedLeads.length === 0 && relationships.length === 0) {
+  if (!contact && linkedLeads.length === 0 && relationships.length === 0 && contactClassifications.length === 0) {
     return null;
   }
 
   const formatPhoneForWhatsApp = (phone: string) => {
     return phone.replace(/\D/g, '');
+  };
+
+  const getClassificationConfig = (name: string) => {
+    return classificationConfig[name] || { label: name, color: 'bg-gray-500' };
   };
 
   return (
@@ -182,6 +191,59 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            </HoverCardContent>
+          </HoverCard>
+        )}
+
+        {/* Contact Classifications - show directly on card */}
+        {contactClassifications.length > 0 && contactClassifications.slice(0, 2).map((classification, idx) => {
+          const config = getClassificationConfig(classification);
+          return (
+            <Badge 
+              key={`class-${idx}`}
+              variant="outline" 
+              className="text-xs gap-1 capitalize"
+              style={{ 
+                backgroundColor: `${config.color}15`, 
+                color: config.color.replace('bg-', '').includes('-') ? undefined : config.color,
+                borderColor: `${config.color}40`
+              }}
+            >
+              <Tag className="h-3 w-3" />
+              {config.label}
+            </Badge>
+          );
+        })}
+        
+        {/* Show "+X more" badge if more than 2 classifications */}
+        {contactClassifications.length > 2 && (
+          <HoverCard openDelay={200} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <Badge 
+                variant="outline" 
+                className="cursor-pointer text-xs bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 transition-colors"
+              >
+                +{contactClassifications.length - 2} tags
+              </Badge>
+            </HoverCardTrigger>
+            <HoverCardContent side="top" className="w-48 p-3">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Mais classificações:</p>
+                <div className="flex flex-wrap gap-1">
+                  {contactClassifications.slice(2).map((classification, idx) => {
+                    const config = getClassificationConfig(classification);
+                    return (
+                      <Badge 
+                        key={`class-more-${idx}`}
+                        variant="outline" 
+                        className="text-xs capitalize"
+                      >
+                        {config.label}
+                      </Badge>
+                    );
+                  })}
+                </div>
               </div>
             </HoverCardContent>
           </HoverCard>
