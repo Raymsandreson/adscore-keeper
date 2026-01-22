@@ -63,12 +63,13 @@ import {
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { toast } from 'sonner';
 
-const classificationConfig: Record<ContactClassification, { label: string; color: string; icon: React.ReactNode }> = {
+const classificationConfig: Record<NonNullable<ContactClassification> | 'none', { label: string; color: string; icon: React.ReactNode }> = {
   client: { label: 'Cliente', color: 'bg-green-500', icon: <UserCheck className="h-3 w-3" /> },
   non_client: { label: 'Não-Cliente', color: 'bg-gray-500', icon: <Users className="h-3 w-3" /> },
   prospect: { label: 'Prospect', color: 'bg-blue-500', icon: <UserPlus className="h-3 w-3" /> },
   partner: { label: 'Parceiro', color: 'bg-purple-500', icon: <Handshake className="h-3 w-3" /> },
   supplier: { label: 'Fornecedor', color: 'bg-orange-500', icon: <Package className="h-3 w-3" /> },
+  none: { label: 'Sem classificação', color: 'bg-slate-400', icon: <X className="h-3 w-3" /> },
 };
 
 const followerStatusConfig: Record<FollowerStatus, { label: string; color: string; icon: React.ReactNode }> = {
@@ -82,7 +83,7 @@ export const ContactsManager: React.FC = () => {
   const { contacts, stats, loading, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all'>('all');
+  const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
   const [filterTag, setFilterTag] = useState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -127,7 +128,8 @@ export const ContactsManager: React.FC = () => {
       contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       contact.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesFilter = filterClassification === 'all' || contact.classification === filterClassification;
+    const matchesFilter = filterClassification === 'all' || 
+      (filterClassification === 'none' ? contact.classification === null : contact.classification === filterClassification);
     
     // Tag filter using follower_status field
     let matchesTag = true;
@@ -375,7 +377,8 @@ export const ContactsManager: React.FC = () => {
     if (errors > 0) {
       toast.warning(`${updated} atualizados, ${errors} erros`);
     } else {
-      toast.success(`${updated} contatos classificados como ${classificationConfig[newClassification].label}!`);
+      const label = newClassification === null ? 'Sem classificação' : classificationConfig[newClassification].label;
+      toast.success(`${updated} contatos classificados como ${label}!`);
     }
   };
 
@@ -904,7 +907,7 @@ export const ContactsManager: React.FC = () => {
                     {Object.entries(classificationConfig).map(([key, config]) => (
                       <DropdownMenuItem
                         key={key}
-                        onClick={() => handleBatchClassification(key as ContactClassification)}
+                        onClick={() => handleBatchClassification(key === 'none' ? null : key as NonNullable<ContactClassification>)}
                       >
                         {config.icon}
                         <span className="ml-2">{config.label}</span>
@@ -1018,7 +1021,7 @@ export const ContactsManager: React.FC = () => {
                   </TableRow>
                 ) : (
                   filteredContacts.map((contact) => {
-                    const classConfig = classificationConfig[contact.classification];
+                    const classConfig = classificationConfig[contact.classification || 'none'];
                     const isSelected = selectedContacts.has(contact.id);
                     return (
                       <TableRow key={contact.id} className={isSelected ? 'bg-muted/50' : ''}>

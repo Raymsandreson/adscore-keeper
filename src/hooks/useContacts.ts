@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-export type ContactClassification = 'client' | 'non_client' | 'prospect' | 'partner' | 'supplier';
+export type ContactClassification = 'client' | 'non_client' | 'prospect' | 'partner' | 'supplier' | null;
 export type FollowerStatus = 'follower' | 'following' | 'mutual' | 'none';
 
 export interface Contact {
