@@ -85,6 +85,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          cep: string | null
           city: string | null
           classification: string | null
           converted_to_lead_at: string | null
@@ -96,13 +97,16 @@ export type Database = {
           instagram_url: string | null
           instagram_username: string | null
           lead_id: string | null
+          neighborhood: string | null
           notes: string | null
           phone: string | null
           state: string | null
+          street: string | null
           tags: string[] | null
           updated_at: string
         }
         Insert: {
+          cep?: string | null
           city?: string | null
           classification?: string | null
           converted_to_lead_at?: string | null
@@ -114,13 +118,16 @@ export type Database = {
           instagram_url?: string | null
           instagram_username?: string | null
           lead_id?: string | null
+          neighborhood?: string | null
           notes?: string | null
           phone?: string | null
           state?: string | null
+          street?: string | null
           tags?: string[] | null
           updated_at?: string
         }
         Update: {
+          cep?: string | null
           city?: string | null
           classification?: string | null
           converted_to_lead_at?: string | null
@@ -132,9 +139,11 @@ export type Database = {
           instagram_url?: string | null
           instagram_username?: string | null
           lead_id?: string | null
+          neighborhood?: string | null
           notes?: string | null
           phone?: string | null
           state?: string | null
+          street?: string | null
           tags?: string[] | null
           updated_at?: string
         }

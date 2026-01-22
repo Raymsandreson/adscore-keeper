@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import {
   Pagination,
@@ -69,8 +71,13 @@ import {
   Tag,
   ChevronDown,
   Eye,
+  Settings2,
+  MapPin,
+  Loader2,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useContactColumnVisibility } from '@/hooks/useContactColumnVisibility';
 import { toast } from 'sonner';
 import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfileHoverCard';
 
@@ -215,6 +222,8 @@ const followerStatusConfig: Record<FollowerStatus, { label: string; color: strin
 
 export const ContactsManager: React.FC = () => {
   const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
@@ -246,6 +255,10 @@ export const ContactsManager: React.FC = () => {
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const metaFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // State for edit dialog location fields
+  const [editCities, setEditCities] = useState<{ id: number; nome: string }[]>([]);
+  const [loadingEditCities, setLoadingEditCities] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -255,8 +268,36 @@ export const ContactsManager: React.FC = () => {
     classification: 'prospect' as ContactClassification,
     city: '',
     state: '',
+    neighborhood: '',
+    street: '',
+    cep: '',
     notes: '',
   });
+
+  // Fetch cities when editing contact's state changes
+  useEffect(() => {
+    if (editingContact?.state) {
+      setLoadingEditCities(true);
+      const state = states.find(s => s.sigla === editingContact.state);
+      if (state) {
+        fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.id}/municipios?orderBy=nome`)
+          .then(res => res.json())
+          .then(data => {
+            setEditCities(data);
+            setLoadingEditCities(false);
+          })
+          .catch(() => {
+            setEditCities([]);
+            setLoadingEditCities(false);
+          });
+      } else {
+        setEditCities([]);
+        setLoadingEditCities(false);
+      }
+    } else {
+      setEditCities([]);
+    }
+  }, [editingContact?.state, states]);
 
   // Fetch contacts with server-side pagination
   React.useEffect(() => {
@@ -326,6 +367,9 @@ export const ContactsManager: React.FC = () => {
       classification: 'prospect',
       city: '',
       state: '',
+      neighborhood: '',
+      street: '',
+      cep: '',
       notes: '',
     });
     setIsAddDialogOpen(false);
@@ -1047,10 +1091,84 @@ export const ContactsManager: React.FC = () => {
       <Card>
         <CardHeader className="py-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Contatos ({totalCount})
-            </CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Contatos ({totalCount})
+              </CardTitle>
+              
+              {/* Column visibility settings */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" title="Configurar colunas visíveis">
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuLabel>Colunas Visíveis</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.name}
+                    onCheckedChange={() => toggleColumn('name')}
+                  >
+                    Nome
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.phone}
+                    onCheckedChange={() => toggleColumn('phone')}
+                  >
+                    Telefone
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.email}
+                    onCheckedChange={() => toggleColumn('email')}
+                  >
+                    Email
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.instagram}
+                    onCheckedChange={() => toggleColumn('instagram')}
+                  >
+                    Instagram
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.followerStatus}
+                    onCheckedChange={() => toggleColumn('followerStatus')}
+                  >
+                    Status Seguidor
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.city}
+                    onCheckedChange={() => toggleColumn('city')}
+                  >
+                    Cidade
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.state}
+                    onCheckedChange={() => toggleColumn('state')}
+                  >
+                    Estado
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.classification}
+                    onCheckedChange={() => toggleColumn('classification')}
+                  >
+                    Classificação
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={visibility.status}
+                    onCheckedChange={() => toggleColumn('status')}
+                  >
+                    Status
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={resetToDefault}>
+                    Restaurar padrão
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            
             {selectedContacts.size > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="secondary">
@@ -1160,12 +1278,12 @@ export const ContactsManager: React.FC = () => {
                       aria-label="Selecionar todos"
                     />
                   </TableHead>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Instagram</TableHead>
-                  <TableHead>Localização</TableHead>
-                  <TableHead>Classificação</TableHead>
-                  <TableHead>Status</TableHead>
+                  {visibility.name && <TableHead>Nome</TableHead>}
+                  {(visibility.phone || visibility.email) && <TableHead>Contato</TableHead>}
+                  {(visibility.instagram || visibility.followerStatus) && <TableHead>Instagram</TableHead>}
+                  {(visibility.city || visibility.state) && <TableHead>Localização</TableHead>}
+                  {visibility.classification && <TableHead>Classificação</TableHead>}
+                  {visibility.status && <TableHead>Status</TableHead>}
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1195,118 +1313,128 @@ export const ContactsManager: React.FC = () => {
                             aria-label={`Selecionar ${contact.full_name}`}
                           />
                         </TableCell>
-                        <TableCell>
-                          <InlineEditableText
-                            value={contact.full_name}
-                            onSave={(value) => updateContact(contact.id, { full_name: value })}
-                            className="font-medium"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
+                        {visibility.name && (
+                          <TableCell>
                             <InlineEditableText
-                              value={contact.phone || ''}
-                              onSave={(value) => updateContact(contact.id, { phone: value || null })}
-                              placeholder="Telefone"
-                              className="text-xs"
-                              renderDisplay={(val) => val ? (
-                                <a 
-                                  href={`https://wa.me/55${val.replace(/\D/g, '')}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-green-600 hover:underline"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Phone className="h-3 w-3" />
-                                  {val}
-                                </a>
-                              ) : null}
+                              value={contact.full_name}
+                              onSave={(value) => updateContact(contact.id, { full_name: value })}
+                              className="font-medium"
                             />
-                            <InlineEditableText
-                              value={contact.email || ''}
-                              onSave={(value) => updateContact(contact.id, { email: value || null })}
-                              placeholder="Email"
-                              className="text-xs text-muted-foreground"
-                              renderDisplay={(val) => val ? (
-                                <span className="flex items-center gap-1">
-                                  <Mail className="h-3 w-3" />
-                                  {val}
-                                </span>
-                              ) : null}
+                          </TableCell>
+                        )}
+                        {(visibility.phone || visibility.email) && (
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              {visibility.phone && (
+                                <InlineEditableText
+                                  value={contact.phone || ''}
+                                  onSave={(value) => updateContact(contact.id, { phone: value || null })}
+                                  placeholder="Telefone"
+                                  className="text-xs"
+                                  renderDisplay={(val) => val ? (
+                                    <a 
+                                      href={`https://wa.me/55${val.replace(/\D/g, '')}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1 text-green-600 hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <Phone className="h-3 w-3" />
+                                      {val}
+                                    </a>
+                                  ) : null}
+                                />
+                              )}
+                              {visibility.email && (
+                                <InlineEditableText
+                                  value={contact.email || ''}
+                                  onSave={(value) => updateContact(contact.id, { email: value || null })}
+                                  placeholder="Email"
+                                  className="text-xs text-muted-foreground"
+                                  renderDisplay={(val) => val ? (
+                                    <span className="flex items-center gap-1">
+                                      <Mail className="h-3 w-3" />
+                                      {val}
+                                    </span>
+                                  ) : null}
+                                />
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                        {(visibility.instagram || visibility.followerStatus) && (
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              {visibility.instagram && (
+                                <>
+                                  {contact.instagram_username ? (
+                                    <div className="flex items-center gap-2">
+                                      <InstagramProfileHoverCard 
+                                        username={contact.instagram_username}
+                                        className="text-pink-500 text-sm"
+                                      >
+                                        <Instagram className="h-3 w-3" />
+                                        <span>@{contact.instagram_username}</span>
+                                      </InstagramProfileHoverCard>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        asChild
+                                      >
+                                        <a
+                                          href={`https://instagram.com/${contact.instagram_username}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="Abrir perfil no Instagram"
+                                        >
+                                          <Eye className="h-3 w-3 text-pink-500" />
+                                        </a>
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">-</span>
+                                  )}
+                                </>
+                              )}
+                              {/* Follower Status Badge */}
+                              {visibility.followerStatus && contact.follower_status && contact.follower_status !== 'none' && (
+                                <Badge className={`${followerStatusConfig[contact.follower_status].color} text-white text-xs w-fit`}>
+                                  {followerStatusConfig[contact.follower_status].icon}
+                                  <span className="ml-1">{followerStatusConfig[contact.follower_status].label}</span>
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
+                        {(visibility.city || visibility.state) && (
+                          <TableCell>
+                            <div className="flex gap-1 text-xs text-muted-foreground">
+                              {visibility.city && (contact.city || '-')}
+                              {visibility.city && visibility.state && ', '}
+                              {visibility.state && (contact.state || '-')}
+                            </div>
+                          </TableCell>
+                        )}
+                        {visibility.classification && (
+                          <TableCell>
+                            <InlineClassificationSelect
+                              value={contact.classification}
+                              onChange={(value) => updateContact(contact.id, { classification: value })}
                             />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            {contact.instagram_username ? (
-                              <div className="flex items-center gap-2">
-                                <InstagramProfileHoverCard 
-                                  username={contact.instagram_username}
-                                  className="text-pink-500 text-sm"
-                                >
-                                  <Instagram className="h-3 w-3" />
-                                  <span>@{contact.instagram_username}</span>
-                                </InstagramProfileHoverCard>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  asChild
-                                >
-                                  <a
-                                    href={`https://instagram.com/${contact.instagram_username}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    title="Abrir perfil no Instagram"
-                                  >
-                                    <Eye className="h-3 w-3 text-pink-500" />
-                                  </a>
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">-</span>
-                            )}
-                            {/* Follower Status Badge */}
-                            {contact.follower_status && contact.follower_status !== 'none' && (
-                              <Badge className={`${followerStatusConfig[contact.follower_status].color} text-white text-xs w-fit`}>
-                                {followerStatusConfig[contact.follower_status].icon}
-                                <span className="ml-1">{followerStatusConfig[contact.follower_status].label}</span>
+                          </TableCell>
+                        )}
+                        {visibility.status && (
+                          <TableCell>
+                            {contact.lead_id ? (
+                              <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs">
+                                Lead
                               </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Contato</span>
                             )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <InlineEditableText
-                              value={contact.city || ''}
-                              onSave={(value) => updateContact(contact.id, { city: value || null })}
-                              placeholder="Cidade"
-                              className="text-xs text-muted-foreground"
-                            />
-                            <span className="text-muted-foreground">,</span>
-                            <InlineEditableText
-                              value={contact.state || ''}
-                              onSave={(value) => updateContact(contact.id, { state: value || null })}
-                              placeholder="UF"
-                              className="text-xs text-muted-foreground w-8"
-                            />
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <InlineClassificationSelect
-                            value={contact.classification}
-                            onChange={(value) => updateContact(contact.id, { classification: value })}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {contact.lead_id ? (
-                            <Badge variant="outline" className="text-emerald-500 border-emerald-500/50 text-xs">
-                              Lead
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">Contato</span>
-                          )}
-                        </TableCell>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -1438,7 +1566,7 @@ export const ContactsManager: React.FC = () => {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Contato</DialogTitle>
           </DialogHeader>
@@ -1475,20 +1603,89 @@ export const ContactsManager: React.FC = () => {
                   onChange={(e) => setEditingContact({ ...editingContact, instagram_url: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Cidade</Label>
-                  <Input
-                    value={editingContact.city || ''}
-                    onChange={(e) => setEditingContact({ ...editingContact, city: e.target.value })}
-                  />
+              
+              {/* Location with cascading selects */}
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Localização
+                </Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Estado</Label>
+                    <Select
+                      value={editingContact.state || ''}
+                      onValueChange={(value) => {
+                        setEditingContact({ 
+                          ...editingContact, 
+                          state: value,
+                          city: '' // Reset city when state changes
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {states.map((state) => (
+                          <SelectItem key={state.sigla} value={state.sigla}>
+                            {state.nome} ({state.sigla})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Cidade</Label>
+                    <Select
+                      value={editingContact.city || ''}
+                      onValueChange={(value) => setEditingContact({ ...editingContact, city: value })}
+                      disabled={!editingContact.state || loadingEditCities}
+                    >
+                      <SelectTrigger>
+                        {loadingEditCities ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Carregando...</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder={editingContact.state ? "Selecione a cidade" : "Primeiro selecione o estado"} />
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        {editCities.map((city) => (
+                          <SelectItem key={city.id} value={city.nome}>
+                            {city.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <Label className="text-xs text-muted-foreground">Bairro</Label>
+                    <Input
+                      value={(editingContact as any).neighborhood || ''}
+                      onChange={(e) => setEditingContact({ ...editingContact, neighborhood: e.target.value } as any)}
+                      placeholder="Bairro"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">CEP</Label>
+                    <Input
+                      value={(editingContact as any).cep || ''}
+                      onChange={(e) => setEditingContact({ ...editingContact, cep: e.target.value } as any)}
+                      placeholder="00000-000"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <Label>Estado</Label>
+                  <Label className="text-xs text-muted-foreground">Rua</Label>
                   <Input
-                    value={editingContact.state || ''}
-                    onChange={(e) => setEditingContact({ ...editingContact, state: e.target.value })}
-                    maxLength={2}
+                    value={(editingContact as any).street || ''}
+                    onChange={(e) => setEditingContact({ ...editingContact, street: e.target.value } as any)}
+                    placeholder="Rua, número, complemento"
                   />
                 </div>
               </div>
