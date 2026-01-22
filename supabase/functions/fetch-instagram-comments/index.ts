@@ -178,9 +178,86 @@ serve(async (req) => {
       console.log("⚠️ Não foi possível buscar menções:", mentionErr);
     }
 
-    // Combine all comments and mentions
-    const allData = [...allComments, ...mentions];
-    console.log(`📊 Total (comentários + menções): ${allData.length}`);
+    // Fetch replies to comments we made (outbound prospecting responses)
+    const outboundReplies: any[] = [];
+    try {
+      console.log("📤 Buscando respostas aos seus comentários em posts de terceiros...");
+      
+      // Get recent comments made by this account (our outbound comments)
+      const outboundResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/recently_searched_hashtags?access_token=${token}`
+      );
+      
+      // The Graph API doesn't have a direct endpoint for "comments I made on other posts"
+      // However, we can track replies to our comments through the mentioned_media endpoint
+      const mentionedMediaResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_media?fields=id,permalink,caption,timestamp,comments{id,text,timestamp,username,replies{id,text,timestamp,username}}&limit=25&access_token=${token}`
+      );
+      const mentionedMediaData = await mentionedMediaResponse.json();
+      
+      if (mentionedMediaData.error) {
+        console.log("⚠️ Erro ao buscar mídia mencionada:", mentionedMediaData.error.message);
+      } else if (mentionedMediaData.data) {
+        console.log(`📤 Mídias com menções encontradas: ${mentionedMediaData.data.length}`);
+        
+        for (const media of mentionedMediaData.data) {
+          if (media.comments?.data) {
+            for (const comment of media.comments.data) {
+              // Check if this comment is from us or a reply to us
+              const isOurComment = myUsername && comment.username?.toLowerCase() === myUsername.toLowerCase();
+              
+              if (isOurComment) {
+                // This is our comment - add it as "sent" on third-party
+                outboundReplies.push({
+                  comment_id: comment.id,
+                  comment_text: comment.text,
+                  author_username: comment.username,
+                  created_at: comment.timestamp,
+                  post_id: media.id,
+                  post_url: media.permalink,
+                  comment_type: "sent",
+                  metadata: {
+                    is_third_party: true,
+                    post_caption: media.caption
+                  }
+                });
+                
+                // Add replies to our comment as prospects
+                if (comment.replies?.data) {
+                  for (const reply of comment.replies.data) {
+                    const isOurReply = myUsername && reply.username?.toLowerCase() === myUsername.toLowerCase();
+                    
+                    outboundReplies.push({
+                      comment_id: reply.id,
+                      comment_text: reply.text,
+                      author_username: reply.username,
+                      created_at: reply.timestamp,
+                      post_id: media.id,
+                      post_url: media.permalink,
+                      comment_type: isOurReply ? "sent" : "reply_to_outbound",
+                      parent_comment_id: comment.id,
+                      metadata: {
+                        is_third_party: true,
+                        is_prospect_reply: !isOurReply,
+                        original_comment: comment.text?.slice(0, 100)
+                      }
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`📤 Respostas outbound encontradas: ${outboundReplies.length}`);
+    } catch (outboundErr) {
+      console.log("⚠️ Não foi possível buscar respostas outbound:", outboundErr);
+    }
+
+    // Combine all comments, mentions, and outbound replies
+    const allData = [...allComments, ...mentions, ...outboundReplies];
+    console.log(`📊 Total (comentários + menções + outbound): ${allData.length}`);
 
     return new Response(
       JSON.stringify({ 
@@ -189,6 +266,7 @@ serve(async (req) => {
         total: allData.length,
         commentsCount: allComments.length,
         mentionsCount: mentions.length,
+        outboundRepliesCount: outboundReplies.length,
         instagramAccountId: igAccountId
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
