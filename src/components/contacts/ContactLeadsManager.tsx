@@ -6,8 +6,16 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -29,6 +37,7 @@ import {
   Loader2,
   ExternalLink,
   UserPlus,
+  FileText,
 } from 'lucide-react';
 import { useContactLeads, useSearchLeads } from '@/hooks/useContactLeads';
 import { useContactBridges } from '@/hooks/useContactBridges';
@@ -52,6 +61,9 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showBridges, setShowBridges] = useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [selectedLeadToLink, setSelectedLeadToLink] = useState<any>(null);
+  const [linkNotes, setLinkNotes] = useState('');
 
   const handleCreateNewLead = () => {
     // Build query params with contact data pre-filled
@@ -87,9 +99,19 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
     }
   }, [showBridges, contact?.id, findBridgesForContact]);
 
-  const handleLinkLead = async (leadId: string) => {
-    await linkLead(leadId);
+  const openLinkDialog = (lead: any) => {
+    setSelectedLeadToLink(lead);
+    setLinkNotes('');
+    setLinkDialogOpen(true);
+  };
+
+  const handleConfirmLink = async () => {
+    if (!selectedLeadToLink) return;
+    await linkLead(selectedLeadToLink.id, linkNotes || undefined);
     setSearchQuery('');
+    setLinkDialogOpen(false);
+    setSelectedLeadToLink(null);
+    setLinkNotes('');
   };
 
   if (!contact) return null;
@@ -146,7 +168,7 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
                       <div
                         key={lead.id}
                         className="p-3 hover:bg-muted/50 flex items-center justify-between cursor-pointer"
-                        onClick={() => handleLinkLead(lead.id)}
+                        onClick={() => openLinkDialog(lead)}
                       >
                         <div>
                           <p className="font-medium text-sm">{lead.lead_name || 'Sem nome'}</p>
@@ -218,7 +240,7 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleLinkLead(suggestion.leadId)}
+                        onClick={() => openLinkDialog({ id: suggestion.leadId, lead_name: suggestion.leadName })}
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
@@ -278,10 +300,23 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
                               </span>
                             )}
                           </div>
-                          {link.lead?.status && (
-                            <Badge variant="outline" className="text-xs mt-1">
-                              {link.lead.status}
-                            </Badge>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {link.lead?.status && (
+                              <Badge variant="outline" className="text-xs">
+                                {link.lead.status}
+                              </Badge>
+                            )}
+                            {link.notes && (
+                              <Badge variant="secondary" className="text-xs gap-1">
+                                <FileText className="h-3 w-3" />
+                                Obs
+                              </Badge>
+                            )}
+                          </div>
+                          {link.notes && (
+                            <p className="text-xs text-muted-foreground mt-1 italic">
+                              "{link.notes}"
+                            </p>
                           )}
                         </div>
                         <DropdownMenu>
@@ -315,6 +350,53 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
           </div>
         </div>
       </SheetContent>
+
+      {/* Dialog para adicionar observações ao vincular */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Vincular Lead
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-muted/50 rounded-lg p-3">
+              <p className="font-medium text-sm">
+                {selectedLeadToLink?.lead_name || 'Lead sem nome'}
+              </p>
+              {selectedLeadToLink?.city && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                  <MapPin className="h-3 w-3" />
+                  {selectedLeadToLink.city}{selectedLeadToLink.state && `, ${selectedLeadToLink.state}`}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Observações (opcional)
+              </label>
+              <Textarea
+                placeholder="Descreva a relação entre o contato e este lead..."
+                value={linkNotes}
+                onChange={(e) => setLinkNotes(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Ex: "Cliente indicado por este contato", "Parceiro de negócios", etc.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmLink}>
+              Vincular Lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 };
