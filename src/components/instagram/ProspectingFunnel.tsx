@@ -42,6 +42,7 @@ import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fn
 import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -59,22 +60,6 @@ interface Prospect {
   post_url: string | null;
   prospect_classification: string[] | null;
 }
-
-type ClassificationKey = 'prospect' | 'client' | 'closer' | 'sdr' | 'team' | 'other';
-
-const CLASSIFICATIONS: { key: ClassificationKey | null; label: string; color: string; bgColor: string }[] = [
-  { key: null, label: 'Sem classificação', color: 'text-gray-600', bgColor: 'bg-gray-100' },
-  { key: 'prospect', label: 'Prospecto', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  { key: 'client', label: 'Cliente', color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
-  { key: 'closer', label: 'Acolhedor', color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  { key: 'sdr', label: 'SDR', color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  { key: 'team', label: 'Equipe', color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  { key: 'other', label: 'Outro', color: 'text-slate-600', bgColor: 'bg-slate-100' },
-];
-
-const getClassificationConfig = (classification: string | null) => {
-  return CLASSIFICATIONS.find(c => c.key === classification) || CLASSIFICATIONS[0];
-};
 
 const FUNNEL_STAGES: { key: FunnelStage; label: string; icon: React.ReactNode; color: string; bgColor: string; defaultAlertDays: number }[] = [
   { key: 'comment', label: 'Comentário', icon: <MessageSquare className="h-4 w-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100', defaultAlertDays: 2 },
@@ -98,14 +83,12 @@ const getDefaultAlertConfig = (): StageAlertConfig => {
 };
 
 const getDefaultVisibleClassifications = (): VisibleClassifications => {
+  // Default: show null (no classification) and common system classifications
   return {
     'null': true, // Sem classificação
-    'prospect': true,
     'client': true,
-    'closer': false,
-    'sdr': false,
-    'team': false,
-    'other': true,
+    'prospect': true,
+    'partner': true,
   };
 };
 
@@ -132,6 +115,34 @@ export function ProspectingFunnel() {
     const saved = localStorage.getItem('prospecting-visible-classifications');
     return saved ? JSON.parse(saved) : getDefaultVisibleClassifications();
   });
+
+  // Use dynamic classifications from database
+  const { classifications: dbClassifications, classificationConfig } = useContactClassifications();
+
+  // Build CLASSIFICATIONS array from database
+  const CLASSIFICATIONS = useMemo(() => {
+    const items: { key: string | null; label: string; color: string; bgColor: string }[] = [
+      { key: null, label: 'Sem classificação', color: 'text-gray-600', bgColor: 'bg-gray-100' },
+    ];
+    
+    dbClassifications.forEach(c => {
+      const colorBase = c.color.replace('bg-', '').replace('-500', '');
+      items.push({
+        key: c.name,
+        label: classificationConfig[c.name]?.label || c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        color: `text-${colorBase}-600`,
+        bgColor: `bg-${colorBase}-100`,
+      });
+    });
+    
+    return items;
+  }, [dbClassifications, classificationConfig]);
+
+  // Helper to get classification config
+  const getClassificationConfig = (classification: string | null) => {
+    if (!classification) return CLASSIFICATIONS[0];
+    return CLASSIFICATIONS.find(c => c.key === classification) || CLASSIFICATIONS[0];
+  };
 
   // Save configs to localStorage
   useEffect(() => {

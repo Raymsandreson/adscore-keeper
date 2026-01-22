@@ -51,21 +51,13 @@ import {
 } from 'lucide-react';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadContacts, LeadContact } from '@/hooks/useLeadContacts';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 
 interface LeadContactsManagerProps {
   lead: Lead | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const CONTACT_CLASSIFICATIONS = [
-  { value: 'victim', label: 'Vítima', color: 'bg-red-100 text-red-700' },
-  { value: 'family', label: 'Familiar', color: 'bg-blue-100 text-blue-700' },
-  { value: 'lawyer', label: 'Advogado Parceiro', color: 'bg-purple-100 text-purple-700' },
-  { value: 'witness', label: 'Testemunha', color: 'bg-amber-100 text-amber-700' },
-  { value: 'referral', label: 'Indicação', color: 'bg-green-100 text-green-700' },
-  { value: 'other', label: 'Outro', color: 'bg-gray-100 text-gray-700' },
-];
 
 export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsManagerProps) {
   const [activeTab, setActiveTab] = useState<'contacts' | 'add' | 'link'>('contacts');
@@ -78,7 +70,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
   const [formPhone, setFormPhone] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formInstagram, setFormInstagram] = useState('');
-  const [formClassification, setFormClassification] = useState('other');
+  const [formClassification, setFormClassification] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
   const {
@@ -92,6 +84,27 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     fetchUnlinkedContacts,
   } = useLeadContacts(lead?.id);
 
+  // Use dynamic classifications from database
+  const { classifications, classificationConfig } = useContactClassifications();
+
+  // Helper to get label for a classification
+  const getClassificationLabel = (name: string): string => {
+    if (!name) return 'Sem classificação';
+    return classificationConfig[name]?.label || name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // Helper to get color for a classification
+  const getClassificationColor = (name: string | null): string => {
+    if (!name) return 'bg-slate-100 text-slate-600';
+    const config = classificationConfig[name];
+    if (config?.color) {
+      // Convert bg-xxx-500 to bg-xxx-100 text-xxx-700 for badge styling
+      const colorBase = config.color.replace('bg-', '').replace('-500', '');
+      return `bg-${colorBase}-100 text-${colorBase}-700`;
+    }
+    return 'bg-gray-100 text-gray-700';
+  };
+
   // Search unlinked contacts
   useEffect(() => {
     if (activeTab === 'link') {
@@ -104,7 +117,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     setFormPhone('');
     setFormEmail('');
     setFormInstagram('');
-    setFormClassification('other');
+    setFormClassification('');
     setFormNotes('');
     setEditingContact(null);
   };
@@ -117,7 +130,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       phone: formPhone || null,
       email: formEmail || null,
       instagram_username: formInstagram || null,
-      classification: formClassification,
+      classification: formClassification || null,
       notes: formNotes || null,
     });
 
@@ -133,7 +146,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       phone: formPhone || null,
       email: formEmail || null,
       instagram_username: formInstagram || null,
-      classification: formClassification,
+      classification: formClassification || null,
       notes: formNotes || null,
     });
 
@@ -146,7 +159,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
     setFormPhone(contact.phone || '');
     setFormEmail(contact.email || '');
     setFormInstagram(contact.instagram_username || '');
-    setFormClassification(contact.classification || 'other');
+    setFormClassification(contact.classification || '');
     setFormNotes(contact.notes || '');
     setActiveTab('add');
   };
@@ -166,9 +179,7 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
       .slice(0, 2);
   };
 
-  const getClassificationConfig = (classification: string | null) => {
-    return CONTACT_CLASSIFICATIONS.find(c => c.value === classification) || CONTACT_CLASSIFICATIONS[5];
-  };
+  // This function is no longer needed, using getClassificationLabel and getClassificationColor instead
 
   if (!lead) return null;
 
@@ -219,8 +230,6 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
               ) : (
                 <div className="space-y-3">
                   {contacts.map((contact) => {
-                    const classConfig = getClassificationConfig(contact.classification);
-                    
                     return (
                       <Card key={contact.id}>
                         <CardContent className="p-3">
@@ -236,8 +245,8 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                                 <p className="font-medium text-sm truncate">
                                   {contact.full_name}
                                 </p>
-                                <Badge variant="secondary" className={`text-xs ${classConfig.color}`}>
-                                  {classConfig.label}
+                                <Badge variant="secondary" className={`text-xs ${getClassificationColor(contact.classification)}`}>
+                                  {getClassificationLabel(contact.classification || '')}
                                 </Badge>
                               </div>
                               
@@ -339,12 +348,13 @@ export function LeadContactsManager({ lead, open, onOpenChange }: LeadContactsMa
                   <Label>Classificação</Label>
                   <Select value={formClassification} onValueChange={setFormClassification}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {CONTACT_CLASSIFICATIONS.map((c) => (
-                        <SelectItem key={c.value} value={c.value}>
-                          {c.label}
+                      <SelectItem value="">Sem classificação</SelectItem>
+                      {classifications.map((c) => (
+                        <SelectItem key={c.id} value={c.name}>
+                          {getClassificationLabel(c.name)}
                         </SelectItem>
                       ))}
                     </SelectContent>
