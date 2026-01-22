@@ -1023,6 +1023,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 <CommentContactBadges 
                                   contactData={getContactData(comment.author_username)}
                                   username={comment.author_username}
+                                  onLeadStatusChanged={refetchContactData}
                                 />
                               </div>
                               <p className="text-sm">{comment.comment_text}</p>
