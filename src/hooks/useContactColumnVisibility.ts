@@ -10,6 +10,7 @@ export interface ContactColumnVisibility {
   state: boolean;
   classification: boolean;
   status: boolean;
+  leads: boolean;
 }
 
 const DEFAULT_VISIBILITY: ContactColumnVisibility = {
@@ -22,6 +23,7 @@ const DEFAULT_VISIBILITY: ContactColumnVisibility = {
   state: true,
   classification: true,
   status: true,
+  leads: true,
 };
 
 const STORAGE_KEY = 'contact_column_visibility';
