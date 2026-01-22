@@ -37,6 +37,7 @@ export interface ContactStats {
 
 export const useContacts = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<ContactStats>({
     total: 0,
@@ -49,21 +50,59 @@ export const useContacts = () => {
     convertedToLead: 0,
   });
 
-  const fetchContacts = useCallback(async () => {
+  // Fetch contacts with server-side pagination
+  const fetchContacts = useCallback(async (page = 1, pageSize = 50, filters?: {
+    search?: string;
+    classification?: string;
+    followerStatus?: string;
+  }) => {
     setLoading(true);
     try {
-      // Fetch all contacts without the default 1000 row limit
-      const { data, error } = await supabase
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      let query = supabase
         .from('contacts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10000);
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false });
+
+      // Apply filters if provided
+      if (filters?.search) {
+        const search = `%${filters.search}%`;
+        query = query.or(`full_name.ilike.${search},phone.ilike.${search},email.ilike.${search},instagram_username.ilike.${search}`);
+      }
+
+      if (filters?.classification && filters.classification !== 'all') {
+        if (filters.classification === 'none') {
+          query = query.is('classification', null);
+        } else {
+          query = query.eq('classification', filters.classification);
+        }
+      }
+
+      if (filters?.followerStatus && filters.followerStatus !== 'all') {
+        if (filters.followerStatus === 'mutual') {
+          query = query.eq('follower_status', 'mutual');
+        } else if (filters.followerStatus === 'seguidor') {
+          query = query.in('follower_status', ['follower', 'mutual']);
+        } else if (filters.followerStatus === 'seguindo') {
+          query = query.in('follower_status', ['following', 'mutual']);
+        }
+      }
+
+      // Apply pagination
+      query = query.range(from, to);
+
+      const { data, error, count } = await query;
 
       if (error) throw error;
 
       const typedContacts = (data || []) as Contact[];
       setContacts(typedContacts);
-      calculateStats(typedContacts);
+      setTotalCount(count || 0);
+
+      // Fetch stats separately (without pagination)
+      await fetchStats();
     } catch (error) {
       console.error('Error fetching contacts:', error);
       toast.error('Erro ao carregar contatos');
@@ -72,26 +111,65 @@ export const useContacts = () => {
     }
   }, []);
 
-  const calculateStats = (contactsData: Contact[]) => {
-    const total = contactsData.length;
-    const clients = contactsData.filter(c => c.classification === 'client').length;
-    const nonClients = contactsData.filter(c => c.classification === 'non_client').length;
-    const prospects = contactsData.filter(c => c.classification === 'prospect').length;
-    const partners = contactsData.filter(c => c.classification === 'partner').length;
-    const suppliers = contactsData.filter(c => c.classification === 'supplier').length;
-    const withInstagram = contactsData.filter(c => c.instagram_username || c.instagram_url).length;
-    const convertedToLead = contactsData.filter(c => c.lead_id).length;
+  // Fetch stats separately for accuracy
+  const fetchStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('classification, instagram_username, instagram_url, lead_id, follower_status');
 
-    setStats({
-      total,
-      clients,
-      nonClients,
-      prospects,
-      partners,
-      suppliers,
-      withInstagram,
-      convertedToLead,
-    });
+      if (error) throw error;
+
+      const contactsData = (data || []) as Pick<Contact, 'classification' | 'instagram_username' | 'instagram_url' | 'lead_id' | 'follower_status'>[];
+      
+      const total = contactsData.length;
+      const clients = contactsData.filter(c => c.classification === 'client').length;
+      const nonClients = contactsData.filter(c => c.classification === 'non_client').length;
+      const prospects = contactsData.filter(c => c.classification === 'prospect').length;
+      const partners = contactsData.filter(c => c.classification === 'partner').length;
+      const suppliers = contactsData.filter(c => c.classification === 'supplier').length;
+      const withInstagram = contactsData.filter(c => c.instagram_username || c.instagram_url).length;
+      const convertedToLead = contactsData.filter(c => c.lead_id).length;
+
+      setStats({
+        total,
+        clients,
+        nonClients,
+        prospects,
+        partners,
+        suppliers,
+        withInstagram,
+        convertedToLead,
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  // Tag stats based on follower_status - need separate query for full dataset
+  const [tagStats, setTagStats] = useState({
+    seguidores: 0,
+    seguindo: 0,
+    mutuos: 0,
+  });
+
+  const fetchTagStats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('follower_status');
+
+      if (error) throw error;
+
+      const contactsData = data || [];
+      setTagStats({
+        seguidores: contactsData.filter(c => c.follower_status === 'follower' || c.follower_status === 'mutual').length,
+        seguindo: contactsData.filter(c => c.follower_status === 'following' || c.follower_status === 'mutual').length,
+        mutuos: contactsData.filter(c => c.follower_status === 'mutual').length,
+      });
+    } catch (error) {
+      console.error('Error fetching tag stats:', error);
+    }
   };
 
   // Helper to determine follower_status from tags
@@ -454,13 +532,18 @@ export const useContacts = () => {
 
   useEffect(() => {
     fetchContacts();
+    fetchTagStats();
   }, [fetchContacts]);
 
   return {
     contacts,
+    totalCount,
     stats,
+    tagStats,
     loading,
     fetchContacts,
+    fetchStats,
+    fetchTagStats,
     addContact,
     updateContact,
     deleteContact,

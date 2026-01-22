@@ -89,7 +89,7 @@ const followerStatusConfig: Record<FollowerStatus, { label: string; color: strin
 };
 
 export const ContactsManager: React.FC = () => {
-  const { contacts, stats, loading, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
+  const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
@@ -133,46 +133,23 @@ export const ContactsManager: React.FC = () => {
     notes: '',
   });
 
-  // Calculate tag stats based on follower_status field
-  const tagStats = {
-    seguidores: contacts.filter(c => c.follower_status === 'follower' || c.follower_status === 'mutual').length,
-    seguindo: contacts.filter(c => c.follower_status === 'following' || c.follower_status === 'mutual').length,
-    mutuos: contacts.filter(c => c.follower_status === 'mutual').length,
-  };
-
-  const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = 
-      contact.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contact.phone?.includes(searchTerm) ||
-      contact.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contact.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFilter = filterClassification === 'all' || 
-      (filterClassification === 'none' ? contact.classification === null : contact.classification === filterClassification);
-    
-    // Tag filter using follower_status field
-    let matchesTag = true;
-    if (filterTag === 'seguidor') {
-      matchesTag = contact.follower_status === 'follower' || contact.follower_status === 'mutual';
-    } else if (filterTag === 'seguindo') {
-      matchesTag = contact.follower_status === 'following' || contact.follower_status === 'mutual';
-    } else if (filterTag === 'mutual') {
-      matchesTag = contact.follower_status === 'mutual';
-    }
-    
-    return matchesSearch && matchesFilter && matchesTag;
-  });
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedContacts = filteredContacts.slice(startIndex, endIndex);
+  // Fetch contacts with server-side pagination
+  React.useEffect(() => {
+    const filters = {
+      search: searchTerm || undefined,
+      classification: filterClassification !== 'all' ? filterClassification : undefined,
+      followerStatus: filterTag !== 'all' ? filterTag : undefined,
+    };
+    fetchContacts(currentPage, itemsPerPage, filters);
+  }, [currentPage, itemsPerPage, searchTerm, filterClassification, filterTag, fetchContacts]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterClassification, filterTag]);
+
+  // Pagination calculations (server-side)
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
 
   // Generate page numbers for pagination
   const getPageNumbers = () => {
@@ -370,10 +347,10 @@ export const ContactsManager: React.FC = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedContacts.size === filteredContacts.length) {
+    if (selectedContacts.size === contacts.length) {
       setSelectedContacts(new Set());
     } else {
-      setSelectedContacts(new Set(filteredContacts.map(c => c.id)));
+      setSelectedContacts(new Set(contacts.map(c => c.id)));
     }
   };
 
@@ -947,7 +924,7 @@ export const ContactsManager: React.FC = () => {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Contatos ({filteredContacts.length})
+              Contatos ({totalCount})
             </CardTitle>
             {selectedContacts.size > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
@@ -1053,7 +1030,7 @@ export const ContactsManager: React.FC = () => {
                 <TableRow>
                   <TableHead className="w-[40px]">
                     <Checkbox
-                      checked={filteredContacts.length > 0 && selectedContacts.size === filteredContacts.length}
+                      checked={contacts.length > 0 && selectedContacts.size === contacts.length}
                       onCheckedChange={toggleSelectAll}
                       aria-label="Selecionar todos"
                     />
@@ -1074,14 +1051,14 @@ export const ContactsManager: React.FC = () => {
                       Carregando...
                     </TableCell>
                   </TableRow>
-                ) : filteredContacts.length === 0 ? (
+                ) : contacts.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Nenhum contato encontrado
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedContacts.map((contact) => {
+                  contacts.map((contact) => {
                     const classConfig = classificationConfig[contact.classification || 'none'];
                     const isSelected = selectedContacts.has(contact.id);
                     return (
@@ -1231,7 +1208,7 @@ export const ContactsManager: React.FC = () => {
             <div className="flex items-center justify-between px-4 py-3 border-t">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>
-                  Mostrando {startIndex + 1}-{Math.min(endIndex, filteredContacts.length)} de {filteredContacts.length}
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, totalCount)} de {totalCount}
                 </span>
                 <Select
                   value={itemsPerPage.toString()}
