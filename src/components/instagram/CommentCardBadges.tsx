@@ -332,11 +332,9 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                           checked={isSelected}
                           className="pointer-events-none"
                         />
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: classification.color }}
+                        <div className={`w-3 h-3 rounded-full ${classification.color}`}
                         />
-                        <span className="text-sm flex-1">{classification.name}</span>
+                        <span className="text-sm flex-1">{getClassificationConfig(classification.name).label}</span>
                       </div>
                     );
                   })}
