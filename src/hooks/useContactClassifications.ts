@@ -9,6 +9,7 @@ export interface ContactClassificationRecord {
   icon: string;
   display_order: number;
   is_system: boolean;
+  show_in_workflow: boolean;
   created_at: string;
 }
 
@@ -52,7 +53,7 @@ export const useContactClassifications = () => {
     }
   }, []);
 
-  const addClassification = async (name: string, color: string = 'bg-gray-500') => {
+  const addClassification = async (name: string, color: string = 'bg-gray-500', showInWorkflow: boolean = true) => {
     if (!name.trim()) {
       toast.error('Nome da classificação é obrigatório');
       return null;
@@ -75,7 +76,8 @@ export const useContactClassifications = () => {
           name: name.toLowerCase().trim().replace(/\s+/g, '_'),
           color,
           display_order: classifications.length + 1,
-          is_system: false
+          is_system: false,
+          show_in_workflow: showInWorkflow
         }])
         .select()
         .single();
@@ -98,7 +100,7 @@ export const useContactClassifications = () => {
     }
   };
 
-  const updateClassification = async (id: string, updates: Partial<Pick<ContactClassificationRecord, 'name' | 'color'>>) => {
+  const updateClassification = async (id: string, updates: Partial<Pick<ContactClassificationRecord, 'name' | 'color' | 'show_in_workflow'>>) => {
     try {
       const { error } = await (supabase as any)
         .from('contact_classifications')
@@ -146,10 +148,11 @@ export const useContactClassifications = () => {
              c.name === 'supplier' ? 'Fornecedor' :
              c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
       color: c.color,
-      isSystem: c.is_system
+      isSystem: c.is_system,
+      showInWorkflow: c.show_in_workflow
     };
     return acc;
-  }, {} as Record<string, { label: string; color: string; isSystem: boolean }>);
+  }, {} as Record<string, { label: string; color: string; isSystem: boolean; showInWorkflow: boolean }>);
 
   return {
     classifications,

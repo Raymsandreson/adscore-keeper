@@ -34,13 +34,17 @@ import {
   Bot,
   Sparkles,
   TrendingUp,
-  Target
+  Target,
+  Settings,
+  Filter
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
 import { CommentContactBadges } from "./CommentContactBadges";
 import { QuickLinkLeadPopover } from "./QuickLinkLeadPopover";
 import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
+import { ClassificationWorkflowSettings } from "./ClassificationWorkflowSettings";
+import { NewClassificationDialog } from "./NewClassificationDialog";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -89,7 +93,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [selectedAccounts, setSelectedAccounts] = useState<InstagramAccount[]>([]);
   
   // Classification hook
-  const { classifications, classificationConfig } = useContactClassifications();
+  const { classifications, classificationConfig, addClassification, loading: classificationsLoading } = useContactClassifications();
   
   // Comment contact info hook - get usernames from filtered comments
   const commentUsernames = useMemo(() => {
@@ -118,6 +122,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [showOnlyLinked, setShowOnlyLinked] = useState<'all' | 'leads' | 'connections' | 'any'>('all');
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
+  const [filterByClassification, setFilterByClassification] = useState<string>('__all__');
+  
+  // Classification settings dialogs
+  const [showClassificationSettings, setShowClassificationSettings] = useState(false);
+  const [showNewClassificationDialog, setShowNewClassificationDialog] = useState(false);
   
   // Auto-refresh states
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
@@ -684,9 +693,23 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if ((c as any).replied_at !== null) return false;
       }
       
+      // Filter by classification
+      if (filterByClassification !== '__all__') {
+        const contactData = c.author_username ? getContactData(c.author_username) : null;
+        const contactClassifications = contactData?.contact?.classifications || [];
+        
+        if (filterByClassification === '__none__') {
+          // Show only comments without any classification
+          if (contactClassifications.length > 0) return false;
+        } else {
+          // Show only comments with specific classification
+          if (!contactClassifications.includes(filterByClassification)) return false;
+        }
+      }
+      
       return true;
     });
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, getContactData]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassification, getContactData]);
 
   const clearFilters = () => {
     setSearchText('');
@@ -694,9 +717,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     setDateTo(undefined);
     setShowOnlyLinked('all');
     setShowOnlyUnanswered(false);
+    setFilterByClassification('__all__');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered;
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassification !== '__all__';
   
   // Count unanswered comments for badge (respecting date filters)
   const unansweredCount = useMemo(() => {
@@ -973,13 +997,39 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 Sincronizar
               </Button>
               
+              {/* Classification Settings Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowClassificationSettings(true)}
+                className="gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Classificações
+              </Button>
+              
               {/* Workflow Mode Button */}
               {(() => {
-                const unrepliedCount = comments.filter(c => 
-                  c.comment_type === 'received' && 
-                  (c as any).comment_id && 
-                  !(c as any).replied_at
-                ).length;
+                // Get list of classifications that should NOT appear in workflow
+                const hiddenClassifications = classifications
+                  .filter(c => !c.show_in_workflow)
+                  .map(c => c.name);
+                
+                const unrepliedCount = comments.filter(c => {
+                  if (c.comment_type !== 'received') return false;
+                  if (!(c as any).comment_id) return false;
+                  if ((c as any).replied_at) return false;
+                  
+                  // Check if contact has a hidden classification
+                  const contactData = c.author_username ? getContactData(c.author_username) : null;
+                  const contactClassifications = contactData?.contact?.classifications || [];
+                  const hasHiddenClassification = contactClassifications.some(
+                    (cls: string) => hiddenClassifications.includes(cls)
+                  );
+                  
+                  return !hasHiddenClassification;
+                }).length;
+                
                 return unrepliedCount > 0 ? (
                   <Button 
                     size="sm"
@@ -1137,6 +1187,31 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <SelectItem value="any">Com vínculos</SelectItem>
                 <SelectItem value="leads">Com leads</SelectItem>
                 <SelectItem value="connections">Com conexões</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* Classification filter */}
+            <Select value={filterByClassification} onValueChange={setFilterByClassification}>
+              <SelectTrigger className={cn("w-[180px] h-9", filterByClassification !== '__all__' && "border-primary")}>
+                <div className="flex items-center gap-2">
+                  <Tag className="h-3.5 w-3.5" />
+                  <SelectValue placeholder="Classificação" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todas classificações</SelectItem>
+                <SelectItem value="__none__">Sem classificação</SelectItem>
+                {classifications.map((classification) => {
+                  const label = classificationConfig[classification.name]?.label || classification.name;
+                  return (
+                    <SelectItem key={classification.id} value={classification.name}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${classification.color}`} />
+                        {label}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             
@@ -1556,7 +1631,24 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       <CommentResponseWorkflow
         open={showWorkflowMode}
         onOpenChange={setShowWorkflowMode}
-        comments={comments.filter(c => c.comment_type === 'received') as any}
+        comments={(() => {
+          // Filter out comments with hidden classifications
+          const hiddenClassifications = classifications
+            .filter(c => !c.show_in_workflow)
+            .map(c => c.name);
+          
+          return comments.filter(c => {
+            if (c.comment_type !== 'received') return false;
+            
+            const contactData = c.author_username ? getContactData(c.author_username) : null;
+            const contactClassifications = contactData?.contact?.classifications || [];
+            const hasHiddenClassification = contactClassifications.some(
+              (cls: string) => hiddenClassifications.includes(cls)
+            );
+            
+            return !hasHiddenClassification;
+          }) as any;
+        })()}
         accessToken={accessToken}
         onCommentReplied={(commentId) => {
           // Refresh comments after reply
@@ -1571,6 +1663,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
           fetchStats();
           refetchContactData();
         }}
+      />
+
+      {/* Classification Workflow Settings */}
+      <ClassificationWorkflowSettings
+        open={showClassificationSettings}
+        onOpenChange={setShowClassificationSettings}
+      />
+
+      {/* New Classification Dialog */}
+      <NewClassificationDialog
+        open={showNewClassificationDialog}
+        onOpenChange={setShowNewClassificationDialog}
+        onConfirm={addClassification}
+        loading={classificationsLoading}
       />
     </div>
   );
