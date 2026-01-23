@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { comment, authorUsername, postContext, tone } = await req.json();
+    const { comment, authorUsername, postContext, parentComment, tone, generateDM } = await req.json();
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -28,6 +28,19 @@ serve(async (req) => {
 
     const selectedTone = toneInstructions[tone as keyof typeof toneInstructions] || toneInstructions.friendly;
 
+    // Build context section
+    let contextSection = `- Autor do comentário: @${authorUsername || 'usuário'}`;
+    
+    if (postContext) {
+      contextSection += `\n- Sobre a postagem: ${postContext}`;
+    }
+    
+    if (parentComment) {
+      contextSection += `\n- Este é uma RESPOSTA ao comentário de @${parentComment.author}: "${parentComment.text}"`;
+      contextSection += `\n- Considere o contexto da conversa ao responder`;
+    }
+
+    // Generate comment reply
     const systemPrompt = `Você é um assistente especializado em responder comentários do Instagram para uma empresa brasileira.
 
 REGRAS IMPORTANTES:
@@ -39,10 +52,10 @@ REGRAS IMPORTANTES:
 6. Se o comentário indicar interesse em serviços, convide para DM ou contato
 7. Mantenha o tom humano e autêntico - evite respostas genéricas
 8. Use no máximo 1-2 emojis se o tom permitir
+${parentComment ? '9. IMPORTANTE: Este comentário é uma resposta em uma thread - mantenha a coerência com a conversa' : ''}
 
 CONTEXTO:
-- Autor do comentário: @${authorUsername || 'usuário'}
-${postContext ? `- Contexto do post: ${postContext}` : ''}`;
+${contextSection}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -110,11 +123,56 @@ ${postContext ? `- Contexto do post: ${postContext}` : ''}`;
       alternatives = altText.split('\n').filter((line: string) => line.trim().length > 0).slice(0, 2);
     }
 
+    // Generate DM suggestion if requested
+    let dmSuggestion: string | null = null;
+    if (generateDM) {
+      const dmSystemPrompt = `Você é um assistente especializado em criar mensagens para Direct (DM) do Instagram para uma empresa brasileira.
+
+REGRAS IMPORTANTES:
+1. Escreva SEMPRE em português brasileiro
+2. A mensagem deve ser uma continuação natural da interação nos comentários
+3. ${selectedTone}
+4. Seja breve mas acolhedor (máximo 300 caracteres)
+5. Comece com uma saudação personalizada usando o nome/@ do usuário
+6. Mencione brevemente o contexto da interação anterior
+7. Faça uma pergunta ou convite para continuar a conversa
+8. Evite ser muito formal ou robótico
+9. Use 1-2 emojis se apropriado
+
+CONTEXTO DA INTERAÇÃO:
+${contextSection}
+- Comentário original: "${comment}"
+- Resposta que você deu no comentário: "${reply}"`;
+
+      const dmResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: dmSystemPrompt },
+            { role: "user", content: `Crie uma mensagem para enviar no Direct do Instagram para @${authorUsername || 'usuário'}, dando continuidade à interação que vocês tiveram nos comentários.` }
+          ],
+          max_tokens: 200,
+          temperature: 0.7,
+        }),
+      });
+
+      if (dmResponse.ok) {
+        const dmData = await dmResponse.json();
+        dmSuggestion = dmData.choices?.[0]?.message?.content?.trim() || null;
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         reply,
         alternatives,
+        dmSuggestion,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

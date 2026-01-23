@@ -24,7 +24,9 @@ import {
   Users,
   Settings,
   Reply,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Copy,
+  Check
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -101,12 +103,14 @@ export const CommentResponseWorkflow = ({
   const [generatedReply, setGeneratedReply] = useState("");
   const [editedReply, setEditedReply] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
+  const [dmSuggestion, setDmSuggestion] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [hasLead, setHasLead] = useState<boolean | null>(null);
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
   const [showCardSettings, setShowCardSettings] = useState(false);
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
   const [showPostPreview, setShowPostPreview] = useState(false);
+  const [showDMDialog, setShowDMDialog] = useState(false);
   
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -188,14 +192,33 @@ export const CommentResponseWorkflow = ({
     setWorkflowStep('generating');
     setGeneratedReply("");
     setAlternatives([]);
+    setDmSuggestion(null);
 
     try {
+      // Build post context from the post URL if available
+      let postContext = null;
+      if (currentComment.post_url) {
+        // Extract basic context from URL
+        postContext = `Post do Instagram: ${currentComment.post_url}`;
+      }
+
+      // Build parent comment context
+      let parentCommentContext = null;
+      if (parentComment) {
+        parentCommentContext = {
+          author: parentComment.author_username?.replace("@", "") || "usuário",
+          text: parentComment.comment_text || ""
+        };
+      }
+
       const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
         body: {
           comment: currentComment.comment_text,
           authorUsername: currentComment.author_username?.replace("@", ""),
-          postContext: null,
+          postContext,
+          parentComment: parentCommentContext,
           tone: selectedTone,
+          generateDM: true,
         },
       });
 
@@ -216,6 +239,7 @@ export const CommentResponseWorkflow = ({
       setGeneratedReply(data.reply);
       setEditedReply(data.reply);
       setAlternatives(data.alternatives || []);
+      setDmSuggestion(data.dmSuggestion || null);
       setWorkflowStep('ready_to_reply');
     } catch (error: any) {
       console.error("Error generating reply:", error);
@@ -322,6 +346,8 @@ export const CommentResponseWorkflow = ({
     setGeneratedReply("");
     setEditedReply("");
     setAlternatives([]);
+    setDmSuggestion(null);
+    setShowDMDialog(false);
     
     if (currentIndex < unrepliedComments.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -386,14 +412,21 @@ export const CommentResponseWorkflow = ({
       });
     }
 
-    // Always suggest DM
+    // Always suggest DM - with suggestion if available
     actions.push({
       id: 'dm',
       icon: <MessageCircle className="h-4 w-4" />,
-      label: 'Enviar DM',
-      description: 'Continuar conversa no Direct',
-      action: openInstagramDM,
-      variant: 'outline'
+      label: dmSuggestion ? 'Enviar DM (com sugestão)' : 'Enviar DM',
+      description: dmSuggestion ? 'Mensagem sugerida pela IA disponível' : 'Continuar conversa no Direct',
+      action: () => {
+        if (dmSuggestion) {
+          setShowDMDialog(true);
+        } else {
+          openInstagramDM();
+        }
+      },
+      variant: 'outline',
+      highlight: !!dmSuggestion
     });
 
     // Next comment action (always last)
@@ -743,6 +776,66 @@ export const CommentResponseWorkflow = ({
         onUpdateField={updateCardField}
         onReset={resetCardSettings}
       />
+      
+      {/* DM Suggestion Dialog */}
+      <Dialog open={showDMDialog} onOpenChange={setShowDMDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-primary" />
+              Mensagem para DM
+            </DialogTitle>
+            <DialogDescription>
+              Sugestão de mensagem gerada pela IA para enviar no Direct
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 pt-2">
+            {/* DM Suggestion */}
+            <div className="p-3 rounded-lg bg-muted/50 border">
+              <p className="text-sm whitespace-pre-wrap">{dmSuggestion}</p>
+            </div>
+            
+            {/* Actions */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={() => {
+                  if (dmSuggestion) {
+                    navigator.clipboard.writeText(dmSuggestion);
+                    toast.success("Mensagem copiada!");
+                  }
+                }}
+              >
+                <Copy className="h-4 w-4" />
+                Copiar
+              </Button>
+              <Button
+                className="flex-1 gap-2"
+                onClick={() => {
+                  if (dmSuggestion) {
+                    navigator.clipboard.writeText(dmSuggestion);
+                    toast.success("Mensagem copiada! Abrindo DM...");
+                  }
+                  openInstagramDM();
+                  setShowDMDialog(false);
+                }}
+              >
+                <Send className="h-4 w-4" />
+                Copiar e Abrir DM
+              </Button>
+            </div>
+            
+            {/* Note about author_id */}
+            {!currentComment?.author_id && (
+              <p className="text-xs text-muted-foreground text-center">
+                ⚠️ ID do usuário não disponível. O link abrirá o perfil.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
