@@ -42,7 +42,7 @@ import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { format, isWithinInterval, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
@@ -1023,8 +1023,88 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             )}
           </div>
 
-          {/* Totalization Summary with Active Period Indicator */}
+          {/* Period Shortcuts and Active Period Indicator */}
           <div className="flex flex-col gap-2 mb-4">
+            {/* Quick period shortcuts */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground font-medium">Período rápido:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    setDateFrom(startOfDay(today));
+                    setDateTo(endOfDay(today));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Hoje
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    setDateFrom(startOfDay(subDays(today, 6)));
+                    setDateTo(endOfDay(today));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Últimos 7 dias
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    setDateFrom(startOfDay(subDays(today, 14)));
+                    setDateTo(endOfDay(today));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Últimos 15 dias
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    setDateFrom(startOfMonth(today));
+                    setDateTo(endOfDay(today));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Este mês
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    const lastMonth = subMonths(today, 1);
+                    setDateFrom(startOfMonth(lastMonth));
+                    setDateTo(endOfMonth(lastMonth));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Mês passado
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const today = new Date();
+                    setDateFrom(startOfDay(subDays(today, 29)));
+                    setDateTo(endOfDay(today));
+                  }}
+                  className="h-7 px-2.5 text-xs"
+                >
+                  Últimos 30 dias
+                </Button>
+              </div>
+            </div>
+
             {/* Active date period indicator */}
             {(dateFrom || dateTo) && (
               <div className="flex items-center gap-2 p-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
