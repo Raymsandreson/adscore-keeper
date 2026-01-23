@@ -128,6 +128,26 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     return classificationConfig[name] || { label: name, color: 'bg-gray-500' };
   };
 
+  // Get relationship data for a classification if it's a relationship type
+  const getRelationshipForClassification = (classification: string) => {
+    const lowerClassification = classification.toLowerCase();
+    return relationships.find(rel => 
+      rel.relationship_type.toLowerCase().includes(lowerClassification) ||
+      lowerClassification.includes(rel.relationship_type.toLowerCase())
+    );
+  };
+
+  // Get display label with relationship name if applicable
+  const getClassificationDisplayLabel = (classification: string) => {
+    const config = getClassificationConfig(classification);
+    const relationship = getRelationshipForClassification(classification);
+    if (relationship && relationship.related_contact?.full_name) {
+      const firstName = relationship.related_contact.full_name.split(' ')[0];
+      return `${config.label} de ${firstName}`;
+    }
+    return config.label;
+  };
+
   const formatPhoneForWhatsApp = (phone: string) => {
     return phone.replace(/\D/g, '');
   };
@@ -358,7 +378,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                   className="text-xs gap-1 cursor-pointer hover:bg-accent"
                 >
                   <div className={`w-2 h-2 rounded-full ${getClassificationConfig(contactClassifications[0]).color}`} />
-                  {!compact && getClassificationConfig(contactClassifications[0]).label}
+                  {!compact && getClassificationDisplayLabel(contactClassifications[0])}
                   {contactClassifications.length > 1 && (
                     <span className="text-muted-foreground">+{contactClassifications.length - 1}</span>
                   )}
@@ -459,7 +479,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                   className="text-xs gap-1"
                 >
                   <div className={`w-2 h-2 rounded-full ${classConfig.color}`} />
-                  {!compact && classConfig.label}
+                  {!compact && getClassificationDisplayLabel(classification)}
                   {idx === 0 && updatedAt && isRecent && (
                     <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
                   )}
@@ -468,10 +488,10 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
               <TooltipContent>
                 {updatedAt ? (
                   <span>
-                    {classConfig.label} • Atualizado em {format(updatedAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    {getClassificationDisplayLabel(classification)} • Atualizado em {format(updatedAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                   </span>
                 ) : (
-                  classConfig.label
+                  getClassificationDisplayLabel(classification)
                 )}
               </TooltipContent>
             </Tooltip>
@@ -501,7 +521,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                         className="text-xs gap-1"
                       >
                         <div className={`w-2 h-2 rounded-full ${classConfig.color}`} />
-                        {classConfig.label}
+                        {getClassificationDisplayLabel(classification)}
                       </Badge>
                     );
                   })}

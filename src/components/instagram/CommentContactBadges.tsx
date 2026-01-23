@@ -84,6 +84,26 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
     return classificationConfig[name] || { label: name, color: 'bg-gray-500' };
   };
 
+  // Get relationship data for a classification if it's a relationship type
+  const getRelationshipForClassification = (classification: string) => {
+    const lowerClassification = classification.toLowerCase();
+    return relationships.find(rel => 
+      rel.relationship_type.toLowerCase().includes(lowerClassification) ||
+      lowerClassification.includes(rel.relationship_type.toLowerCase())
+    );
+  };
+
+  // Get display label with relationship name if applicable
+  const getClassificationDisplayLabel = (classification: string) => {
+    const config = getClassificationConfig(classification);
+    const relationship = getRelationshipForClassification(classification);
+    if (relationship && relationship.related_contact?.full_name) {
+      const firstName = relationship.related_contact.full_name.split(' ')[0];
+      return `${config.label} de ${firstName}`;
+    }
+    return config.label;
+  };
+
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1 flex-wrap">
@@ -240,6 +260,7 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
         {/* Contact Classifications - show directly on card */}
         {contactClassifications.length > 0 && contactClassifications.slice(0, 2).map((classification, idx) => {
           const config = getClassificationConfig(classification);
+          const displayLabel = getClassificationDisplayLabel(classification);
           return (
             <Badge 
               key={`class-${idx}`}
@@ -252,7 +273,7 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
               }}
             >
               <Tag className="h-3 w-3" />
-              {config.label}
+              {displayLabel}
             </Badge>
           );
         })}
@@ -273,14 +294,14 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
                 <p className="text-xs font-medium text-muted-foreground">Mais classificações:</p>
                 <div className="flex flex-wrap gap-1">
                   {contactClassifications.slice(2).map((classification, idx) => {
-                    const config = getClassificationConfig(classification);
+                    const displayLabel = getClassificationDisplayLabel(classification);
                     return (
                       <Badge 
                         key={`class-more-${idx}`}
                         variant="outline" 
                         className="text-xs capitalize"
                       >
-                        {config.label}
+                        {displayLabel}
                       </Badge>
                     );
                   })}
