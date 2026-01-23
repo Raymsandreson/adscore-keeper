@@ -40,7 +40,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   MessageCircleReply,
-  Percent
+  Percent,
+  UserPlus
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -52,6 +53,7 @@ import { OutboundNotificationSettings } from './OutboundNotificationSettings';
 import { OutboundRepliesHistory } from './OutboundRepliesHistory';
 import { OutboundResponseChart } from './OutboundResponseChart';
 import { OutboundGoalHistory } from './OutboundGoalHistory';
+import { PendingToFollowList } from './PendingToFollowList';
 
 type FunnelStage = 'comment' | 'dm' | 'whatsapp' | 'visit_scheduled' | 'visit_done' | 'closed' | 'post_sale';
 
@@ -823,6 +825,10 @@ export function ProspectingFunnel() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="pending-follow" className="flex items-center gap-1.5">
+            <UserPlus className="h-4 w-4" />
+            Seguir
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -1084,6 +1090,10 @@ export function ProspectingFunnel() {
 
         <TabsContent value="replies">
           <OutboundRepliesHistory />
+        </TabsContent>
+
+        <TabsContent value="pending-follow">
+          <PendingToFollowList />
         </TabsContent>
       </Tabs>
 
