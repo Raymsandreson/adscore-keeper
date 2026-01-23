@@ -314,7 +314,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
 
     if (interactive) {
       return (
-        <Popover open={classificationOpen} onOpenChange={(open) => {
+        <Popover modal={true} open={classificationOpen} onOpenChange={(open) => {
           setClassificationOpen(open);
           if (open) {
             setSelectedClassifications(contactClassifications);
@@ -490,7 +490,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
 
     if (interactive && !hasLeads) {
       return (
-        <Popover open={leadLinkOpen} onOpenChange={(open) => {
+        <Popover modal={true} open={leadLinkOpen} onOpenChange={(open) => {
           setLeadLinkOpen(open);
           if (open) {
             handleSearchLeads('');
@@ -636,7 +636,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
 
           {/* Manage leads button when interactive */}
           {interactive && (
-            <Popover open={manageLeadsOpen} onOpenChange={setManageLeadsOpen}>
+            <Popover modal={true} open={manageLeadsOpen} onOpenChange={setManageLeadsOpen}>
               <PopoverTrigger asChild>
                 <Badge 
                   variant="outline" 
