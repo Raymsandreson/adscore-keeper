@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -34,6 +34,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { RelationshipPromptDialog, getRelationshipClassificationsFromList } from './RelationshipPromptDialog';
 
 interface Lead {
   id: string;
@@ -76,6 +77,18 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [manageLeadsOpen, setManageLeadsOpen] = useState(false);
+  
+  // Relationship prompt states
+  const [showRelationshipPrompt, setShowRelationshipPrompt] = useState(false);
+  const [pendingContactId, setPendingContactId] = useState<string | null>(null);
+  const [pendingRelationshipClassification, setPendingRelationshipClassification] = useState<string>('');
+
+  // Detect new relationship classifications being added
+  const newRelationshipClassifications = useMemo(() => {
+    const currentRelationships = getRelationshipClassificationsFromList(contactClassifications);
+    const selectedRelationships = getRelationshipClassificationsFromList(selectedClassifications);
+    return selectedRelationships.filter(r => !currentRelationships.includes(r));
+  }, [selectedClassifications, contactClassifications]);
 
   if (loading) {
     return null;
@@ -169,15 +182,32 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
         if (error) throw error;
       }
 
-      toast.success('Classificações atualizadas!');
-      setClassificationOpen(false);
-      onDataChanged?.();
+      // Check if there are new relationship classifications
+      if (newRelationshipClassifications.length > 0 && contactId) {
+        // Show relationship prompt for the first new relationship classification
+        setPendingContactId(contactId);
+        setPendingRelationshipClassification(newRelationshipClassifications[0]);
+        setShowRelationshipPrompt(true);
+        setClassificationOpen(false);
+        // Don't call onDataChanged yet - wait for relationship prompt to complete
+      } else {
+        toast.success('Classificações atualizadas!');
+        setClassificationOpen(false);
+        onDataChanged?.();
+      }
     } catch (error) {
       console.error('Error saving classifications:', error);
       toast.error('Erro ao salvar classificações');
     } finally {
       setSavingClassifications(false);
     }
+  };
+
+  const handleRelationshipComplete = () => {
+    toast.success('Classificações e relacionamento atualizados!');
+    setPendingContactId(null);
+    setPendingRelationshipClassification('');
+    onDataChanged?.();
   };
 
   // Lead search and link handlers
@@ -914,6 +944,16 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           </HoverCard>
         )}
       </div>
+
+      {/* Relationship Prompt Dialog */}
+      <RelationshipPromptDialog
+        open={showRelationshipPrompt}
+        onOpenChange={setShowRelationshipPrompt}
+        relationshipClassification={pendingRelationshipClassification}
+        contactId={pendingContactId}
+        contactName={contact?.full_name || authorUsername || 'Contato'}
+        onComplete={handleRelationshipComplete}
+      />
     </TooltipProvider>
   );
 };

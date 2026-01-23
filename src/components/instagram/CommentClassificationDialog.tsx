@@ -29,6 +29,7 @@ import { useContactClassifications, classificationColors } from "@/hooks/useCont
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { RELATIONSHIP_KEYWORDS, isRelationshipClassification } from "./RelationshipPromptDialog";
 
 interface Comment {
   id: string;
@@ -294,10 +295,7 @@ export const CommentClassificationDialog = ({
 
   // Check if any selected classification implies a relationship
   const hasRelationshipClassification = useMemo(() => {
-    const relationshipKeywords = ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar'];
-    return selectedClassifications.some(cls => 
-      relationshipKeywords.some(keyword => cls.toLowerCase().includes(keyword))
-    );
+    return selectedClassifications.some(cls => isRelationshipClassification(cls));
   }, [selectedClassifications]);
 
   // Move to relationship step after classification
@@ -358,8 +356,7 @@ export const CommentClassificationDialog = ({
         // Create relationship if we have a related contact
         if (hasRelationship && authorContactId && selectedRelatedContact) {
           const relationshipType = selectedClassifications.find(cls => 
-            ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
-              .some(keyword => cls.toLowerCase().includes(keyword))
+            isRelationshipClassification(cls)
           ) || selectedClassifications[0];
 
           await supabase
@@ -678,8 +675,7 @@ export const CommentClassificationDialog = ({
             </DialogTitle>
             <DialogDescription>
               A classificação <strong>{selectedClassifications.filter(cls => 
-                ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
-                  .some(keyword => cls.toLowerCase().includes(keyword))
+                isRelationshipClassification(cls)
               ).map(c => getLabel(c)).join(', ')}</strong> sugere um vínculo familiar. Deseja registrar em relação a quem é essa classificação?
             </DialogDescription>
           </DialogHeader>
