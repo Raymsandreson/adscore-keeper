@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
@@ -28,7 +30,9 @@ import {
   Copy,
   Check,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Pencil,
+  Save
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -117,7 +121,12 @@ export const CommentResponseWorkflow = ({
   const [justRepliedComment, setJustRepliedComment] = useState<Comment | null>(null);
   const [editedDmSuggestion, setEditedDmSuggestion] = useState<string>("");
   const [isMarkingAsFollowing, setIsMarkingAsFollowing] = useState(false);
-  
+  const [showEditAuthorId, setShowEditAuthorId] = useState(false);
+  const [editedAuthorId, setEditedAuthorId] = useState("");
+  const [isSavingAuthorId, setIsSavingAuthorId] = useState(false);
+  // Track locally updated author_ids so we don't need to wait for parent refresh
+  const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>({});
+
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
   
@@ -141,9 +150,16 @@ export const CommentResponseWorkflow = ({
   }, [comments, repliedComments]);
 
   // Use justRepliedComment during suggesting_actions step, otherwise use the current unreplied comment
-  const currentComment = workflowStep === 'suggesting_actions' && justRepliedComment 
+  const baseComment = workflowStep === 'suggesting_actions' && justRepliedComment 
     ? justRepliedComment 
     : unrepliedComments[currentIndex];
+  
+  // Apply local author_id updates if available
+  const currentComment = baseComment ? {
+    ...baseComment,
+    author_id: localAuthorIdUpdates[baseComment.id] || baseComment.author_id
+  } : baseComment;
+  
   const totalComments = unrepliedComments.length;
   const progress = totalComments > 0 ? ((repliedComments.size) / (repliedComments.size + totalComments)) * 100 : 100;
 
@@ -373,6 +389,44 @@ export const CommentResponseWorkflow = ({
       toast.error('Erro ao marcar como seguindo');
     } finally {
       setIsMarkingAsFollowing(false);
+    }
+  };
+
+  const saveAuthorId = async () => {
+    if (!currentComment || !editedAuthorId.trim()) return;
+    
+    // Validate: should be numeric only
+    const cleanId = editedAuthorId.trim();
+    if (!/^\d+$/.test(cleanId)) {
+      toast.error("O ID deve conter apenas números");
+      return;
+    }
+    
+    setIsSavingAuthorId(true);
+    
+    try {
+      const { error } = await supabase
+        .from('instagram_comments')
+        .update({ author_id: cleanId })
+        .eq('id', currentComment.id);
+      
+      if (error) throw error;
+      
+      // Update local state immediately
+      setLocalAuthorIdUpdates(prev => ({
+        ...prev,
+        [currentComment.id]: cleanId
+      }));
+      
+      toast.success("ID do autor atualizado!");
+      setShowEditAuthorId(false);
+      setEditedAuthorId("");
+      onRefresh?.();
+    } catch (error) {
+      console.error('Error saving author_id:', error);
+      toast.error('Erro ao salvar ID do autor');
+    } finally {
+      setIsSavingAuthorId(false);
     }
   };
 
@@ -703,6 +757,39 @@ export const CommentResponseWorkflow = ({
                       />
                     </div>
                     <p className="text-sm">{currentComment.comment_text}</p>
+                    
+                    {/* Author ID info */}
+                    <div className="mt-2 flex items-center gap-2">
+                      {currentComment.author_id ? (
+                        <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                          ID: {currentComment.author_id}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 w-5 p-0"
+                            onClick={() => {
+                              setEditedAuthorId(currentComment.author_id || "");
+                              setShowEditAuthorId(true);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs gap-1 text-amber-600"
+                          onClick={() => {
+                            setEditedAuthorId("");
+                            setShowEditAuthorId(true);
+                          }}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          ID ausente - Corrigir
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -929,15 +1016,90 @@ export const CommentResponseWorkflow = ({
               </Button>
             </div>
             
-            {/* Note about author_id */}
+            {/* Note about author_id with edit option */}
             {!currentComment?.author_id && (
-              <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  ID do usuário não disponível. O link abrirá o perfil ao invés do Direct.
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-400 flex-1">
+                    ID do usuário não disponível. O link abrirá o perfil ao invés do Direct.
+                  </p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1"
+                    onClick={() => {
+                      setEditedAuthorId("");
+                      setShowEditAuthorId(true);
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Corrigir
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Edit Author ID Dialog */}
+      <Dialog open={showEditAuthorId} onOpenChange={setShowEditAuthorId}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Corrigir ID do Autor
+            </DialogTitle>
+            <DialogDescription>
+              Insira o ID numérico correto do perfil do Instagram para este comentário
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="author-id">ID do Usuário (numérico)</Label>
+              <Input
+                id="author-id"
+                value={editedAuthorId}
+                onChange={(e) => setEditedAuthorId(e.target.value.replace(/\D/g, ''))}
+                placeholder="Ex: 117638302956677"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                O ID pode ser encontrado no link do Direct: instagram.com/direct/t/<strong>ID_AQUI</strong>
+              </p>
+            </div>
+            
+            {currentComment?.author_id && (
+              <div className="p-2 rounded-md bg-muted/50 border">
+                <p className="text-xs text-muted-foreground">
+                  ID atual: <span className="font-mono">{currentComment.author_id}</span>
                 </p>
               </div>
             )}
+            
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowEditAuthorId(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 gap-2"
+                onClick={saveAuthorId}
+                disabled={!editedAuthorId.trim() || isSavingAuthorId}
+              >
+                {isSavingAuthorId ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                Salvar
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
