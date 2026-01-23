@@ -301,6 +301,53 @@ export type Database = {
           },
         ]
       }
+      dm_history: {
+        Row: {
+          action_type: string
+          author_id: string | null
+          comment_id: string | null
+          created_at: string
+          dm_message: string
+          id: string
+          instagram_username: string
+          original_suggestion: string | null
+          user_id: string | null
+          was_edited: boolean | null
+        }
+        Insert: {
+          action_type?: string
+          author_id?: string | null
+          comment_id?: string | null
+          created_at?: string
+          dm_message: string
+          id?: string
+          instagram_username: string
+          original_suggestion?: string | null
+          user_id?: string | null
+          was_edited?: boolean | null
+        }
+        Update: {
+          action_type?: string
+          author_id?: string | null
+          comment_id?: string | null
+          created_at?: string
+          dm_message?: string
+          id?: string
+          instagram_username?: string
+          original_suggestion?: string | null
+          user_id?: string | null
+          was_edited?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dm_history_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       engagement_champions: {
         Row: {
           ad_account_id: string | null
