@@ -653,13 +653,51 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
 
   const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered;
   
-  // Count unanswered comments for badge
+  // Count unanswered comments for badge (respecting date filters)
   const unansweredCount = useMemo(() => {
-    return comments.filter(c => 
-      c.comment_type === 'received' && 
-      (c as any).replied_at === null
-    ).length;
-  }, [comments]);
+    return comments.filter(c => {
+      if (c.comment_type !== 'received') return false;
+      if ((c as any).replied_at !== null) return false;
+      
+      // Apply date filters
+      if (dateFrom || dateTo) {
+        const commentDate = new Date(c.created_at);
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
+        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+      }
+      
+      return true;
+    }).length;
+  }, [comments, dateFrom, dateTo]);
+  
+  // Count comments per tab respecting date filters
+  const receivedCount = useMemo(() => {
+    return comments.filter(c => {
+      if (c.comment_type !== 'received') return false;
+      
+      if (dateFrom || dateTo) {
+        const commentDate = new Date(c.created_at);
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
+        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+      }
+      
+      return true;
+    }).length;
+  }, [comments, dateFrom, dateTo]);
+  
+  const sentCount = useMemo(() => {
+    return comments.filter(c => {
+      if (c.comment_type !== 'sent') return false;
+      
+      if (dateFrom || dateTo) {
+        const commentDate = new Date(c.created_at);
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
+        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+      }
+      
+      return true;
+    }).length;
+  }, [comments, dateFrom, dateTo]);
 
   return (
     <div className="space-y-6">
@@ -1009,14 +1047,14 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <Inbox className="h-4 w-4" />
                 Recebidos
                 <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {comments.filter(c => c.comment_type === 'received').length}
+                  {receivedCount}
                 </Badge>
               </TabsTrigger>
               <TabsTrigger value="sent" className="gap-2">
                 <Send className="h-4 w-4" />
                 Enviados
                 <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {comments.filter(c => c.comment_type === 'sent').length}
+                  {sentCount}
                 </Badge>
               </TabsTrigger>
             </TabsList>
