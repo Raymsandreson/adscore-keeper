@@ -32,7 +32,9 @@ import {
   Image,
   Tag,
   Bot,
-  Sparkles
+  Sparkles,
+  TrendingUp,
+  Target
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
@@ -42,7 +44,7 @@ import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isWithinInterval, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, endOfMonth, subMonths, isSameDay } from "date-fns";
+import { format, isWithinInterval, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, endOfMonth, subMonths, isSameDay, differenceInMinutes, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
@@ -742,10 +744,75 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }).length;
   }, [comments, dateFrom, dateTo]);
 
+  // Workflow Performance Stats
+  const workflowStats = useMemo(() => {
+    const receivedComments = comments.filter(c => c.comment_type === 'received');
+    const repliedComments = receivedComments.filter(c => (c as any).replied_at);
+    
+    // Calculate average response time
+    let totalResponseTimeMinutes = 0;
+    let repliedWithTimeCount = 0;
+    
+    repliedComments.forEach(comment => {
+      const createdAt = new Date(comment.created_at);
+      const repliedAt = new Date((comment as any).replied_at);
+      const diffMinutes = differenceInMinutes(repliedAt, createdAt);
+      if (diffMinutes >= 0) {
+        totalResponseTimeMinutes += diffMinutes;
+        repliedWithTimeCount++;
+      }
+    });
+    
+    const avgResponseTimeMinutes = repliedWithTimeCount > 0 
+      ? Math.round(totalResponseTimeMinutes / repliedWithTimeCount) 
+      : 0;
+    
+    // Format average response time
+    let avgResponseTimeFormatted = '—';
+    if (avgResponseTimeMinutes > 0) {
+      if (avgResponseTimeMinutes < 60) {
+        avgResponseTimeFormatted = `${avgResponseTimeMinutes} min`;
+      } else if (avgResponseTimeMinutes < 1440) {
+        const hours = Math.floor(avgResponseTimeMinutes / 60);
+        const mins = avgResponseTimeMinutes % 60;
+        avgResponseTimeFormatted = mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
+      } else {
+        const days = Math.floor(avgResponseTimeMinutes / 1440);
+        avgResponseTimeFormatted = `${days} dia${days > 1 ? 's' : ''}`;
+      }
+    }
+    
+    // Calculate lead conversion rate
+    const commentsWithLeadLinked = receivedComments.filter(c => {
+      if (!c.author_username) return false;
+      const username = c.author_username.replace('@', '').toLowerCase();
+      return convertedUsers.has(username);
+    });
+    
+    const leadConversionRate = receivedComments.length > 0 
+      ? Math.round((commentsWithLeadLinked.length / receivedComments.length) * 100) 
+      : 0;
+    
+    // Response rate
+    const responseRate = receivedComments.length > 0 
+      ? Math.round((repliedComments.length / receivedComments.length) * 100) 
+      : 0;
+    
+    return {
+      avgResponseTime: avgResponseTimeFormatted,
+      avgResponseTimeMinutes,
+      leadConversionRate,
+      leadsConverted: commentsWithLeadLinked.length,
+      totalReceived: receivedComments.length,
+      responseRate,
+      repliedCount: repliedComments.length
+    };
+  }, [comments, convertedUsers]);
+
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -797,7 +864,47 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               <div>
                 <p className="text-sm text-orange-600 dark:text-orange-400">Taxa Resposta</p>
                 <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                  {stats.received > 0 ? Math.round((stats.sent / stats.received) * 100) : 0}%
+                  {workflowStats.responseRate}%
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* New: Average Response Time Card */}
+        <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-950 dark:to-cyan-900 border-cyan-200 dark:border-cyan-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-cyan-500 rounded-lg">
+                <Clock className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400">Tempo Médio</p>
+                <p className="text-xl font-bold text-cyan-700 dark:text-cyan-300">
+                  {workflowStats.avgResponseTime}
+                </p>
+                <p className="text-xs text-cyan-500 dark:text-cyan-500">
+                  {workflowStats.repliedCount} respondidos
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* New: Lead Conversion Rate Card */}
+        <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-emerald-500 rounded-lg">
+                <Target className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">Conversão Leads</p>
+                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                  {workflowStats.leadConversionRate}%
+                </p>
+                <p className="text-xs text-emerald-500 dark:text-emerald-500">
+                  {workflowStats.leadsConverted}/{workflowStats.totalReceived}
                 </p>
               </div>
             </div>
