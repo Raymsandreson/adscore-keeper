@@ -122,7 +122,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [showOnlyLinked, setShowOnlyLinked] = useState<'all' | 'leads' | 'connections' | 'any'>('all');
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
-  const [filterByClassification, setFilterByClassification] = useState<string>('__all__');
+  const [filterByClassifications, setFilterByClassifications] = useState<string[]>([]);
   
   // Classification settings dialogs
   const [showClassificationSettings, setShowClassificationSettings] = useState(false);
@@ -693,23 +693,28 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if ((c as any).replied_at !== null) return false;
       }
       
-      // Filter by classification
-      if (filterByClassification !== '__all__') {
+      // Filter by classifications (multi-select)
+      if (filterByClassifications.length > 0) {
         const contactData = c.author_username ? getContactData(c.author_username) : null;
         const contactClassifications = contactData?.contact?.classifications || [];
         
-        if (filterByClassification === '__none__') {
-          // Show only comments without any classification
-          if (contactClassifications.length > 0) return false;
-        } else {
-          // Show only comments with specific classification
-          if (!contactClassifications.includes(filterByClassification)) return false;
-        }
+        const hasNoClassification = filterByClassifications.includes('__none__');
+        const selectedClassifications = filterByClassifications.filter(f => f !== '__none__');
+        
+        // Check if contact matches any selected classification
+        const matchesSelectedClassification = selectedClassifications.some(cls => 
+          contactClassifications.includes(cls)
+        );
+        
+        // Check if should show unclassified
+        const matchesNoClassification = hasNoClassification && contactClassifications.length === 0;
+        
+        if (!matchesSelectedClassification && !matchesNoClassification) return false;
       }
       
       return true;
     });
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassification, getContactData]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, getContactData]);
 
   const clearFilters = () => {
     setSearchText('');
@@ -717,10 +722,21 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     setDateTo(undefined);
     setShowOnlyLinked('all');
     setShowOnlyUnanswered(false);
-    setFilterByClassification('__all__');
+    setFilterByClassifications([]);
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassification !== '__all__';
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0;
+  
+  // Toggle classification in filter
+  const toggleClassificationFilter = (classificationName: string) => {
+    setFilterByClassifications(prev => {
+      if (prev.includes(classificationName)) {
+        return prev.filter(c => c !== classificationName);
+      } else {
+        return [...prev, classificationName];
+      }
+    });
+  };
   
   // Count unanswered comments for badge (respecting date filters)
   const unansweredCount = useMemo(() => {
@@ -1190,30 +1206,86 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </SelectContent>
             </Select>
             
-            {/* Classification filter */}
-            <Select value={filterByClassification} onValueChange={setFilterByClassification}>
-              <SelectTrigger className={cn("w-[180px] h-9", filterByClassification !== '__all__' && "border-primary")}>
-                <div className="flex items-center gap-2">
+            {/* Classification filter - multi-select */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className={cn("gap-2 h-9", filterByClassifications.length > 0 && "border-primary")}
+                >
                   <Tag className="h-3.5 w-3.5" />
-                  <SelectValue placeholder="Classificação" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todas classificações</SelectItem>
-                <SelectItem value="__none__">Sem classificação</SelectItem>
-                {classifications.map((classification) => {
-                  const label = classificationConfig[classification.name]?.label || classification.name;
-                  return (
-                    <SelectItem key={classification.id} value={classification.name}>
-                      <div className="flex items-center gap-2">
+                  {filterByClassifications.length === 0 ? (
+                    "Classificação"
+                  ) : filterByClassifications.length === 1 ? (
+                    filterByClassifications[0] === '__none__' ? 'Sem classificação' : 
+                    classificationConfig[filterByClassifications[0]]?.label || filterByClassifications[0]
+                  ) : (
+                    `${filterByClassifications.length} selecionadas`
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="space-y-1">
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-muted transition-colors",
+                      filterByClassifications.includes('__none__') && "bg-primary/10"
+                    )}
+                    onClick={() => toggleClassificationFilter('__none__')}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded border flex items-center justify-center",
+                      filterByClassifications.includes('__none__') ? "bg-primary border-primary" : "border-muted-foreground/30"
+                    )}>
+                      {filterByClassifications.includes('__none__') && (
+                        <CheckCircle2 className="h-3 w-3 text-primary-foreground" />
+                      )}
+                    </div>
+                    <span className="text-sm text-muted-foreground italic">Sem classificação</span>
+                  </div>
+                  
+                  {classifications.map((classification) => {
+                    const label = classificationConfig[classification.name]?.label || classification.name;
+                    const isSelected = filterByClassifications.includes(classification.name);
+                    return (
+                      <div
+                        key={classification.id}
+                        className={cn(
+                          "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-muted transition-colors",
+                          isSelected && "bg-primary/10"
+                        )}
+                        onClick={() => toggleClassificationFilter(classification.name)}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center",
+                          isSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
+                        )}>
+                          {isSelected && (
+                            <CheckCircle2 className="h-3 w-3 text-primary-foreground" />
+                          )}
+                        </div>
                         <div className={`w-2.5 h-2.5 rounded-full ${classification.color}`} />
-                        {label}
+                        <span className="text-sm">{label}</span>
                       </div>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+                    );
+                  })}
+                  
+                  {filterByClassifications.length > 0 && (
+                    <div className="pt-2 border-t mt-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="w-full text-xs"
+                        onClick={() => setFilterByClassifications([])}
+                      >
+                        Limpar seleção
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
             
             {/* Unanswered filter */}
             {activeTab === 'received' && (
