@@ -1244,23 +1244,28 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             </Select>
             
             {/* Classification filter - multi-select */}
-            <Popover>
+            <Popover modal={true}>
               <PopoverTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className={cn("gap-2 h-9", filterByClassifications.length > 0 && "border-primary")}
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  {filterByClassifications.length === 0 ? (
-                    "Classificação"
-                  ) : filterByClassifications.length === 1 ? (
-                    filterByClassifications[0] === '__none__' ? 'Sem classificação' : 
-                    classificationConfig[filterByClassifications[0]]?.label || filterByClassifications[0]
-                  ) : (
-                    `${filterByClassifications.length} selecionadas`
-                  )}
-                </Button>
+                <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className={cn("gap-2 h-9", filterByClassifications.length > 0 && "border-primary")}
+                    asChild
+                  >
+                    <span>
+                      <Tag className="h-3.5 w-3.5" />
+                      {filterByClassifications.length === 0 ? (
+                        "Classificação"
+                      ) : filterByClassifications.length === 1 ? (
+                        filterByClassifications[0] === '__none__' ? 'Sem classificação' : 
+                        classificationConfig[filterByClassifications[0]]?.label || filterByClassifications[0]
+                      ) : (
+                        `${filterByClassifications.length} selecionadas`
+                      )}
+                    </span>
+                  </Button>
+                </button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-2" align="start">
                 <div className="space-y-1">
