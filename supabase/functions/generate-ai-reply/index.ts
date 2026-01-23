@@ -126,6 +126,22 @@ ${contextSection}`;
     // Generate DM suggestion if requested
     let dmSuggestion: string | null = null;
     if (generateDM) {
+      // Build DM-specific context - always direct to the comment author, NOT the parent comment author
+      let dmContextSection = `- Pessoa que você vai enviar a DM: @${authorUsername || 'usuário'}`;
+      
+      if (postContext) {
+        dmContextSection += `\n- Sobre a postagem: ${postContext}`;
+      }
+      
+      // If there's a parent comment, it means the current user was replying to someone else
+      // The DM should still be directed to authorUsername (who made the comment we're responding to)
+      if (parentComment) {
+        dmContextSection += `\n- O comentário de @${authorUsername} foi uma resposta a outro comentário de @${parentComment.author}`;
+        dmContextSection += `\n- Contexto: @${authorUsername} escreveu "${comment}" respondendo a @${parentComment.author} que disse "${parentComment.text}"`;
+      } else {
+        dmContextSection += `\n- Comentário de @${authorUsername}: "${comment}"`;
+      }
+
       const dmSystemPrompt = `Você é um assistente especializado em criar mensagens para Direct (DM) do Instagram para uma empresa brasileira.
 
 REGRAS IMPORTANTES:
@@ -133,15 +149,15 @@ REGRAS IMPORTANTES:
 2. A mensagem deve ser uma continuação natural da interação nos comentários
 3. ${selectedTone}
 4. Seja breve mas acolhedor (máximo 300 caracteres)
-5. Comece com uma saudação personalizada usando o nome/@ do usuário
-6. Mencione brevemente o contexto da interação anterior
-7. Faça uma pergunta ou convite para continuar a conversa
-8. Evite ser muito formal ou robótico
-9. Use 1-2 emojis se apropriado
+5. IMPORTANTE: A DM é para @${authorUsername || 'usuário'} - use APENAS este @ na saudação
+6. NÃO mencione outros usuários na saudação da DM
+7. Mencione brevemente o contexto da interação anterior
+8. Faça uma pergunta ou convite para continuar a conversa
+9. Evite ser muito formal ou robótico
+10. Use 1-2 emojis se apropriado
 
 CONTEXTO DA INTERAÇÃO:
-${contextSection}
-- Comentário original: "${comment}"
+${dmContextSection}
 - Resposta que você deu no comentário: "${reply}"`;
 
       const dmResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -154,7 +170,7 @@ ${contextSection}
           model: "google/gemini-3-flash-preview",
           messages: [
             { role: "system", content: dmSystemPrompt },
-            { role: "user", content: `Crie uma mensagem para enviar no Direct do Instagram para @${authorUsername || 'usuário'}, dando continuidade à interação que vocês tiveram nos comentários.` }
+            { role: "user", content: `Crie uma mensagem para enviar no Direct do Instagram para @${authorUsername || 'usuário'}. IMPORTANTE: Dirija a mensagem APENAS para @${authorUsername}, não mencione outros usuários na saudação.` }
           ],
           max_tokens: 200,
           temperature: 0.7,
