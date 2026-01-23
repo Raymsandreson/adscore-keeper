@@ -129,7 +129,7 @@ export const CommentResponseWorkflow = ({
   const [isSavingAuthorId, setIsSavingAuthorId] = useState(false);
   const [showContactRegistration, setShowContactRegistration] = useState(false);
   // Track locally updated author_ids so we don't need to wait for parent refresh
-  const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>();
+  const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>({});
 
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
