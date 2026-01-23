@@ -42,6 +42,7 @@ import { CommentCardBadges } from "./CommentCardBadges";
 import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 interface Comment {
   id: string;
@@ -129,6 +130,9 @@ export const CommentResponseWorkflow = ({
 
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
+  
+  // Auth context for user_id
+  const { user } = useAuthContext();
   
   // Get usernames for contact info lookup
   const commentUsernames = useMemo(() => {
@@ -467,6 +471,32 @@ export const CommentResponseWorkflow = ({
     return validateAuthorId(currentComment?.author_id);
   }, [currentComment?.author_id]);
 
+  // Save DM to history
+  const saveDmToHistory = async (actionType: 'copied' | 'copied_and_opened' | 'opened_only') => {
+    if (!currentComment?.author_username || !user?.id) return;
+    
+    const username = currentComment.author_username.replace('@', '').toLowerCase();
+    const messageToSave = editedDmSuggestion || dmSuggestion || '';
+    
+    if (!messageToSave && actionType !== 'opened_only') return;
+    
+    try {
+      await supabase.from('dm_history').insert({
+        user_id: user.id,
+        comment_id: currentComment.id,
+        instagram_username: username,
+        author_id: currentComment.author_id,
+        dm_message: messageToSave || 'Aberto sem mensagem',
+        original_suggestion: dmSuggestion,
+        was_edited: editedDmSuggestion !== dmSuggestion && !!dmSuggestion,
+        action_type: actionType
+      });
+    } catch (error) {
+      console.error('Error saving DM to history:', error);
+      // Don't show error toast - this is a background operation
+    }
+  };
+
   const openInstagramDM = () => {
     const validation = validateAuthorId(currentComment?.author_id);
     
@@ -598,11 +628,12 @@ export const CommentResponseWorkflow = ({
       icon: hasDMWarning ? <AlertTriangle className="h-4 w-4 text-amber-500" /> : <MessageCircle className="h-4 w-4" />,
       label: dmSuggestion ? 'Enviar DM (com sugestão)' : (hasDMWarning ? 'Enviar DM ⚠️' : 'Enviar DM'),
       description: dmDescription,
-      action: () => {
+      action: async () => {
         if (dmSuggestion) {
           setEditedDmSuggestion(dmSuggestion);
           setShowDMDialog(true);
         } else {
+          await saveDmToHistory('opened_only');
           openInstagramDM();
         }
       },
@@ -1056,10 +1087,11 @@ export const CommentResponseWorkflow = ({
               <Button
                 variant="outline"
                 className="flex-1 gap-2"
-                onClick={() => {
+                onClick={async () => {
                   if (editedDmSuggestion) {
                     navigator.clipboard.writeText(editedDmSuggestion);
                     toast.success("Mensagem copiada!");
+                    await saveDmToHistory('copied');
                   }
                 }}
               >
@@ -1068,10 +1100,11 @@ export const CommentResponseWorkflow = ({
               </Button>
               <Button
                 className="flex-1 gap-2"
-                onClick={() => {
+                onClick={async () => {
                   if (editedDmSuggestion) {
                     navigator.clipboard.writeText(editedDmSuggestion);
                     toast.success("Mensagem copiada! Abrindo DM...");
+                    await saveDmToHistory('copied_and_opened');
                   }
                   openInstagramDM();
                   setShowDMDialog(false);
