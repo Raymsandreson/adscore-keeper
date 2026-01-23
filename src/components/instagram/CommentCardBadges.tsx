@@ -321,27 +321,29 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           }
         }}>
           <PopoverTrigger asChild>
-            {hasClassifications ? (
-              <Badge 
-                variant="outline" 
-                className="text-xs gap-1 cursor-pointer hover:bg-accent"
-              >
-                <div className={`w-2 h-2 rounded-full ${getClassificationConfig(contactClassifications[0]).color}`} />
-                {!compact && getClassificationConfig(contactClassifications[0]).label}
-                {contactClassifications.length > 1 && (
-                  <span className="text-muted-foreground">+{contactClassifications.length - 1}</span>
-                )}
-                <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
-              </Badge>
-            ) : (
-              <Badge 
-                variant="outline" 
-                className="text-xs gap-1 cursor-pointer border-dashed bg-muted/50 text-muted-foreground hover:bg-accent"
-              >
-                <Tag className="h-3 w-3" />
-                {!compact && "Classificar"}
-              </Badge>
-            )}
+            <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+              {hasClassifications ? (
+                <Badge 
+                  variant="outline" 
+                  className="text-xs gap-1 cursor-pointer hover:bg-accent"
+                >
+                  <div className={`w-2 h-2 rounded-full ${getClassificationConfig(contactClassifications[0]).color}`} />
+                  {!compact && getClassificationConfig(contactClassifications[0]).label}
+                  {contactClassifications.length > 1 && (
+                    <span className="text-muted-foreground">+{contactClassifications.length - 1}</span>
+                  )}
+                  <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+                </Badge>
+              ) : (
+                <Badge 
+                  variant="outline" 
+                  className="text-xs gap-1 cursor-pointer border-dashed bg-muted/50 text-muted-foreground hover:bg-accent"
+                >
+                  <Tag className="h-3 w-3" />
+                  {!compact && "Classificar"}
+                </Badge>
+              )}
+            </button>
           </PopoverTrigger>
           <PopoverContent className="w-64 p-3" align="start">
             <div className="space-y-3">
@@ -497,14 +499,16 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           }
         }}>
           <PopoverTrigger asChild>
-            <Badge 
-              variant="outline" 
-              className="text-xs gap-1 bg-muted/50 text-muted-foreground border-dashed cursor-pointer hover:bg-accent"
-            >
-              <Link2Off className="h-3 w-3" />
-              {!compact && "Vincular lead"}
-              <Plus className="h-2.5 w-2.5 ml-0.5 opacity-50" />
-            </Badge>
+            <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+              <Badge 
+                variant="outline" 
+                className="text-xs gap-1 bg-muted/50 text-muted-foreground border-dashed cursor-pointer hover:bg-accent"
+              >
+                <Link2Off className="h-3 w-3" />
+                {!compact && "Vincular lead"}
+                <Plus className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+              </Badge>
+            </button>
           </PopoverTrigger>
           <PopoverContent className="w-72 p-3" align="start">
             <div className="space-y-3">
@@ -638,12 +642,14 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           {interactive && (
             <Popover modal={true} open={manageLeadsOpen} onOpenChange={setManageLeadsOpen}>
               <PopoverTrigger asChild>
-                <Badge 
-                  variant="outline" 
-                  className="text-xs gap-1 cursor-pointer border-dashed hover:bg-accent"
-                >
-                  <Settings2 className="h-3 w-3" />
-                </Badge>
+                <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs gap-1 cursor-pointer border-dashed hover:bg-accent"
+                  >
+                    <Settings2 className="h-3 w-3" />
+                  </Badge>
+                </button>
               </PopoverTrigger>
               <PopoverContent className="w-72 p-3" align="start">
                 <div className="space-y-3">
