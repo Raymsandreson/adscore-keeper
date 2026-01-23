@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Search,
   CalendarIcon,
+  CalendarDays,
   X,
   Timer,
   CheckCheck,
@@ -1022,23 +1023,53 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             )}
           </div>
 
-          {/* Totalization Summary */}
-          <div className="flex items-center justify-between mb-4 p-3 bg-muted/50 rounded-lg">
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <span className="text-muted-foreground">Total: </span>
-                <span className="font-semibold">{filteredComments.length}</span>
-                {hasActiveFilters && (
-                  <span className="text-muted-foreground"> de {comments.filter(c => c.comment_type === activeTab).length}</span>
-                )}
-                <span className="text-muted-foreground"> comentário{filteredComments.length !== 1 ? 's' : ''}</span>
+          {/* Totalization Summary with Active Period Indicator */}
+          <div className="flex flex-col gap-2 mb-4">
+            {/* Active date period indicator */}
+            {(dateFrom || dateTo) && (
+              <div className="flex items-center gap-2 p-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <CalendarDays className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  Período: {' '}
+                  {dateFrom && dateTo ? (
+                    <>
+                      {format(dateFrom, "dd/MM/yyyy")} até {format(dateTo, "dd/MM/yyyy")}
+                    </>
+                  ) : dateFrom ? (
+                    <>A partir de {format(dateFrom, "dd/MM/yyyy")}</>
+                  ) : dateTo ? (
+                    <>Até {format(dateTo, "dd/MM/yyyy")}</>
+                  ) : null}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}
+                  className="ml-auto h-6 px-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-200 dark:hover:bg-blue-900"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-            </div>
-            {hasActiveFilters && (
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                Filtros ativos
-              </Badge>
             )}
+            
+            {/* Stats summary */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-4">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Total: </span>
+                  <span className="font-semibold">{filteredComments.length}</span>
+                  {hasActiveFilters && (
+                    <span className="text-muted-foreground"> de {comments.filter(c => c.comment_type === activeTab).length}</span>
+                  )}
+                  <span className="text-muted-foreground"> comentário{filteredComments.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              {hasActiveFilters && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                  Filtros ativos
+                </Badge>
+              )}
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'received' | 'sent')}>
