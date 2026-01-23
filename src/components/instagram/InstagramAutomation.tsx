@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
@@ -8,12 +6,10 @@ import {
   MessageCircle, 
   Target, 
   TrendingUp,
-  Settings,
-  Plus,
-  RefreshCw,
   BarChart3,
   Filter,
-  Trophy
+  Trophy,
+  History
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
@@ -22,6 +18,8 @@ import { EngagementStats } from "./EngagementStats";
 import { CommentsDashboard } from "./CommentsDashboard";
 import { ProspectingFunnel } from "./ProspectingFunnel";
 import { EngagementChampionship } from "./EngagementChampionship";
+import { DmWorkflowHistory } from "./DmWorkflowHistory";
+
 interface InstagramAutomationProps {
   isConnected: boolean;
   pageId?: string;
@@ -59,7 +57,7 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="funnel" className="gap-2">
             <Filter className="h-4 w-4" />
             Funil
@@ -71,6 +69,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="dm-history" className="gap-2">
+            <History className="h-4 w-4" />
+            Histórico DMs
           </TabsTrigger>
           <TabsTrigger value="goals" className="gap-2">
             <Target className="h-4 w-4" />
@@ -100,6 +102,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
         <TabsContent value="dashboard" className="mt-6">
           <CommentsDashboard />
+        </TabsContent>
+
+        <TabsContent value="dm-history" className="mt-6">
+          <DmWorkflowHistory />
         </TabsContent>
 
         <TabsContent value="goals" className="mt-6">
