@@ -20,7 +20,9 @@ import {
   Search,
   Plus,
   Loader2,
-  Pencil
+  Pencil,
+  X,
+  Settings2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -69,6 +71,8 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
   const [searchResults, setSearchResults] = useState<Lead[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+  const [manageLeadsOpen, setManageLeadsOpen] = useState(false);
 
   if (loading) {
     return null;
@@ -269,6 +273,34 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     }
     navigate(`/leads?${params.toString()}`);
     setLeadLinkOpen(false);
+  };
+
+  const handleUnlinkLead = async (leadId: string) => {
+    if (!contact?.id) {
+      toast.error('Contato não encontrado');
+      return;
+    }
+
+    setUnlinking(leadId);
+    try {
+      const supabaseAny = supabase as any;
+      const { error } = await supabaseAny
+        .from('contact_leads')
+        .delete()
+        .eq('contact_id', contact.id)
+        .eq('lead_id', leadId);
+
+      if (error) throw error;
+
+      toast.success('Lead desvinculado!');
+      setManageLeadsOpen(false);
+      onDataChanged?.();
+    } catch (error) {
+      console.error('Error unlinking lead:', error);
+      toast.error('Erro ao desvincular lead');
+    } finally {
+      setUnlinking(null);
+    }
   };
 
   // Render classification badge (interactive or static)
@@ -577,7 +609,90 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
             </HoverCard>
           )}
 
-          {/* Add more leads button when interactive */}
+          {/* Manage leads button when interactive */}
+          {interactive && (
+            <Popover open={manageLeadsOpen} onOpenChange={setManageLeadsOpen}>
+              <PopoverTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className="text-xs gap-1 cursor-pointer border-dashed hover:bg-accent"
+                >
+                  <Settings2 className="h-3 w-3" />
+                </Badge>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3" align="start">
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">Gerenciar Leads</h4>
+                  
+                  <ScrollArea className="max-h-[200px]">
+                    <div className="space-y-2">
+                      {linkedLeads.map(lead => (
+                        <div 
+                          key={lead.id}
+                          className="flex items-center justify-between gap-2 p-2 rounded-md border bg-card"
+                        >
+                          <div 
+                            className="flex-1 min-w-0 cursor-pointer hover:opacity-80"
+                            onClick={() => {
+                              navigate(`/leads?leadId=${lead.id}`);
+                              setManageLeadsOpen(false);
+                            }}
+                          >
+                            <p className="text-sm font-medium truncate">{lead.lead_name || 'Sem nome'}</p>
+                            <Badge variant="secondary" className="text-xs">{lead.status || 'new'}</Badge>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                navigate(`/leads?leadId=${lead.id}`);
+                                setManageLeadsOpen(false);
+                              }}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleUnlinkLead(lead.id)}
+                              disabled={unlinking === lead.id}
+                            >
+                              {unlinking === lead.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <X className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                  
+                  <div className="border-t pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        setManageLeadsOpen(false);
+                        setLeadLinkOpen(true);
+                        handleSearchLeads('');
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Vincular outro lead
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {/* Add new lead popover */}
           {interactive && (
             <Popover open={leadLinkOpen} onOpenChange={(open) => {
               setLeadLinkOpen(open);
@@ -593,7 +708,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
               </PopoverTrigger>
               <PopoverContent className="w-72 p-3" align="start">
                 <div className="space-y-3">
-                  <h4 className="font-medium text-sm">Vincular outro Lead</h4>
+                  <h4 className="font-medium text-sm">Vincular Lead</h4>
                   
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
