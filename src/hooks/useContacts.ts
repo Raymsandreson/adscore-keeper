@@ -13,6 +13,7 @@ export interface Contact {
   instagram_username: string | null;
   instagram_url: string | null;
   classification: ContactClassification;
+  classifications: string[] | null;
   notes: string | null;
   tags: string[];
   city: string | null;
@@ -443,11 +444,13 @@ export const useContacts = () => {
           continue;
         }
 
-        // Check for existing contact with this username
+        // Check for existing contact with this username (check both with and without @)
+        const normalizedUsername = username.toLowerCase().replace('@', '');
         const { data: existing } = await supabase
           .from('contacts')
           .select('id, follower_status, tags')
-          .eq('instagram_username', username.toLowerCase())
+          .or(`instagram_username.eq.${normalizedUsername},instagram_username.eq.@${normalizedUsername}`)
+          .limit(1)
           .maybeSingle();
 
         if (existing) {
@@ -531,16 +534,32 @@ export const useContacts = () => {
   // Merge duplicate contacts by Instagram username
   const mergeDuplicateContacts = async (onProgress?: (progress: { current: number; total: number; merged: number; errors: number }) => void) => {
     try {
-      // Fetch all contacts with Instagram username
-      const { data: allContacts, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .not('instagram_username', 'is', null)
-        .order('created_at', { ascending: true });
+      // Fetch ALL contacts with Instagram username using pagination
+      let allContacts: Contact[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('*')
+          .not('instagram_username', 'is', null)
+          .order('created_at', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (error) throw error;
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allContacts = [...allContacts, ...(data as Contact[])];
+          hasMore = data.length === pageSize;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
 
-      if (!allContacts || allContacts.length === 0) {
+      if (allContacts.length === 0) {
         toast.info('Nenhum contato com Instagram encontrado');
         return { merged: 0, errors: 0 };
       }
@@ -648,6 +667,15 @@ export const useContacts = () => {
           if (!primary.classification || primary.classification === 'prospect') {
             const betterClass = duplicatesToMerge.find(d => d.classification && d.classification !== 'prospect')?.classification;
             if (betterClass) mergedData.classification = betterClass;
+          }
+          
+          // Merge classifications array
+          const allClassifications = new Set<string>();
+          [primary, ...duplicatesToMerge].forEach(c => {
+            (c.classifications || []).forEach(cls => allClassifications.add(cls));
+          });
+          if (allClassifications.size > 0) {
+            mergedData.classifications = Array.from(allClassifications);
           }
           
           // Follower status: upgrade to mutual if any is mutual, or combine follower/following
