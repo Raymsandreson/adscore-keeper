@@ -535,6 +535,7 @@ export const CommentResponseWorkflow = ({
     setDmSuggestion(null);
     setEditedDmSuggestion("");
     setShowDMDialog(false);
+    setShowPostPreview(false); // Reset post preview to collapsed state
     setJustRepliedComment(null); // Clear the just replied comment
     
     // Since we already added the current comment to repliedComments, unrepliedComments has shrunk
@@ -552,6 +553,7 @@ export const CommentResponseWorkflow = ({
 
   const skipComment = () => {
     setJustRepliedComment(null);
+    setShowPostPreview(false); // Reset post preview to collapsed state
     if (currentIndex < unrepliedComments.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setWorkflowStep('idle');
