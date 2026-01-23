@@ -106,7 +106,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       .filter((v, i, a) => a.indexOf(v) === i);
   }, [comments]);
   
-  const { getContactData, refetch: refetchContactData } = useCommentContactInfo(commentUsernames);
+  const { getContactData, refetch: refetchContactData, refetchUsername } = useCommentContactInfo(commentUsernames);
   
   // Card display settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -1553,12 +1553,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 )}
                               </div>
                               
-                              {/* Unified contact context badges with settings */}
+                              {/* Unified contact context badges with settings - interactive */}
                               <div className="mb-2">
                                 <CommentCardBadges 
                                   contactData={getContactData(comment.author_username)}
                                   config={cardConfig}
                                   compact={false}
+                                  interactive={true}
+                                  authorUsername={comment.author_username}
+                                  onDataChanged={() => refetchUsername(comment.author_username)}
                                 />
                               </div>
                               <p className="text-sm">{comment.comment_text}</p>

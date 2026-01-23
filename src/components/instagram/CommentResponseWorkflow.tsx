@@ -105,7 +105,7 @@ export const CommentResponseWorkflow = ({
       .filter((v, i, a) => a.indexOf(v) === i);
   }, [comments]);
   
-  const { getContactData } = useCommentContactInfo(commentUsernames);
+  const { getContactData, refetchUsername } = useCommentContactInfo(commentUsernames);
 
   // Get unreplied comments that have a comment_id (can be replied to via API)
   const unrepliedComments = useMemo(() => {
@@ -458,12 +458,15 @@ export const CommentResponseWorkflow = ({
                     )}
                   </div>
                   
-                  {/* Contact context badges */}
+                  {/* Contact context badges - interactive */}
                   <div className="mb-3">
                     <CommentCardBadges 
                       contactData={getContactData(currentComment.author_username)}
                       config={cardConfig}
                       compact={false}
+                      interactive={true}
+                      authorUsername={currentComment.author_username}
+                      onDataChanged={() => { refetchUsername(currentComment.author_username); onRefresh?.(); }}
                     />
                   </div>
                   <p className="text-sm">{currentComment.comment_text}</p>
