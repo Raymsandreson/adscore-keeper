@@ -264,5 +264,11 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
     }
   }, [fetchContactInfo]);
 
-  return { getContactData, refetch };
+  const refetchUsername = useCallback((username: string | null) => {
+    if (!username) return;
+    const normalized = username.replace('@', '').toLowerCase();
+    fetchContactInfo([normalized], true);
+  }, [fetchContactInfo]);
+
+  return { getContactData, refetch, refetchUsername };
 };
