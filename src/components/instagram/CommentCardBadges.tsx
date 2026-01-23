@@ -938,78 +938,8 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
         {/* Linked Leads */}
         {renderLinkedLeadsBadge()}
 
-        {/* Connections/Relationships */}
-        {config.connections && relationships.length > 0 && (
-          <HoverCard openDelay={200} closeDelay={100}>
-            <HoverCardTrigger asChild>
-              <Badge 
-                variant="outline" 
-                className="cursor-pointer text-xs bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900"
-              >
-                <Users className="h-3 w-3 mr-1" />
-                {compact ? (
-                  relationships.length
-                ) : relationships.length === 1 ? (
-                  <span className="capitalize">
-                    {relationships[0].relationship_type.replace(/_/g, ' ')} de {relationships[0].related_contact.full_name.split(' ')[0]}
-                  </span>
-                ) : (
-                  <span>{relationships.length} conexões</span>
-                )}
-              </Badge>
-            </HoverCardTrigger>
-            <HoverCardContent side="top" className="w-72 p-3">
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Conexões:</p>
-                {relationships.map(rel => (
-                  <div 
-                    key={rel.id} 
-                    className="flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{rel.related_contact.full_name}</p>
-                      <Badge variant="secondary" className="text-xs mt-1 capitalize">
-                        {rel.relationship_type.replace(/_/g, ' ')}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {rel.related_contact.phone && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-green-600 hover:text-green-700"
-                              onClick={() => window.open(`https://wa.me/${formatPhoneForWhatsApp(rel.related_contact.phone!)}`, '_blank')}
-                            >
-                              <MessageCircle className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>WhatsApp</TooltipContent>
-                        </Tooltip>
-                      )}
-                      {rel.related_contact.instagram_username && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 w-7 p-0 text-pink-600 hover:text-pink-700"
-                              onClick={() => window.open(`https://instagram.com/${rel.related_contact.instagram_username?.replace('@', '')}`, '_blank')}
-                            >
-                              <Instagram className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Instagram</TooltipContent>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </HoverCardContent>
-          </HoverCard>
-        )}
+        {/* Connections/Relationships - Only show if classification does NOT already display the relationship */}
+        {/* Removed: relationships are now shown in the classification badge with the linked person's name */}
       </div>
 
       {/* Relationship Prompt Dialog */}
