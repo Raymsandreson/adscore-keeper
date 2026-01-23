@@ -21,12 +21,17 @@ import {
   ExternalLink,
   Play,
   SkipForward,
-  Users
+  Users,
+  Settings
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
+import { CommentCardBadges } from "./CommentCardBadges";
+import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
+import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
+import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 
 interface Comment {
   id: string;
@@ -87,6 +92,20 @@ export const CommentResponseWorkflow = ({
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [hasLead, setHasLead] = useState<boolean | null>(null);
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
+  const [showCardSettings, setShowCardSettings] = useState(false);
+  
+  // Card settings
+  const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
+  
+  // Get usernames for contact info lookup
+  const commentUsernames = useMemo(() => {
+    return comments
+      .filter(c => c.author_username)
+      .map(c => c.author_username!)
+      .filter((v, i, a) => a.indexOf(v) === i);
+  }, [comments]);
+  
+  const { getContactData } = useCommentContactInfo(commentUsernames);
 
   // Get unreplied comments that have a comment_id (can be replied to via API)
   const unrepliedComments = useMemo(() => {
@@ -380,10 +399,20 @@ export const CommentResponseWorkflow = ({
           </DialogTitle>
           <DialogDescription className="flex items-center justify-between">
             <span>Responda comentários em ritmo acelerado</span>
-            <Badge variant="secondary" className="gap-1">
-              <Users className="h-3 w-3" />
-              {repliedComments.size}/{repliedComments.size + totalComments} respondidos
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 w-7 p-0"
+                onClick={() => setShowCardSettings(true)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Badge variant="secondary" className="gap-1">
+                <Users className="h-3 w-3" />
+                {repliedComments.size}/{repliedComments.size + totalComments} respondidos
+              </Badge>
+            </div>
           </DialogDescription>
         </DialogHeader>
 
@@ -413,7 +442,7 @@ export const CommentResponseWorkflow = ({
               {/* Current Comment */}
               {currentComment && (
                 <div className="p-4 rounded-lg border bg-muted/50">
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Badge variant="secondary" className={
                       currentComment.platform === 'instagram' 
                         ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
@@ -427,18 +456,15 @@ export const CommentResponseWorkflow = ({
                         className="font-medium"
                       />
                     )}
-                    {hasLead && (
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Lead
-                      </Badge>
-                    )}
-                    {isFollowing && (
-                      <Badge variant="outline" className="text-blue-600 border-blue-600">
-                        <UserPlus className="h-3 w-3 mr-1" />
-                        Seguindo
-                      </Badge>
-                    )}
+                  </div>
+                  
+                  {/* Contact context badges */}
+                  <div className="mb-3">
+                    <CommentCardBadges 
+                      contactData={getContactData(currentComment.author_username)}
+                      config={cardConfig}
+                      compact={false}
+                    />
                   </div>
                   <p className="text-sm">{currentComment.comment_text}</p>
                   {currentComment.post_url && (
@@ -594,6 +620,15 @@ export const CommentResponseWorkflow = ({
           </ScrollArea>
         )}
       </DialogContent>
+      
+      {/* Card Settings Dialog */}
+      <CommentCardSettingsDialog
+        open={showCardSettings}
+        onOpenChange={setShowCardSettings}
+        config={cardConfig}
+        onUpdateField={updateCardField}
+        onReset={resetCardSettings}
+      />
     </Dialog>
   );
 };
