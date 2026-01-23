@@ -715,7 +715,6 @@ export type Database = {
           platform: string
           post_id: string | null
           post_url: string | null
-          prospect_classification: string[] | null
           prospect_name: string | null
           replied_at: string | null
         }
@@ -736,7 +735,6 @@ export type Database = {
           platform?: string
           post_id?: string | null
           post_url?: string | null
-          prospect_classification?: string[] | null
           prospect_name?: string | null
           replied_at?: string | null
         }
@@ -757,7 +755,6 @@ export type Database = {
           platform?: string
           post_id?: string | null
           post_url?: string | null
-          prospect_classification?: string[] | null
           prospect_name?: string | null
           replied_at?: string | null
         }
