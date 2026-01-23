@@ -22,7 +22,9 @@ import {
   Play,
   SkipForward,
   Users,
-  Settings
+  Settings,
+  Reply,
+  Image as ImageIcon
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -39,9 +41,17 @@ interface Comment {
   comment_text: string | null;
   author_username: string | null;
   post_url: string | null;
+  post_id?: string | null;
+  parent_comment_id?: string | null;
   platform: string;
   created_at: string;
   replied_at?: string | null;
+}
+
+interface ParentComment {
+  id: string;
+  comment_text: string | null;
+  author_username: string | null;
 }
 
 interface CommentResponseWorkflowProps {
@@ -93,6 +103,8 @@ export const CommentResponseWorkflow = ({
   const [hasLead, setHasLead] = useState<boolean | null>(null);
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
   const [showCardSettings, setShowCardSettings] = useState(false);
+  const [parentComment, setParentComment] = useState<ParentComment | null>(null);
+  const [showPostPreview, setShowPostPreview] = useState(false);
   
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -125,7 +137,24 @@ export const CommentResponseWorkflow = ({
     if (currentComment?.author_username) {
       checkUserStatus(currentComment.author_username);
     }
-  }, [currentComment?.author_username]);
+    // Fetch parent comment if exists
+    if (currentComment?.parent_comment_id) {
+      fetchParentComment(currentComment.parent_comment_id);
+    } else {
+      setParentComment(null);
+    }
+  }, [currentComment?.author_username, currentComment?.parent_comment_id]);
+
+  const fetchParentComment = async (parentId: string) => {
+    const { data } = await supabase
+      .from('instagram_comments')
+      .select('id, comment_text, author_username')
+      .eq('comment_id', parentId)
+      .limit(1)
+      .maybeSingle();
+    
+    setParentComment(data);
+  };
 
   const checkUserStatus = async (username: string) => {
     const normalizedUsername = username.replace('@', '').toLowerCase();
@@ -441,45 +470,105 @@ export const CommentResponseWorkflow = ({
             <div className="space-y-4">
               {/* Current Comment */}
               {currentComment && (
-                <div className="p-4 rounded-lg border bg-muted/50">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <Badge variant="secondary" className={
-                      currentComment.platform === 'instagram' 
-                        ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
-                        : 'bg-blue-500 text-white'
-                    }>
-                      {currentComment.platform}
-                    </Badge>
-                    {currentComment.author_username && (
-                      <InstagramProfileHoverCard 
-                        username={currentComment.author_username}
-                        className="font-medium"
-                      />
-                    )}
-                  </div>
-                  
-                  {/* Contact context badges - interactive */}
-                  <div className="mb-3">
-                    <CommentCardBadges 
-                      contactData={getContactData(currentComment.author_username)}
-                      config={cardConfig}
-                      compact={false}
-                      interactive={true}
-                      authorUsername={currentComment.author_username}
-                      onDataChanged={() => { refetchUsername(currentComment.author_username); onRefresh?.(); }}
-                    />
-                  </div>
-                  <p className="text-sm">{currentComment.comment_text}</p>
+                <div className="space-y-3">
+                  {/* Post Preview */}
                   {currentComment.post_url && (
-                    <a
-                      href={currentComment.post_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline flex items-center gap-1 mt-2"
-                    >
-                      Ver post <ExternalLink className="h-3 w-3" />
-                    </a>
+                    <div className="rounded-lg border bg-card overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setShowPostPreview(!showPostPreview)}
+                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 text-sm">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">Postagem Original</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={currentComment.post_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
+                          >
+                            Abrir <ExternalLink className="h-3 w-3" />
+                          </a>
+                          <Badge variant="outline" className="text-xs">
+                            {showPostPreview ? 'Ocultar' : 'Preview'}
+                          </Badge>
+                        </div>
+                      </button>
+                      {showPostPreview && (
+                        <div className="border-t p-2 bg-muted/30">
+                          <div className="aspect-square max-h-48 overflow-hidden rounded-md bg-black/5 flex items-center justify-center">
+                            <iframe 
+                              src={`${currentComment.post_url}embed`}
+                              className="w-full h-full border-0"
+                              title="Instagram Post Preview"
+                              loading="lazy"
+                              allowFullScreen
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
+                  
+                  {/* Parent Comment (if replying to a comment) */}
+                  {parentComment && (
+                    <div className="p-3 rounded-lg border border-dashed bg-muted/30">
+                      <div className="flex items-center gap-2 mb-1.5 text-xs text-muted-foreground">
+                        <Reply className="h-3.5 w-3.5" />
+                        <span>Respondendo ao comentário de</span>
+                        {parentComment.author_username && (
+                          <span className="font-medium text-foreground">
+                            @{parentComment.author_username.replace('@', '')}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground italic">
+                        "{parentComment.comment_text?.slice(0, 150)}{(parentComment.comment_text?.length || 0) > 150 ? '...' : ''}"
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Current Comment Card */}
+                  <div className="p-4 rounded-lg border bg-muted/50">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Badge variant="secondary" className={
+                        currentComment.platform === 'instagram' 
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
+                          : 'bg-blue-500 text-white'
+                      }>
+                        {currentComment.platform}
+                      </Badge>
+                      {currentComment.author_username && (
+                        <InstagramProfileHoverCard 
+                          username={currentComment.author_username}
+                          className="font-medium"
+                        />
+                      )}
+                      {parentComment && (
+                        <Badge variant="outline" className="text-xs gap-1">
+                          <Reply className="h-3 w-3" />
+                          Resposta
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {/* Contact context badges - interactive */}
+                    <div className="mb-3">
+                      <CommentCardBadges 
+                        contactData={getContactData(currentComment.author_username)}
+                        config={cardConfig}
+                        compact={false}
+                        interactive={true}
+                        authorUsername={currentComment.author_username}
+                        onDataChanged={() => { refetchUsername(currentComment.author_username); onRefresh?.(); }}
+                      />
+                    </div>
+                    <p className="text-sm">{currentComment.comment_text}</p>
+                  </div>
                 </div>
               )}
 

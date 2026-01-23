@@ -66,11 +66,14 @@ interface Comment {
   id: string;
   platform: string;
   comment_type: string;
+  comment_id: string | null;
   post_id: string | null;
   post_url: string | null;
   comment_text: string | null;
   author_username: string | null;
   author_id: string | null;
+  parent_comment_id: string | null;
+  replied_at: string | null;
   created_at: string;
   converted_to_lead?: boolean;
   prospect_classification?: string[] | null;
