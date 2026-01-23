@@ -42,7 +42,7 @@ import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, isWithinInterval, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, isWithinInterval, startOfDay, endOfDay, subDays, startOfWeek, startOfMonth, endOfMonth, subMonths, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
@@ -345,6 +345,48 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       setIsSyncing(false);
     }
   }, [accessToken, selectedAccounts, isSyncing]);
+
+  // Detect which quick period is currently active
+  const activePeriod = useMemo(() => {
+    if (!dateFrom || !dateTo) return null;
+    
+    const today = new Date();
+    const todayStart = startOfDay(today);
+    const todayEnd = endOfDay(today);
+    
+    // Today
+    if (isSameDay(dateFrom, todayStart) && isSameDay(dateTo, todayEnd)) {
+      return 'today';
+    }
+    
+    // Last 7 days
+    if (isSameDay(dateFrom, startOfDay(subDays(today, 6))) && isSameDay(dateTo, todayEnd)) {
+      return 'last7';
+    }
+    
+    // Last 15 days
+    if (isSameDay(dateFrom, startOfDay(subDays(today, 14))) && isSameDay(dateTo, todayEnd)) {
+      return 'last15';
+    }
+    
+    // This month
+    if (isSameDay(dateFrom, startOfMonth(today)) && isSameDay(dateTo, todayEnd)) {
+      return 'thisMonth';
+    }
+    
+    // Last month
+    const lastMonth = subMonths(today, 1);
+    if (isSameDay(dateFrom, startOfMonth(lastMonth)) && isSameDay(dateTo, endOfMonth(lastMonth))) {
+      return 'lastMonth';
+    }
+    
+    // Last 30 days
+    if (isSameDay(dateFrom, startOfDay(subDays(today, 29))) && isSameDay(dateTo, todayEnd)) {
+      return 'last30';
+    }
+    
+    return 'custom';
+  }, [dateFrom, dateTo]);
 
   // Format time ago for last sync
   const formatLastSync = (date: Date | null): string => {
@@ -1030,55 +1072,67 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               <span className="text-xs text-muted-foreground font-medium">Período rápido:</span>
               <div className="flex flex-wrap gap-1.5">
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'today' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
                     setDateFrom(startOfDay(today));
                     setDateTo(endOfDay(today));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'today' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Hoje
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'last7' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
                     setDateFrom(startOfDay(subDays(today, 6)));
                     setDateTo(endOfDay(today));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'last7' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Últimos 7 dias
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'last15' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
                     setDateFrom(startOfDay(subDays(today, 14)));
                     setDateTo(endOfDay(today));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'last15' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Últimos 15 dias
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'thisMonth' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
                     setDateFrom(startOfMonth(today));
                     setDateTo(endOfDay(today));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'thisMonth' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Este mês
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'lastMonth' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
@@ -1086,19 +1140,25 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                     setDateFrom(startOfMonth(lastMonth));
                     setDateTo(endOfMonth(lastMonth));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'lastMonth' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Mês passado
                 </Button>
                 <Button
-                  variant="outline"
+                  variant={activePeriod === 'last30' ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
                     const today = new Date();
                     setDateFrom(startOfDay(subDays(today, 29)));
                     setDateTo(endOfDay(today));
                   }}
-                  className="h-7 px-2.5 text-xs"
+                  className={cn(
+                    "h-7 px-2.5 text-xs",
+                    activePeriod === 'last30' && "bg-primary text-primary-foreground"
+                  )}
                 >
                   Últimos 30 dias
                 </Button>
