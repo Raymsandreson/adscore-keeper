@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -12,12 +12,14 @@ import {
   Tag,
   UserCheck,
   UserPlus,
-  Users2
+  Users2,
+  Pencil
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { LeadStatusPopover } from './LeadStatusPopover';
+import { EditRelationshipDialog } from './EditRelationshipDialog';
 
 interface CommentContactBadgesProps {
   contactData: CommentContactData;
@@ -36,6 +38,14 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   
   const contactClassifications = contact?.classifications || [];
   const followerStatus = contact?.follower_status;
+
+  // Edit relationship states
+  const [showEditRelationship, setShowEditRelationship] = useState(false);
+  const [editingRelationship, setEditingRelationship] = useState<{
+    id: string;
+    type: string;
+    relatedContact: { id: string; full_name: string };
+  } | null>(null);
 
   if (loading) {
     return (
@@ -102,6 +112,26 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
       return `${config.label} de ${firstName}`;
     }
     return config.label;
+  };
+
+  const handleEditRelationship = (classification: string) => {
+    const relationship = getRelationshipForClassification(classification);
+    if (relationship && contact?.id) {
+      setEditingRelationship({
+        id: relationship.id,
+        type: relationship.relationship_type,
+        relatedContact: {
+          id: relationship.related_contact.id,
+          full_name: relationship.related_contact.full_name
+        }
+      });
+      setShowEditRelationship(true);
+    }
+  };
+
+  const handleEditRelationshipComplete = () => {
+    setEditingRelationship(null);
+    onLeadStatusChanged?.();
   };
 
   return (
@@ -261,20 +291,33 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
         {contactClassifications.length > 0 && contactClassifications.slice(0, 2).map((classification, idx) => {
           const config = getClassificationConfig(classification);
           const displayLabel = getClassificationDisplayLabel(classification);
+          const relationship = getRelationshipForClassification(classification);
+          const hasRelationship = relationship && relationship.related_contact?.full_name;
+          
           return (
-            <Badge 
-              key={`class-${idx}`}
-              variant="outline" 
-              className="text-xs gap-1 capitalize"
-              style={{ 
-                backgroundColor: `${config.color}15`, 
-                color: config.color.replace('bg-', '').includes('-') ? undefined : config.color,
-                borderColor: `${config.color}40`
-              }}
-            >
-              <Tag className="h-3 w-3" />
-              {displayLabel}
-            </Badge>
+            <Tooltip key={`class-${idx}`}>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className={`text-xs gap-1 capitalize ${hasRelationship ? 'cursor-pointer hover:bg-accent' : ''}`}
+                  style={{ 
+                    backgroundColor: `${config.color}15`, 
+                    color: config.color.replace('bg-', '').includes('-') ? undefined : config.color,
+                    borderColor: `${config.color}40`
+                  }}
+                  onClick={hasRelationship ? () => handleEditRelationship(classification) : undefined}
+                >
+                  <Tag className="h-3 w-3" />
+                  {displayLabel}
+                  {hasRelationship && (
+                    <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+                  )}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                {hasRelationship ? 'Clique para editar o vínculo' : displayLabel}
+              </TooltipContent>
+            </Tooltip>
           );
         })}
         
@@ -311,6 +354,20 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
           </HoverCard>
         )}
       </div>
+
+      {/* Edit Relationship Dialog */}
+      {editingRelationship && (
+        <EditRelationshipDialog
+          open={showEditRelationship}
+          onOpenChange={setShowEditRelationship}
+          relationshipId={editingRelationship.id}
+          relationshipType={editingRelationship.type}
+          currentRelatedContact={editingRelationship.relatedContact}
+          contactId={contact?.id || ''}
+          contactName={contact?.full_name || username || 'Contato'}
+          onComplete={handleEditRelationshipComplete}
+        />
+      )}
     </TooltipProvider>
   );
 };
