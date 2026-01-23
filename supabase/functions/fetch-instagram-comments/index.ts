@@ -94,7 +94,7 @@ serve(async (req) => {
         if (media.comments_count > 0) {
           try {
             const commentsResponse = await fetch(
-              `https://graph.facebook.com/v21.0/${media.id}/comments?fields=id,text,timestamp,username,like_count,replies{id,text,timestamp,username}&limit=50&access_token=${token}`
+              `https://graph.facebook.com/v21.0/${media.id}/comments?fields=id,text,timestamp,username,from{id,username},like_count,replies{id,text,timestamp,username,from{id,username}}&limit=50&access_token=${token}`
             );
             const commentsData = await commentsResponse.json();
 
@@ -107,6 +107,7 @@ serve(async (req) => {
                   comment_id: comment.id,
                   comment_text: comment.text,
                   author_username: comment.username,
+                  author_id: comment.from?.id || null,
                   created_at: comment.timestamp,
                   post_id: media.id,
                   post_url: media.permalink,
@@ -123,6 +124,7 @@ serve(async (req) => {
                       comment_id: reply.id,
                       comment_text: reply.text,
                       author_username: reply.username,
+                      author_id: reply.from?.id || null,
                       created_at: reply.timestamp,
                       post_id: media.id,
                       post_url: media.permalink,
@@ -148,7 +150,7 @@ serve(async (req) => {
       console.log("🏷️ Buscando menções em posts de terceiros...");
       
       const mentionsResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_comment?fields=id,text,timestamp,username,media{id,permalink,caption,owner{username}}&limit=50&access_token=${token}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_comment?fields=id,text,timestamp,username,from{id,username},media{id,permalink,caption,owner{username}}&limit=50&access_token=${token}`
       );
       const mentionsData = await mentionsResponse.json();
       
@@ -162,6 +164,7 @@ serve(async (req) => {
             comment_id: mention.id,
             comment_text: mention.text,
             author_username: mention.username,
+            author_id: mention.from?.id || null,
             created_at: mention.timestamp,
             post_id: mention.media?.id || null,
             post_url: mention.media?.permalink || null,
@@ -191,7 +194,7 @@ serve(async (req) => {
       // The Graph API doesn't have a direct endpoint for "comments I made on other posts"
       // However, we can track replies to our comments through the mentioned_media endpoint
       const mentionedMediaResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_media?fields=id,permalink,caption,timestamp,comments{id,text,timestamp,username,replies{id,text,timestamp,username}}&limit=25&access_token=${token}`
+        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_media?fields=id,permalink,caption,timestamp,comments{id,text,timestamp,username,from{id,username},replies{id,text,timestamp,username,from{id,username}}}&limit=25&access_token=${token}`
       );
       const mentionedMediaData = await mentionedMediaResponse.json();
       
@@ -212,6 +215,7 @@ serve(async (req) => {
                   comment_id: comment.id,
                   comment_text: comment.text,
                   author_username: comment.username,
+                  author_id: comment.from?.id || null,
                   created_at: comment.timestamp,
                   post_id: media.id,
                   post_url: media.permalink,
@@ -231,6 +235,7 @@ serve(async (req) => {
                       comment_id: reply.id,
                       comment_text: reply.text,
                       author_username: reply.username,
+                      author_id: reply.from?.id || null,
                       created_at: reply.timestamp,
                       post_id: media.id,
                       post_url: media.permalink,

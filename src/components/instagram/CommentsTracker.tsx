@@ -320,6 +320,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 comment_id: comment.comment_id,
                 comment_text: comment.comment_text,
                 author_username: comment.author_username,
+                author_id: comment.author_id || null,
                 created_at: comment.created_at,
                 post_id: comment.post_id,
                 post_url: comment.post_url,
@@ -327,7 +328,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 parent_comment_id: comment.parent_comment_id || null,
                 platform: 'instagram',
                 ad_account_id: account.instagram_id, // Track which account this came from
-                metadata: { account_name: account.account_name }
+                metadata: { account_name: account.account_name, ...comment.metadata }
               }));
               
               const { error: insertError, data: inserted } = await supabase
