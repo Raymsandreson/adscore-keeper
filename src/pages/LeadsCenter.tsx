@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Instagram,
   LayoutGrid,
+  MapPin,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ import { useLeads } from "@/hooks/useLeads";
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { ContactsManager } from "@/components/contacts/ContactsManager";
 import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
+import { GeographicDistributionMap } from "@/components/contacts/GeographicDistributionMap";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -195,7 +197,7 @@ const LeadsCenter = () => {
 
           {/* Tabs for Lead Management and Analytics */}
           <Tabs defaultValue="kanban" className="w-full">
-            <TabsList className="grid w-full grid-cols-6 mb-4">
+            <TabsList className="grid w-full grid-cols-7 mb-4">
               <TabsTrigger value="kanban" className="flex items-center gap-2">
                 <LayoutGrid className="h-4 w-4" />
                 Kanbans
@@ -207,6 +209,10 @@ const LeadsCenter = () => {
               <TabsTrigger value="contacts" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Contatos
+              </TabsTrigger>
+              <TabsTrigger value="geographic" className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Capilaridade
               </TabsTrigger>
               <TabsTrigger value="instagram" className="flex items-center gap-2">
                 <Instagram className="h-4 w-4" />
@@ -235,6 +241,11 @@ const LeadsCenter = () => {
             {/* Contacts Tab */}
             <TabsContent value="contacts">
               <ContactsManager />
+            </TabsContent>
+
+            {/* Geographic Distribution Tab */}
+            <TabsContent value="geographic">
+              <GeographicDistributionMap />
             </TabsContent>
 
             {/* Instagram Accounts Tab */}
