@@ -1606,38 +1606,43 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
                               </div>
                               
-                              {/* Classification badges - enhanced with relationship context */}
-                              {comment.prospect_classification && comment.prospect_classification.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
-                                  {comment.prospect_classification.map(cls => {
-                                    const config = classificationConfig[cls];
-                                    const contactData = getContactData(comment.author_username);
-                                    
-                                    // Check if this classification matches a relationship type
-                                    const matchingRelationship = contactData.relationships.find(
-                                      rel => rel.relationship_type.toLowerCase() === cls.toLowerCase()
-                                    );
-                                    
-                                    const displayLabel = matchingRelationship 
-                                      ? `${cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} de ${matchingRelationship.related_contact.full_name.split(' ')[0]}`
-                                      : config?.label || cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                    
-                                    return config ? (
-                                      <Badge 
-                                        key={cls}
-                                        variant="outline" 
-                                        className={cn("text-xs", config.color, "text-white")}
-                                      >
-                                        {displayLabel}
-                                      </Badge>
-                                    ) : (
-                                      <Badge key={cls} variant="outline" className="text-xs bg-purple-500 text-white">
-                                        {displayLabel}
-                                      </Badge>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                              {/* Classification badges - read from centralized contacts table */}
+                              {(() => {
+                                const contactData = getContactData(comment.author_username);
+                                const contactClassifications = contactData?.contact?.classifications || [];
+                                if (contactClassifications.length === 0) return null;
+                                
+                                return (
+                                  <div className="flex flex-wrap gap-1">
+                                    {contactClassifications.map((cls: string) => {
+                                      const config = classificationConfig[cls];
+                                      
+                                      // Check if this classification matches a relationship type
+                                      const matchingRelationship = contactData.relationships.find(
+                                        rel => rel.relationship_type.toLowerCase() === cls.toLowerCase()
+                                      );
+                                      
+                                      const displayLabel = matchingRelationship 
+                                        ? `${cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} de ${matchingRelationship.related_contact.full_name.split(' ')[0]}`
+                                        : config?.label || cls.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                      
+                                      return config ? (
+                                        <Badge 
+                                          key={cls}
+                                          variant="outline" 
+                                          className={cn("text-xs", config.color, "text-white")}
+                                        >
+                                          {displayLabel}
+                                        </Badge>
+                                      ) : (
+                                        <Badge key={cls} variant="outline" className="text-xs bg-purple-500 text-white">
+                                          {displayLabel}
+                                        </Badge>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
                               
                               {/* AI Reply button for received comments */}
                               {activeTab === 'received' && (comment as any).comment_id && (
