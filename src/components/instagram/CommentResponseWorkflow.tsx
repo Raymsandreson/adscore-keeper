@@ -40,6 +40,7 @@ interface Comment {
   comment_id?: string;
   comment_text: string | null;
   author_username: string | null;
+  author_id?: string | null;
   post_url: string | null;
   post_id?: string | null;
   parent_comment_id?: string | null;
@@ -82,6 +83,7 @@ interface SuggestedAction {
   action: () => void;
   variant?: 'default' | 'outline' | 'secondary';
   highlight?: boolean;
+  isCompleted?: boolean;
 }
 
 export const CommentResponseWorkflow = ({ 
@@ -302,9 +304,16 @@ export const CommentResponseWorkflow = ({
   };
 
   const openInstagramDM = () => {
-    const username = currentComment?.author_username?.replace('@', '');
-    if (username) {
-      window.open(`https://instagram.com/direct/t/${username}`, '_blank');
+    // Use author_id for proper DM link format
+    if (currentComment?.author_id) {
+      window.open(`https://instagram.com/direct/t/${currentComment.author_id}`, '_blank');
+    } else {
+      // Fallback to profile if author_id is not available
+      const username = currentComment?.author_username?.replace('@', '');
+      if (username) {
+        toast.info("ID do usuário não disponível. Abrindo perfil...");
+        window.open(`https://instagram.com/${username}`, '_blank');
+      }
     }
   };
 
@@ -340,8 +349,19 @@ export const CommentResponseWorkflow = ({
   const getSuggestedActions = useCallback((): SuggestedAction[] => {
     const actions: SuggestedAction[] = [];
 
-    // If not following, suggest to follow
-    if (isFollowing === false) {
+    // Show follow action - green if already following
+    if (isFollowing === true) {
+      actions.push({
+        id: 'follow',
+        icon: <CheckCircle2 className="h-4 w-4" />,
+        label: 'Já está seguindo',
+        description: 'Você já segue este perfil',
+        action: openInstagramProfile,
+        variant: 'outline',
+        highlight: false,
+        isCompleted: true
+      });
+    } else {
       actions.push({
         id: 'follow',
         icon: <UserPlus className="h-4 w-4" />,
@@ -683,14 +703,16 @@ export const CommentResponseWorkflow = ({
                           variant={action.variant}
                           className={cn(
                             "justify-start h-auto py-3 px-4",
-                            action.highlight && "bg-primary/10 border-primary/30 hover:bg-primary/20"
+                            action.highlight && "bg-primary/10 border-primary/30 hover:bg-primary/20",
+                            action.isCompleted && "bg-green-50 border-green-200 hover:bg-green-100 dark:bg-green-950/30 dark:border-green-800 dark:hover:bg-green-900/30"
                           )}
                           onClick={action.action}
                         >
                           <div className="flex items-center gap-3 w-full">
                             <div className={cn(
                               "p-2 rounded-full",
-                              action.highlight ? "bg-primary/20" : "bg-muted"
+                              action.highlight ? "bg-primary/20" : "bg-muted",
+                              action.isCompleted && "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
                             )}>
                               {action.icon}
                             </div>
