@@ -355,6 +355,13 @@ const Dashboard = () => {
                 )}
               </Button>
             </Link>
+
+            <Link to="/?tab=automation&subtab=automation">
+              <Button variant="outline" size="sm" className="border-purple-500/50 hover:bg-purple-500/10">
+                <Bot className="h-4 w-4 mr-2 text-purple-500" />
+                Automação IA
+              </Button>
+            </Link>
             
             <MultiAccountSelector compact />
             
