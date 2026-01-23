@@ -142,6 +142,48 @@ export const CommentResponseWorkflow = ({
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const actionIdCounter = useRef(0);
 
+  // Play completion notification (sound + vibration)
+  const playCompletionNotification = useCallback(() => {
+    // Play success sound using Web Audio API
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Create a pleasant completion sound (ascending notes)
+      const playNote = (frequency: number, startTime: number, duration: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+      
+      const now = audioContext.currentTime;
+      playNote(523.25, now, 0.15);        // C5
+      playNote(659.25, now + 0.15, 0.15); // E5
+      playNote(783.99, now + 0.3, 0.3);   // G5
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+    
+    // Vibrate if supported
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100, 50, 200]); // Short-short-long pattern
+    }
+    
+    toast.success("🎉 Fluxo concluído com sucesso!", {
+      description: "Todos os comentários foram processados"
+    });
+  }, []);
+
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
   
@@ -588,6 +630,7 @@ export const CommentResponseWorkflow = ({
       // All done! Stop timer and show report
       setWorkflowEndTime(new Date());
       setIsTimerRunning(false);
+      playCompletionNotification();
       setShowReportDialog(true);
     }
   };
@@ -610,6 +653,7 @@ export const CommentResponseWorkflow = ({
       // Last comment skipped, show report
       setWorkflowEndTime(new Date());
       setIsTimerRunning(false);
+      playCompletionNotification();
       setShowReportDialog(true);
     }
   };
