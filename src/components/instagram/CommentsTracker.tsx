@@ -37,6 +37,7 @@ import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
 import { CommentContactBadges } from "./CommentContactBadges";
 import { QuickLinkLeadPopover } from "./QuickLinkLeadPopover";
+import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -104,6 +105,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   // AI Reply dialog state
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
+  
+  // Workflow mode state
+  const [showWorkflowMode, setShowWorkflowMode] = useState(false);
   
   // Filter states
   const [searchText, setSearchText] = useState('');
@@ -765,6 +769,26 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 )}
                 Sincronizar
               </Button>
+              
+              {/* Workflow Mode Button */}
+              {(() => {
+                const unrepliedCount = comments.filter(c => 
+                  c.comment_type === 'received' && 
+                  (c as any).comment_id && 
+                  !(c as any).replied_at
+                ).length;
+                return unrepliedCount > 0 ? (
+                  <Button 
+                    size="sm"
+                    className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white gap-2"
+                    onClick={() => setShowWorkflowMode(true)}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Modo Fluxo ({unrepliedCount})
+                  </Button>
+                ) : null;
+              })()}
+              
               {activeTab === 'received' && filteredComments.filter(c => c.author_username && !convertedUsers.has(c.author_username.replace('@', '').toLowerCase())).length > 0 && (
                 <Button 
                   size="sm"
@@ -1176,6 +1200,27 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         accessToken={accessToken}
         onReplyPosted={() => {
           syncFromInstagram();
+        }}
+      />
+
+      {/* Comment Response Workflow */}
+      <CommentResponseWorkflow
+        open={showWorkflowMode}
+        onOpenChange={setShowWorkflowMode}
+        comments={comments.filter(c => c.comment_type === 'received') as any}
+        accessToken={accessToken}
+        onCommentReplied={(commentId) => {
+          // Refresh comments after reply
+          fetchComments();
+        }}
+        onLeadCreated={(username) => {
+          setConvertedUsers(prev => new Set([...prev, username]));
+          checkExistingLeads();
+        }}
+        onRefresh={() => {
+          fetchComments();
+          fetchStats();
+          refetchContactData();
         }}
       />
     </div>
