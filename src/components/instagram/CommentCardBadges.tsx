@@ -35,6 +35,7 @@ import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { RelationshipPromptDialog, getRelationshipClassificationsFromList } from './RelationshipPromptDialog';
+import { EditRelationshipDialog } from './EditRelationshipDialog';
 
 interface Lead {
   id: string;
@@ -82,6 +83,14 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
   const [showRelationshipPrompt, setShowRelationshipPrompt] = useState(false);
   const [pendingContactId, setPendingContactId] = useState<string | null>(null);
   const [pendingRelationshipClassification, setPendingRelationshipClassification] = useState<string>('');
+
+  // Edit relationship states
+  const [showEditRelationship, setShowEditRelationship] = useState(false);
+  const [editingRelationship, setEditingRelationship] = useState<{
+    id: string;
+    type: string;
+    relatedContact: { id: string; full_name: string };
+  } | null>(null);
 
   // Detect new relationship classifications being added
   const newRelationshipClassifications = useMemo(() => {
@@ -227,6 +236,26 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     toast.success('Classificações e relacionamento atualizados!');
     setPendingContactId(null);
     setPendingRelationshipClassification('');
+    onDataChanged?.();
+  };
+
+  const handleEditRelationship = (classification: string) => {
+    const relationship = getRelationshipForClassification(classification);
+    if (relationship && contact?.id) {
+      setEditingRelationship({
+        id: relationship.id,
+        type: relationship.relationship_type,
+        relatedContact: {
+          id: relationship.related_contact.id,
+          full_name: relationship.related_contact.full_name
+        }
+      });
+      setShowEditRelationship(true);
+    }
+  };
+
+  const handleEditRelationshipComplete = () => {
+    setEditingRelationship(null);
     onDataChanged?.();
   };
 
@@ -471,22 +500,31 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
       <>
         {contactClassifications.slice(0, compact ? 1 : 2).map((classification, idx) => {
           const classConfig = getClassificationConfig(classification);
+          const relationship = getRelationshipForClassification(classification);
+          const hasRelationship = relationship && relationship.related_contact?.full_name;
+          
           return (
             <Tooltip key={`class-${idx}`}>
               <TooltipTrigger asChild>
                 <Badge 
                   variant="outline" 
-                  className="text-xs gap-1"
+                  className={`text-xs gap-1 ${hasRelationship && interactive ? 'cursor-pointer hover:bg-accent' : ''}`}
+                  onClick={hasRelationship && interactive ? () => handleEditRelationship(classification) : undefined}
                 >
                   <div className={`w-2 h-2 rounded-full ${classConfig.color}`} />
                   {!compact && getClassificationDisplayLabel(classification)}
                   {idx === 0 && updatedAt && isRecent && (
                     <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
                   )}
+                  {hasRelationship && interactive && (
+                    <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+                  )}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                {updatedAt ? (
+                {hasRelationship && interactive ? (
+                  <span>Clique para editar o vínculo de relacionamento</span>
+                ) : updatedAt ? (
                   <span>
                     {getClassificationDisplayLabel(classification)} • Atualizado em {format(updatedAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                   </span>
@@ -974,6 +1012,20 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
         contactName={contact?.full_name || authorUsername || 'Contato'}
         onComplete={handleRelationshipComplete}
       />
+
+      {/* Edit Relationship Dialog */}
+      {editingRelationship && (
+        <EditRelationshipDialog
+          open={showEditRelationship}
+          onOpenChange={setShowEditRelationship}
+          relationshipId={editingRelationship.id}
+          relationshipType={editingRelationship.type}
+          currentRelatedContact={editingRelationship.relatedContact}
+          contactId={contact?.id || ''}
+          contactName={contact?.full_name || authorUsername || 'Contato'}
+          onComplete={handleEditRelationshipComplete}
+        />
+      )}
     </TooltipProvider>
   );
 };
