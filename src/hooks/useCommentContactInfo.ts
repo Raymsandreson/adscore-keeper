@@ -172,34 +172,35 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
         }
       }
 
-      // Build final data - for each username, prefer the contact that has linked leads
+      // Build final data - for each username, prefer the contact that has classifications, leads, or relationships
       const newData: Record<string, CommentContactData> = {};
       usernamesToFetch.forEach(username => {
         const matchingContacts = contactsByUsername.get(username) || [];
         
-        // Find the best contact - prefer one with linked leads
-        let bestContact: ContactInfo | null = null;
-        let bestLeads: LeadInfo[] = [];
-        let bestRelationships: RelationshipInfo[] = [];
-        
-        for (const contact of matchingContacts) {
+        // Score each contact to find the best one
+        // Priority: 1. Has leads, 2. Has classifications, 3. Has relationships, 4. First match
+        const scoredContacts = matchingContacts.map(contact => {
           const contactLeads = leadsByContact[contact.id] || [];
           const contactRelationships = relationshipsByContact[contact.id] || [];
+          const hasClassifications = contact.classifications && contact.classifications.length > 0;
           
-          // If this contact has leads, use it
-          if (contactLeads.length > 0) {
-            bestContact = contact;
-            bestLeads = contactLeads;
-            bestRelationships = contactRelationships;
-            break; // Found a contact with leads, use it
-          }
+          let score = 0;
+          if (contactLeads.length > 0) score += 100; // Highest priority
+          if (hasClassifications) score += 50; // Second priority
+          if (contactRelationships.length > 0) score += 25; // Third priority
           
-          // Otherwise, keep track of the first contact
-          if (!bestContact) {
-            bestContact = contact;
-            bestRelationships = contactRelationships;
-          }
-        }
+          return {
+            contact,
+            leads: contactLeads,
+            relationships: contactRelationships,
+            score
+          };
+        });
+        
+        // Sort by score descending
+        scoredContacts.sort((a, b) => b.score - a.score);
+        
+        const bestMatch = scoredContacts[0];
         
         // Aggregate all leads and relationships from all matching contacts
         const allLeads: LeadInfo[] = [];
@@ -223,7 +224,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
         });
         
         newData[username] = {
-          contact: bestContact,
+          contact: bestMatch?.contact || null,
           linkedLeads: allLeads,
           relationships: allRelationships,
           loading: false
