@@ -36,7 +36,8 @@ import {
   TrendingUp,
   Target,
   Settings,
-  Filter
+  Filter,
+  ArrowUpDown
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
@@ -130,6 +131,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
   const [filterByClassifications, setFilterByClassifications] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<'created_at' | 'classification_updated'>('created_at');
   
   // Classification settings dialogs
   const [showClassificationSettings, setShowClassificationSettings] = useState(false);
@@ -661,9 +663,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }
   };
 
-  // Apply all filters
+  // Apply all filters and sorting
   const filteredComments = useMemo(() => {
-    return comments.filter(c => {
+    const filtered = comments.filter(c => {
       // Filter by tab (received/sent)
       if (c.comment_type !== activeTab) return false;
       
@@ -721,7 +723,23 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       
       return true;
     });
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, getContactData]);
+
+    // Apply sorting
+    if (sortBy === 'classification_updated') {
+      return filtered.sort((a, b) => {
+        const contactDataA = a.author_username ? getContactData(a.author_username) : null;
+        const contactDataB = b.author_username ? getContactData(b.author_username) : null;
+        
+        const updatedAtA = contactDataA?.contact?.updated_at ? new Date(contactDataA.contact.updated_at).getTime() : 0;
+        const updatedAtB = contactDataB?.contact?.updated_at ? new Date(contactDataB.contact.updated_at).getTime() : 0;
+        
+        return updatedAtB - updatedAtA; // Most recently updated first
+      });
+    }
+    
+    // Default: sort by created_at (already sorted from DB)
+    return filtered;
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, getContactData, sortBy]);
 
   const clearFilters = () => {
     setSearchText('');
@@ -730,9 +748,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     setShowOnlyLinked('all');
     setShowOnlyUnanswered(false);
     setFilterByClassifications([]);
+    setSortBy('created_at');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0;
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0 || sortBy !== 'created_at';
   
   // Toggle classification in filter
   const toggleClassificationFilter = (classificationName: string) => {
@@ -1304,6 +1323,18 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 </div>
               </PopoverContent>
             </Popover>
+            
+            {/* Sort selector */}
+            <Select value={sortBy} onValueChange={(val: 'created_at' | 'classification_updated') => setSortBy(val)}>
+              <SelectTrigger className={cn("w-[180px] h-9", sortBy !== 'created_at' && "border-primary")}>
+                <ArrowUpDown className="h-3.5 w-3.5 mr-2" />
+                <SelectValue placeholder="Ordenar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_at">Mais recentes</SelectItem>
+                <SelectItem value="classification_updated">Classificação atualizada</SelectItem>
+              </SelectContent>
+            </Select>
             
             {/* Unanswered filter */}
             {activeTab === 'received' && (
