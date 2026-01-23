@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Trophy, 
@@ -16,10 +15,13 @@ import {
   Share2,
   MapPin,
   Zap,
-  ExternalLink
+  Save,
+  History
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { WorkflowReportHistory } from "./WorkflowReportHistory";
 
 export interface WorkflowAction {
   id: string;
@@ -49,6 +51,9 @@ export const WorkflowReportDialog = ({
   repliedCount
 }: WorkflowReportDialogProps) => {
   const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
   // Calculate duration
   const getDuration = () => {
@@ -152,6 +157,62 @@ export const WorkflowReportDialog = ({
     const encoded = encodeURIComponent(message);
     window.open(`https://wa.me/?text=${encoded}`, '_blank');
   };
+
+  // Save report to database
+  const saveReport = async () => {
+    if (!startTime || !endTime) return;
+    
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast.error("Você precisa estar logado para salvar relatórios");
+        return;
+      }
+
+      const durationSeconds = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+      
+      const { error } = await supabase
+        .from('workflow_reports')
+        .insert({
+          user_id: user.id,
+          started_at: startTime.toISOString(),
+          ended_at: endTime.toISOString(),
+          duration_seconds: durationSeconds,
+          total_comments: totalComments,
+          replies_count: actionCounts.replies,
+          leads_created: actionCounts.leads,
+          follows_count: actionCounts.follows,
+          dms_sent: actionCounts.dms,
+          skips_count: actionCounts.skips,
+          registrations_count: actionCounts.contacts,
+          actions_detail: actions.map(a => ({
+            type: a.type,
+            username: a.username,
+            timestamp: a.timestamp.toISOString(),
+            details: a.details
+          }))
+        });
+      
+      if (error) throw error;
+      
+      setSaved(true);
+      toast.success("Relatório salvo com sucesso!");
+    } catch (error) {
+      console.error('Error saving report:', error);
+      toast.error("Erro ao salvar relatório");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Reset saved state when dialog opens with new data
+  useEffect(() => {
+    if (open) {
+      setSaved(false);
+    }
+  }, [open, startTime]);
   
   const getActionIcon = (type: WorkflowAction['type']) => {
     switch (type) {
@@ -292,29 +353,64 @@ export const WorkflowReportDialog = ({
         </ScrollArea>
 
         {/* Actions */}
-        <div className="flex gap-2 pt-4 border-t">
-          <Button
-            variant="outline"
-            className="flex-1 gap-2"
-            onClick={copyReport}
-          >
-            {copied ? (
-              <Check className="h-4 w-4 text-green-500" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
-            {copied ? "Copiado!" : "Copiar Relatório"}
-          </Button>
+        <div className="space-y-2 pt-4 border-t">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={copyReport}
+            >
+              {copied ? (
+                <Check className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied ? "Copiado!" : "Copiar"}
+            </Button>
+            
+            <Button
+              className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+              onClick={sendToWhatsApp}
+            >
+              <Share2 className="h-4 w-4" />
+              WhatsApp
+            </Button>
+          </div>
           
-          <Button
-            className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
-            onClick={sendToWhatsApp}
-          >
-            <Share2 className="h-4 w-4" />
-            Enviar WhatsApp
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={saveReport}
+              disabled={saving || saved}
+            >
+              {saved ? (
+                <Check className="h-4 w-4 text-green-500" />
+              ) : saving ? (
+                <div className="h-4 w-4 animate-spin border-2 border-current border-t-transparent rounded-full" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {saved ? "Salvo!" : saving ? "Salvando..." : "Salvar no Histórico"}
+            </Button>
+            
+            <Button
+              variant="outline"
+              className="flex-1 gap-2"
+              onClick={() => setShowHistory(true)}
+            >
+              <History className="h-4 w-4" />
+              Ver Histórico
+            </Button>
+          </div>
         </div>
       </DialogContent>
+
+      {/* History Dialog */}
+      <WorkflowReportHistory 
+        open={showHistory} 
+        onOpenChange={setShowHistory} 
+      />
     </Dialog>
   );
 };

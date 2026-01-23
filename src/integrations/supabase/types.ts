@@ -1315,6 +1315,57 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_reports: {
+        Row: {
+          actions_detail: Json | null
+          created_at: string
+          dms_sent: number
+          duration_seconds: number
+          ended_at: string
+          follows_count: number
+          id: string
+          leads_created: number
+          registrations_count: number
+          replies_count: number
+          skips_count: number
+          started_at: string
+          total_comments: number
+          user_id: string | null
+        }
+        Insert: {
+          actions_detail?: Json | null
+          created_at?: string
+          dms_sent?: number
+          duration_seconds: number
+          ended_at: string
+          follows_count?: number
+          id?: string
+          leads_created?: number
+          registrations_count?: number
+          replies_count?: number
+          skips_count?: number
+          started_at: string
+          total_comments?: number
+          user_id?: string | null
+        }
+        Update: {
+          actions_detail?: Json | null
+          created_at?: string
+          dms_sent?: number
+          duration_seconds?: number
+          ended_at?: string
+          follows_count?: number
+          id?: string
+          leads_created?: number
+          registrations_count?: number
+          replies_count?: number
+          skips_count?: number
+          started_at?: string
+          total_comments?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
