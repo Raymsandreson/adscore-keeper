@@ -90,6 +90,7 @@ import { InstagramProfileHoverCard } from '@/components/instagram/InstagramProfi
 import { ContactRelationshipsManager } from '@/components/contacts/ContactRelationshipsManager';
 import { ContactNetworkGraph } from '@/components/contacts/ContactNetworkGraph';
 import { ContactLeadsManager } from '@/components/contacts/ContactLeadsManager';
+import { MergeDuplicatesDialog } from '@/components/contacts/MergeDuplicatesDialog';
 import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
@@ -413,14 +414,8 @@ export const ContactsManager: React.FC = () => {
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [selectedStageId, setSelectedStageId] = useState<string>('');
   
-  // State for merge duplicates
-  const [isMerging, setIsMerging] = useState(false);
-  const [mergeProgress, setMergeProgress] = useState<{
-    current: number;
-    total: number;
-    merged: number;
-    errors: number;
-  } | null>(null);
+  // State for merge duplicates dialog
+  const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1033,33 +1028,16 @@ export const ContactsManager: React.FC = () => {
     }
   };
 
-  // Handle merge duplicates
-  const handleMergeDuplicates = async () => {
-    setIsMerging(true);
-    setMergeProgress({ current: 0, total: 0, merged: 0, errors: 0 });
-    
-    try {
-      const result = await mergeDuplicateContacts((progress) => {
-        setMergeProgress(progress);
-      });
-      
-      if (result.merged > 0) {
-        toast.success(`✅ ${result.merged} grupo(s) de contatos mesclados!`, {
-          description: 'Contatos duplicados foram unificados mantendo todos os dados.'
-        });
-      } else {
-        toast.info('Nenhum contato duplicado para mesclar');
-      }
-      
-      if (result.errors > 0) {
-        toast.warning(`${result.errors} erro(s) durante a mesclagem`);
-      }
-    } catch (error) {
-      console.error('Error merging:', error);
-    } finally {
-      setIsMerging(false);
-      setMergeProgress(null);
-    }
+  // Handle merge duplicates - now opens dialog
+  const handleMergeDuplicates = () => {
+    setIsMergeDialogOpen(true);
+  };
+  
+  const handleMergeComplete = () => {
+    // Refetch contacts after merge
+    fetchContacts();
+    fetchStats();
+    fetchTagStats();
   };
 
   return (
@@ -1276,20 +1254,10 @@ export const ContactsManager: React.FC = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={handleMergeDuplicates}
-                disabled={isMerging}
                 className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
               >
-                {isMerging ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin text-amber-500" />
-                    {mergeProgress ? `${mergeProgress.current}/${mergeProgress.total}` : 'Mesclando...'}
-                  </>
-                ) : (
-                  <>
-                    <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
-                    Mesclar Duplicados
-                  </>
-                )}
+                <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
+                Mesclar Duplicados
               </Button>
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
@@ -2547,6 +2515,13 @@ export const ContactsManager: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Merge Duplicates Dialog */}
+      <MergeDuplicatesDialog
+        open={isMergeDialogOpen}
+        onOpenChange={setIsMergeDialogOpen}
+        onMergeComplete={handleMergeComplete}
+      />
     </div>
   );
 };
