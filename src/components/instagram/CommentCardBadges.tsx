@@ -22,7 +22,8 @@ import {
   Loader2,
   Pencil,
   X,
-  Settings2
+  Settings2,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +32,8 @@ import { toast } from 'sonner';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface Lead {
   id: string;
@@ -350,6 +353,14 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                   </Badge>
                 )}
               </div>
+              {contact?.updated_at && contactClassifications.length > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">
+                  <Clock className="h-3 w-3" />
+                  <span>
+                    Atualizado {formatDistanceToNow(new Date(contact.updated_at), { addSuffix: true, locale: ptBR })}
+                  </span>
+                </div>
+              )}
               <ScrollArea className="h-[180px]">
                 <div className="space-y-2">
                   {classifications.map(classification => {

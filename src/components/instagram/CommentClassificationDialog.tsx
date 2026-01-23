@@ -313,75 +313,65 @@ export const CommentClassificationDialog = ({
   const handleApplyClassificationsAndContact = async () => {
     if (!comment) return;
 
-    const classificationsToSave = selectedClassifications.length > 0 ? selectedClassifications : null;
+    const classificationsToSave = selectedClassifications.length > 0 ? selectedClassifications : [];
 
     setIsSaving(true);
     try {
-      // Update all comments from the same author
+      // Classifications are now stored in contacts table only
       if (username) {
-        const { error } = await supabase
-          .from('instagram_comments')
-          .update({ prospect_classification: classificationsToSave })
-          .ilike('author_username', username);
+        // First, create or find the comment author as a contact
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('instagram_username', username)
+          .maybeSingle();
 
-        if (error) throw error;
+        let authorContactId = existingContact?.id;
+        
+        const contactClassificationsToSave = newContactClassifications.length > 0 
+          ? newContactClassifications 
+          : classificationsToSave;
 
-        // Create contact if relationship is defined
-        if (hasRelationship && (relatedContactName || selectedRelatedContact)) {
-          // First, create or find the comment author as a contact
-          const { data: existingContact } = await supabase
+        if (authorContactId) {
+          // Update existing contact with new classifications
+          await supabase
             .from('contacts')
+            .update({ classifications: contactClassificationsToSave })
+            .eq('id', authorContactId);
+        } else {
+          // Create new contact
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: comment.prospect_name || `@${username}`,
+              instagram_username: username,
+              classifications: contactClassificationsToSave,
+            })
             .select('id')
-            .ilike('instagram_username', username)
-            .maybeSingle();
+            .single();
 
-          let authorContactId = existingContact?.id;
-          
-          const contactClassificationsToSave = newContactClassifications.length > 0 
-            ? newContactClassifications 
-            : classificationsToSave || [];
+          if (contactError) throw contactError;
+          authorContactId = newContact.id;
+          toast.success(`Contato @${username} criado!`);
+        }
 
-          if (authorContactId) {
-            // Update existing contact with new classifications
-            await supabase
-              .from('contacts')
-              .update({ classifications: contactClassificationsToSave })
-              .eq('id', authorContactId);
-          } else {
-            // Create new contact
-            const { data: newContact, error: contactError } = await supabase
-              .from('contacts')
-              .insert({
-                full_name: comment.prospect_name || `@${username}`,
-                instagram_username: username,
-                classifications: contactClassificationsToSave,
-              })
-              .select('id')
-              .single();
+        // Create relationship if we have a related contact
+        if (hasRelationship && authorContactId && selectedRelatedContact) {
+          const relationshipType = selectedClassifications.find(cls => 
+            ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
+              .some(keyword => cls.toLowerCase().includes(keyword))
+          ) || selectedClassifications[0];
 
-            if (contactError) throw contactError;
-            authorContactId = newContact.id;
-            toast.success(`Contato @${username} criado!`);
-          }
+          await supabase
+            .from('contact_relationships')
+            .insert({
+              contact_id: authorContactId,
+              related_contact_id: selectedRelatedContact.id,
+              relationship_type: relationshipType,
+              notes: `Criado via classificação de comentário Instagram`
+            });
 
-          // Create relationship if we have a related contact
-          if (authorContactId && selectedRelatedContact) {
-            const relationshipType = selectedClassifications.find(cls => 
-              ['primo', 'tio', 'pai', 'mãe', 'filho', 'filha', 'irmão', 'irmã', 'esposa', 'marido', 'parente', 'familia', 'familiar']
-                .some(keyword => cls.toLowerCase().includes(keyword))
-            ) || selectedClassifications[0];
-
-            await supabase
-              .from('contact_relationships')
-              .insert({
-                contact_id: authorContactId,
-                related_contact_id: selectedRelatedContact.id,
-                relationship_type: relationshipType,
-                notes: `Criado via classificação de comentário Instagram`
-              });
-
-            toast.success(`Vínculo criado: @${username} é ${relationshipType} de ${selectedRelatedContact.full_name}`);
-          }
+          toast.success(`Vínculo criado: @${username} é ${relationshipType} de ${selectedRelatedContact.full_name}`);
         }
 
         const classLabels = selectedClassifications
@@ -390,25 +380,42 @@ export const CommentClassificationDialog = ({
         
         toast.success(
           classLabels 
-            ? `Todos os comentários de @${username} classificados como: ${classLabels}`
+            ? `Contato @${username} classificado como: ${classLabels}`
             : `Classificação removida de @${username}`
         );
       } else {
-        // Single comment update
-        const { error } = await supabase
-          .from('instagram_comments')
-          .update({ prospect_classification: classificationsToSave })
-          .eq('id', comment.id);
+        // Single comment - still update/create contact
+        const authorUsername = comment.author_username;
+        if (authorUsername) {
+          const { data: existingContact } = await supabase
+            .from('contacts')
+            .select('id')
+            .ilike('instagram_username', authorUsername)
+            .maybeSingle();
 
-        if (error) throw error;
-        toast.success('Comentário classificado!');
+          if (existingContact?.id) {
+            await supabase
+              .from('contacts')
+              .update({ classifications: classificationsToSave })
+              .eq('id', existingContact.id);
+          } else {
+            await supabase
+              .from('contacts')
+              .insert({
+                full_name: comment.prospect_name || `@${authorUsername}`,
+                instagram_username: authorUsername,
+                classifications: classificationsToSave,
+              });
+          }
+        }
+        toast.success('Contato classificado!');
       }
 
-      onClassificationsApplied(classificationsToSave);
+      onClassificationsApplied(classificationsToSave.length > 0 ? classificationsToSave : null);
       onOpenChange(false);
     } catch (error) {
-      console.error('Error classifying comments:', error);
-      toast.error('Erro ao classificar comentários');
+      console.error('Error classifying contact:', error);
+      toast.error('Erro ao classificar contato');
     } finally {
       setIsSaving(false);
     }

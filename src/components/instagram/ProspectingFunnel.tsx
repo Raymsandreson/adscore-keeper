@@ -67,7 +67,6 @@ interface Prospect {
   prospect_name: string | null;
   notes: string | null;
   post_url: string | null;
-  prospect_classification: string[] | null;
   comment_type: string;
   metadata: { is_third_party?: boolean; is_prospect_reply?: boolean } | null;
 }
@@ -262,7 +261,7 @@ export function ProspectingFunnel() {
       
       const { data, error } = await supabase
         .from('instagram_comments')
-        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url, prospect_classification, comment_type, metadata')
+        .select('id, author_username, comment_text, created_at, funnel_stage, conversation_thread_id, prospect_name, notes, post_url, comment_type, metadata')
         .gte('created_at', startDate.toISOString())
         .order('created_at', { ascending: false });
 
@@ -271,7 +270,6 @@ export function ProspectingFunnel() {
       setProspects((data || []).map(p => ({
         ...p,
         funnel_stage: (p.funnel_stage as FunnelStage) || 'comment',
-        prospect_classification: Array.isArray(p.prospect_classification) ? p.prospect_classification : (p.prospect_classification ? [p.prospect_classification] : null),
         comment_type: p.comment_type || 'received',
         metadata: p.metadata as Prospect['metadata']
       })));
