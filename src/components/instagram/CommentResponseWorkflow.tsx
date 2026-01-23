@@ -111,6 +111,8 @@ export const CommentResponseWorkflow = ({
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
   const [showPostPreview, setShowPostPreview] = useState(false);
   const [showDMDialog, setShowDMDialog] = useState(false);
+  // Store the comment that was just replied to, so we don't lose it when unrepliedComments recalculates
+  const [justRepliedComment, setJustRepliedComment] = useState<Comment | null>(null);
   
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -134,7 +136,10 @@ export const CommentResponseWorkflow = ({
     );
   }, [comments, repliedComments]);
 
-  const currentComment = unrepliedComments[currentIndex];
+  // Use justRepliedComment during suggesting_actions step, otherwise use the current unreplied comment
+  const currentComment = workflowStep === 'suggesting_actions' && justRepliedComment 
+    ? justRepliedComment 
+    : unrepliedComments[currentIndex];
   const totalComments = unrepliedComments.length;
   const progress = totalComments > 0 ? ((repliedComments.size) / (repliedComments.size + totalComments)) * 100 : 100;
 
@@ -257,6 +262,9 @@ export const CommentResponseWorkflow = ({
       return;
     }
 
+    // Save reference to the current comment BEFORE marking as replied
+    // This prevents losing the reference when unrepliedComments recalculates
+    setJustRepliedComment(currentComment);
     setWorkflowStep('replying');
 
     try {
@@ -288,6 +296,7 @@ export const CommentResponseWorkflow = ({
     } catch (error: any) {
       console.error("Error posting reply:", error);
       toast.error(error.message || "Erro ao postar resposta");
+      setJustRepliedComment(null);
       setWorkflowStep('ready_to_reply');
     }
   };
@@ -348,9 +357,13 @@ export const CommentResponseWorkflow = ({
     setAlternatives([]);
     setDmSuggestion(null);
     setShowDMDialog(false);
+    setJustRepliedComment(null); // Clear the just replied comment
     
-    if (currentIndex < unrepliedComments.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+    // Since we already added the current comment to repliedComments, unrepliedComments has shrunk
+    // We need to check if there are more comments at the current index (which is now pointing to the next one)
+    if (unrepliedComments.length > 0) {
+      // Stay at current index since the list shifted
+      setCurrentIndex(Math.min(currentIndex, unrepliedComments.length - 1));
     } else {
       // All done!
       toast.success("🎉 Todos os comentários foram respondidos!");
@@ -360,6 +373,7 @@ export const CommentResponseWorkflow = ({
   };
 
   const skipComment = () => {
+    setJustRepliedComment(null);
     if (currentIndex < unrepliedComments.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setWorkflowStep('idle');
@@ -430,7 +444,9 @@ export const CommentResponseWorkflow = ({
     });
 
     // Next comment action (always last)
-    const remainingComments = unrepliedComments.length - currentIndex - 1;
+    // When in suggesting_actions step, unrepliedComments has already shrunk by 1 (the just replied comment was removed)
+    // So remaining = unrepliedComments.length is the correct count
+    const remainingComments = unrepliedComments.length;
     if (remainingComments > 0) {
       actions.push({
         id: 'next',
@@ -448,6 +464,7 @@ export const CommentResponseWorkflow = ({
         label: 'Concluir! 🎉',
         description: 'Todos os comentários respondidos',
         action: () => {
+          setJustRepliedComment(null);
           toast.success("🏆 Parabéns! Você zerou os comentários!");
           onOpenChange(false);
           onRefresh?.();
@@ -458,7 +475,7 @@ export const CommentResponseWorkflow = ({
     }
 
     return actions;
-  }, [isFollowing, hasLead, currentIndex, unrepliedComments.length]);
+  }, [isFollowing, hasLead, unrepliedComments.length, dmSuggestion]);
 
   const handleClose = () => {
     onOpenChange(false);
@@ -467,6 +484,7 @@ export const CommentResponseWorkflow = ({
     setGeneratedReply("");
     setEditedReply("");
     setAlternatives([]);
+    setJustRepliedComment(null);
   };
 
   if (!open) return null;
