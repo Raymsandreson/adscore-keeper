@@ -114,6 +114,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [showOnlyLinked, setShowOnlyLinked] = useState<'all' | 'leads' | 'connections' | 'any'>('all');
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
   
   // Auto-refresh states
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
@@ -633,18 +634,32 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if (showOnlyLinked === 'any' && !hasLeads && !hasConnections) return false;
       }
       
+      // Filter by unanswered comments (replied_at = null)
+      if (showOnlyUnanswered) {
+        if ((c as any).replied_at !== null) return false;
+      }
+      
       return true;
     });
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, getContactData]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, getContactData]);
 
   const clearFilters = () => {
     setSearchText('');
     setDateFrom(undefined);
     setDateTo(undefined);
     setShowOnlyLinked('all');
+    setShowOnlyUnanswered(false);
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all';
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered;
+  
+  // Count unanswered comments for badge
+  const unansweredCount = useMemo(() => {
+    return comments.filter(c => 
+      c.comment_type === 'received' && 
+      (c as any).replied_at === null
+    ).length;
+  }, [comments]);
 
   return (
     <div className="space-y-6">
@@ -936,6 +951,24 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <SelectItem value="connections">Com conexões</SelectItem>
               </SelectContent>
             </Select>
+            
+            {/* Unanswered filter */}
+            {activeTab === 'received' && (
+              <Button
+                variant={showOnlyUnanswered ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowOnlyUnanswered(!showOnlyUnanswered)}
+                className={cn("gap-2", showOnlyUnanswered && "bg-orange-500 hover:bg-orange-600")}
+              >
+                <Reply className="h-4 w-4" />
+                Não respondidos
+                {unansweredCount > 0 && (
+                  <Badge variant="secondary" className={cn("ml-1", showOnlyUnanswered ? "bg-white/20 text-white" : "")}>
+                    {unansweredCount}
+                  </Badge>
+                )}
+              </Button>
+            )}
 
             {hasActiveFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground">
