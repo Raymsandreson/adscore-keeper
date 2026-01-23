@@ -32,7 +32,8 @@ import {
   AlertTriangle,
   RotateCcw,
   Pencil,
-  Save
+  Save,
+  MapPin
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 import { CommentCardBadges } from "./CommentCardBadges";
 import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
+import { PostDmContactRegistration } from "./PostDmContactRegistration";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -125,8 +127,9 @@ export const CommentResponseWorkflow = ({
   const [showEditAuthorId, setShowEditAuthorId] = useState(false);
   const [editedAuthorId, setEditedAuthorId] = useState("");
   const [isSavingAuthorId, setIsSavingAuthorId] = useState(false);
+  const [showContactRegistration, setShowContactRegistration] = useState(false);
   // Track locally updated author_ids so we don't need to wait for parent refresh
-  const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>({});
+  const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>();
 
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -639,6 +642,17 @@ export const CommentResponseWorkflow = ({
       },
       variant: 'outline',
       highlight: !!dmSuggestion
+    });
+
+    // Always suggest registering contact - key for capilaridade
+    actions.push({
+      id: 'register_contact',
+      icon: <MapPin className="h-4 w-4" />,
+      label: 'Cadastrar Contato',
+      description: 'Registrar cidade, estado e tipo (parceiro, indicação)',
+      action: () => setShowContactRegistration(true),
+      variant: 'outline',
+      highlight: false
     });
 
     // Next comment action (always last)
@@ -1202,6 +1216,19 @@ export const CommentResponseWorkflow = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Post-DM Contact Registration */}
+      {currentComment?.author_username && (
+        <PostDmContactRegistration
+          open={showContactRegistration}
+          onOpenChange={setShowContactRegistration}
+          instagramUsername={currentComment.author_username}
+          onContactSaved={() => {
+            refetchUsername(currentComment.author_username);
+            onRefresh?.();
+          }}
+        />
+      )}
     </Dialog>
   );
 };
