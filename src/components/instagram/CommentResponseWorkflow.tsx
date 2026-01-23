@@ -26,7 +26,9 @@ import {
   Reply,
   Image as ImageIcon,
   Copy,
-  Check
+  Check,
+  AlertTriangle,
+  RotateCcw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -113,6 +115,8 @@ export const CommentResponseWorkflow = ({
   const [showDMDialog, setShowDMDialog] = useState(false);
   // Store the comment that was just replied to, so we don't lose it when unrepliedComments recalculates
   const [justRepliedComment, setJustRepliedComment] = useState<Comment | null>(null);
+  const [editedDmSuggestion, setEditedDmSuggestion] = useState<string>("");
+  const [isMarkingAsFollowing, setIsMarkingAsFollowing] = useState(false);
   
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -329,6 +333,49 @@ export const CommentResponseWorkflow = ({
     }
   };
 
+  const markAsFollowing = async () => {
+    if (!currentComment?.author_username) return;
+    
+    const username = currentComment.author_username.replace('@', '').toLowerCase();
+    setIsMarkingAsFollowing(true);
+    
+    try {
+      // Check if contact exists
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .or(`instagram_username.ilike.${username},instagram_username.ilike.@${username}`)
+        .limit(1)
+        .maybeSingle();
+      
+      if (existingContact) {
+        // Update existing contact
+        await supabase
+          .from('contacts')
+          .update({ follower_status: 'following' })
+          .eq('id', existingContact.id);
+      } else {
+        // Create new contact with following status
+        await supabase
+          .from('contacts')
+          .insert({
+            instagram_username: username,
+            full_name: `@${username}`,
+            follower_status: 'following'
+          });
+      }
+      
+      setIsFollowing(true);
+      toast.success(`Marcado como seguindo @${username}`);
+      refetchUsername(currentComment.author_username);
+    } catch (error) {
+      console.error('Error marking as following:', error);
+      toast.error('Erro ao marcar como seguindo');
+    } finally {
+      setIsMarkingAsFollowing(false);
+    }
+  };
+
   const openInstagramProfile = () => {
     const username = currentComment?.author_username?.replace('@', '');
     if (username) {
@@ -356,6 +403,7 @@ export const CommentResponseWorkflow = ({
     setEditedReply("");
     setAlternatives([]);
     setDmSuggestion(null);
+    setEditedDmSuggestion("");
     setShowDMDialog(false);
     setJustRepliedComment(null); // Clear the just replied comment
     
@@ -402,6 +450,7 @@ export const CommentResponseWorkflow = ({
         isCompleted: true
       });
     } else {
+      // Add two actions: open profile to follow AND mark as following
       actions.push({
         id: 'follow',
         icon: <UserPlus className="h-4 w-4" />,
@@ -410,6 +459,15 @@ export const CommentResponseWorkflow = ({
         action: openInstagramProfile,
         variant: 'default',
         highlight: true
+      });
+      actions.push({
+        id: 'mark_following',
+        icon: isMarkingAsFollowing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />,
+        label: 'Marcar que já sigo',
+        description: 'Registrar que você já segue este perfil',
+        action: markAsFollowing,
+        variant: 'outline',
+        highlight: false
       });
     }
 
@@ -427,13 +485,18 @@ export const CommentResponseWorkflow = ({
     }
 
     // Always suggest DM - with suggestion if available
+    // Show warning if author_id is missing (DM link won't work properly)
+    const hasDMWarning = !currentComment?.author_id;
     actions.push({
       id: 'dm',
-      icon: <MessageCircle className="h-4 w-4" />,
-      label: dmSuggestion ? 'Enviar DM (com sugestão)' : 'Enviar DM',
-      description: dmSuggestion ? 'Mensagem sugerida pela IA disponível' : 'Continuar conversa no Direct',
+      icon: hasDMWarning ? <AlertTriangle className="h-4 w-4 text-amber-500" /> : <MessageCircle className="h-4 w-4" />,
+      label: dmSuggestion ? 'Enviar DM (com sugestão)' : (hasDMWarning ? 'Enviar DM ⚠️' : 'Enviar DM'),
+      description: hasDMWarning 
+        ? 'ID não disponível - abrirá o perfil' 
+        : (dmSuggestion ? 'Mensagem sugerida pela IA disponível' : 'Continuar conversa no Direct'),
       action: () => {
         if (dmSuggestion) {
+          setEditedDmSuggestion(dmSuggestion);
           setShowDMDialog(true);
         } else {
           openInstagramDM();
@@ -475,7 +538,7 @@ export const CommentResponseWorkflow = ({
     }
 
     return actions;
-  }, [isFollowing, hasLead, unrepliedComments.length, dmSuggestion]);
+  }, [isFollowing, hasLead, unrepliedComments.length, dmSuggestion, currentComment?.author_id, isMarkingAsFollowing]);
 
   const handleClose = () => {
     onOpenChange(false);
@@ -485,6 +548,7 @@ export const CommentResponseWorkflow = ({
     setEditedReply("");
     setAlternatives([]);
     setJustRepliedComment(null);
+    setEditedDmSuggestion("");
   };
 
   if (!open) return null;
@@ -809,9 +873,29 @@ export const CommentResponseWorkflow = ({
           </DialogHeader>
           
           <div className="space-y-4 pt-2">
-            {/* DM Suggestion */}
-            <div className="p-3 rounded-lg bg-muted/50 border">
-              <p className="text-sm whitespace-pre-wrap">{dmSuggestion}</p>
+            {/* DM Suggestion - Editable */}
+            <div className="space-y-2">
+              <Textarea
+                value={editedDmSuggestion}
+                onChange={(e) => setEditedDmSuggestion(e.target.value)}
+                rows={5}
+                className="resize-none"
+                placeholder="Edite a mensagem de DM..."
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{editedDmSuggestion.length} caracteres</span>
+                {editedDmSuggestion !== dmSuggestion && dmSuggestion && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1"
+                    onClick={() => setEditedDmSuggestion(dmSuggestion)}
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Restaurar original
+                  </Button>
+                )}
+              </div>
             </div>
             
             {/* Actions */}
@@ -820,8 +904,8 @@ export const CommentResponseWorkflow = ({
                 variant="outline"
                 className="flex-1 gap-2"
                 onClick={() => {
-                  if (dmSuggestion) {
-                    navigator.clipboard.writeText(dmSuggestion);
+                  if (editedDmSuggestion) {
+                    navigator.clipboard.writeText(editedDmSuggestion);
                     toast.success("Mensagem copiada!");
                   }
                 }}
@@ -832,8 +916,8 @@ export const CommentResponseWorkflow = ({
               <Button
                 className="flex-1 gap-2"
                 onClick={() => {
-                  if (dmSuggestion) {
-                    navigator.clipboard.writeText(dmSuggestion);
+                  if (editedDmSuggestion) {
+                    navigator.clipboard.writeText(editedDmSuggestion);
                     toast.success("Mensagem copiada! Abrindo DM...");
                   }
                   openInstagramDM();
@@ -847,9 +931,12 @@ export const CommentResponseWorkflow = ({
             
             {/* Note about author_id */}
             {!currentComment?.author_id && (
-              <p className="text-xs text-muted-foreground text-center">
-                ⚠️ ID do usuário não disponível. O link abrirá o perfil.
-              </p>
+              <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  ID do usuário não disponível. O link abrirá o perfil ao invés do Direct.
+                </p>
+              </div>
             )}
           </div>
         </DialogContent>
