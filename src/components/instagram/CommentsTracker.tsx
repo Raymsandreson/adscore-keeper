@@ -37,7 +37,8 @@ import {
   Target,
   Settings,
   Filter,
-  ArrowUpDown
+  ArrowUpDown,
+  Database
 } from "lucide-react";
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
@@ -126,6 +127,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   
   // Workflow mode state
   const [showWorkflowMode, setShowWorkflowMode] = useState(false);
+  
+  // Migration state
+  const [isMigratingAuthorIds, setIsMigratingAuthorIds] = useState(false);
   
   // Filter states
   const [searchText, setSearchText] = useState('');
@@ -369,6 +373,87 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       setIsSyncing(false);
     }
   }, [accessToken, selectedAccounts, isSyncing]);
+
+  // Migrate author_ids for existing comments that don't have them
+  const migrateAuthorIds = useCallback(async () => {
+    if (isMigratingAuthorIds || selectedAccounts.length === 0) return;
+    
+    setIsMigratingAuthorIds(true);
+    let totalUpdated = 0;
+    
+    try {
+      // Get comments without author_id
+      const { data: commentsWithoutId, error: fetchError } = await supabase
+        .from('instagram_comments')
+        .select('id, comment_id, author_username')
+        .is('author_id', null)
+        .not('comment_id', 'is', null);
+      
+      if (fetchError) throw fetchError;
+      
+      if (!commentsWithoutId || commentsWithoutId.length === 0) {
+        toast.info('Todos os comentários já possuem author_id');
+        setIsMigratingAuthorIds(false);
+        return;
+      }
+      
+      toast.info(`Atualizando ${commentsWithoutId.length} comentários...`);
+      
+      // Fetch fresh data from Instagram for each account
+      for (const account of selectedAccounts) {
+        try {
+          const tokenToUse = account.access_token === 'USE_GLOBAL_TOKEN' 
+            ? accessToken 
+            : account.access_token;
+          
+          const { data, error } = await supabase.functions.invoke('fetch-instagram-comments', {
+            body: { 
+              accessToken: tokenToUse, 
+              instagramAccountId: account.instagram_id 
+            }
+          });
+
+          if (error || !data.success) continue;
+          
+          // Create a map of comment_id to author_id from fresh data
+          const authorIdMap = new Map<string, string>();
+          for (const comment of (data.comments || [])) {
+            if (comment.comment_id && comment.author_id) {
+              authorIdMap.set(comment.comment_id, comment.author_id);
+            }
+          }
+          
+          // Update comments in database
+          for (const dbComment of commentsWithoutId) {
+            if (dbComment.comment_id && authorIdMap.has(dbComment.comment_id)) {
+              const { error: updateError } = await supabase
+                .from('instagram_comments')
+                .update({ author_id: authorIdMap.get(dbComment.comment_id) })
+                .eq('id', dbComment.id);
+              
+              if (!updateError) {
+                totalUpdated++;
+              }
+            }
+          }
+        } catch (accountError) {
+          console.error(`Error migrating for account:`, accountError);
+        }
+      }
+      
+      if (totalUpdated > 0) {
+        toast.success(`${totalUpdated} comentários atualizados com author_id!`);
+        await fetchComments();
+      } else {
+        toast.info('Nenhum author_id encontrado na API para os comentários existentes');
+      }
+    } catch (error) {
+      console.error('Error migrating author_ids:', error);
+      toast.error('Erro ao migrar author_ids');
+    } finally {
+      setIsMigratingAuthorIds(false);
+    }
+  }, [accessToken, selectedAccounts, isMigratingAuthorIds]);
 
   // Detect which quick period is currently active
   const activePeriod = useMemo(() => {
@@ -1064,6 +1149,25 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 <Tag className="h-4 w-4" />
                 Classificações
               </Button>
+              
+              {/* Migrate Author IDs Button - only show if there are comments without author_id */}
+              {comments.some(c => !c.author_id && c.comment_id) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={migrateAuthorIds}
+                  disabled={isMigratingAuthorIds || selectedAccounts.length === 0}
+                  className="gap-2"
+                  title="Atualizar IDs de autor para comentários antigos (necessário para links de DM direto)"
+                >
+                  {isMigratingAuthorIds ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Database className="h-4 w-4" />
+                  )}
+                  Atualizar IDs
+                </Button>
+              )}
               
               {/* Workflow Mode Button */}
               {(() => {
