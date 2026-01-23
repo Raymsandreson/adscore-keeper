@@ -41,6 +41,8 @@ import {
 import { AIReplyDialog } from "./AIReplyDialog";
 import { CommentClassificationDialog } from "./CommentClassificationDialog";
 import { CommentContactBadges } from "./CommentContactBadges";
+import { CommentCardBadges } from "./CommentCardBadges";
+import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
 import { QuickLinkLeadPopover } from "./QuickLinkLeadPopover";
 import { CommentResponseWorkflow } from "./CommentResponseWorkflow";
 import { ClassificationWorkflowSettings } from "./ClassificationWorkflowSettings";
@@ -57,6 +59,7 @@ import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 
 import { useContactClassifications } from "@/hooks/useContactClassifications";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
+import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 
 interface Comment {
   id: string;
@@ -104,6 +107,10 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   }, [comments]);
   
   const { getContactData, refetch: refetchContactData } = useCommentContactInfo(commentUsernames);
+  
+  // Card display settings
+  const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
+  const [showCardSettings, setShowCardSettings] = useState(false);
   
   // Classification + Lead conversion dialog states
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
@@ -1013,6 +1020,17 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 Sincronizar
               </Button>
               
+              {/* Card Display Settings Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCardSettings(true)}
+                className="gap-2"
+              >
+                <Settings className="h-4 w-4" />
+                Cards
+              </Button>
+              
               {/* Classification Settings Button */}
               <Button
                 variant="outline"
@@ -1020,7 +1038,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 onClick={() => setShowClassificationSettings(true)}
                 className="gap-2"
               >
-                <Settings className="h-4 w-4" />
+                <Tag className="h-4 w-4" />
                 Classificações
               </Button>
               
@@ -1533,17 +1551,14 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                     className="text-sm font-medium"
                                   />
                                 )}
-                                {isConverted && (
-                                  <Badge variant="outline" className="text-green-600 border-green-600">
-                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                    Lead
-                                  </Badge>
-                                )}
-                                {/* Contact badges - linked leads and relationships */}
-                                <CommentContactBadges 
+                              </div>
+                              
+                              {/* Unified contact context badges with settings */}
+                              <div className="mb-2">
+                                <CommentCardBadges 
                                   contactData={getContactData(comment.author_username)}
-                                  username={comment.author_username}
-                                  onLeadStatusChanged={refetchContactData}
+                                  config={cardConfig}
+                                  compact={false}
                                 />
                               </div>
                               <p className="text-sm">{comment.comment_text}</p>
@@ -1749,6 +1764,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         onOpenChange={setShowNewClassificationDialog}
         onConfirm={addClassification}
         loading={classificationsLoading}
+      />
+
+      {/* Card Settings Dialog */}
+      <CommentCardSettingsDialog
+        open={showCardSettings}
+        onOpenChange={setShowCardSettings}
+        config={cardConfig}
+        onUpdateField={updateCardField}
+        onReset={resetCardSettings}
       />
     </div>
   );
