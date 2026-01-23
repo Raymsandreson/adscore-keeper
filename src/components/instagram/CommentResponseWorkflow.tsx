@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,8 @@ import {
   RotateCcw,
   Pencil,
   Save,
-  MapPin
+  MapPin,
+  FileText
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -42,6 +43,8 @@ import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 import { CommentCardBadges } from "./CommentCardBadges";
 import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
 import { PostDmContactRegistration } from "./PostDmContactRegistration";
+import { WorkflowTimer } from "./WorkflowTimer";
+import { WorkflowReportDialog, type WorkflowAction } from "./WorkflowReportDialog";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -130,6 +133,14 @@ export const CommentResponseWorkflow = ({
   const [showContactRegistration, setShowContactRegistration] = useState(false);
   // Track locally updated author_ids so we don't need to wait for parent refresh
   const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>({});
+  
+  // Timer and report tracking
+  const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
+  const [workflowEndTime, setWorkflowEndTime] = useState<Date | null>(null);
+  const [workflowActions, setWorkflowActions] = useState<WorkflowAction[]>([]);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const actionIdCounter = useRef(0);
 
   // Card settings
   const { config: cardConfig, updateField: updateCardField, resetToDefaults: resetCardSettings } = useCommentCardSettings();
@@ -169,6 +180,28 @@ export const CommentResponseWorkflow = ({
   
   const totalComments = unrepliedComments.length;
   const progress = totalComments > 0 ? ((repliedComments.size) / (repliedComments.size + totalComments)) * 100 : 100;
+
+  // Start timer when workflow opens
+  useEffect(() => {
+    if (open && !workflowStartTime && unrepliedComments.length > 0) {
+      setWorkflowStartTime(new Date());
+      setIsTimerRunning(true);
+      setWorkflowActions([]);
+      setWorkflowEndTime(null);
+    }
+  }, [open, workflowStartTime, unrepliedComments.length]);
+
+  // Track action helper
+  const trackAction = useCallback((type: WorkflowAction['type'], username: string, details?: string) => {
+    actionIdCounter.current += 1;
+    setWorkflowActions(prev => [...prev, {
+      id: `action-${actionIdCounter.current}`,
+      type,
+      username,
+      timestamp: new Date(),
+      details
+    }]);
+  }, []);
 
   // Check if user is following and if lead exists
   useEffect(() => {
@@ -318,6 +351,9 @@ export const CommentResponseWorkflow = ({
       setRepliedComments(prev => new Set([...prev, currentComment.id]));
       onCommentReplied?.(currentComment.id);
       
+      // Track the reply action
+      trackAction('reply', currentComment.author_username || 'unknown');
+      
       toast.success("Resposta postada! 🎉");
       setWorkflowStep('suggesting_actions');
     } catch (error: any) {
@@ -350,6 +386,7 @@ export const CommentResponseWorkflow = ({
       toast.success(`@${username} adicionado como lead!`);
       setHasLead(true);
       onLeadCreated?.(username);
+      trackAction('lead', username);
     } catch (error) {
       console.error('Error creating lead:', error);
       toast.error('Erro ao criar lead');
@@ -391,6 +428,7 @@ export const CommentResponseWorkflow = ({
       setIsFollowing(true);
       toast.success(`Marcado como seguindo @${username}`);
       refetchUsername(currentComment.author_username);
+      trackAction('follow', username);
     } catch (error) {
       console.error('Error marking as following:', error);
       toast.error('Erro ao marcar como seguindo');
@@ -494,6 +532,9 @@ export const CommentResponseWorkflow = ({
         was_edited: editedDmSuggestion !== dmSuggestion && !!dmSuggestion,
         action_type: actionType
       });
+      
+      // Track DM action
+      trackAction('dm', username);
     } catch (error) {
       console.error('Error saving DM to history:', error);
       // Don't show error toast - this is a background operation
@@ -544,14 +585,19 @@ export const CommentResponseWorkflow = ({
       // Stay at current index since the list shifted
       setCurrentIndex(Math.min(currentIndex, unrepliedComments.length - 1));
     } else {
-      // All done!
-      toast.success("🎉 Todos os comentários foram respondidos!");
-      onOpenChange(false);
-      onRefresh?.();
+      // All done! Stop timer and show report
+      setWorkflowEndTime(new Date());
+      setIsTimerRunning(false);
+      setShowReportDialog(true);
     }
   };
 
   const skipComment = () => {
+    // Track skip action
+    if (currentComment?.author_username) {
+      trackAction('skip', currentComment.author_username);
+    }
+    
     setJustRepliedComment(null);
     setShowPostPreview(false); // Reset post preview to collapsed state
     if (currentIndex < unrepliedComments.length - 1) {
@@ -561,8 +607,10 @@ export const CommentResponseWorkflow = ({
       setEditedReply("");
       setAlternatives([]);
     } else {
-      toast.info("Não há mais comentários para responder");
-      onOpenChange(false);
+      // Last comment skipped, show report
+      setWorkflowEndTime(new Date());
+      setIsTimerRunning(false);
+      setShowReportDialog(true);
     }
   };
 
@@ -679,9 +727,9 @@ export const CommentResponseWorkflow = ({
         description: 'Todos os comentários respondidos',
         action: () => {
           setJustRepliedComment(null);
-          toast.success("🏆 Parabéns! Você zerou os comentários!");
-          onOpenChange(false);
-          onRefresh?.();
+          setWorkflowEndTime(new Date());
+          setIsTimerRunning(false);
+          setShowReportDialog(true);
         },
         variant: 'default',
         highlight: true
@@ -700,6 +748,28 @@ export const CommentResponseWorkflow = ({
     setAlternatives([]);
     setJustRepliedComment(null);
     setEditedDmSuggestion("");
+    // Reset timer state
+    setWorkflowStartTime(null);
+    setWorkflowEndTime(null);
+    setIsTimerRunning(false);
+    setWorkflowActions([]);
+  };
+  
+  // Handle closing after viewing report
+  const handleCloseAfterReport = () => {
+    setShowReportDialog(false);
+    toast.success("🏆 Parabéns! Você zerou os comentários!");
+    handleClose();
+    onRefresh?.();
+  };
+
+  // Track contact registration
+  const handleContactRegistered = () => {
+    if (currentComment?.author_username) {
+      trackAction('contact_registered', currentComment.author_username);
+    }
+    refetchUsername(currentComment?.author_username);
+    onRefresh?.();
   };
 
   if (!open) return null;
@@ -715,6 +785,25 @@ export const CommentResponseWorkflow = ({
           <DialogDescription className="flex items-center justify-between">
             <span>Responda comentários em ritmo acelerado</span>
             <div className="flex items-center gap-2">
+              {/* Timer */}
+              <WorkflowTimer isRunning={isTimerRunning} startTime={workflowStartTime} />
+              
+              {/* Report Button - show when there are actions */}
+              {workflowActions.length > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 w-7 p-0"
+                  onClick={() => {
+                    setWorkflowEndTime(new Date());
+                    setShowReportDialog(true);
+                  }}
+                  title="Ver relatório parcial"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+              )}
+              
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -1225,12 +1314,26 @@ export const CommentResponseWorkflow = ({
           open={showContactRegistration}
           onOpenChange={setShowContactRegistration}
           instagramUsername={currentComment.author_username}
-          onContactSaved={() => {
-            refetchUsername(currentComment.author_username);
-            onRefresh?.();
-          }}
+          onContactSaved={handleContactRegistered}
         />
       )}
+      
+      {/* Workflow Report Dialog */}
+      <WorkflowReportDialog
+        open={showReportDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseAfterReport();
+          } else {
+            setShowReportDialog(open);
+          }
+        }}
+        actions={workflowActions}
+        startTime={workflowStartTime}
+        endTime={workflowEndTime}
+        totalComments={repliedComments.size + totalComments}
+        repliedCount={repliedComments.size}
+      />
     </Dialog>
   );
 };
