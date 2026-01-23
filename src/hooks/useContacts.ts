@@ -528,6 +528,217 @@ export const useContacts = () => {
     return { imported, errors, duplicates, upgradedToMutual };
   };
 
+  // Merge duplicate contacts by Instagram username
+  const mergeDuplicateContacts = async (onProgress?: (progress: { current: number; total: number; merged: number; errors: number }) => void) => {
+    try {
+      // Fetch all contacts with Instagram username
+      const { data: allContacts, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .not('instagram_username', 'is', null)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      if (!allContacts || allContacts.length === 0) {
+        toast.info('Nenhum contato com Instagram encontrado');
+        return { merged: 0, errors: 0 };
+      }
+
+      // Group contacts by normalized Instagram username
+      const contactsByUsername = new Map<string, Contact[]>();
+      
+      allContacts.forEach(contact => {
+        const normalized = contact.instagram_username?.replace('@', '').toLowerCase();
+        if (normalized) {
+          if (!contactsByUsername.has(normalized)) {
+            contactsByUsername.set(normalized, []);
+          }
+          contactsByUsername.get(normalized)!.push(contact as Contact);
+        }
+      });
+
+      // Find groups with duplicates
+      const duplicateGroups = Array.from(contactsByUsername.entries())
+        .filter(([_, contacts]) => contacts.length > 1);
+
+      if (duplicateGroups.length === 0) {
+        toast.info('Nenhum contato duplicado encontrado');
+        return { merged: 0, errors: 0 };
+      }
+
+      let merged = 0;
+      let errors = 0;
+      const total = duplicateGroups.length;
+
+      for (let i = 0; i < duplicateGroups.length; i++) {
+        const [username, duplicates] = duplicateGroups[i];
+        
+        try {
+          // Sort by: has lead_id first, then by most complete data, then by oldest
+          const sorted = duplicates.sort((a, b) => {
+            // Prefer the one with lead_id
+            if (a.lead_id && !b.lead_id) return -1;
+            if (!a.lead_id && b.lead_id) return 1;
+            
+            // Count non-null fields
+            const countFields = (c: Contact) => {
+              let count = 0;
+              if (c.full_name && c.full_name !== `@${username}`) count++;
+              if (c.phone) count++;
+              if (c.email) count++;
+              if (c.city) count++;
+              if (c.state) count++;
+              if (c.notes) count++;
+              if (c.classification && c.classification !== 'prospect') count++;
+              return count;
+            };
+            
+            const countA = countFields(a);
+            const countB = countFields(b);
+            if (countA !== countB) return countB - countA;
+            
+            // Keep oldest
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          });
+
+          const primary = sorted[0];
+          const duplicatesToMerge = sorted.slice(1);
+
+          // Merge data: fill in blanks from duplicates
+          const mergedData: Partial<Contact> = {};
+          
+          // Name: prefer non-@ names
+          if (!primary.full_name || primary.full_name.startsWith('@')) {
+            const betterName = duplicatesToMerge.find(d => d.full_name && !d.full_name.startsWith('@'))?.full_name;
+            if (betterName) mergedData.full_name = betterName;
+          }
+          
+          // Fill missing fields from duplicates
+          if (!primary.phone) {
+            const phone = duplicatesToMerge.find(d => d.phone)?.phone;
+            if (phone) mergedData.phone = phone;
+          }
+          if (!primary.email) {
+            const email = duplicatesToMerge.find(d => d.email)?.email;
+            if (email) mergedData.email = email;
+          }
+          if (!primary.city) {
+            const city = duplicatesToMerge.find(d => d.city)?.city;
+            if (city) mergedData.city = city;
+          }
+          if (!primary.state) {
+            const state = duplicatesToMerge.find(d => d.state)?.state;
+            if (state) mergedData.state = state;
+          }
+          if (!primary.neighborhood) {
+            const neighborhood = duplicatesToMerge.find(d => d.neighborhood)?.neighborhood;
+            if (neighborhood) mergedData.neighborhood = neighborhood;
+          }
+          if (!primary.street) {
+            const street = duplicatesToMerge.find(d => d.street)?.street;
+            if (street) mergedData.street = street;
+          }
+          if (!primary.cep) {
+            const cep = duplicatesToMerge.find(d => d.cep)?.cep;
+            if (cep) mergedData.cep = cep;
+          }
+          
+          // Classification: prefer non-prospect
+          if (!primary.classification || primary.classification === 'prospect') {
+            const betterClass = duplicatesToMerge.find(d => d.classification && d.classification !== 'prospect')?.classification;
+            if (betterClass) mergedData.classification = betterClass;
+          }
+          
+          // Follower status: upgrade to mutual if any is mutual, or combine follower/following
+          const allStatuses = [primary.follower_status, ...duplicatesToMerge.map(d => d.follower_status)];
+          if (allStatuses.includes('mutual')) {
+            mergedData.follower_status = 'mutual';
+          } else if (allStatuses.includes('follower') && allStatuses.includes('following')) {
+            mergedData.follower_status = 'mutual';
+          } else if (allStatuses.includes('follower') && primary.follower_status !== 'follower') {
+            mergedData.follower_status = 'follower';
+          } else if (allStatuses.includes('following') && primary.follower_status !== 'following') {
+            mergedData.follower_status = 'following';
+          }
+          
+          // Merge tags
+          const allTags = new Set<string>();
+          [primary, ...duplicatesToMerge].forEach(c => {
+            (c.tags || []).forEach(t => allTags.add(t));
+          });
+          if (allTags.size > 0) {
+            mergedData.tags = Array.from(allTags);
+          }
+          
+          // Merge notes
+          const allNotes = [primary.notes, ...duplicatesToMerge.map(d => d.notes)]
+            .filter(Boolean)
+            .join('\n---\n');
+          if (allNotes && allNotes !== primary.notes) {
+            mergedData.notes = allNotes;
+          }
+
+          // Normalize instagram_username without @
+          mergedData.instagram_username = username;
+
+          // Update primary contact if there are changes
+          if (Object.keys(mergedData).length > 0) {
+            await supabase
+              .from('contacts')
+              .update(mergedData)
+              .eq('id', primary.id);
+          }
+
+          // Move contact_leads from duplicates to primary
+          const duplicateIds = duplicatesToMerge.map(d => d.id);
+          await supabase
+            .from('contact_leads')
+            .update({ contact_id: primary.id })
+            .in('contact_id', duplicateIds);
+
+          // Move contact_relationships from duplicates to primary
+          await supabase
+            .from('contact_relationships')
+            .update({ contact_id: primary.id })
+            .in('contact_id', duplicateIds);
+          
+          await supabase
+            .from('contact_relationships')
+            .update({ related_contact_id: primary.id })
+            .in('related_contact_id', duplicateIds);
+
+          // Delete duplicate contacts
+          const { error: deleteError } = await supabase
+            .from('contacts')
+            .delete()
+            .in('id', duplicateIds);
+
+          if (deleteError) throw deleteError;
+
+          merged++;
+        } catch (err) {
+          console.error(`Error merging ${username}:`, err);
+          errors++;
+        }
+
+        if (onProgress) {
+          onProgress({ current: i + 1, total, merged, errors });
+        }
+      }
+
+      fetchContacts();
+      fetchStats();
+      fetchTagStats();
+      
+      return { merged, errors };
+    } catch (error) {
+      console.error('Error merging duplicates:', error);
+      toast.error('Erro ao mesclar contatos');
+      throw error;
+    }
+  };
+
   useEffect(() => {
     fetchContacts();
     fetchTagStats();
@@ -549,5 +760,6 @@ export const useContacts = () => {
     convertToLead,
     importFromCSV,
     importFromMetaExport,
+    mergeDuplicateContacts,
   };
 };

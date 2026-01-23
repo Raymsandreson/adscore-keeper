@@ -79,6 +79,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  GitMerge,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -323,7 +324,7 @@ const followerStatusConfig: Record<FollowerStatus, { label: string; color: strin
 };
 
 export const ContactsManager: React.FC = () => {
-  const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport } = useContacts();
+  const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport, mergeDuplicateContacts } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   const { classifications, addClassification } = useContactClassifications();
@@ -411,6 +412,15 @@ export const ContactsManager: React.FC = () => {
   const [contactToConvert, setContactToConvert] = useState<Contact | null>(null);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [selectedStageId, setSelectedStageId] = useState<string>('');
+  
+  // State for merge duplicates
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState<{
+    current: number;
+    total: number;
+    merged: number;
+    errors: number;
+  } | null>(null);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1023,6 +1033,35 @@ export const ContactsManager: React.FC = () => {
     }
   };
 
+  // Handle merge duplicates
+  const handleMergeDuplicates = async () => {
+    setIsMerging(true);
+    setMergeProgress({ current: 0, total: 0, merged: 0, errors: 0 });
+    
+    try {
+      const result = await mergeDuplicateContacts((progress) => {
+        setMergeProgress(progress);
+      });
+      
+      if (result.merged > 0) {
+        toast.success(`✅ ${result.merged} grupo(s) de contatos mesclados!`, {
+          description: 'Contatos duplicados foram unificados mantendo todos os dados.'
+        });
+      } else {
+        toast.info('Nenhum contato duplicado para mesclar');
+      }
+      
+      if (result.errors > 0) {
+        toast.warning(`${result.errors} erro(s) durante a mesclagem`);
+      }
+    } catch (error) {
+      console.error('Error merging:', error);
+    } finally {
+      setIsMerging(false);
+      setMergeProgress(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Stats Cards */}
@@ -1232,6 +1271,25 @@ export const ContactsManager: React.FC = () => {
               <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
                 <Instagram className="h-4 w-4 mr-1 text-pink-500" />
                 Meta Export
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleMergeDuplicates}
+                disabled={isMerging}
+                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
+              >
+                {isMerging ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin text-amber-500" />
+                    {mergeProgress ? `${mergeProgress.current}/${mergeProgress.total}` : 'Mesclando...'}
+                  </>
+                ) : (
+                  <>
+                    <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
+                    Mesclar Duplicados
+                  </>
+                )}
               </Button>
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogTrigger asChild>
