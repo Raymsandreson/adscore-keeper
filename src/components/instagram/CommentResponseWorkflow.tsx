@@ -437,18 +437,61 @@ export const CommentResponseWorkflow = ({
     }
   };
 
+  // Validate author_id format - Instagram IDs are numeric strings, typically 15-20 digits
+  const validateAuthorId = (authorId: string | null | undefined): { valid: boolean; warning: string | null } => {
+    if (!authorId) {
+      return { valid: false, warning: "ID não disponível" };
+    }
+    
+    const cleanId = authorId.trim();
+    
+    // Must be numeric only
+    if (!/^\d+$/.test(cleanId)) {
+      return { valid: false, warning: "ID contém caracteres inválidos" };
+    }
+    
+    // Instagram user IDs are typically 15-20 digits, but can be shorter for older accounts
+    // Warn if too short (less than 10 digits) or too long (more than 25 digits)
+    if (cleanId.length < 10) {
+      return { valid: true, warning: "ID parece muito curto - pode estar incorreto" };
+    }
+    
+    if (cleanId.length > 25) {
+      return { valid: false, warning: "ID parece muito longo - verifique o formato" };
+    }
+    
+    return { valid: true, warning: null };
+  };
+
+  const authorIdValidation = useMemo(() => {
+    return validateAuthorId(currentComment?.author_id);
+  }, [currentComment?.author_id]);
+
   const openInstagramDM = () => {
-    // Use author_id for proper DM link format
-    if (currentComment?.author_id) {
-      window.open(`https://instagram.com/direct/t/${currentComment.author_id}`, '_blank');
-    } else {
-      // Fallback to profile if author_id is not available
+    const validation = validateAuthorId(currentComment?.author_id);
+    
+    if (!currentComment?.author_id || !validation.valid) {
+      // Fallback to profile if author_id is not valid
       const username = currentComment?.author_username?.replace('@', '');
       if (username) {
-        toast.info("ID do usuário não disponível. Abrindo perfil...");
+        if (validation.warning) {
+          toast.warning(`${validation.warning}. Abrindo perfil...`);
+        } else {
+          toast.info("ID do usuário não disponível. Abrindo perfil...");
+        }
         window.open(`https://instagram.com/${username}`, '_blank');
       }
+      return;
     }
+    
+    // Show warning but still open if there's a soft warning
+    if (validation.warning) {
+      toast.warning(validation.warning);
+    }
+    
+    // Encode the ID properly for URL safety
+    const encodedId = encodeURIComponent(currentComment.author_id.trim());
+    window.open(`https://instagram.com/direct/t/${encodedId}`, '_blank');
   };
 
   const goToNextComment = () => {
@@ -539,15 +582,22 @@ export const CommentResponseWorkflow = ({
     }
 
     // Always suggest DM - with suggestion if available
-    // Show warning if author_id is missing (DM link won't work properly)
-    const hasDMWarning = !currentComment?.author_id;
+    // Show warning if author_id is missing or invalid
+    const dmValidation = validateAuthorId(currentComment?.author_id);
+    const hasDMWarning = !dmValidation.valid || dmValidation.warning !== null;
+    
+    let dmDescription = dmSuggestion ? 'Mensagem sugerida pela IA disponível' : 'Continuar conversa no Direct';
+    if (!dmValidation.valid) {
+      dmDescription = dmValidation.warning || 'ID não disponível - abrirá o perfil';
+    } else if (dmValidation.warning) {
+      dmDescription = dmValidation.warning;
+    }
+    
     actions.push({
       id: 'dm',
       icon: hasDMWarning ? <AlertTriangle className="h-4 w-4 text-amber-500" /> : <MessageCircle className="h-4 w-4" />,
       label: dmSuggestion ? 'Enviar DM (com sugestão)' : (hasDMWarning ? 'Enviar DM ⚠️' : 'Enviar DM'),
-      description: hasDMWarning 
-        ? 'ID não disponível - abrirá o perfil' 
-        : (dmSuggestion ? 'Mensagem sugerida pela IA disponível' : 'Continuar conversa no Direct'),
+      description: dmDescription,
       action: () => {
         if (dmSuggestion) {
           setEditedDmSuggestion(dmSuggestion);
@@ -758,23 +808,39 @@ export const CommentResponseWorkflow = ({
                     </div>
                     <p className="text-sm">{currentComment.comment_text}</p>
                     
-                    {/* Author ID info */}
-                    <div className="mt-2 flex items-center gap-2">
+                    {/* Author ID info with validation */}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
                       {currentComment.author_id ? (
-                        <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
-                          ID: {currentComment.author_id}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-5 w-5 p-0"
-                            onClick={() => {
-                              setEditedAuthorId(currentComment.author_id || "");
-                              setShowEditAuthorId(true);
-                            }}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                        </span>
+                        <>
+                          <span className={cn(
+                            "text-xs font-mono flex items-center gap-1",
+                            authorIdValidation.warning ? "text-amber-600" : "text-muted-foreground"
+                          )}>
+                            {authorIdValidation.warning && (
+                              <AlertTriangle className="h-3 w-3" />
+                            )}
+                            {!authorIdValidation.warning && authorIdValidation.valid && (
+                              <CheckCircle2 className="h-3 w-3 text-green-500" />
+                            )}
+                            ID: {currentComment.author_id}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              onClick={() => {
+                                setEditedAuthorId(currentComment.author_id || "");
+                                setShowEditAuthorId(true);
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </span>
+                          {authorIdValidation.warning && (
+                            <span className="text-xs text-amber-600">
+                              ({authorIdValidation.warning})
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <Button
                           variant="ghost"
@@ -1016,20 +1082,20 @@ export const CommentResponseWorkflow = ({
               </Button>
             </div>
             
-            {/* Note about author_id with edit option */}
-            {!currentComment?.author_id && (
+            {/* Note about author_id with edit option - show if invalid or has warning */}
+            {(!authorIdValidation.valid || authorIdValidation.warning) && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
                   <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-400 flex-1">
-                    ID do usuário não disponível. O link abrirá o perfil ao invés do Direct.
+                    {authorIdValidation.warning || "ID do usuário não disponível. O link abrirá o perfil ao invés do Direct."}
                   </p>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 text-xs gap-1"
                     onClick={() => {
-                      setEditedAuthorId("");
+                      setEditedAuthorId(currentComment?.author_id || "");
                       setShowEditAuthorId(true);
                     }}
                   >
