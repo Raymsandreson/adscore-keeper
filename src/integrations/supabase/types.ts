@@ -92,6 +92,7 @@ export type Database = {
           id: string
           is_system: boolean | null
           name: string
+          show_in_workflow: boolean
         }
         Insert: {
           color?: string
@@ -101,6 +102,7 @@ export type Database = {
           id?: string
           is_system?: boolean | null
           name: string
+          show_in_workflow?: boolean
         }
         Update: {
           color?: string
@@ -110,6 +112,7 @@ export type Database = {
           id?: string
           is_system?: boolean | null
           name?: string
+          show_in_workflow?: boolean
         }
         Relationships: []
       }

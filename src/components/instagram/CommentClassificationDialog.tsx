@@ -20,7 +20,9 @@ import {
   UserPlus,
   RefreshCw,
   Users,
-  User
+  User,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContactClassifications, classificationColors } from "@/hooks/useContactClassifications";
@@ -73,6 +75,7 @@ export const CommentClassificationDialog = ({
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('bg-blue-500');
+  const [newShowInWorkflow, setNewShowInWorkflow] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
   // Lead linking state
@@ -280,11 +283,12 @@ export const CommentClassificationDialog = ({
   const handleAddNew = async () => {
     if (!newName.trim()) return;
     
-    const result = await addClassification(newName, newColor);
+    const result = await addClassification(newName, newColor, newShowInWorkflow);
     if (result) {
       setSelectedClassifications(prev => [...prev, result.name]);
       setIsAddingNew(false);
       setNewName('');
+      setNewShowInWorkflow(true);
     }
   };
 
@@ -895,6 +899,23 @@ export const CommentClassificationDialog = ({
                         />
                       ))}
                     </div>
+                    
+                    {/* Show in workflow toggle */}
+                    <div className="flex items-center justify-between p-2 rounded-lg border bg-background">
+                      <div className="flex items-center gap-2">
+                        {newShowInWorkflow ? (
+                          <Eye className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <span className="text-sm">Exibir para responder</span>
+                      </div>
+                      <Switch
+                        checked={newShowInWorkflow}
+                        onCheckedChange={setNewShowInWorkflow}
+                      />
+                    </div>
+                    
                     <div className="flex gap-2">
                       <Button size="sm" onClick={handleAddNew} disabled={!newName.trim()}>
                         Criar
@@ -902,6 +923,7 @@ export const CommentClassificationDialog = ({
                       <Button size="sm" variant="ghost" onClick={() => {
                         setIsAddingNew(false);
                         setNewName('');
+                        setNewShowInWorkflow(true);
                       }}>
                         Cancelar
                       </Button>
