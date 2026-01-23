@@ -34,7 +34,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { RelationshipPromptDialog, getRelationshipClassificationsFromList } from './RelationshipPromptDialog';
+import { RelationshipPromptDialog, getRelationshipClassificationsFromList, isRelationshipClassification } from './RelationshipPromptDialog';
 import { EditRelationshipDialog } from './EditRelationshipDialog';
 
 interface Lead {
@@ -241,7 +241,9 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
 
   const handleEditRelationship = (classification: string) => {
     const relationship = getRelationshipForClassification(classification);
+    
     if (relationship && contact?.id) {
+      // Has existing relationship - open edit dialog
       setEditingRelationship({
         id: relationship.id,
         type: relationship.relationship_type,
@@ -251,6 +253,11 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
         }
       });
       setShowEditRelationship(true);
+    } else if (contact?.id && isRelationshipClassification(classification)) {
+      // No relationship exists yet - open create dialog
+      setPendingContactId(contact.id);
+      setPendingRelationshipClassification(classification);
+      setShowRelationshipPrompt(true);
     }
   };
 
@@ -502,28 +509,30 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           const classConfig = getClassificationConfig(classification);
           const relationship = getRelationshipForClassification(classification);
           const hasRelationship = relationship && relationship.related_contact?.full_name;
+          const isRelationship = isRelationshipClassification(classification);
+          const isClickable = interactive && isRelationship;
           
           return (
             <Tooltip key={`class-${idx}`}>
               <TooltipTrigger asChild>
                 <Badge 
                   variant="outline" 
-                  className={`text-xs gap-1 ${hasRelationship && interactive ? 'cursor-pointer hover:bg-accent' : ''}`}
-                  onClick={hasRelationship && interactive ? () => handleEditRelationship(classification) : undefined}
+                  className={`text-xs gap-1 ${isClickable ? 'cursor-pointer hover:bg-accent' : ''}`}
+                  onClick={isClickable ? () => handleEditRelationship(classification) : undefined}
                 >
                   <div className={`w-2 h-2 rounded-full ${classConfig.color}`} />
                   {!compact && getClassificationDisplayLabel(classification)}
                   {idx === 0 && updatedAt && isRecent && (
                     <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
                   )}
-                  {hasRelationship && interactive && (
+                  {isClickable && (
                     <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
                   )}
                 </Badge>
               </TooltipTrigger>
               <TooltipContent>
-                {hasRelationship && interactive ? (
-                  <span>Clique para editar o vínculo de relacionamento</span>
+                {isClickable ? (
+                  <span>{hasRelationship ? 'Clique para editar o vínculo' : 'Clique para vincular a alguém'}</span>
                 ) : updatedAt ? (
                   <span>
                     {getClassificationDisplayLabel(classification)} • Atualizado em {format(updatedAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
