@@ -32,7 +32,7 @@ import { toast } from 'sonner';
 import type { CommentContactData } from '@/hooks/useCommentContactInfo';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface Lead {
@@ -412,6 +412,9 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     // Static rendering
     if (!hasClassifications) return null;
 
+    const updatedAt = contact?.updated_at ? new Date(contact.updated_at) : null;
+    const isRecent = updatedAt && (Date.now() - updatedAt.getTime()) < 24 * 60 * 60 * 1000;
+
     return (
       <>
         {contactClassifications.slice(0, compact ? 1 : 2).map((classification, idx) => {
@@ -425,9 +428,20 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
                 >
                   <div className={`w-2 h-2 rounded-full ${classConfig.color}`} />
                   {!compact && classConfig.label}
+                  {idx === 0 && updatedAt && isRecent && (
+                    <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                  )}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>{classConfig.label}</TooltipContent>
+              <TooltipContent>
+                {updatedAt ? (
+                  <span>
+                    {classConfig.label} • Atualizado em {format(updatedAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                ) : (
+                  classConfig.label
+                )}
+              </TooltipContent>
             </Tooltip>
           );
         })}
