@@ -336,11 +336,19 @@ export const CommentClassificationDialog = ({
             .maybeSingle();
 
           let authorContactId = existingContact?.id;
+          
+          const contactClassificationsToSave = newContactClassifications.length > 0 
+            ? newContactClassifications 
+            : classificationsToSave || [];
 
-          if (!authorContactId) {
-            const contactClassificationsToSave = newContactClassifications.length > 0 
-              ? newContactClassifications 
-              : classificationsToSave;
+          if (authorContactId) {
+            // Update existing contact with new classifications
+            await supabase
+              .from('contacts')
+              .update({ classifications: contactClassificationsToSave })
+              .eq('id', authorContactId);
+          } else {
+            // Create new contact
             const { data: newContact, error: contactError } = await supabase
               .from('contacts')
               .insert({

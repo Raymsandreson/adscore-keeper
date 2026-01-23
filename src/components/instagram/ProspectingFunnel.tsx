@@ -47,6 +47,7 @@ import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, FunnelChart, Funnel, LabelList } from 'recharts';
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { OutboundNotificationSettings } from './OutboundNotificationSettings';
 import { OutboundRepliesHistory } from './OutboundRepliesHistory';
 import { OutboundResponseChart } from './OutboundResponseChart';
@@ -131,6 +132,20 @@ export function ProspectingFunnel() {
 
   // Use dynamic classifications from database
   const { classifications: dbClassifications, classificationConfig } = useContactClassifications();
+  
+  // Get contact data for usernames (centralized classifications)
+  const usernames = useMemo(() => 
+    prospects.map(p => p.author_username).filter((u): u is string => !!u), 
+    [prospects]
+  );
+  const { getContactData, refetch: refetchContactData } = useCommentContactInfo(usernames);
+  
+  // Helper to get classifications from centralized contacts table
+  const getProspectClassifications = (prospect: Prospect): string[] => {
+    if (!prospect.author_username) return [];
+    const contactData = getContactData(prospect.author_username);
+    return contactData?.contact?.classifications || [];
+  };
 
   // Build CLASSIFICATIONS array from database
   const CLASSIFICATIONS = useMemo(() => {
@@ -189,9 +204,9 @@ export function ProspectingFunnel() {
       });
     }
     
-    // Filter by visible classifications
+    // Filter by visible classifications (from centralized contacts table)
     filtered = filtered.filter(p => {
-      const classifications = p.prospect_classification || [];
+      const classifications = getProspectClassifications(p);
       if (classifications.length === 0) {
         return visibleClassifications['null'] !== false;
       }
@@ -201,7 +216,7 @@ export function ProspectingFunnel() {
     // Apply classification filter (dropdown)
     if (classificationFilter !== 'all') {
       filtered = filtered.filter(p => 
-        p.prospect_classification?.includes(classificationFilter) ?? false
+        getProspectClassifications(p).includes(classificationFilter)
       );
     }
     
@@ -291,11 +306,12 @@ export function ProspectingFunnel() {
       return { from: stage.key, rate: parseFloat(rate) };
     });
 
-    // Classification breakdown
+    // Classification breakdown (from centralized contacts table)
     const byClassification = CLASSIFICATIONS.reduce((acc, c) => {
       acc[c.key || 'null'] = filteredProspects.filter(p => {
-        if (c.key === null) return !p.prospect_classification || p.prospect_classification.length === 0;
-        return p.prospect_classification?.includes(c.key) ?? false;
+        const prospectClassifications = getProspectClassifications(p);
+        if (c.key === null) return prospectClassifications.length === 0;
+        return prospectClassifications.includes(c.key);
       }).length;
       return acc;
     }, {} as Record<string, number>);
@@ -367,17 +383,45 @@ export function ProspectingFunnel() {
     if (!editingProspect) return;
 
     try {
+      // Update instagram_comments (only prospect_name, notes, funnel_stage)
       const { error } = await supabase
         .from('instagram_comments')
         .update({
           prospect_name: editForm.prospect_name || null,
           notes: editForm.notes || null,
-          funnel_stage: editForm.funnel_stage,
-          prospect_classification: editForm.prospect_classification
+          funnel_stage: editForm.funnel_stage
         })
         .eq('id', editingProspect.id);
 
       if (error) throw error;
+      
+      // Update classifications in contacts table if username exists
+      if (editingProspect.author_username) {
+        const normalizedUsername = editingProspect.author_username.replace(/^@/, '').toLowerCase();
+        
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .or(`instagram_username.ilike.${normalizedUsername},instagram_username.ilike.@${normalizedUsername}`)
+          .maybeSingle();
+        
+        if (existingContact) {
+          await supabase
+            .from('contacts')
+            .update({ classifications: editForm.prospect_classification })
+            .eq('id', existingContact.id);
+        } else if (editForm.prospect_classification.length > 0) {
+          await supabase
+            .from('contacts')
+            .insert({
+              full_name: editForm.prospect_name || `@${normalizedUsername}`,
+              instagram_username: normalizedUsername,
+              classifications: editForm.prospect_classification
+            });
+        }
+        
+        refetchContactData();
+      }
 
       toast.success('Prospecto atualizado!');
       setEditingProspect(null);
@@ -411,9 +455,14 @@ export function ProspectingFunnel() {
   };
 
   const handleQuickClassify = async (prospect: Prospect, classificationKey: string | null) => {
+    if (!prospect.author_username) {
+      toast.error('Não é possível classificar sem username');
+      return;
+    }
+    
     try {
-      // Toggle classification: if already has it, remove it; otherwise add it
-      const currentClassifications = prospect.prospect_classification || [];
+      // Get current classifications from centralized contacts table
+      const currentClassifications = getProspectClassifications(prospect);
       let newClassifications: string[];
       
       if (classificationKey === null) {
@@ -427,12 +476,36 @@ export function ProspectingFunnel() {
         newClassifications = [...currentClassifications, classificationKey];
       }
       
-      const { error } = await supabase
-        .from('instagram_comments')
-        .update({ prospect_classification: newClassifications.length > 0 ? newClassifications : null })
-        .eq('id', prospect.id);
-
-      if (error) throw error;
+      // Find or create contact for this username
+      const normalizedUsername = prospect.author_username.replace(/^@/, '').toLowerCase();
+      
+      // Try to find existing contact
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .or(`instagram_username.ilike.${normalizedUsername},instagram_username.ilike.@${normalizedUsername}`)
+        .maybeSingle();
+      
+      if (existingContact) {
+        // Update existing contact
+        const { error } = await supabase
+          .from('contacts')
+          .update({ classifications: newClassifications })
+          .eq('id', existingContact.id);
+        
+        if (error) throw error;
+      } else {
+        // Create new contact with classification
+        const { error } = await supabase
+          .from('contacts')
+          .insert({
+            full_name: prospect.prospect_name || `@${normalizedUsername}`,
+            instagram_username: normalizedUsername,
+            classifications: newClassifications
+          });
+        
+        if (error) throw error;
+      }
 
       const config = getClassificationConfig(classificationKey);
       if (classificationKey === null) {
@@ -443,10 +516,8 @@ export function ProspectingFunnel() {
         toast.success(`Removido: ${config.label}`);
       }
       
-      // Update local state immediately for better UX
-      setProspects(prev => prev.map(p => 
-        p.id === prospect.id ? { ...p, prospect_classification: newClassifications.length > 0 ? newClassifications : null } : p
-      ));
+      // Refetch contact data to update UI
+      refetchContactData();
     } catch (error) {
       console.error('Erro ao classificar:', error);
       toast.error('Erro ao classificar prospecto');
@@ -455,11 +526,13 @@ export function ProspectingFunnel() {
 
   const openEditDialog = (prospect: Prospect) => {
     setEditingProspect(prospect);
+    // Use classifications from centralized contacts table
+    const prospectClassifications = getProspectClassifications(prospect);
     setEditForm({
       prospect_name: prospect.prospect_name || '',
       notes: prospect.notes || '',
       funnel_stage: prospect.funnel_stage,
-      prospect_classification: prospect.prospect_classification || []
+      prospect_classification: prospectClassifications
     });
   };
 
@@ -877,45 +950,50 @@ export function ProspectingFunnel() {
                                       <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
                                     )}
                                   </div>
-                                  {/* Quick classification dropdown */}
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <button 
-                                        className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 h-5 mt-1 rounded-md border-0 cursor-pointer hover:opacity-80 transition-opacity ${
-                                          prospect.prospect_classification && prospect.prospect_classification.length > 0
-                                            ? `${getClassificationConfig(prospect.prospect_classification[0]).bgColor} ${getClassificationConfig(prospect.prospect_classification[0]).color}` 
-                                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                        }`}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <Tag className="h-2.5 w-2.5" />
-                                        {prospect.prospect_classification && prospect.prospect_classification.length > 0
-                                          ? prospect.prospect_classification.length > 1 
-                                            ? `${prospect.prospect_classification.length} selecionados`
-                                            : getClassificationConfig(prospect.prospect_classification[0]).label
-                                          : 'Classificar'}
-                                      </button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start" className="w-36" onClick={(e) => e.stopPropagation()}>
-                                      <DropdownMenuLabel className="text-xs">Classificação (múltipla)</DropdownMenuLabel>
-                                      <DropdownMenuSeparator />
-                                      {CLASSIFICATIONS.map((c) => (
-                                        <DropdownMenuItem
-                                          key={c.key || 'none'}
-                                          onClick={() => handleQuickClassify(prospect, c.key)}
-                                          className={`text-xs cursor-pointer ${
-                                            c.key !== null && prospect.prospect_classification?.includes(c.key) ? 'bg-accent' : ''
-                                          }`}
-                                        >
-                                          <span className={`w-2 h-2 rounded-full mr-2 ${c.bgColor}`} />
-                                          {c.label}
-                                          {c.key !== null && prospect.prospect_classification?.includes(c.key) && (
-                                            <CheckCircle2 className="h-3 w-3 ml-auto" />
-                                          )}
-                                        </DropdownMenuItem>
-                                      ))}
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                  {/* Quick classification dropdown - using centralized contacts */}
+                                  {(() => {
+                                    const prospectClassifications = getProspectClassifications(prospect);
+                                    return (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <button 
+                                            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 h-5 mt-1 rounded-md border-0 cursor-pointer hover:opacity-80 transition-opacity ${
+                                              prospectClassifications.length > 0
+                                                ? `${getClassificationConfig(prospectClassifications[0]).bgColor} ${getClassificationConfig(prospectClassifications[0]).color}` 
+                                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                            }`}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <Tag className="h-2.5 w-2.5" />
+                                            {prospectClassifications.length > 0
+                                              ? prospectClassifications.length > 1 
+                                                ? `${prospectClassifications.length} selecionados`
+                                                : getClassificationConfig(prospectClassifications[0]).label
+                                              : 'Classificar'}
+                                          </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="start" className="w-36" onClick={(e) => e.stopPropagation()}>
+                                          <DropdownMenuLabel className="text-xs">Classificação (múltipla)</DropdownMenuLabel>
+                                          <DropdownMenuSeparator />
+                                          {CLASSIFICATIONS.map((c) => (
+                                            <DropdownMenuItem
+                                              key={c.key || 'none'}
+                                              onClick={() => handleQuickClassify(prospect, c.key)}
+                                              className={`text-xs cursor-pointer ${
+                                                c.key !== null && prospectClassifications.includes(c.key) ? 'bg-accent' : ''
+                                              }`}
+                                            >
+                                              <span className={`w-2 h-2 rounded-full mr-2 ${c.bgColor}`} />
+                                              {c.label}
+                                              {c.key !== null && prospectClassifications.includes(c.key) && (
+                                                <CheckCircle2 className="h-3 w-3 ml-auto" />
+                                              )}
+                                            </DropdownMenuItem>
+                                          ))}
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    );
+                                  })()}
                                   {prospect.comment_text && (
                                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
                                       {prospect.comment_text}
