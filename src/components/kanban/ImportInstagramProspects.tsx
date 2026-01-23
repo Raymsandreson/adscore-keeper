@@ -44,7 +44,6 @@ interface InstagramProspect {
   created_at: string;
   funnel_stage: string | null;
   prospect_name: string | null;
-  prospect_classification: string[] | null;
   post_url: string | null;
   comment_type: string;
   already_converted: boolean;
@@ -96,7 +95,7 @@ export function ImportInstagramProspects({
       // Fetch prospects from instagram_comments
       const { data: comments, error: commentsError } = await supabase
         .from('instagram_comments')
-        .select('id, author_username, comment_text, created_at, funnel_stage, prospect_name, prospect_classification, post_url, comment_type')
+        .select('id, author_username, comment_text, created_at, funnel_stage, prospect_name, post_url, comment_type')
         .order('created_at', { ascending: false })
         .limit(200);
 
@@ -119,7 +118,6 @@ export function ImportInstagramProspects({
         created_at: c.created_at,
         funnel_stage: c.funnel_stage,
         prospect_name: c.prospect_name,
-        prospect_classification: c.prospect_classification,
         post_url: c.post_url,
         comment_type: c.comment_type,
         already_converted: convertedIds.has(c.id),
@@ -392,16 +390,7 @@ export function ImportInstagramProspects({
                             )}
                           </div>
 
-                          {/* Classifications */}
-                          {prospect.prospect_classification && prospect.prospect_classification.length > 0 && (
-                            <div className="flex gap-1 mt-2 flex-wrap">
-                              {prospect.prospect_classification.map((c, i) => (
-                                <Badge key={i} variant="outline" className="text-xs">
-                                  {c}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
+                          {/* Classifications now come from contacts table, not shown here */}
                         </div>
                       </div>
                     </div>
