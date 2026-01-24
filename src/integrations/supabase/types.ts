@@ -1282,6 +1282,57 @@ export type Database = {
         }
         Relationships: []
       }
+      n8n_comment_schedules: {
+        Row: {
+          auto_post: boolean | null
+          created_at: string | null
+          cron_job_name: string | null
+          id: string
+          interval_minutes: number
+          is_active: boolean | null
+          last_run_at: string | null
+          max_comments_per_run: number | null
+          name: string
+          next_run_at: string | null
+          tone: string | null
+          total_replies: number | null
+          total_runs: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          auto_post?: boolean | null
+          created_at?: string | null
+          cron_job_name?: string | null
+          id?: string
+          interval_minutes?: number
+          is_active?: boolean | null
+          last_run_at?: string | null
+          max_comments_per_run?: number | null
+          name: string
+          next_run_at?: string | null
+          tone?: string | null
+          total_replies?: number | null
+          total_runs?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          auto_post?: boolean | null
+          created_at?: string | null
+          cron_job_name?: string | null
+          id?: string
+          interval_minutes?: number
+          is_active?: boolean | null
+          last_run_at?: string | null
+          max_comments_per_run?: number | null
+          name?: string
+          next_run_at?: string | null
+          tone?: string | null
+          total_replies?: number | null
+          total_runs?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       outbound_goal_history: {
         Row: {
           achieved_at: string

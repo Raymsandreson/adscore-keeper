@@ -19,12 +19,14 @@ import {
   Zap,
   MessageSquare,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CommentScheduleManager } from "./CommentScheduleManager";
 
 interface AutomationLog {
   id: string;
@@ -158,10 +160,14 @@ export function N8nIntegrationSettings() {
       </div>
 
       <Tabs defaultValue="setup" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="setup" className="gap-2">
             <Settings2 className="h-4 w-4" />
             Configuração
+          </TabsTrigger>
+          <TabsTrigger value="schedules" className="gap-2">
+            <Clock className="h-4 w-4" />
+            Agendamentos
           </TabsTrigger>
           <TabsTrigger value="endpoints" className="gap-2">
             <Zap className="h-4 w-4" />
@@ -273,6 +279,11 @@ export function N8nIntegrationSettings() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Schedules Tab */}
+        <TabsContent value="schedules" className="mt-4">
+          <CommentScheduleManager />
         </TabsContent>
 
         {/* Endpoints Tab */}
