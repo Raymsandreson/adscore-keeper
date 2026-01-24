@@ -1246,6 +1246,42 @@ export type Database = {
           },
         ]
       }
+      n8n_automation_logs: {
+        Row: {
+          action_type: string
+          comment_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          message_sent: string | null
+          metadata: Json | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          comment_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_sent?: string | null
+          metadata?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          comment_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_sent?: string | null
+          metadata?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       outbound_goal_history: {
         Row: {
           achieved_at: string

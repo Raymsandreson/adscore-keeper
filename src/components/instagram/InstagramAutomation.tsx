@@ -9,7 +9,8 @@ import {
   BarChart3,
   Filter,
   Trophy,
-  History
+  History,
+  Webhook
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
@@ -19,6 +20,7 @@ import { CommentsDashboard } from "./CommentsDashboard";
 import { ProspectingFunnel } from "./ProspectingFunnel";
 import { EngagementChampionship } from "./EngagementChampionship";
 import { DmWorkflowHistory } from "./DmWorkflowHistory";
+import { N8nIntegrationSettings } from "./N8nIntegrationSettings";
 
 interface InstagramAutomationProps {
   isConnected: boolean;
@@ -57,7 +59,7 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="funnel" className="gap-2">
             <Filter className="h-4 w-4" />
             Funil
@@ -85,6 +87,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
           <TabsTrigger value="automation" className="gap-2">
             <Bot className="h-4 w-4" />
             Automação
+          </TabsTrigger>
+          <TabsTrigger value="n8n" className="gap-2">
+            <Webhook className="h-4 w-4" />
+            n8n
           </TabsTrigger>
           <TabsTrigger value="stats" className="gap-2">
             <TrendingUp className="h-4 w-4" />
@@ -118,6 +124,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
         <TabsContent value="automation" className="mt-6">
           <AutoReplyRules />
+        </TabsContent>
+
+        <TabsContent value="n8n" className="mt-6">
+          <N8nIntegrationSettings />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-6">

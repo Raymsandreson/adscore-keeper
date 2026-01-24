@@ -80,14 +80,20 @@ export function N8nIntegrationSettings() {
   const loadLogs = async () => {
     setLoadingLogs(true);
     try {
-      const { data, error } = await supabase
-        .from("n8n_automation_logs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setLogs(data || []);
+      // Use fetch directly since table was just created and types not regenerated yet
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/n8n_automation_logs?select=*&order=created_at.desc&limit=50`,
+        {
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setLogs(data || []);
+      }
     } catch (error) {
       console.error("Error loading logs:", error);
     } finally {
