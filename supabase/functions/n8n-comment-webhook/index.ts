@@ -169,6 +169,171 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       );
     }
 
+    // Action: scheduled_run - Run from pg_cron schedule
+    if (action === "scheduled_run") {
+      const scheduleId = body.schedule_id;
+      
+      // Fetch schedule config if provided
+      let scheduleConfig = {
+        max_comments_per_run: body.limit || 5,
+        auto_post: body.auto_post === true,
+        tone: body.tone || "friendly",
+      };
+
+      if (scheduleId) {
+        const { data: schedule } = await supabase
+          .from("n8n_comment_schedules")
+          .select("*")
+          .eq("id", scheduleId)
+          .single();
+
+        if (schedule) {
+          scheduleConfig = {
+            max_comments_per_run: schedule.max_comments_per_run || 5,
+            auto_post: schedule.auto_post === true,
+            tone: schedule.tone || "friendly",
+          };
+        }
+      }
+
+      const token = access_token || Deno.env.get("META_ACCESS_TOKEN");
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+      // Fetch pending comments
+      const { data: comments, error } = await supabase
+        .from("instagram_comments")
+        .select("*")
+        .is("replied_at", null)
+        .eq("comment_type", "received")
+        .order("created_at", { ascending: false })
+        .limit(scheduleConfig.max_comments_per_run);
+
+      if (error) throw error;
+
+      const toneInstructions: Record<string, string> = {
+        friendly: "Seja amigável, caloroso e acolhedor. Use emojis com moderação.",
+        professional: "Seja profissional e formal, mantendo cordialidade.",
+        empathetic: "Demonstre empatia e compreensão genuína.",
+        sales: "Seja persuasivo mas não agressivo. Foque em gerar interesse.",
+        casual: "Seja descontraído e casual, como se estivesse falando com um amigo."
+      };
+
+      const selectedTone = toneInstructions[scheduleConfig.tone] || toneInstructions.friendly;
+      const results = [];
+      let repliesPosted = 0;
+
+      for (const comment of comments || []) {
+        const systemPrompt = `Você é um assistente de Instagram. Responda em português brasileiro, máximo 200 caracteres. ${selectedTone} Autor: @${comment.author_username || 'usuário'}`;
+
+        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: `Responda: "${comment.comment_text}"` }
+            ],
+            max_tokens: 150,
+            temperature: 0.7,
+          }),
+        });
+
+        if (!aiResponse.ok) {
+          results.push({ comment_id: comment.comment_id, error: "AI generation failed" });
+          continue;
+        }
+
+        const aiData = await aiResponse.json();
+        const reply = aiData.choices?.[0]?.message?.content?.trim() || "";
+
+        const result: any = {
+          comment_id: comment.comment_id,
+          author_username: comment.author_username,
+          original_comment: comment.comment_text,
+          generated_reply: reply,
+          posted: false,
+        };
+
+        // Auto-post if enabled
+        if (scheduleConfig.auto_post && token && comment.comment_id) {
+          const igResponse = await fetch(
+            `https://graph.facebook.com/v21.0/${comment.comment_id}/replies`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: reply,
+                access_token: token,
+              }),
+            }
+          );
+
+          if (igResponse.ok) {
+            const igData = await igResponse.json();
+            result.posted = true;
+            result.reply_id = igData.id;
+            repliesPosted++;
+
+            await supabase
+              .from("instagram_comments")
+              .update({ replied_at: new Date().toISOString() })
+              .eq("comment_id", comment.comment_id);
+          }
+        }
+
+        results.push(result);
+      }
+
+      // Update schedule metrics if schedule_id provided
+      if (scheduleId) {
+        const { data: currentSchedule } = await supabase
+          .from("n8n_comment_schedules")
+          .select("total_runs, total_replies, interval_minutes")
+          .eq("id", scheduleId)
+          .single();
+
+        if (currentSchedule) {
+          const nextRunAt = new Date();
+          nextRunAt.setMinutes(nextRunAt.getMinutes() + (currentSchedule.interval_minutes || 30));
+
+          await supabase
+            .from("n8n_comment_schedules")
+            .update({
+              last_run_at: new Date().toISOString(),
+              next_run_at: nextRunAt.toISOString(),
+              total_runs: (currentSchedule.total_runs || 0) + 1,
+              total_replies: (currentSchedule.total_replies || 0) + repliesPosted,
+            })
+            .eq("id", scheduleId);
+        }
+      }
+
+      // Log the scheduled run
+      await supabase.from("n8n_automation_logs").insert({
+        action_type: "scheduled_run",
+        status: "success",
+        metadata: {
+          schedule_id: scheduleId,
+          comments_processed: results.length,
+          replies_posted: repliesPosted,
+        },
+      });
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          processed: results.length, 
+          replies_posted: repliesPosted,
+          results 
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Action: auto_process - Full automation: fetch, generate, and optionally post
     if (action === "auto_process") {
       const autoPost = body.auto_post === true;
@@ -272,7 +437,7 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: "Invalid action. Use: fetch_pending_comments, generate_reply, post_reply, or auto_process" 
+        error: "Invalid action. Use: fetch_pending_comments, generate_reply, post_reply, scheduled_run, or auto_process" 
       }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
