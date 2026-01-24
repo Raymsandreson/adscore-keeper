@@ -20,3 +20,27 @@ verify_jwt = false
 
 [functions.fetch-organic-insights]
 verify_jwt = false
+
+[functions.n8n-comment-webhook]
+verify_jwt = false
+
+[functions.sync-instagram-metrics]
+verify_jwt = false
+
+[functions.list-instagram-accounts]
+verify_jwt = false
+
+[functions.migrate-classifications]
+verify_jwt = false
+
+[functions.post-instagram-reply]
+verify_jwt = false
+
+[functions.generate-ai-reply]
+verify_jwt = false
+
+[functions.fetch-instagram-comments]
+verify_jwt = false
+
+[functions.goal-ai-suggestions]
+verify_jwt = false
