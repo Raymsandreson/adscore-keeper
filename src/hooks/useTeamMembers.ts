@@ -89,16 +89,48 @@ export function useTeamMembers() {
     }
 
     const { data: user } = await supabase.auth.getUser();
+    const normalizedEmail = email.toLowerCase().trim();
     
+    // Insert invitation into database
     const { error } = await supabase
       .from('team_invitations')
       .insert({
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
         role,
         invited_by: user.user?.id,
       });
 
     if (error) throw error;
+
+    // Get inviter's name for the email
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('user_id', user.user?.id)
+      .single();
+
+    // Send invitation email via edge function
+    try {
+      const appUrl = window.location.origin;
+      const response = await supabase.functions.invoke('send-team-invitation', {
+        body: {
+          email: normalizedEmail,
+          role,
+          invitedByName: profile?.full_name || 'Um administrador',
+          appUrl,
+        },
+      });
+
+      if (response.error) {
+        console.error('Error sending invitation email:', response.error);
+      } else {
+        console.log('Invitation email sent successfully');
+      }
+    } catch (emailError) {
+      console.error('Failed to send invitation email:', emailError);
+      // Don't throw - invitation was created, email is just a bonus
+    }
+
     await fetchMembers();
   }, [isAdmin, fetchMembers]);
 

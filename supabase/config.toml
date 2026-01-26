@@ -44,3 +44,9 @@ verify_jwt = false
 
 [functions.goal-ai-suggestions]
 verify_jwt = false
+
+[functions.send-team-invitation]
+verify_jwt = false
+
+[functions.extract-location]
+verify_jwt = false
