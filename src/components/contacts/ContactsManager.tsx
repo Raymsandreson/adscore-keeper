@@ -96,6 +96,7 @@ import { MultiClassificationSelect } from '@/components/contacts/MultiClassifica
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { ProfessionFilter } from '@/components/instagram/ProfessionFilter';
+import { ProfessionStatsCard } from '@/components/contacts/ProfessionStatsCard';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -1053,43 +1054,60 @@ export const ContactsManager: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <Card className="bg-card/50">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-green-500/10 border-green-500/30">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold text-green-500">{stats.clients}</p>
-            <p className="text-xs text-muted-foreground">Clientes</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-blue-500/10 border-blue-500/30">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold text-blue-500">{stats.prospects}</p>
-            <p className="text-xs text-muted-foreground">Prospects</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-purple-500/10 border-purple-500/30">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold text-purple-500">{stats.partners}</p>
-            <p className="text-xs text-muted-foreground">Parceiros</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-pink-500/10 border-pink-500/30">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold text-pink-500">{stats.withInstagram}</p>
-            <p className="text-xs text-muted-foreground">Com Instagram</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-emerald-500/10 border-emerald-500/30">
-          <CardContent className="p-3 text-center">
-            <p className="text-2xl font-bold text-emerald-500">{stats.convertedToLead}</p>
-            <p className="text-xs text-muted-foreground">Leads</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Main Stats */}
+        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Card className="bg-card/50">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold">{stats.total}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-green-500/10 border-green-500/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-green-500">{stats.clients}</p>
+              <p className="text-xs text-muted-foreground">Clientes</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-blue-500/10 border-blue-500/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-blue-500">{stats.prospects}</p>
+              <p className="text-xs text-muted-foreground">Prospects</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-purple-500/10 border-purple-500/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-purple-500">{stats.partners}</p>
+              <p className="text-xs text-muted-foreground">Parceiros</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-pink-500/10 border-pink-500/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-pink-500">{stats.withInstagram}</p>
+              <p className="text-xs text-muted-foreground">Com Instagram</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-emerald-500/10 border-emerald-500/30">
+            <CardContent className="p-3 text-center">
+              <p className="text-2xl font-bold text-emerald-500">{stats.convertedToLead}</p>
+              <p className="text-xs text-muted-foreground">Leads</p>
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Profession Stats Card */}
+        <div className="lg:col-span-1">
+          <ProfessionStatsCard
+            selectedProfessions={filterProfessions}
+            onProfessionClick={(profession) => {
+              if (filterProfessions.includes(profession)) {
+                setFilterProfessions(filterProfessions.filter(p => p !== profession));
+              } else {
+                setFilterProfessions([...filterProfessions, profession]);
+              }
+            }}
+          />
+        </div>
       </div>
 
       {/* Actions Bar */}
