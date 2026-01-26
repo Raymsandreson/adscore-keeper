@@ -171,7 +171,21 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     return null;
   }
 
+  // Check if follow was requested but not yet accepted
+  const followRequestedAt = contact?.follow_requested_at;
+  const isFollowPending = !!followRequestedAt && contact?.follower_status !== 'following' && contact?.follower_status !== 'mutual';
+
   const getFollowerStatusConfig = (status: string | null | undefined) => {
+    // If follow was requested but not yet following, show pending state
+    if (isFollowPending) {
+      return { 
+        icon: Clock, 
+        label: 'Solicitação pendente', 
+        shortLabel: 'Pendente',
+        className: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-800' 
+      };
+    }
+    
     switch (status) {
       case 'follower':
         return { 
@@ -185,7 +199,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           icon: UserPlus, 
           label: 'Você segue', 
           shortLabel: 'Seguindo',
-          className: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800' 
+          className: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800' 
         };
       case 'mutual':
         return { 
