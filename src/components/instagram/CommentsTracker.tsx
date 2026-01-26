@@ -62,6 +62,7 @@ import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
 import { useContactClassifications } from "@/hooks/useContactClassifications";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
+import { ProfessionFilter } from "./ProfessionFilter";
 
 interface Comment {
   id: string;
@@ -138,6 +139,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
   const [filterByClassifications, setFilterByClassifications] = useState<string[]>([]);
+  const [filterByProfessions, setFilterByProfessions] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'created_at' | 'classification_updated'>('created_at');
   
   // Classification settings dialogs
@@ -810,6 +812,14 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if (!matchesSelectedClassification && !matchesNoClassification) return false;
       }
       
+      // Filter by professions (multi-select)
+      if (filterByProfessions.length > 0) {
+        const contactData = c.author_username ? getContactData(c.author_username) : null;
+        const contactProfession = contactData?.contact?.profession;
+        
+        if (!contactProfession || !filterByProfessions.includes(contactProfession)) return false;
+      }
+      
       return true;
     });
 
@@ -828,7 +838,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     
     // Default: sort by created_at (already sorted from DB)
     return filtered;
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, getContactData, sortBy]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, filterByProfessions, getContactData, sortBy]);
 
   const clearFilters = () => {
     setSearchText('');
@@ -837,10 +847,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     setShowOnlyLinked('all');
     setShowOnlyUnanswered(false);
     setFilterByClassifications([]);
+    setFilterByProfessions([]);
     setSortBy('created_at');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0 || sortBy !== 'created_at';
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0 || filterByProfessions.length > 0 || sortBy !== 'created_at';
   
   // Toggle classification in filter
   const toggleClassificationFilter = (classificationName: string) => {
@@ -1436,6 +1447,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 </div>
               </PopoverContent>
             </Popover>
+            
+            {/* Profession filter */}
+            <ProfessionFilter
+              selectedProfessions={filterByProfessions}
+              onSelectionChange={setFilterByProfessions}
+            />
             
             {/* Sort selector */}
             <Select value={sortBy} onValueChange={(val: 'created_at' | 'classification_updated') => setSortBy(val)}>
