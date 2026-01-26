@@ -1705,6 +1705,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                   compact={false}
                                   interactive={true}
                                   authorUsername={comment.author_username}
+                                  commentText={comment.comment_text}
                                   onDataChanged={() => refetchUsername(comment.author_username)}
                                 />
                               </div>

@@ -987,6 +987,7 @@ export const CommentResponseWorkflow = ({
                         compact={false}
                         interactive={true}
                         authorUsername={currentComment.author_username}
+                        commentText={currentComment.comment_text}
                         onDataChanged={() => { refetchUsername(currentComment.author_username); onRefresh?.(); }}
                       />
                     </div>

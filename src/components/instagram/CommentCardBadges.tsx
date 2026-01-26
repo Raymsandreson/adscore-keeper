@@ -49,6 +49,7 @@ interface CommentCardBadgesProps {
   compact?: boolean;
   interactive?: boolean;
   authorUsername?: string | null;
+  commentText?: string | null;
   onDataChanged?: () => void;
 }
 
@@ -58,6 +59,7 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
   compact = false,
   interactive = false,
   authorUsername,
+  commentText,
   onDataChanged
 }) => {
   const navigate = useNavigate();
@@ -98,6 +100,49 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     const selectedRelationships = getRelationshipClassificationsFromList(selectedClassifications);
     return selectedRelationships.filter(r => !currentRelationships.includes(r));
   }, [selectedClassifications, contactClassifications]);
+
+  // Extract location from comment text using AI
+  const extractLocationFromComment = async (contactId: string) => {
+    if (!commentText || !authorUsername) return;
+    
+    // Skip if contact already has location data
+    if (contact?.city || contact?.state) return;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-location', {
+        body: {
+          commentText,
+          authorUsername: authorUsername.replace('@', ''),
+        }
+      });
+      
+      if (error) {
+        console.error('Error extracting location:', error);
+        return;
+      }
+      
+      if (data?.success && data.location && (data.location.city || data.location.state)) {
+        // Update contact with extracted location
+        const updateData: Record<string, string> = {};
+        if (data.location.city) updateData.city = data.location.city;
+        if (data.location.state) updateData.state = data.location.state;
+        
+        const { error: updateError } = await supabase
+          .from('contacts')
+          .update(updateData)
+          .eq('id', contactId);
+        
+        if (!updateError) {
+          const locationInfo = [data.location.city, data.location.state].filter(Boolean).join(', ');
+          toast.info(`📍 Localização detectada: ${locationInfo}`, {
+            description: `Extraído de: "${data.location.extractedFrom?.slice(0, 50) || commentText.slice(0, 50)}..."`
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Location extraction failed:', err);
+    }
+  };
 
   if (loading) {
     return null;
@@ -209,6 +254,11 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
           .eq('id', contactId);
         
         if (error) throw error;
+      }
+
+      // Try to extract location from comment (runs in background)
+      if (contactId) {
+        extractLocationFromComment(contactId);
       }
 
       // Check if there are new relationship classifications
