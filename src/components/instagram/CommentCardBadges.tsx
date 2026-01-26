@@ -36,6 +36,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { RelationshipPromptDialog, getRelationshipClassificationsFromList, isRelationshipClassification, RELATIONSHIP_KEYWORDS } from './RelationshipPromptDialog';
 import { EditRelationshipDialog } from './EditRelationshipDialog';
+import { ProfessionBadgePopover } from './ProfessionBadgePopover';
 
 // Detect relationship keywords in comment text
 const detectRelationshipKeywordsInText = (text: string | null | undefined): string[] => {
@@ -1380,6 +1381,17 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
 
         {/* Linked Leads */}
         {renderLinkedLeadsBadge()}
+
+        {/* Profession Badge */}
+        <ProfessionBadgePopover
+          contactId={contact?.id}
+          authorUsername={authorUsername}
+          profession={contact?.profession}
+          professionCboCode={contact?.profession_cbo_code}
+          compact={compact}
+          interactive={interactive}
+          onDataChanged={onDataChanged}
+        />
 
         {/* Connections/Relationships */}
         {renderConnectionsBadge()}
