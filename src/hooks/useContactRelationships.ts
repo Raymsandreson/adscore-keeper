@@ -107,78 +107,185 @@ export const useContactRelationships = (contactId?: string) => {
     }
   }, [contactId]);
 
-  // Symmetric relationship types that should be cross-referenced
-  const SYMMETRIC_RELATIONSHIPS = [
-    'Primo', 'Prima', 'Irmão', 'Irmã', 'Cunhado', 'Cunhada',
-    'Sobrinho', 'Sobrinha', 'Tio', 'Tia', 'Amigo', 'Colega',
-    'Vizinho', 'Sócio', 'Parceiro'
-  ];
-
-  const isSymmetricRelationship = (type: string) => {
-    return SYMMETRIC_RELATIONSHIPS.some(r => 
-      type.toLowerCase().includes(r.toLowerCase())
-    );
+  // Relationship type mappings for cross-referencing
+  const RELATIONSHIP_RULES = {
+    // Symmetric relationships (A is X of B → B is X of A, and if both are X of C, they're X of each other)
+    symmetric: [
+      'Primo', 'Prima', 'Irmão', 'Irmã', 'Cunhado', 'Cunhada',
+      'Amigo', 'Amiga', 'Colega', 'Vizinho', 'Vizinha', 'Sócio', 'Sócia', 
+      'Parceiro', 'Parceira', 'Conhecido', 'Conhecida'
+    ],
+    // Child relationships that imply siblings when sharing same parent
+    childTypes: ['Filho', 'Filha'],
+    // Grandchild relationships that imply cousins when sharing same grandparent
+    grandchildTypes: ['Neto', 'Neta'],
+    // Sibling result types
+    siblingTypes: { male: 'Irmão', female: 'Irmã', neutral: 'Irmão' },
+    // Cousin result types  
+    cousinTypes: { male: 'Primo', female: 'Prima', neutral: 'Primo' },
+    // Nephew/niece types (children of siblings become cousins to each other)
+    nephewTypes: ['Sobrinho', 'Sobrinha'],
+    // Uncle/aunt types
+    uncleTypes: ['Tio', 'Tia'],
   };
 
-  // Cross-reference relationships: if A is cousin of B and C, then B and C are also cousins
+  const normalizeType = (type: string) => type.toLowerCase().trim();
+
+  const matchesAnyType = (type: string, types: string[]) => {
+    const normalized = normalizeType(type);
+    return types.some(t => normalized.includes(normalizeType(t)));
+  };
+
+  const isSymmetricRelationship = (type: string) => matchesAnyType(type, RELATIONSHIP_RULES.symmetric);
+  const isChildRelationship = (type: string) => matchesAnyType(type, RELATIONSHIP_RULES.childTypes);
+  const isGrandchildRelationship = (type: string) => matchesAnyType(type, RELATIONSHIP_RULES.grandchildTypes);
+  const isNephewRelationship = (type: string) => matchesAnyType(type, RELATIONSHIP_RULES.nephewTypes);
+
+  // Get all contacts with a specific relationship to a given contact
+  const getRelatedContactsByType = async (targetContactId: string, types: string[]) => {
+    const contacts = new Set<string>();
+    
+    for (const relType of types) {
+      // Outgoing relationships
+      const { data: outgoing } = await (supabase as any)
+        .from('contact_relationships')
+        .select('related_contact_id, relationship_type')
+        .eq('contact_id', targetContactId)
+        .ilike('relationship_type', `%${relType}%`);
+      
+      (outgoing || []).forEach((r: any) => contacts.add(r.related_contact_id));
+
+      // Incoming relationships
+      const { data: incoming } = await (supabase as any)
+        .from('contact_relationships')
+        .select('contact_id, relationship_type')
+        .eq('related_contact_id', targetContactId)
+        .ilike('relationship_type', `%${relType}%`);
+      
+      (incoming || []).forEach((r: any) => contacts.add(r.contact_id));
+    }
+    
+    return contacts;
+  };
+
+  // Check if a relationship already exists between two contacts
+  const relationshipExists = async (contactA: string, contactB: string, relType: string) => {
+    const { data } = await (supabase as any)
+      .from('contact_relationships')
+      .select('id')
+      .or(`and(contact_id.eq.${contactA},related_contact_id.eq.${contactB}),and(contact_id.eq.${contactB},related_contact_id.eq.${contactA})`)
+      .ilike('relationship_type', `%${relType}%`);
+    
+    return (data && data.length > 0);
+  };
+
+  // Create relationship if it doesn't exist
+  const createRelationshipIfNotExists = async (
+    contactA: string, 
+    contactB: string, 
+    relType: string,
+    checkTypes: string[]
+  ) => {
+    // Check if any similar relationship already exists
+    for (const checkType of checkTypes) {
+      if (await relationshipExists(contactA, contactB, checkType)) {
+        return false;
+      }
+    }
+    
+    const { error } = await (supabase as any)
+      .from('contact_relationships')
+      .insert({
+        contact_id: contactA,
+        related_contact_id: contactB,
+        relationship_type: relType,
+        notes: 'Vínculo criado automaticamente por cruzamento familiar'
+      });
+    
+    return !error;
+  };
+
+  // Cross-reference all family relationships
   const crossReferenceRelationships = async (
     newContactId: string,
     relationshipType: string
   ) => {
-    if (!contactId || !isSymmetricRelationship(relationshipType)) return;
+    if (!contactId) return;
+
+    let createdCount = 0;
 
     try {
-      // Find all contacts that have the same relationship type with contactId
-      const { data: existingOutgoing } = await (supabase as any)
-        .from('contact_relationships')
-        .select('related_contact_id')
-        .eq('contact_id', contactId)
-        .eq('relationship_type', relationshipType)
-        .neq('related_contact_id', newContactId);
-
-      const { data: existingIncoming } = await (supabase as any)
-        .from('contact_relationships')
-        .select('contact_id')
-        .eq('related_contact_id', contactId)
-        .eq('relationship_type', relationshipType)
-        .neq('contact_id', newContactId);
-
-      // Collect all related contacts (except the new one)
-      const relatedContacts = new Set<string>();
-      (existingOutgoing || []).forEach((r: any) => relatedContacts.add(r.related_contact_id));
-      (existingIncoming || []).forEach((r: any) => relatedContacts.add(r.contact_id));
-
-      if (relatedContacts.size === 0) return;
-
-      // Create cross-references between the new contact and all existing related contacts
-      const crossRefsToCreate: Array<{ contact_id: string; related_contact_id: string; relationship_type: string; notes: string }> = [];
-
-      for (const existingContactId of relatedContacts) {
-        // Check if relationship already exists in either direction
-        const { data: existingRel } = await (supabase as any)
-          .from('contact_relationships')
-          .select('id')
-          .or(`and(contact_id.eq.${newContactId},related_contact_id.eq.${existingContactId}),and(contact_id.eq.${existingContactId},related_contact_id.eq.${newContactId})`)
-          .eq('relationship_type', relationshipType);
-
-        if (!existingRel || existingRel.length === 0) {
-          crossRefsToCreate.push({
-            contact_id: newContactId,
-            related_contact_id: existingContactId,
-            relationship_type: relationshipType,
-            notes: 'Vínculo criado automaticamente por cruzamento'
-          });
+      // 1. SYMMETRIC RELATIONSHIPS (primos, irmãos, cunhados, amigos, etc.)
+      // If A is X of C, and B is X of C, then A and B are also X of each other
+      if (isSymmetricRelationship(relationshipType)) {
+        const existingRelated = await getRelatedContactsByType(contactId, [relationshipType]);
+        existingRelated.delete(newContactId); // Remove the new contact from the set
+        
+        for (const existingContactId of existingRelated) {
+          if (await createRelationshipIfNotExists(newContactId, existingContactId, relationshipType, [relationshipType])) {
+            createdCount++;
+          }
         }
       }
 
-      if (crossRefsToCreate.length > 0) {
-        const { error: crossRefError } = await (supabase as any)
-          .from('contact_relationships')
-          .insert(crossRefsToCreate);
-
-        if (!crossRefError) {
-          toast.success(`${crossRefsToCreate.length} vínculo(s) cruzado(s) criado(s) automaticamente`);
+      // 2. CHILDREN OF SAME PARENT ARE SIBLINGS
+      // If A is filho of C, and B is filho of C, then A and B are irmãos
+      if (isChildRelationship(relationshipType)) {
+        const siblings = await getRelatedContactsByType(contactId, RELATIONSHIP_RULES.childTypes);
+        siblings.delete(newContactId);
+        
+        for (const siblingId of siblings) {
+          const siblingType = RELATIONSHIP_RULES.siblingTypes.neutral;
+          if (await createRelationshipIfNotExists(newContactId, siblingId, siblingType, ['Irmão', 'Irmã'])) {
+            createdCount++;
+          }
         }
+      }
+
+      // 3. GRANDCHILDREN OF SAME GRANDPARENT ARE COUSINS
+      // If A is neto of C, and B is neto of C, then A and B are primos
+      if (isGrandchildRelationship(relationshipType)) {
+        const cousins = await getRelatedContactsByType(contactId, RELATIONSHIP_RULES.grandchildTypes);
+        cousins.delete(newContactId);
+        
+        for (const cousinId of cousins) {
+          const cousinType = RELATIONSHIP_RULES.cousinTypes.neutral;
+          if (await createRelationshipIfNotExists(newContactId, cousinId, cousinType, ['Primo', 'Prima'])) {
+            createdCount++;
+          }
+        }
+      }
+
+      // 4. NEPHEWS/NIECES OF SAME PERSON ARE COUSINS OR SIBLINGS
+      // If A is sobrinho of C, and B is sobrinho of C, they could be cousins (different sibling parents) or siblings (same parent)
+      if (isNephewRelationship(relationshipType)) {
+        const otherNephews = await getRelatedContactsByType(contactId, RELATIONSHIP_RULES.nephewTypes);
+        otherNephews.delete(newContactId);
+        
+        for (const nephewId of otherNephews) {
+          // Default to cousins since we can't determine if they share a parent
+          const cousinType = RELATIONSHIP_RULES.cousinTypes.neutral;
+          if (await createRelationshipIfNotExists(newContactId, nephewId, cousinType, ['Primo', 'Prima', 'Irmão', 'Irmã'])) {
+            createdCount++;
+          }
+        }
+      }
+
+      // 5. SIBLINGS OF PARENT RELATIONSHIPS (propagate sibling status)
+      // If A has siblings, and we add B as sibling of A, B is also sibling of A's siblings
+      if (matchesAnyType(relationshipType, ['Irmão', 'Irmã'])) {
+        const existingSiblings = await getRelatedContactsByType(contactId, ['Irmão', 'Irmã']);
+        existingSiblings.delete(newContactId);
+        
+        for (const siblingId of existingSiblings) {
+          if (await createRelationshipIfNotExists(newContactId, siblingId, RELATIONSHIP_RULES.siblingTypes.neutral, ['Irmão', 'Irmã'])) {
+            createdCount++;
+          }
+        }
+      }
+
+      if (createdCount > 0) {
+        toast.success(`${createdCount} vínculo(s) familiar(es) criado(s) automaticamente`);
       }
     } catch (error) {
       console.error('Error cross-referencing relationships:', error);
