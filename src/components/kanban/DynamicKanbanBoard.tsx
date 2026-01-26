@@ -30,6 +30,7 @@ import {
   UserPlus,
   Clock,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -425,12 +426,33 @@ export function DynamicKanbanBoard({
                                       )}
                                     </div>
                                     
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                                          <MoreVertical className="h-3 w-3" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
+                                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                                      {/* Detail button - opens lead details */}
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-6 w-6"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              onEditLead?.(lead);
+                                            }}
+                                          >
+                                            <Eye className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                          <p>Ver detalhes</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                      
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-6 w-6">
+                                            <MoreVertical className="h-3 w-3" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
                                         <DropdownMenuItem onClick={() => onEditLead?.(lead)}>
                                           <Edit2 className="h-3 w-3 mr-2" />
@@ -510,6 +532,7 @@ export function DynamicKanbanBoard({
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
+                                    </div>
                                   </div>
 
                                   <div className="mt-2 space-y-1">
