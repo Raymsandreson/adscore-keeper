@@ -61,6 +61,7 @@ export const useContacts = () => {
     search?: string;
     classification?: string;
     followerStatus?: string;
+    professions?: string[];
   }) => {
     setLoading(true);
     try {
@@ -94,6 +95,11 @@ export const useContacts = () => {
         } else if (filters.followerStatus === 'seguindo') {
           query = query.in('follower_status', ['following', 'mutual']);
         }
+      }
+
+      // Filter by professions (multi-select)
+      if (filters?.professions && filters.professions.length > 0) {
+        query = query.in('profession', filters.professions);
       }
 
       // Apply pagination

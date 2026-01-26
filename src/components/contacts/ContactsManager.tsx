@@ -95,6 +95,7 @@ import { MergeDuplicatesDialog } from '@/components/contacts/MergeDuplicatesDial
 import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
+import { ProfessionFilter } from '@/components/instagram/ProfessionFilter';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -369,6 +370,7 @@ export const ContactsManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
   const [filterTag, setFilterTag] = useState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('all');
+  const [filterProfessions, setFilterProfessions] = useState<string[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -469,14 +471,15 @@ export const ContactsManager: React.FC = () => {
       search: searchTerm || undefined,
       classification: filterClassification !== 'all' ? filterClassification : undefined,
       followerStatus: filterTag !== 'all' ? filterTag : undefined,
+      professions: filterProfessions.length > 0 ? filterProfessions : undefined,
     };
     fetchContacts(currentPage, itemsPerPage, filters);
-  }, [currentPage, itemsPerPage, searchTerm, filterClassification, filterTag, fetchContacts]);
+  }, [currentPage, itemsPerPage, searchTerm, filterClassification, filterTag, filterProfessions, fetchContacts]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterClassification, filterTag, filterRelationshipType]);
+  }, [searchTerm, filterClassification, filterTag, filterRelationshipType, filterProfessions]);
 
   // Filter contacts by relationship type (client-side since it's a join) and sort by leads
   const displayedContacts = React.useMemo(() => {
@@ -1140,6 +1143,12 @@ export const ContactsManager: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Profession Filter */}
+              <ProfessionFilter
+                selectedProfessions={filterProfessions}
+                onSelectionChange={setFilterProfessions}
+              />
             </div>
             
             {/* Quick Tag Filters */}
