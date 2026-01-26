@@ -83,6 +83,33 @@ export type Database = {
         }
         Relationships: []
       }
+      cbo_professions: {
+        Row: {
+          cbo_code: string
+          created_at: string
+          family_code: string | null
+          family_title: string | null
+          id: string
+          title: string
+        }
+        Insert: {
+          cbo_code: string
+          created_at?: string
+          family_code?: string | null
+          family_title?: string | null
+          id?: string
+          title: string
+        }
+        Update: {
+          cbo_code?: string
+          created_at?: string
+          family_code?: string | null
+          family_title?: string | null
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
       contact_classifications: {
         Row: {
           color: string
@@ -243,6 +270,8 @@ export type Database = {
           neighborhood: string | null
           notes: string | null
           phone: string | null
+          profession: string | null
+          profession_cbo_code: string | null
           state: string | null
           street: string | null
           tags: string[] | null
@@ -266,6 +295,8 @@ export type Database = {
           neighborhood?: string | null
           notes?: string | null
           phone?: string | null
+          profession?: string | null
+          profession_cbo_code?: string | null
           state?: string | null
           street?: string | null
           tags?: string[] | null
@@ -289,6 +320,8 @@ export type Database = {
           neighborhood?: string | null
           notes?: string | null
           phone?: string | null
+          profession?: string | null
+          profession_cbo_code?: string | null
           state?: string | null
           street?: string | null
           tags?: string[] | null
