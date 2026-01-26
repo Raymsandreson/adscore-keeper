@@ -44,11 +44,13 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useContactRelationships } from '@/hooks/useContactRelationships';
 import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useCboProfessions } from '@/hooks/useCboProfessions';
 import { MultiClassificationSelect } from './MultiClassificationSelect';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Briefcase } from 'lucide-react';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -107,12 +109,17 @@ export function ContactDetailSheet({
   const [notes, setNotes] = useState('');
   const [classifications, setClassifications] = useState<string[]>([]);
   const [followerStatus, setFollowerStatus] = useState<string>('none');
+  const [profession, setProfession] = useState('');
+  const [professionCboCode, setProfessionCboCode] = useState('');
+  const [professionSearch, setProfessionSearch] = useState('');
+  const [filteredProfessions, setFilteredProfessions] = useState<any[]>([]);
 
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
   const { relationships, loading: loadingRelationships } = useContactRelationships(contact?.id);
   const { leads: contactLeads, loading: loadingLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
+  const { professions, searchProfessions } = useCboProfessions();
 
   // Load contact data
   useEffect(() => {
@@ -129,9 +136,25 @@ export function ContactDetailSheet({
       setNotes(contact.notes || '');
       setClassifications(contact.classifications || []);
       setFollowerStatus(contact.follower_status || 'none');
+      setProfession((contact as any).profession || '');
+      setProfessionCboCode((contact as any).profession_cbo_code || '');
+      setProfessionSearch((contact as any).profession || '');
       setIsEditing(false);
     }
   }, [contact, open]);
+
+  // Search professions when typing
+  useEffect(() => {
+    const search = async () => {
+      if (professionSearch.length >= 2) {
+        const results = await searchProfessions(professionSearch);
+        setFilteredProfessions(results);
+      } else {
+        setFilteredProfessions(professions.slice(0, 20));
+      }
+    };
+    search();
+  }, [professionSearch, professions, searchProfessions]);
 
   // Fetch cities when state changes
   useEffect(() => {
@@ -177,6 +200,8 @@ export function ContactDetailSheet({
           notes: notes || null,
           classifications: classifications.length > 0 ? classifications : null,
           follower_status: followerStatus || 'none',
+          profession: profession || null,
+          profession_cbo_code: professionCboCode || null,
         })
         .eq('id', contact.id);
 
@@ -379,6 +404,53 @@ export function ContactDetailSheet({
                     </div>
                   </div>
 
+                  {/* Profession field */}
+                  <div>
+                    <Label className="flex items-center gap-1">
+                      <Briefcase className="h-3 w-3" />
+                      Profissão (CBO)
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        value={professionSearch}
+                        onChange={(e) => {
+                          setProfessionSearch(e.target.value);
+                          if (!e.target.value) {
+                            setProfession('');
+                            setProfessionCboCode('');
+                          }
+                        }}
+                        placeholder="Digite para buscar..."
+                        className="mb-1"
+                      />
+                      {professionSearch.length >= 2 && filteredProfessions.length > 0 && (
+                        <div className="absolute z-50 w-full max-h-48 overflow-y-auto border rounded-md bg-popover shadow-md">
+                          {filteredProfessions.map((p) => (
+                            <button
+                              key={p.cbo_code}
+                              type="button"
+                              className="w-full text-left px-3 py-2 hover:bg-accent text-sm flex justify-between items-center"
+                              onClick={() => {
+                                setProfession(p.title);
+                                setProfessionCboCode(p.cbo_code);
+                                setProfessionSearch(p.title);
+                                setFilteredProfessions([]);
+                              }}
+                            >
+                              <span>{p.title}</span>
+                              <span className="text-xs text-muted-foreground">{p.cbo_code}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {profession && (
+                        <div className="text-xs text-muted-foreground">
+                          Código CBO: {professionCboCode}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   <div>
                     <Label className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
@@ -462,7 +534,21 @@ export function ContactDetailSheet({
                       </div>
                     )}
 
-                    {!contact.phone && !contact.email && !contact.instagram_username && (
+                    {(contact as any).profession && (
+                      <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+                        <Briefcase className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex-1">
+                          <span>{(contact as any).profession}</span>
+                          {(contact as any).profession_cbo_code && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (CBO: {(contact as any).profession_cbo_code})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {!contact.phone && !contact.email && !contact.instagram_username && !(contact as any).profession && (
                       <p className="text-sm text-muted-foreground italic">
                         Nenhuma informação de contato cadastrada
                       </p>
