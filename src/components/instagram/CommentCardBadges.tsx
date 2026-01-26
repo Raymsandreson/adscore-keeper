@@ -34,8 +34,15 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import type { CommentCardFieldsConfig } from '@/hooks/useCommentCardSettings';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { RelationshipPromptDialog, getRelationshipClassificationsFromList, isRelationshipClassification } from './RelationshipPromptDialog';
+import { RelationshipPromptDialog, getRelationshipClassificationsFromList, isRelationshipClassification, RELATIONSHIP_KEYWORDS } from './RelationshipPromptDialog';
 import { EditRelationshipDialog } from './EditRelationshipDialog';
+
+// Detect relationship keywords in comment text
+const detectRelationshipKeywordsInText = (text: string | null | undefined): string[] => {
+  if (!text) return [];
+  const lowerText = text.toLowerCase();
+  return RELATIONSHIP_KEYWORDS.filter(keyword => lowerText.includes(keyword));
+};
 
 interface Lead {
   id: string;
@@ -107,6 +114,14 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     const selectedRelationships = getRelationshipClassificationsFromList(selectedClassifications);
     return selectedRelationships.filter(r => !currentRelationships.includes(r));
   }, [selectedClassifications, contactClassifications]);
+
+  // Detect relationship keywords in comment text (for suggesting relationship creation)
+  const detectedKeywordsInComment = useMemo(() => {
+    return detectRelationshipKeywordsInText(commentText);
+  }, [commentText]);
+
+  // Check if we should highlight the "Vincular contato" badge
+  const hasRelationshipKeywordInComment = detectedKeywordsInComment.length > 0 && relationships.length === 0;
 
   // Extract location from comment text using AI
   const extractLocationFromComment = async (contactId: string) => {
@@ -1092,22 +1107,38 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     const hasConnections = relationships.length > 0;
 
     if (interactive && !hasConnections) {
+      // Pre-select detected relationship type from comment
+      const suggestedType = detectedKeywordsInComment.length > 0 
+        ? detectedKeywordsInComment[0].charAt(0).toUpperCase() + detectedKeywordsInComment[0].slice(1)
+        : '';
+
       return (
         <Popover modal={true} open={connectionLinkOpen} onOpenChange={(open) => {
           setConnectionLinkOpen(open);
           if (open) {
             loadRelationshipTypes();
             handleSearchContacts('');
+            // Pre-select the detected relationship type
+            if (suggestedType) {
+              setSelectedRelationType(suggestedType);
+            }
           }
         }}>
           <PopoverTrigger asChild>
             <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
               <Badge 
                 variant="outline" 
-                className="text-xs gap-1 bg-muted/50 text-muted-foreground border-dashed cursor-pointer hover:bg-accent"
+                className={`text-xs gap-1 cursor-pointer hover:bg-accent ${
+                  hasRelationshipKeywordInComment 
+                    ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse dark:bg-amber-950 dark:text-amber-300 dark:border-amber-700' 
+                    : 'bg-muted/50 text-muted-foreground border-dashed'
+                }`}
               >
                 <Users className="h-3 w-3" />
-                {!compact && "Vincular contato"}
+                {!compact && (hasRelationshipKeywordInComment 
+                  ? `Vincular ${suggestedType}?` 
+                  : "Vincular contato"
+                )}
                 <Plus className="h-2.5 w-2.5 ml-0.5 opacity-50" />
               </Badge>
             </button>
