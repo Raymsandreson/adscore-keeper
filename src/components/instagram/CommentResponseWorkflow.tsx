@@ -133,6 +133,9 @@ export const CommentResponseWorkflow = ({
   const [showContactRegistration, setShowContactRegistration] = useState(false);
   // Track locally updated author_ids so we don't need to wait for parent refresh
   const [localAuthorIdUpdates, setLocalAuthorIdUpdates] = useState<Record<string, string>>({});
+  // Custom prompt for AI context
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   
   // Timer and report tracking
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
@@ -326,6 +329,7 @@ export const CommentResponseWorkflow = ({
           parentComment: parentCommentContext,
           tone: selectedTone,
           generateDM: true,
+          customPrompt: customPrompt.trim() || null,
         },
       });
 
@@ -1060,7 +1064,51 @@ export const CommentResponseWorkflow = ({
                         ))}
                       </SelectContent>
                     </Select>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setShowCustomPrompt(!showCustomPrompt)}
+                      className={cn(
+                        "gap-1 text-xs",
+                        customPrompt && "text-primary"
+                      )}
+                    >
+                      <FileText className="h-3 w-3" />
+                      {customPrompt ? "Prompt ativo" : "Prompt"}
+                    </Button>
                   </div>
+                  
+                  {/* Custom Prompt Field */}
+                  {showCustomPrompt && (
+                    <div className="space-y-2 p-3 rounded-lg bg-muted/50 border">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium flex items-center gap-1">
+                          <Bot className="h-3 w-3" />
+                          Instruções para a IA
+                        </Label>
+                        {customPrompt && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-5 text-xs"
+                            onClick={() => setCustomPrompt("")}
+                          >
+                            Limpar
+                          </Button>
+                        )}
+                      </div>
+                      <Textarea
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        placeholder="Ex: 'Este post é sobre acidentes, responda com empatia e ofereça ajuda jurídica' ou 'Mencione que temos escritório em SP'"
+                        rows={2}
+                        className="resize-none text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        💡 Dica: Use para dar contexto adicional sobre o post ou instruções específicas de como responder.
+                      </p>
+                    </div>
+                  )}
                   
                   <div className="flex gap-2">
                     <Button onClick={generateReply} className="flex-1 gap-2">

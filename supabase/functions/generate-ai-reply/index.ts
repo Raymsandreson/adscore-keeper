@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { comment, authorUsername, postContext, parentComment, tone, generateDM } = await req.json();
+    const { comment, authorUsername, postContext, parentComment, tone, generateDM, customPrompt } = await req.json();
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -40,19 +40,45 @@ serve(async (req) => {
       contextSection += `\n- Considere o contexto da conversa ao responder`;
     }
 
-    // Generate comment reply
-    const systemPrompt = `Você é um assistente especializado em responder comentários do Instagram para uma empresa brasileira.
+    // Add custom prompt instructions if provided
+    let customInstructions = "";
+    if (customPrompt && customPrompt.trim()) {
+      customInstructions = `\n\nINSTRUÇÕES PERSONALIZADAS DO OPERADOR:
+${customPrompt.trim()}
+IMPORTANTE: Siga estas instruções ao gerar a resposta.`;
+    }
 
-REGRAS IMPORTANTES:
+    // Generate comment reply with CONTEXT ANALYSIS
+    const systemPrompt = `Você é um assistente especializado em responder comentários do Instagram para uma empresa brasileira de advocacia especializada em acidentes e indenizações.
+
+ANÁLISE DE CONTEXTO OBRIGATÓRIA:
+Antes de responder, analise CUIDADOSAMENTE:
+1. O CONTEÚDO DA POSTAGEM: Se menciona acidentes, mortes, tragédias, luto, ou situações difíceis
+2. O SENTIMENTO DO COMENTÁRIO: Pode conter palavras incompletas como "lu" (luto), "tristeza", ou referências a lugares afetados por tragédias
+3. Palavras-chave de alerta: "morreu", "faleceu", "luto", "acidente", "tragédia", "vítima", "soterrado", "falecimento", "indenização"
+
+REGRAS CRÍTICAS:
+1. Se a postagem ou comentário indicam LUTO, MORTE ou TRAGÉDIA:
+   - NUNCA responda de forma alegre ou casual
+   - Use tom de CONDOLÊNCIAS e SOLIDARIEDADE
+   - Ofereça apoio de forma respeitosa
+   - Exemplo: "Lamentamos muito por essa situação, @usuario. Estamos aqui se precisar de orientação. 🙏"
+
+2. Se o comentário menciona uma cidade/local + contexto de tragédia:
+   - A pessoa provavelmente está expressando solidariedade ou é afetada
+   - Responda com empatia e respeito
+
+REGRAS GERAIS:
 1. Responda SEMPRE em português brasileiro
 2. Seja conciso - comentários do Instagram devem ser curtos (máximo 200 caracteres)
 3. ${selectedTone}
 4. Nunca use hashtags na resposta
 5. Personalize a resposta mencionando o nome do usuário quando apropriado
-6. Se o comentário indicar interesse em serviços, convide para DM ou contato
+6. Se o comentário indicar interesse em serviços de indenização, convide para DM ou contato
 7. Mantenha o tom humano e autêntico - evite respostas genéricas
-8. Use no máximo 1-2 emojis se o tom permitir
+8. Use no máximo 1-2 emojis se o tom permitir (🙏 para situações tristes)
 ${parentComment ? '9. IMPORTANTE: Este comentário é uma resposta em uma thread - mantenha a coerência com a conversa' : ''}
+${customInstructions}
 
 CONTEXTO:
 ${contextSection}`;

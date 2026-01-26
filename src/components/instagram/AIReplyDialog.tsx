@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Send, RefreshCw, Sparkles, Copy, Check, MessageCircle } from "lucide-react";
+import { Bot, Send, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [editedReply, setEditedReply] = useState("");
   const [copied, setCopied] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [showCustomPrompt, setShowCustomPrompt] = useState(false);
 
   const generateReply = async () => {
     if (!comment?.comment_text) return;
@@ -56,6 +59,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           authorUsername: comment.author_username?.replace("@", ""),
           postContext: null,
           tone: selectedTone,
+          customPrompt: customPrompt.trim() || null,
         },
       });
 
@@ -142,6 +146,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     setGeneratedReply("");
     setEditedReply("");
     setAlternatives([]);
+    setCustomPrompt("");
+    setShowCustomPrompt(false);
   };
 
   if (!comment) return null;
@@ -188,6 +194,18 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                 ))}
               </SelectContent>
             </Select>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setShowCustomPrompt(!showCustomPrompt)}
+              className={cn(
+                "gap-1 text-xs",
+                customPrompt && "text-primary"
+              )}
+            >
+              <FileText className="h-3 w-3" />
+              {customPrompt ? "✓" : "Prompt"}
+            </Button>
             <Button
               variant="default"
               size="sm"
@@ -203,6 +221,38 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
               {generatedReply ? "Regenerar" : "Gerar"}
             </Button>
           </div>
+
+          {/* Custom Prompt Field */}
+          {showCustomPrompt && (
+            <div className="space-y-2 p-3 rounded-lg bg-muted/50 border">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium flex items-center gap-1">
+                  <Bot className="h-3 w-3" />
+                  Instruções para a IA
+                </Label>
+                {customPrompt && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-5 text-xs"
+                    onClick={() => setCustomPrompt("")}
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="Ex: 'Este post é sobre luto/tragédia, responda com empatia' ou 'Mencione nosso serviço de indenização'"
+                rows={2}
+                className="resize-none text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                💡 Use para dar contexto sobre o post ou instruções específicas.
+              </p>
+            </div>
+          )}
 
           {/* Generated Reply */}
           {generatedReply && (
