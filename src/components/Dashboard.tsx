@@ -28,7 +28,8 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useMetaAPI, DateRangeOption } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
 import { useLeads } from "@/hooks/useLeads";
@@ -45,6 +46,7 @@ const Dashboard = () => {
   const [organicMetricsData, setOrganicMetricsData] = useState<{ impressions: number; reach: number }>({ impressions: 0, reach: 0 });
   const [unclassifiedCount, setUnclassifiedCount] = useState(0);
   const [pendingProspectsCount, setPendingProspectsCount] = useState(0);
+  const { isAdmin } = useUserRole();
   
   // Read tab from URL params
   const urlTab = searchParams.get('tab') || 'paid';
@@ -362,6 +364,15 @@ const Dashboard = () => {
                 Automação IA
               </Button>
             </Link>
+
+            {isAdmin && (
+              <Link to="/team">
+                <Button variant="outline" size="sm" className="border-emerald-500/50 hover:bg-emerald-500/10">
+                  <UsersRound className="h-4 w-4 mr-2 text-emerald-500" />
+                  Equipe
+                </Button>
+              </Link>
+            )}
             
             <MultiAccountSelector compact />
             

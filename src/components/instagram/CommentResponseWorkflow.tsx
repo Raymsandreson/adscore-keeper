@@ -48,6 +48,7 @@ import { WorkflowReportDialog, type WorkflowAction } from "./WorkflowReportDialo
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { useActivityLogger } from "@/hooks/useActivityLogger";
 
 interface Comment {
   id: string;
@@ -195,6 +196,9 @@ export const CommentResponseWorkflow = ({
   
   // Auth context for user_id
   const { user } = useAuthContext();
+  
+  // Activity logger for productivity tracking
+  const { logActivity } = useActivityLogger();
   
   // Get usernames for contact info lookup
   const commentUsernames = useMemo(() => {
@@ -418,6 +422,14 @@ export const CommentResponseWorkflow = ({
       
       // Track the reply action
       trackAction('reply', currentComment.author_username || 'unknown');
+      
+      // Log to activity tracker for productivity
+      logActivity({
+        actionType: 'comment_reply',
+        entityType: 'comment',
+        entityId: currentComment.id,
+        metadata: { username: currentComment.author_username }
+      });
       
       toast.success("Resposta postada! 🎉");
       setWorkflowStep('suggesting_actions');
@@ -645,6 +657,13 @@ export const CommentResponseWorkflow = ({
       
       // Track DM action
       trackAction('dm', username);
+      
+      // Log to activity tracker
+      logActivity({
+        actionType: actionType === 'opened_only' ? 'dm_sent' : 'dm_copied',
+        entityType: 'dm',
+        metadata: { username }
+      });
     } catch (error) {
       console.error('Error saving DM to history:', error);
       // Don't show error toast - this is a background operation

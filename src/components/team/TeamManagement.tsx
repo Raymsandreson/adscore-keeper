@@ -1,0 +1,318 @@
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
+  UserPlus,
+  Shield,
+  User,
+  Mail,
+  Clock,
+  Trash2,
+  Users,
+  Loader2,
+  Crown,
+  Send,
+} from 'lucide-react';
+import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useUserRole } from '@/hooks/useUserRole';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
+export function TeamManagement() {
+  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember } = useTeamMembers();
+  
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<'admin' | 'member'>('member');
+  const [inviting, setInviting] = useState(false);
+
+  if (roleLoading || loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">
+            Apenas administradores podem gerenciar a equipe
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const handleInvite = async () => {
+    if (!email.trim()) {
+      toast.error('Informe o email');
+      return;
+    }
+
+    setInviting(true);
+    try {
+      await inviteMember(email, role);
+      toast.success('Convite enviado! O usuário receberá acesso ao fazer cadastro.');
+      setEmail('');
+      setRole('member');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao enviar convite');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: 'admin' | 'member') => {
+    try {
+      await updateMemberRole(userId, newRole);
+      toast.success('Permissão atualizada!');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar permissão');
+    }
+  };
+
+  const handleRemove = async (userId: string) => {
+    try {
+      await removeMember(userId);
+      toast.success('Membro removido!');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao remover membro');
+    }
+  };
+
+  const handleCancelInvite = async (invitationId: string) => {
+    try {
+      await cancelInvitation(invitationId);
+      toast.success('Convite cancelado!');
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao cancelar convite');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Invite Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            Convidar Membro
+          </CardTitle>
+          <CardDescription>
+            Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                placeholder="email@exemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="w-full sm:w-40">
+              <Label>Permissão</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Membro
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Crown className="h-4 w-4" />
+                      Admin
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button onClick={handleInvite} disabled={inviting}>
+                {inviting ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Convidar
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending Invitations */}
+      {invitations.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Convites Pendentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Permissão</TableHead>
+                  <TableHead>Expira em</TableHead>
+                  <TableHead className="w-20"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invitations.map((invite) => (
+                  <TableRow key={invite.id}>
+                    <TableCell className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      {invite.email}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={invite.role === 'admin' ? 'default' : 'secondary'}>
+                        {invite.role === 'admin' ? 'Admin' : 'Membro'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {format(new Date(invite.expires_at), "dd/MM/yyyy", { locale: ptBR })}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleCancelInvite(invite.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Team Members */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Equipe ({members.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Membro</TableHead>
+                <TableHead>Permissão</TableHead>
+                <TableHead>Desde</TableHead>
+                <TableHead className="w-20"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => (
+                <TableRow key={member.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{member.full_name || 'Sem nome'}</p>
+                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={member.role}
+                      onValueChange={(v) => handleRoleChange(member.user_id, v as 'admin' | 'member')}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">Membro</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                  </TableCell>
+                  <TableCell>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta ação removerá {member.full_name || member.email} da equipe. 
+                            O usuário perderá acesso ao sistema.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleRemove(member.user_id)}>
+                            Remover
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
