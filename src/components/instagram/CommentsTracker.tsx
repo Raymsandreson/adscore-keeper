@@ -125,8 +125,8 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
   
-  // Workflow mode state
-  const [showWorkflowMode, setShowWorkflowMode] = useState(false);
+  // Workflow mode state - default to flow mode
+  const [showWorkflowMode, setShowWorkflowMode] = useState(true);
   
   // Migration state
   const [isMigratingAuthorIds, setIsMigratingAuthorIds] = useState(false);
