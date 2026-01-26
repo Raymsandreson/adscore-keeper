@@ -1240,15 +1240,6 @@ export const CommentResponseWorkflow = ({
                     </div>
                   )}
                   
-                  <div className="flex gap-2">
-                    <Button onClick={generateReply} className="flex-1 gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Gerar Resposta com IA
-                    </Button>
-                    <Button variant="outline" onClick={skipComment}>
-                      <SkipForward className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               )}
 
@@ -1289,24 +1280,6 @@ export const CommentResponseWorkflow = ({
                       </div>
                     </div>
                   )}
-
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={postReply} 
-                      className="flex-1 gap-2"
-                      disabled={workflowStep === 'replying' || !editedReply.trim()}
-                    >
-                      {workflowStep === 'replying' ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                      Postar no Instagram
-                    </Button>
-                    <Button variant="outline" onClick={() => setWorkflowStep('idle')}>
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               )}
 
@@ -1358,6 +1331,43 @@ export const CommentResponseWorkflow = ({
               )}
             </div>
           </ScrollArea>
+        )}
+
+        {/* Fixed Action Buttons at Bottom */}
+        {totalComments > 0 && currentComment && workflowStep !== 'generating' && workflowStep !== 'suggesting_actions' && (
+          <div className="pt-3 border-t mt-3">
+            {workflowStep === 'idle' && (
+              <div className="flex gap-2">
+                <Button onClick={generateReply} className="flex-1 gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Gerar Resposta com IA
+                </Button>
+                <Button variant="outline" onClick={skipComment}>
+                  <SkipForward className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            
+            {(workflowStep === 'ready_to_reply' || workflowStep === 'replying') && (
+              <div className="flex gap-2">
+                <Button 
+                  onClick={postReply} 
+                  className="flex-1 gap-2"
+                  disabled={workflowStep === 'replying' || !editedReply.trim()}
+                >
+                  {workflowStep === 'replying' ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Postar no Instagram
+                </Button>
+                <Button variant="outline" onClick={() => setWorkflowStep('idle')}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </DialogContent>
       
