@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   UserPlus, 
   ExternalLink, 
@@ -13,55 +14,80 @@ import {
   Search, 
   MessageCircle,
   Clock,
-  Users
+  Users,
+  Send,
+  X,
+  MapPin,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface PendingUser {
   username: string;
   commentsCount: number;
   lastCommentAt: string;
-  isFollowing: boolean;
+  lastCommentText: string;
+  followerStatus: string;
+  followRequestedAt: string | null;
+  city: string | null;
+  state: string | null;
+  contactId: string | null;
 }
+
+type FilterTab = 'all' | 'pending' | 'requested' | 'following';
 
 export const PendingToFollowList = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState<FilterTab>('pending');
+  const [extractingLocation, setExtractingLocation] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   // Fetch comments and contacts to build the pending list
   const { data: pendingUsers, isLoading } = useQuery({
-    queryKey: ['pending-to-follow'],
+    queryKey: ['pending-to-follow-extended'],
     queryFn: async () => {
       // Get all received comments with usernames
       const { data: comments, error: commentsError } = await supabase
         .from('instagram_comments')
-        .select('author_username, created_at')
+        .select('author_username, comment_text, created_at')
         .eq('comment_type', 'received')
         .not('author_username', 'is', null)
         .order('created_at', { ascending: false });
 
       if (commentsError) throw commentsError;
 
-      // Get contacts with follower_status
+      // Get contacts with follower_status and follow_requested_at
       const { data: contacts, error: contactsError } = await supabase
         .from('contacts')
-        .select('instagram_username, follower_status');
+        .select('id, instagram_username, follower_status, follow_requested_at, city, state');
 
       if (contactsError) throw contactsError;
 
-      // Build a map of following status
-      const followingMap = new Map<string, boolean>();
+      // Build a map of contact info by username
+      const contactMap = new Map<string, {
+        id: string;
+        status: string;
+        requestedAt: string | null;
+        city: string | null;
+        state: string | null;
+      }>();
+      
       contacts?.forEach(contact => {
         if (contact.instagram_username) {
-          const isFollowing = contact.follower_status === 'following' || contact.follower_status === 'mutual';
-          followingMap.set(contact.instagram_username.toLowerCase(), isFollowing);
+          contactMap.set(contact.instagram_username.toLowerCase(), {
+            id: contact.id,
+            status: contact.follower_status || 'none',
+            requestedAt: contact.follow_requested_at,
+            city: contact.city,
+            state: contact.state,
+          });
         }
       });
 
       // Aggregate comments by username
-      const userMap = new Map<string, { count: number; lastComment: string }>();
+      const userMap = new Map<string, { count: number; lastComment: string; lastCommentText: string }>();
       comments?.forEach(comment => {
         if (comment.author_username) {
           const username = comment.author_username.toLowerCase();
@@ -70,9 +96,14 @@ export const PendingToFollowList = () => {
             existing.count += 1;
             if (new Date(comment.created_at) > new Date(existing.lastComment)) {
               existing.lastComment = comment.created_at;
+              existing.lastCommentText = comment.comment_text || '';
             }
           } else {
-            userMap.set(username, { count: 1, lastComment: comment.created_at });
+            userMap.set(username, { 
+              count: 1, 
+              lastComment: comment.created_at,
+              lastCommentText: comment.comment_text || ''
+            });
           }
         }
       });
@@ -80,18 +111,28 @@ export const PendingToFollowList = () => {
       // Build pending users list
       const pending: PendingUser[] = [];
       userMap.forEach((value, username) => {
-        const isFollowing = followingMap.get(username) || false;
+        const contactInfo = contactMap.get(username);
+        const status = contactInfo?.status || 'none';
+        
         pending.push({
           username,
           commentsCount: value.count,
           lastCommentAt: value.lastComment,
-          isFollowing
+          lastCommentText: value.lastCommentText,
+          followerStatus: status,
+          followRequestedAt: contactInfo?.requestedAt || null,
+          city: contactInfo?.city || null,
+          state: contactInfo?.state || null,
+          contactId: contactInfo?.id || null,
         });
       });
 
-      // Sort by comments count (most engaged first), then by recent activity
+      // Sort: pending first, then by comments count
       pending.sort((a, b) => {
-        if (a.isFollowing !== b.isFollowing) return a.isFollowing ? 1 : -1;
+        const statusOrder = { none: 0, requested: 1, following: 2, mutual: 3 };
+        const aOrder = statusOrder[a.followerStatus as keyof typeof statusOrder] ?? 0;
+        const bOrder = statusOrder[b.followerStatus as keyof typeof statusOrder] ?? 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
         if (b.commentsCount !== a.commentsCount) return b.commentsCount - a.commentsCount;
         return new Date(b.lastCommentAt).getTime() - new Date(a.lastCommentAt).getTime();
       });
@@ -100,10 +141,9 @@ export const PendingToFollowList = () => {
     }
   });
 
-  // Mark as following mutation
-  const markAsFollowingMutation = useMutation({
+  // Mark as follow requested
+  const markAsRequestedMutation = useMutation({
     mutationFn: async (username: string) => {
-      // Check if contact exists
       const { data: existing } = await supabase
         .from('contacts')
         .select('id')
@@ -111,14 +151,53 @@ export const PendingToFollowList = () => {
         .maybeSingle();
 
       if (existing) {
-        // Update existing contact
+        const { error } = await supabase
+          .from('contacts')
+          .update({ 
+            follower_status: 'requested',
+            follow_requested_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('contacts')
+          .insert({
+            full_name: `@${username}`,
+            instagram_username: username,
+            follower_status: 'requested',
+            follow_requested_at: new Date().toISOString()
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, username) => {
+      toast.success(`Pedido de follow enviado para @${username}`);
+      queryClient.invalidateQueries({ queryKey: ['pending-to-follow-extended'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+    onError: (error) => {
+      toast.error('Erro ao marcar pedido');
+      console.error(error);
+    }
+  });
+
+  // Mark as following (accepted)
+  const markAsFollowingMutation = useMutation({
+    mutationFn: async (username: string) => {
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .ilike('instagram_username', username)
+        .maybeSingle();
+
+      if (existing) {
         const { error } = await supabase
           .from('contacts')
           .update({ follower_status: 'following' })
           .eq('id', existing.id);
         if (error) throw error;
       } else {
-        // Create new contact
         const { error } = await supabase
           .from('contacts')
           .insert({
@@ -131,7 +210,7 @@ export const PendingToFollowList = () => {
     },
     onSuccess: (_, username) => {
       toast.success(`Marcado como seguindo @${username}`);
-      queryClient.invalidateQueries({ queryKey: ['pending-to-follow'] });
+      queryClient.invalidateQueries({ queryKey: ['pending-to-follow-extended'] });
       queryClient.invalidateQueries({ queryKey: ['contacts'] });
     },
     onError: (error) => {
@@ -140,20 +219,174 @@ export const PendingToFollowList = () => {
     }
   });
 
+  // Cancel follow request
+  const cancelRequestMutation = useMutation({
+    mutationFn: async (username: string) => {
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .ilike('instagram_username', username)
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('contacts')
+          .update({ 
+            follower_status: 'none',
+            follow_requested_at: null
+          })
+          .eq('id', existing.id);
+        if (error) throw error;
+      }
+    },
+    onSuccess: (_, username) => {
+      toast.success(`Pedido cancelado para @${username}`);
+      queryClient.invalidateQueries({ queryKey: ['pending-to-follow-extended'] });
+      queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    },
+    onError: (error) => {
+      toast.error('Erro ao cancelar pedido');
+      console.error(error);
+    }
+  });
+
+  // Extract location from comment using AI
+  const extractLocation = async (user: PendingUser) => {
+    if (!user.lastCommentText) {
+      toast.error('Não há texto de comentário para analisar');
+      return;
+    }
+    
+    setExtractingLocation(user.username);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-location', {
+        body: { 
+          commentText: user.lastCommentText,
+          authorUsername: user.username
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.location?.city || data?.location?.state) {
+        // Update contact with location
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('instagram_username', user.username)
+          .maybeSingle();
+
+        const locationUpdate = {
+          city: data.location.city,
+          state: data.location.state,
+        };
+
+        if (existing) {
+          await supabase
+            .from('contacts')
+            .update(locationUpdate)
+            .eq('id', existing.id);
+        } else {
+          await supabase
+            .from('contacts')
+            .insert({
+              full_name: `@${user.username}`,
+              instagram_username: user.username,
+              ...locationUpdate
+            });
+        }
+
+        toast.success(
+          `Localização identificada: ${data.location.city || ''} ${data.location.state ? `- ${data.location.state}` : ''}`
+        );
+        queryClient.invalidateQueries({ queryKey: ['pending-to-follow-extended'] });
+      } else {
+        toast.info('Nenhuma localização encontrada no comentário');
+      }
+    } catch (error) {
+      console.error('Error extracting location:', error);
+      toast.error('Erro ao extrair localização');
+    } finally {
+      setExtractingLocation(null);
+    }
+  };
+
   const openInstagramProfile = (username: string) => {
     window.open(`https://instagram.com/${username}`, '_blank');
   };
 
+  const openDmWithReminder = (username: string) => {
+    const message = encodeURIComponent('Oi! Vi que você ainda não aceitou meu pedido de follow. Aceita lá para trocarmos uma ideia! 🙏');
+    window.open(`https://instagram.com/direct/t/${username}`, '_blank');
+    toast.info('Abriu DM - copie a mensagem de lembrete se necessário');
+  };
+
   const filteredUsers = useMemo(() => {
     if (!pendingUsers) return [];
-    if (!searchTerm) return pendingUsers;
-    return pendingUsers.filter(user => 
-      user.username.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [pendingUsers, searchTerm]);
+    
+    let filtered = pendingUsers;
+    
+    // Apply tab filter
+    switch (activeTab) {
+      case 'pending':
+        filtered = filtered.filter(u => u.followerStatus === 'none');
+        break;
+      case 'requested':
+        filtered = filtered.filter(u => u.followerStatus === 'requested');
+        break;
+      case 'following':
+        filtered = filtered.filter(u => u.followerStatus === 'following' || u.followerStatus === 'mutual');
+        break;
+    }
+    
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(u => 
+        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.city && u.city.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (u.state && u.state.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+    
+    return filtered;
+  }, [pendingUsers, searchTerm, activeTab]);
 
-  const pendingCount = pendingUsers?.filter(u => !u.isFollowing).length || 0;
-  const followingCount = pendingUsers?.filter(u => u.isFollowing).length || 0;
+  const counts = useMemo(() => {
+    if (!pendingUsers) return { all: 0, pending: 0, requested: 0, following: 0 };
+    return {
+      all: pendingUsers.length,
+      pending: pendingUsers.filter(u => u.followerStatus === 'none').length,
+      requested: pendingUsers.filter(u => u.followerStatus === 'requested').length,
+      following: pendingUsers.filter(u => u.followerStatus === 'following' || u.followerStatus === 'mutual').length,
+    };
+  }, [pendingUsers]);
+
+  const getStatusBadge = (user: PendingUser) => {
+    switch (user.followerStatus) {
+      case 'following':
+      case 'mutual':
+        return (
+          <Badge variant="secondary" className="bg-green-500/20 text-green-600 text-xs">
+            <Check className="h-3 w-3 mr-1" />
+            Seguindo
+          </Badge>
+        );
+      case 'requested':
+        return (
+          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600 text-xs">
+            <Clock className="h-3 w-3 mr-1" />
+            Aguardando
+            {user.followRequestedAt && (
+              <span className="ml-1 opacity-75">
+                ({formatDistanceToNow(new Date(user.followRequestedAt), { locale: ptBR, addSuffix: false })})
+              </span>
+            )}
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <Card>
@@ -161,26 +394,35 @@ export const PendingToFollowList = () => {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <UserPlus className="h-5 w-5 text-primary" />
-            Pendentes para Seguir
+            Gestão de Follows
           </CardTitle>
-          <div className="flex gap-2">
-            <Badge variant="outline" className="bg-orange-500/10 text-orange-600 border-orange-500/30">
-              {pendingCount} pendentes
-            </Badge>
-            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
-              {followingCount} seguindo
-            </Badge>
-          </div>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          Pessoas que comentaram nos seus posts mas você ainda não segue
+          Gerencie pedidos de follow e identifique localização dos prospects
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="all" className="text-xs">
+              Todos ({counts.all})
+            </TabsTrigger>
+            <TabsTrigger value="pending" className="text-xs">
+              Pendentes ({counts.pending})
+            </TabsTrigger>
+            <TabsTrigger value="requested" className="text-xs">
+              Aguardando ({counts.requested})
+            </TabsTrigger>
+            <TabsTrigger value="following" className="text-xs">
+              Seguindo ({counts.following})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por username..."
+            placeholder="Buscar por username, cidade ou estado..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -202,55 +444,119 @@ export const PendingToFollowList = () => {
               {filteredUsers.map((user) => (
                 <div
                   key={user.username}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
-                    user.isFollowing 
+                  className={`p-3 rounded-lg border transition-colors ${
+                    user.followerStatus === 'following' || user.followerStatus === 'mutual'
                       ? 'bg-green-500/5 border-green-500/20' 
+                      : user.followerStatus === 'requested'
+                      ? 'bg-yellow-500/5 border-yellow-500/20'
                       : 'bg-card hover:bg-muted/50'
                   }`}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">@{user.username}</span>
-                      {user.isFollowing && (
-                        <Badge variant="secondary" className="bg-green-500/20 text-green-600 text-xs">
-                          <Check className="h-3 w-3 mr-1" />
-                          Seguindo
-                        </Badge>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate">@{user.username}</span>
+                        {getStatusBadge(user)}
+                        {(user.city || user.state) && (
+                          <Badge variant="outline" className="text-xs">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {user.city}{user.city && user.state ? ' - ' : ''}{user.state}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                        <span className="flex items-center gap-1">
+                          <MessageCircle className="h-3 w-3" />
+                          {user.commentsCount} comentário{user.commentsCount !== 1 ? 's' : ''}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {format(new Date(user.lastCommentAt), "dd MMM", { locale: ptBR })}
+                        </span>
+                      </div>
+                      {user.lastCommentText && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1 italic">
+                          "{user.lastCommentText}"
+                        </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                      <span className="flex items-center gap-1">
-                        <MessageCircle className="h-3 w-3" />
-                        {user.commentsCount} comentário{user.commentsCount !== 1 ? 's' : ''}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {format(new Date(user.lastCommentAt), "dd MMM", { locale: ptBR })}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 ml-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openInstagramProfile(user.username)}
-                      className="h-8"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                      Perfil
-                    </Button>
-                    {!user.isFollowing && (
+                    
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Extract location button */}
                       <Button
+                        variant="ghost"
                         size="sm"
-                        onClick={() => markAsFollowingMutation.mutate(user.username)}
-                        disabled={markAsFollowingMutation.isPending}
-                        className="h-8 bg-primary hover:bg-primary/90"
+                        onClick={() => extractLocation(user)}
+                        disabled={extractingLocation === user.username}
+                        className="h-8 px-2"
+                        title="Identificar localização via IA"
                       >
-                        <UserPlus className="h-3.5 w-3.5 mr-1" />
-                        Seguir
+                        {extractingLocation === user.username ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <MapPin className="h-3.5 w-3.5" />
+                        )}
                       </Button>
-                    )}
+                      
+                      {/* View profile */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openInstagramProfile(user.username)}
+                        className="h-8 px-2"
+                        title="Ver perfil"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </Button>
+                      
+                      {/* Actions based on status */}
+                      {user.followerStatus === 'none' && (
+                        <Button
+                          size="sm"
+                          onClick={() => markAsRequestedMutation.mutate(user.username)}
+                          disabled={markAsRequestedMutation.isPending}
+                          className="h-8 bg-primary hover:bg-primary/90"
+                          title="Marcar que pediu follow"
+                        >
+                          <UserPlus className="h-3.5 w-3.5 mr-1" />
+                          Pedir
+                        </Button>
+                      )}
+                      
+                      {user.followerStatus === 'requested' && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openDmWithReminder(user.username)}
+                            className="h-8 px-2"
+                            title="Enviar DM de lembrete"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => markAsFollowingMutation.mutate(user.username)}
+                            disabled={markAsFollowingMutation.isPending}
+                            className="h-8 px-2 text-green-600 border-green-500/30 hover:bg-green-500/10"
+                            title="Marcar como aceito"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => cancelRequestMutation.mutate(user.username)}
+                            disabled={cancelRequestMutation.isPending}
+                            className="h-8 px-2 text-destructive hover:bg-destructive/10"
+                            title="Cancelar pedido"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
