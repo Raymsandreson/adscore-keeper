@@ -34,7 +34,8 @@ import {
   Pencil,
   Save,
   MapPin,
-  FileText
+  FileText,
+  Maximize2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -980,6 +981,20 @@ export const CommentResponseWorkflow = ({
                   <FileText className="h-4 w-4" />
                 </Button>
               )}
+              
+              {/* Open in new tab */}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 w-7 p-0"
+                onClick={() => {
+                  window.open('/workflow', '_blank');
+                  onOpenChange(false);
+                }}
+                title="Abrir em nova aba"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
               
               <Button 
                 variant="ghost" 

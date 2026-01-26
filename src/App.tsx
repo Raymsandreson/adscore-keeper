@@ -11,6 +11,7 @@ import EditorialCalendarPage from "./pages/EditorialCalendarPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import TeamPage from "./pages/TeamPage";
+import WorkflowPage from "./pages/WorkflowPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/team" element={<TeamPage />} />
+              <Route path="/workflow" element={<WorkflowPage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
