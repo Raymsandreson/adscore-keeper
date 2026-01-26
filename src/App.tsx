@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import LeadsCenter from "./pages/LeadsCenter";
 import EditorialCalendarPage from "./pages/EditorialCalendarPage";
@@ -26,12 +27,12 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/leads" element={<LeadsCenter />} />
-              <Route path="/editorial" element={<EditorialCalendarPage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/leaderboard" element={<LeaderboardPage />} />
-              <Route path="/team" element={<TeamPage />} />
-              <Route path="/workflow" element={<WorkflowPage />} />
+              <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+              <Route path="/editorial" element={<ProtectedRoute><EditorialCalendarPage /></ProtectedRoute>} />
+              <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+              <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+              <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
+              <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
