@@ -288,7 +288,7 @@ export const CommentResponseWorkflow = ({
     setIsFollowing(contact?.follower_status === 'following' || contact?.follower_status === 'mutual');
     setIsFollowRequested(!!contact?.follow_requested_at && contact?.follower_status !== 'following' && contact?.follower_status !== 'mutual');
     
-    // Check if lead exists
+    // Check if lead exists directly
     const { data: lead } = await supabase
       .from('leads')
       .select('id')
@@ -296,7 +296,18 @@ export const CommentResponseWorkflow = ({
       .limit(1)
       .maybeSingle();
     
-    setHasLead(!!lead);
+    // Also check if contact has linked leads via contact_leads junction table
+    let hasLinkedLead = false;
+    if (contact?.id) {
+      const { data: linkedLeads } = await supabase
+        .from('contact_leads')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .limit(1);
+      hasLinkedLead = (linkedLeads && linkedLeads.length > 0);
+    }
+    
+    setHasLead(!!lead || hasLinkedLead);
   };
 
   const generateReply = async () => {
@@ -780,7 +791,7 @@ export const CommentResponseWorkflow = ({
       });
     }
 
-    // If no lead, suggest creating one
+    // If no lead, suggest creating one; otherwise show as completed
     if (hasLead === false) {
       actions.push({
         id: 'create_lead',
@@ -790,6 +801,17 @@ export const CommentResponseWorkflow = ({
         action: createLead,
         variant: 'default',
         highlight: true
+      });
+    } else if (hasLead === true) {
+      actions.push({
+        id: 'lead_linked',
+        icon: <CheckCircle2 className="h-4 w-4" />,
+        label: 'Lead vinculado',
+        description: 'Este contato já possui lead associado',
+        action: () => {},
+        variant: 'outline',
+        highlight: false,
+        isCompleted: true
       });
     }
 
