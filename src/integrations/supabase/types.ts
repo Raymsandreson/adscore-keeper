@@ -259,6 +259,7 @@ export type Database = {
           classifications: string[] | null
           converted_to_lead_at: string | null
           created_at: string
+          created_by: string | null
           email: string | null
           follow_requested_at: string | null
           follower_status: string | null
@@ -284,6 +285,7 @@ export type Database = {
           classifications?: string[] | null
           converted_to_lead_at?: string | null
           created_at?: string
+          created_by?: string | null
           email?: string | null
           follow_requested_at?: string | null
           follower_status?: string | null
@@ -309,6 +311,7 @@ export type Database = {
           classifications?: string[] | null
           converted_to_lead_at?: string | null
           created_at?: string
+          created_by?: string | null
           email?: string | null
           follow_requested_at?: string | null
           follower_status?: string | null
@@ -800,6 +803,7 @@ export type Database = {
           post_url: string | null
           prospect_name: string | null
           replied_at: string | null
+          replied_by: string | null
         }
         Insert: {
           ad_account_id?: string | null
@@ -820,6 +824,7 @@ export type Database = {
           post_url?: string | null
           prospect_name?: string | null
           replied_at?: string | null
+          replied_by?: string | null
         }
         Update: {
           ad_account_id?: string | null
@@ -840,6 +845,7 @@ export type Database = {
           post_url?: string | null
           prospect_name?: string | null
           replied_at?: string | null
+          replied_by?: string | null
         }
         Relationships: []
       }
@@ -1159,6 +1165,7 @@ export type Database = {
           conversion_value: number | null
           converted_at: string | null
           created_at: string
+          created_by: string | null
           creative_id: string | null
           creative_name: string | null
           facebook_lead_id: string | null
@@ -1200,6 +1207,7 @@ export type Database = {
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string
+          created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
           facebook_lead_id?: string | null
@@ -1241,6 +1249,7 @@ export type Database = {
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string
+          created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
           facebook_lead_id?: string | null
@@ -1438,6 +1447,120 @@ export type Database = {
         }
         Relationships: []
       }
+      team_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
+      user_activity_log: {
+        Row: {
+          action_type: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          metadata: Json | null
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      workflow_daily_goals: {
+        Row: {
+          created_at: string
+          goal_date: string
+          id: string
+          target_dms: number | null
+          target_leads: number | null
+          target_replies: number | null
+          target_session_minutes: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal_date?: string
+          id?: string
+          target_dms?: number | null
+          target_leads?: number | null
+          target_replies?: number | null
+          target_session_minutes?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal_date?: string
+          id?: string
+          target_dms?: number | null
+          target_leads?: number | null
+          target_replies?: number | null
+          target_session_minutes?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       workflow_reports: {
         Row: {
           actions_detail: Json | null
@@ -1494,10 +1617,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1624,6 +1754,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "member"],
+    },
   },
 } as const
