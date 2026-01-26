@@ -80,6 +80,13 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState<string | null>(null);
   const [manageLeadsOpen, setManageLeadsOpen] = useState(false);
+  const [connectionLinkOpen, setConnectionLinkOpen] = useState(false);
+  const [connectionSearchQuery, setConnectionSearchQuery] = useState('');
+  const [connectionSearchResults, setConnectionSearchResults] = useState<Array<{id: string; full_name: string; instagram_username: string | null}>>([]);
+  const [connectionSearchLoading, setConnectionSearchLoading] = useState(false);
+  const [linkingConnection, setLinkingConnection] = useState(false);
+  const [selectedRelationType, setSelectedRelationType] = useState('');
+  const [relationshipTypes, setRelationshipTypes] = useState<Array<{id: string; name: string}>>([]);
   
   // Relationship prompt states
   const [showRelationshipPrompt, setShowRelationshipPrompt] = useState(false);
@@ -439,6 +446,121 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
       toast.error('Erro ao desvincular lead');
     } finally {
       setUnlinking(null);
+    }
+  };
+
+  // Connection (relationship) handlers
+  const loadRelationshipTypes = async () => {
+    try {
+      const supabaseAny = supabase as any;
+      const { data, error } = await supabaseAny
+        .from('contact_relationship_types')
+        .select('id, name')
+        .order('display_order');
+      
+      if (!error && data) {
+        setRelationshipTypes(data);
+        if (data.length > 0) {
+          setSelectedRelationType(data[0].name);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading relationship types:', error);
+    }
+  };
+
+  const handleSearchContacts = async (query: string) => {
+    setConnectionSearchQuery(query);
+    setConnectionSearchLoading(true);
+    
+    try {
+      let dbQuery = supabase
+        .from('contacts')
+        .select('id, full_name, instagram_username')
+        .limit(10);
+      
+      if (query.trim()) {
+        dbQuery = dbQuery.or(`full_name.ilike.%${query}%,instagram_username.ilike.%${query}%`);
+      }
+      
+      // Exclude current contact
+      if (contact?.id) {
+        dbQuery = dbQuery.neq('id', contact.id);
+      }
+      
+      const { data, error } = await dbQuery.order('created_at', { ascending: false });
+      
+      if (!error && data) {
+        setConnectionSearchResults(data);
+      }
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+    } finally {
+      setConnectionSearchLoading(false);
+    }
+  };
+
+  const handleLinkConnection = async (relatedContactId: string) => {
+    if (!contact?.id && !authorUsername) {
+      toast.error('Contato não encontrado');
+      return;
+    }
+
+    if (!selectedRelationType) {
+      toast.error('Selecione o tipo de vínculo');
+      return;
+    }
+
+    setLinkingConnection(true);
+    try {
+      let contactId = contact?.id;
+      
+      // Create contact if doesn't exist
+      if (!contactId && authorUsername) {
+        const normalizedUsername = authorUsername.startsWith('@') ? authorUsername : `@${authorUsername}`;
+        const { data: newContact, error: createError } = await supabase
+          .from('contacts')
+          .insert({
+            full_name: authorUsername.replace('@', ''),
+            instagram_username: normalizedUsername
+          })
+          .select('id')
+          .single();
+        
+        if (createError) throw createError;
+        contactId = newContact?.id;
+      }
+
+      if (!contactId) {
+        toast.error('Erro ao criar contato');
+        return;
+      }
+
+      const supabaseAny = supabase as any;
+      const { error } = await supabaseAny
+        .from('contact_relationships')
+        .insert({
+          contact_id: contactId,
+          related_contact_id: relatedContactId,
+          relationship_type: selectedRelationType
+        });
+
+      if (error) {
+        if (error.code === '23505') {
+          toast.info('Vínculo já existe');
+        } else {
+          throw error;
+        }
+      } else {
+        toast.success('Vínculo criado!');
+        setConnectionLinkOpen(false);
+        onDataChanged?.();
+      }
+    } catch (error) {
+      console.error('Error linking connection:', error);
+      toast.error('Erro ao criar vínculo');
+    } finally {
+      setLinkingConnection(false);
     }
   };
 
@@ -963,6 +1085,246 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
     );
   };
 
+  // Render connections/relationships badge
+  const renderConnectionsBadge = () => {
+    if (!config.connections) return null;
+
+    const hasConnections = relationships.length > 0;
+
+    if (interactive && !hasConnections) {
+      return (
+        <Popover modal={true} open={connectionLinkOpen} onOpenChange={(open) => {
+          setConnectionLinkOpen(open);
+          if (open) {
+            loadRelationshipTypes();
+            handleSearchContacts('');
+          }
+        }}>
+          <PopoverTrigger asChild>
+            <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+              <Badge 
+                variant="outline" 
+                className="text-xs gap-1 bg-muted/50 text-muted-foreground border-dashed cursor-pointer hover:bg-accent"
+              >
+                <Users className="h-3 w-3" />
+                {!compact && "Vincular contato"}
+                <Plus className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+              </Badge>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="start">
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm">Vincular a outro contato</h4>
+              
+              {/* Relationship type selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Tipo de vínculo</label>
+                <div className="flex flex-wrap gap-1">
+                  {relationshipTypes.map(type => (
+                    <Badge
+                      key={type.id}
+                      variant={selectedRelationType === type.name ? "default" : "outline"}
+                      className="text-xs cursor-pointer"
+                      onClick={() => setSelectedRelationType(type.name)}
+                    >
+                      {type.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar contato..."
+                  value={connectionSearchQuery}
+                  onChange={(e) => handleSearchContacts(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+              
+              <ScrollArea className="h-[160px]">
+                {connectionSearchLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : connectionSearchResults.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-muted-foreground">
+                    {connectionSearchQuery ? 'Nenhum contato encontrado' : 'Digite para buscar'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {connectionSearchResults.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full flex items-center justify-between p-2 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left disabled:opacity-50"
+                        onClick={() => handleLinkConnection(c.id)}
+                        disabled={linkingConnection}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{c.full_name}</p>
+                          {c.instagram_username && (
+                            <p className="text-xs text-muted-foreground truncate">{c.instagram_username}</p>
+                          )}
+                        </div>
+                        {linkingConnection ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        ) : (
+                          <Users className="h-4 w-4 text-primary" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          </PopoverContent>
+        </Popover>
+      );
+    }
+
+    // Has connections - show them
+    if (hasConnections) {
+      return (
+        <>
+          {relationships.slice(0, compact ? 1 : 2).map(rel => (
+            <Tooltip key={rel.id}>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant="outline" 
+                  className="text-xs gap-1 bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900"
+                  onClick={() => {
+                    setEditingRelationship({
+                      id: rel.id,
+                      type: rel.relationship_type,
+                      relatedContact: {
+                        id: rel.related_contact.id,
+                        full_name: rel.related_contact.full_name
+                      }
+                    });
+                    setShowEditRelationship(true);
+                  }}
+                >
+                  <Users className="h-3 w-3" />
+                  {!compact && `${rel.relationship_type} de ${rel.related_contact.full_name.split(' ')[0]}`}
+                  <Pencil className="h-2.5 w-2.5 ml-0.5 opacity-50" />
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="text-xs">
+                  <p className="font-medium">{rel.relationship_type}</p>
+                  <p className="text-muted-foreground">Vinculado a: {rel.related_contact.full_name}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+          
+          {relationships.length > (compact ? 1 : 2) && (
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer text-xs bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800"
+            >
+              +{relationships.length - (compact ? 1 : 2)} vínculos
+            </Badge>
+          )}
+
+          {/* Add more connections button when interactive */}
+          {interactive && (
+            <Popover modal={true} open={connectionLinkOpen} onOpenChange={(open) => {
+              setConnectionLinkOpen(open);
+              if (open) {
+                loadRelationshipTypes();
+                handleSearchContacts('');
+              }
+            }}>
+              <PopoverTrigger asChild>
+                <button type="button" style={{ pointerEvents: "auto" }} className="inline-flex">
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs gap-1 cursor-pointer border-dashed hover:bg-accent"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Badge>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3" align="start">
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm">Adicionar vínculo</h4>
+                  
+                  {/* Relationship type selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">Tipo de vínculo</label>
+                    <div className="flex flex-wrap gap-1">
+                      {relationshipTypes.map(type => (
+                        <Badge
+                          key={type.id}
+                          variant={selectedRelationType === type.name ? "default" : "outline"}
+                          className="text-xs cursor-pointer"
+                          onClick={() => setSelectedRelationType(type.name)}
+                        >
+                          {type.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar contato..."
+                      value={connectionSearchQuery}
+                      onChange={(e) => handleSearchContacts(e.target.value)}
+                      className="pl-8 h-9"
+                    />
+                  </div>
+                  
+                  <ScrollArea className="h-[160px]">
+                    {connectionSearchLoading ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : connectionSearchResults.length === 0 ? (
+                      <div className="text-center py-6 text-sm text-muted-foreground">
+                        {connectionSearchQuery ? 'Nenhum contato encontrado' : 'Digite para buscar'}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {connectionSearchResults.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className="w-full flex items-center justify-between p-2 rounded-md border bg-card hover:bg-accent/50 transition-colors cursor-pointer text-left disabled:opacity-50"
+                            onClick={() => handleLinkConnection(c.id)}
+                            disabled={linkingConnection}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{c.full_name}</p>
+                              {c.instagram_username && (
+                                <p className="text-xs text-muted-foreground truncate">{c.instagram_username}</p>
+                              )}
+                            </div>
+                            {linkingConnection ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            ) : (
+                              <Users className="h-4 w-4 text-primary" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <TooltipProvider>
       <div className="flex items-center gap-1 flex-wrap">
@@ -988,8 +1350,8 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
         {/* Linked Leads */}
         {renderLinkedLeadsBadge()}
 
-        {/* Connections/Relationships - Only show if classification does NOT already display the relationship */}
-        {/* Removed: relationships are now shown in the classification badge with the linked person's name */}
+        {/* Connections/Relationships */}
+        {renderConnectionsBadge()}
       </div>
 
       {/* Relationship Prompt Dialog */}
