@@ -10,6 +10,8 @@ interface ContactInfo {
   classifications: string[] | null;
   follower_status: string | null;
   updated_at: string | null;
+  city: string | null;
+  state: string | null;
 }
 
 interface LeadInfo {
@@ -75,7 +77,7 @@ export const useCommentContactInfo = (instagramUsernames: string[]) => {
       
       const { data: contacts, error: contactsError } = await supabase
         .from('contacts')
-        .select('id, full_name, instagram_username, phone, email, classifications, follower_status, updated_at')
+        .select('id, full_name, instagram_username, phone, email, classifications, follower_status, updated_at, city, state')
         .in('instagram_username', allUsernamesToSearch);
 
       if (contactsError) throw contactsError;
