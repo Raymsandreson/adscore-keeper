@@ -119,6 +119,7 @@ export const CommentResponseWorkflow = ({
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [isFollowRequested, setIsFollowRequested] = useState<boolean>(false);
   const [hasLead, setHasLead] = useState<boolean | null>(null);
+  const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
   const [showCardSettings, setShowCardSettings] = useState(false);
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
@@ -297,17 +298,21 @@ export const CommentResponseWorkflow = ({
       .maybeSingle();
     
     // Also check if contact has linked leads via contact_leads junction table
-    let hasLinkedLead = false;
+    let linkedLeadId: string | null = null;
     if (contact?.id) {
       const { data: linkedLeads } = await supabase
         .from('contact_leads')
-        .select('id')
+        .select('lead_id')
         .eq('contact_id', contact.id)
         .limit(1);
-      hasLinkedLead = (linkedLeads && linkedLeads.length > 0);
+      if (linkedLeads && linkedLeads.length > 0) {
+        linkedLeadId = linkedLeads[0].lead_id;
+      }
     }
     
-    setHasLead(!!lead || hasLinkedLead);
+    const foundLeadId = lead?.id || linkedLeadId;
+    setHasLead(!!foundLeadId);
+    setLinkedLeadId(foundLeadId || null);
   };
 
   const generateReply = async () => {
@@ -802,13 +807,15 @@ export const CommentResponseWorkflow = ({
         variant: 'default',
         highlight: true
       });
-    } else if (hasLead === true) {
+    } else if (hasLead === true && linkedLeadId) {
       actions.push({
         id: 'lead_linked',
         icon: <CheckCircle2 className="h-4 w-4" />,
         label: 'Lead vinculado',
-        description: 'Este contato já possui lead associado',
-        action: () => {},
+        description: 'Clique para ver detalhes do lead',
+        action: () => {
+          window.open(`/leads?leadId=${linkedLeadId}`, '_blank');
+        },
         variant: 'outline',
         highlight: false,
         isCompleted: true
