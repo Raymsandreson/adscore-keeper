@@ -92,6 +92,7 @@ import { ContactNetworkGraph } from '@/components/contacts/ContactNetworkGraph';
 import { ContactLeadsManager } from '@/components/contacts/ContactLeadsManager';
 import { MergeDuplicatesDialog } from '@/components/contacts/MergeDuplicatesDialog';
 import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -416,6 +417,10 @@ export const ContactsManager: React.FC = () => {
   
   // State for merge duplicates dialog
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
+  
+  // State for contact detail sheet
+  const [detailContact, setDetailContact] = useState<Contact | null>(null);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1619,6 +1624,18 @@ export const ContactsManager: React.FC = () => {
                         {visibility.name && (
                           <TableCell>
                             <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 flex-shrink-0"
+                                onClick={() => {
+                                  setDetailContact(contact);
+                                  setIsDetailSheetOpen(true);
+                                }}
+                                title="Ver detalhes completos"
+                              >
+                                <Eye className="h-3.5 w-3.5 text-primary" />
+                              </Button>
                               <InlineEditableText
                                 value={contact.full_name}
                                 onSave={(value) => updateContact(contact.id, { full_name: value })}
@@ -2521,6 +2538,16 @@ export const ContactsManager: React.FC = () => {
         open={isMergeDialogOpen}
         onOpenChange={setIsMergeDialogOpen}
         onMergeComplete={handleMergeComplete}
+      />
+      
+      {/* Contact Detail Sheet */}
+      <ContactDetailSheet
+        contact={detailContact}
+        open={isDetailSheetOpen}
+        onOpenChange={setIsDetailSheetOpen}
+        onContactUpdated={() => {
+          fetchContacts(currentPage, itemsPerPage);
+        }}
       />
     </div>
   );
