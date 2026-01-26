@@ -46,6 +46,7 @@ import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
 import { MultiClassificationSelect } from './MultiClassificationSelect';
+import { ContactInteractionHistory } from './ContactInteractionHistory';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -300,10 +301,14 @@ export function ContactDetailSheet({
         </SheetHeader>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="info" className="text-xs">
               <User className="h-3 w-3 mr-1" />
               Info
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs">
+              <History className="h-3 w-3 mr-1" />
+              Histórico
             </TabsTrigger>
             <TabsTrigger value="location" className="text-xs">
               <MapPin className="h-3 w-3 mr-1" />
@@ -569,6 +574,11 @@ export function ContactDetailSheet({
                   )}
                 </div>
               )}
+            </TabsContent>
+
+            {/* History Tab */}
+            <TabsContent value="history" className="mt-0">
+              <ContactInteractionHistory instagramUsername={contact.instagram_username} />
             </TabsContent>
 
             {/* Location Tab */}
