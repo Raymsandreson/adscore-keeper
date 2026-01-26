@@ -9,6 +9,7 @@ export interface ContactColumnVisibility {
   city: boolean;
   state: boolean;
   classification: boolean;
+  profession: boolean;
   status: boolean;
   leads: boolean;
 }
@@ -22,6 +23,7 @@ const DEFAULT_VISIBILITY: ContactColumnVisibility = {
   city: true,
   state: true,
   classification: true,
+  profession: true,
   status: true,
   leads: true,
 };

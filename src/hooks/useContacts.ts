@@ -24,6 +24,8 @@ export interface Contact {
   lead_id: string | null;
   converted_to_lead_at: string | null;
   follower_status: FollowerStatus;
+  profession: string | null;
+  profession_cbo_code: string | null;
   created_at: string;
   updated_at: string;
 }

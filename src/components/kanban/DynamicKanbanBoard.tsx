@@ -31,12 +31,14 @@ import {
   Clock,
   AlertTriangle,
   Eye,
+  Briefcase,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactsManager } from './LeadContactsManager';
+import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { toast } from 'sonner';
 
 interface DynamicKanbanBoardProps {
@@ -72,7 +74,7 @@ export function DynamicKanbanBoard({
   const [conversionValue, setConversionValue] = useState('');
   const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
-  const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[]>>({});
+  const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
 
   // Fetch contacts for all leads (using contact_leads junction + legacy lead_id)
   useEffect(() => {
@@ -94,7 +96,7 @@ export function DynamicKanbanBoard({
       // Fetch legacy contacts with lead_id
       const { data: legacyData, error: legacyError } = await supabase
         .from('contacts')
-        .select('id, lead_id, full_name, phone, instagram_username')
+        .select('id, lead_id, full_name, phone, instagram_username, profession, profession_cbo_code')
         .in('lead_id', leadIds);
 
       if (legacyError) {
@@ -105,17 +107,17 @@ export function DynamicKanbanBoard({
       const junctionContactIds = (junctionData || []).map(j => j.contact_id);
       
       // Fetch contact names for junction contacts
-      let junctionContacts: { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[] = [];
+      let junctionContacts: { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[] = [];
       if (junctionContactIds.length > 0) {
         const { data: contactsData } = await supabase
           .from('contacts')
-          .select('id, full_name, phone, instagram_username')
+          .select('id, full_name, phone, instagram_username, profession, profession_cbo_code')
           .in('id', junctionContactIds);
         junctionContacts = contactsData || [];
       }
 
       // Build contacts map per lead
-      const contactsMap: Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null }[]> = {};
+      const contactsMap: Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]> = {};
       const counts: Record<string, number> = {};
 
       // Add junction contacts
@@ -144,7 +146,9 @@ export function DynamicKanbanBoard({
               id: contact.id, 
               full_name: contact.full_name,
               phone: contact.phone,
-              instagram_username: contact.instagram_username
+              instagram_username: contact.instagram_username,
+              profession: contact.profession,
+              profession_cbo_code: contact.profession_cbo_code
             });
           }
         }
@@ -619,6 +623,18 @@ export function DynamicKanbanBoard({
 
                                   {/* Badges row */}
                                   <div className="mt-2 flex flex-wrap gap-1">
+                                    {/* Profession badges from linked contacts */}
+                                    {leadContacts[lead.id]?.filter(c => c.profession).slice(0, 2).map((contact) => (
+                                      <ProfessionBadgePopover
+                                        key={contact.id}
+                                        contactId={contact.id}
+                                        authorUsername={contact.instagram_username}
+                                        profession={contact.profession}
+                                        professionCboCode={contact.profession_cbo_code}
+                                        compact={true}
+                                        interactive={false}
+                                      />
+                                    ))}
                                     {/* Conversion value badge */}
                                     {lead.conversion_value > 0 && (
                                       <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
