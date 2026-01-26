@@ -80,6 +80,7 @@ import {
   ArrowUp,
   ArrowDown,
   GitMerge,
+  Briefcase,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -93,6 +94,7 @@ import { ContactLeadsManager } from '@/components/contacts/ContactLeadsManager';
 import { MergeDuplicatesDialog } from '@/components/contacts/MergeDuplicatesDialog';
 import { MultiClassificationSelect } from '@/components/contacts/MultiClassificationSelect';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -1439,6 +1441,12 @@ export const ContactsManager: React.FC = () => {
                     Classificação
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
+                    checked={visibility.profession}
+                    onCheckedChange={() => toggleColumn('profession')}
+                  >
+                    Profissão
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
                     checked={visibility.status}
                     onCheckedChange={() => toggleColumn('status')}
                   >
@@ -1572,6 +1580,7 @@ export const ContactsManager: React.FC = () => {
                   {(visibility.instagram || visibility.followerStatus) && <TableHead>Instagram</TableHead>}
                   {(visibility.city || visibility.state) && <TableHead>Localização</TableHead>}
                   {visibility.classification && <TableHead>Classificação</TableHead>}
+                  {visibility.profession && <TableHead>Profissão</TableHead>}
                   {visibility.status && <TableHead>Status</TableHead>}
                   {visibility.leads && (
                     <TableHead 
@@ -1760,6 +1769,19 @@ export const ContactsManager: React.FC = () => {
                               onChange={(value) => updateContact(contact.id, { classification: value })}
                               classifications={classificationsList}
                               onAddNew={addClassification}
+                            />
+                          </TableCell>
+                        )}
+                        {visibility.profession && (
+                          <TableCell>
+                            <ProfessionBadgePopover
+                              contactId={contact.id}
+                              authorUsername={contact.instagram_username}
+                              profession={contact.profession}
+                              professionCboCode={contact.profession_cbo_code}
+                              compact={false}
+                              interactive={true}
+                              onDataChanged={() => fetchContacts(currentPage, itemsPerPage, { search: searchTerm, classification: filterClassification, followerStatus: filterTag })}
                             />
                           </TableCell>
                         )}
