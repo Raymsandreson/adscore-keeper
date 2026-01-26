@@ -117,6 +117,7 @@ export const CommentResponseWorkflow = ({
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [dmSuggestion, setDmSuggestion] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [isFollowRequested, setIsFollowRequested] = useState<boolean>(false);
   const [hasLead, setHasLead] = useState<boolean | null>(null);
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
   const [showCardSettings, setShowCardSettings] = useState(false);
@@ -127,6 +128,7 @@ export const CommentResponseWorkflow = ({
   const [justRepliedComment, setJustRepliedComment] = useState<Comment | null>(null);
   const [editedDmSuggestion, setEditedDmSuggestion] = useState<string>("");
   const [isMarkingAsFollowing, setIsMarkingAsFollowing] = useState(false);
+  const [isMarkingAsRequested, setIsMarkingAsRequested] = useState(false);
   const [showEditAuthorId, setShowEditAuthorId] = useState(false);
   const [editedAuthorId, setEditedAuthorId] = useState("");
   const [isSavingAuthorId, setIsSavingAuthorId] = useState(false);
@@ -278,12 +280,13 @@ export const CommentResponseWorkflow = ({
     // Check if contact exists and get follower status
     const { data: contact } = await supabase
       .from('contacts')
-      .select('follower_status, id')
+      .select('follower_status, id, follow_requested_at')
       .or(`instagram_username.ilike.${normalizedUsername},instagram_username.ilike.@${normalizedUsername}`)
       .limit(1)
       .maybeSingle();
     
     setIsFollowing(contact?.follower_status === 'following' || contact?.follower_status === 'mutual');
+    setIsFollowRequested(!!contact?.follow_requested_at && contact?.follower_status !== 'following' && contact?.follower_status !== 'mutual');
     
     // Check if lead exists
     const { data: lead } = await supabase
@@ -483,6 +486,51 @@ export const CommentResponseWorkflow = ({
     }
   };
 
+  const markAsRequested = async () => {
+    if (!currentComment?.author_username) return;
+    
+    const username = currentComment.author_username.replace('@', '').toLowerCase();
+    setIsMarkingAsRequested(true);
+    
+    try {
+      // Check if contact exists
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .or(`instagram_username.ilike.${username},instagram_username.ilike.@${username}`)
+        .limit(1)
+        .maybeSingle();
+      
+      const now = new Date().toISOString();
+      
+      if (existingContact) {
+        // Update existing contact
+        await supabase
+          .from('contacts')
+          .update({ follow_requested_at: now })
+          .eq('id', existingContact.id);
+      } else {
+        // Create new contact with follow_requested_at
+        await supabase
+          .from('contacts')
+          .insert({
+            instagram_username: username,
+            full_name: `@${username}`,
+            follow_requested_at: now
+          });
+      }
+      
+      setIsFollowRequested(true);
+      toast.success(`Solicitação registrada para @${username}`);
+      refetchUsername(currentComment.author_username);
+    } catch (error) {
+      console.error('Error marking as requested:', error);
+      toast.error('Erro ao registrar solicitação');
+    } finally {
+      setIsMarkingAsRequested(false);
+    }
+  };
+
   const saveAuthorId = async () => {
     if (!currentComment || !editedAuthorId.trim()) return;
     
@@ -677,8 +725,30 @@ export const CommentResponseWorkflow = ({
         highlight: false,
         isCompleted: true
       });
+    } else if (isFollowRequested) {
+      // Show "awaiting" state - request was sent
+      actions.push({
+        id: 'follow_requested',
+        icon: <RefreshCw className="h-4 w-4" />,
+        label: 'Solicitação enviada',
+        description: 'Aguardando aprovação do follow',
+        action: openInstagramProfile,
+        variant: 'outline',
+        highlight: false,
+        isCompleted: true
+      });
+      // Also allow marking as following if they accepted
+      actions.push({
+        id: 'mark_following',
+        icon: isMarkingAsFollowing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />,
+        label: 'Marcar que aceitou',
+        description: 'Confirmar que o follow foi aceito',
+        action: markAsFollowing,
+        variant: 'outline',
+        highlight: false
+      });
     } else {
-      // Add two actions: open profile to follow AND mark as following
+      // Add action to open profile and follow
       actions.push({
         id: 'follow',
         icon: <UserPlus className="h-4 w-4" />,
@@ -688,6 +758,17 @@ export const CommentResponseWorkflow = ({
         variant: 'default',
         highlight: true
       });
+      // Mark as follow requested (pending)
+      actions.push({
+        id: 'mark_requested',
+        icon: isMarkingAsRequested ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />,
+        label: 'Solicitei seguir',
+        description: 'Registrar que enviei solicitação',
+        action: markAsRequested,
+        variant: 'outline',
+        highlight: false
+      });
+      // Mark as already following
       actions.push({
         id: 'mark_following',
         icon: isMarkingAsFollowing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />,
@@ -785,7 +866,7 @@ export const CommentResponseWorkflow = ({
     }
 
     return actions;
-  }, [isFollowing, hasLead, unrepliedComments.length, dmSuggestion, currentComment?.author_id, isMarkingAsFollowing]);
+  }, [isFollowing, isFollowRequested, hasLead, unrepliedComments.length, dmSuggestion, currentComment?.author_id, isMarkingAsFollowing, isMarkingAsRequested]);
 
   const handleClose = () => {
     onOpenChange(false);
