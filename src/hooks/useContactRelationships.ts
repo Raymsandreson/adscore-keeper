@@ -107,6 +107,84 @@ export const useContactRelationships = (contactId?: string) => {
     }
   }, [contactId]);
 
+  // Symmetric relationship types that should be cross-referenced
+  const SYMMETRIC_RELATIONSHIPS = [
+    'Primo', 'Prima', 'Irmão', 'Irmã', 'Cunhado', 'Cunhada',
+    'Sobrinho', 'Sobrinha', 'Tio', 'Tia', 'Amigo', 'Colega',
+    'Vizinho', 'Sócio', 'Parceiro'
+  ];
+
+  const isSymmetricRelationship = (type: string) => {
+    return SYMMETRIC_RELATIONSHIPS.some(r => 
+      type.toLowerCase().includes(r.toLowerCase())
+    );
+  };
+
+  // Cross-reference relationships: if A is cousin of B and C, then B and C are also cousins
+  const crossReferenceRelationships = async (
+    newContactId: string,
+    relationshipType: string
+  ) => {
+    if (!contactId || !isSymmetricRelationship(relationshipType)) return;
+
+    try {
+      // Find all contacts that have the same relationship type with contactId
+      const { data: existingOutgoing } = await (supabase as any)
+        .from('contact_relationships')
+        .select('related_contact_id')
+        .eq('contact_id', contactId)
+        .eq('relationship_type', relationshipType)
+        .neq('related_contact_id', newContactId);
+
+      const { data: existingIncoming } = await (supabase as any)
+        .from('contact_relationships')
+        .select('contact_id')
+        .eq('related_contact_id', contactId)
+        .eq('relationship_type', relationshipType)
+        .neq('contact_id', newContactId);
+
+      // Collect all related contacts (except the new one)
+      const relatedContacts = new Set<string>();
+      (existingOutgoing || []).forEach((r: any) => relatedContacts.add(r.related_contact_id));
+      (existingIncoming || []).forEach((r: any) => relatedContacts.add(r.contact_id));
+
+      if (relatedContacts.size === 0) return;
+
+      // Create cross-references between the new contact and all existing related contacts
+      const crossRefsToCreate: Array<{ contact_id: string; related_contact_id: string; relationship_type: string; notes: string }> = [];
+
+      for (const existingContactId of relatedContacts) {
+        // Check if relationship already exists in either direction
+        const { data: existingRel } = await (supabase as any)
+          .from('contact_relationships')
+          .select('id')
+          .or(`and(contact_id.eq.${newContactId},related_contact_id.eq.${existingContactId}),and(contact_id.eq.${existingContactId},related_contact_id.eq.${newContactId})`)
+          .eq('relationship_type', relationshipType);
+
+        if (!existingRel || existingRel.length === 0) {
+          crossRefsToCreate.push({
+            contact_id: newContactId,
+            related_contact_id: existingContactId,
+            relationship_type: relationshipType,
+            notes: 'Vínculo criado automaticamente por cruzamento'
+          });
+        }
+      }
+
+      if (crossRefsToCreate.length > 0) {
+        const { error: crossRefError } = await (supabase as any)
+          .from('contact_relationships')
+          .insert(crossRefsToCreate);
+
+        if (!crossRefError) {
+          toast.success(`${crossRefsToCreate.length} vínculo(s) cruzado(s) criado(s) automaticamente`);
+        }
+      }
+    } catch (error) {
+      console.error('Error cross-referencing relationships:', error);
+    }
+  };
+
   const addRelationship = async (
     relatedContactId: string,
     relationshipType: string,
@@ -136,6 +214,10 @@ export const useContactRelationships = (contactId?: string) => {
       }
 
       toast.success('Vínculo adicionado');
+      
+      // Cross-reference symmetric relationships
+      await crossReferenceRelationships(relatedContactId, relationshipType);
+      
       fetchRelationships();
       return data;
     } catch (error) {
