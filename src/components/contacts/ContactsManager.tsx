@@ -690,8 +690,8 @@ export const ContactsManager: React.FC = () => {
     }
   };
 
-  // Open convert dialog instead of converting directly
-  const handleConvertToLead = (contact: Contact) => {
+  // Open link to lead dialog
+  const handleLinkToLead = (contact: Contact) => {
     setContactToConvert(contact);
     // Pre-select default board if available
     const defaultBoard = kanbanBoards.find(b => b.is_default) || kanbanBoards[0];
@@ -704,8 +704,8 @@ export const ContactsManager: React.FC = () => {
     setIsConvertDialogOpen(true);
   };
 
-  // Confirm conversion with board/stage selection
-  const handleConfirmConvert = async () => {
+  // Confirm creating and linking lead
+  const handleConfirmLinkLead = async () => {
     if (!contactToConvert) return;
     
     // Use the stage ID directly as status, since kanban boards use UUIDs for stages
@@ -837,8 +837,8 @@ export const ContactsManager: React.FC = () => {
     }
   };
 
-  // Batch convert to leads
-  const handleBatchConvertToLeads = async () => {
+  // Batch link contacts to new leads
+  const handleBatchLinkToLeads = async () => {
     if (selectedContacts.size === 0) return;
     
     // Filter only contacts not already converted
@@ -851,21 +851,21 @@ export const ContactsManager: React.FC = () => {
       return;
     }
     
-    const confirmConvert = window.confirm(
-      `Converter ${contactsToConvert.length} contato(s) em leads?`
+    const confirmLink = window.confirm(
+      `Criar e vincular leads para ${contactsToConvert.length} contato(s)?`
     );
     
-    if (!confirmConvert) return;
+    if (!confirmLink) return;
     
     setIsBatchProcessing(true);
-    let converted = 0;
+    let linked = 0;
     let errors = 0;
     
     for (const contact of contactsToConvert) {
       if (!contact) continue;
       try {
         await convertToLead(contact.id);
-        converted++;
+        linked++;
       } catch {
         errors++;
       }
@@ -875,9 +875,9 @@ export const ContactsManager: React.FC = () => {
     setSelectedContacts(new Set());
     
     if (errors > 0) {
-      toast.warning(`${converted} convertidos, ${errors} erros`);
+      toast.warning(`${linked} vinculados, ${errors} erros`);
     } else {
-      toast.success(`${converted} contatos convertidos em leads!`);
+      toast.success(`${linked} leads criados e vinculados!`);
     }
   };
 
@@ -1555,15 +1555,15 @@ export const ContactsManager: React.FC = () => {
                   </DialogContent>
                 </Dialog>
 
-                {/* Convert to leads button */}
+                {/* Link to leads button */}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleBatchConvertToLeads}
+                  onClick={handleBatchLinkToLeads}
                   disabled={isBatchProcessing}
                 >
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  Converter em Leads
+                  <Link2 className="h-4 w-4 mr-1" />
+                  Vincular a Leads
                 </Button>
 
                 {/* Delete button */}
@@ -1920,9 +1920,9 @@ export const ContactsManager: React.FC = () => {
                                 Vínculos
                               </DropdownMenuItem>
                               {!contact.lead_id && (
-                                <DropdownMenuItem onClick={() => handleConvertToLead(contact)}>
-                                  <UserPlus className="h-4 w-4 mr-2" />
-                                  Converter em Lead
+                                <DropdownMenuItem onClick={() => handleLinkToLead(contact)}>
+                                  <Link2 className="h-4 w-4 mr-2" />
+                                  Vincular a Lead
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
@@ -2483,18 +2483,18 @@ export const ContactsManager: React.FC = () => {
         onOpenChange={setIsLeadsManagerOpen}
       />
 
-      {/* Convert to Lead Dialog */}
+      {/* Link to Lead Dialog */}
       <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
         <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Converter em Lead
+              <Link2 className="h-5 w-5" />
+              Vincular a Lead
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4 flex-1 overflow-y-auto">
             <p className="text-sm text-muted-foreground">
-              Escolha em qual quadro Kanban o lead <strong>{contactToConvert?.full_name}</strong> deve ser criado:
+              Criar um novo lead para <strong>{contactToConvert?.full_name}</strong> e vinculá-lo automaticamente:
             </p>
             
             <div className="space-y-3">
@@ -2574,8 +2574,8 @@ export const ContactsManager: React.FC = () => {
             >
               Cancelar
             </Button>
-            <Button onClick={handleConfirmConvert}>
-              Converter
+            <Button onClick={handleConfirmLinkLead}>
+              Criar e Vincular
             </Button>
           </div>
         </DialogContent>
