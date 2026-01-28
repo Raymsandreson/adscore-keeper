@@ -184,6 +184,24 @@ class MetaAPIService {
         };
       }
       
+      // Primeiro, buscar o App ID do token para verificar se o usuário não confundiu com Account ID
+      try {
+        const debugResponse = await fetch(
+          `https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${accessToken}`
+        );
+        const debugData = await debugResponse.json();
+        
+        if (debugData.data?.app_id === cleanAccountId) {
+          console.error('❌ O Account ID inserido é o App ID, não a conta de anúncios');
+          return { 
+            valid: false, 
+            error: `O ID "${cleanAccountId}" é o App ID, não o Account ID da conta de anúncios. Acesse o Gerenciador de Anúncios do Facebook para encontrar o Account ID correto (número que começa após "act_").`
+          };
+        }
+      } catch (e) {
+        console.warn('⚠️ Não foi possível verificar App ID:', e);
+      }
+      
       cleanAccountId = `act_${cleanAccountId}`;
       console.log('🔍 Validando conta:', cleanAccountId);
       
@@ -208,7 +226,7 @@ class MetaAPIService {
         if (data.error.code === 100) {
           return { 
             valid: false, 
-            error: 'Account ID não encontrado. Verifique se o número está correto.' 
+            error: 'Account ID não encontrado. Verifique se o número está correto. Você pode encontrar o Account ID no Gerenciador de Anúncios do Facebook.' 
           };
         }
         if (data.error.code === 190) {
@@ -218,9 +236,29 @@ class MetaAPIService {
           };
         }
         if (data.error.code === 10 || data.error.code === 200) {
+          // Tentar listar as contas de anúncios disponíveis para o token
+          try {
+            const accountsResponse = await fetch(
+              `${this.baseURL}/me/adaccounts?access_token=${accessToken}&fields=id,name&limit=5`
+            );
+            const accountsData = await accountsResponse.json();
+            
+            if (accountsData.data && accountsData.data.length > 0) {
+              const availableAccounts = accountsData.data
+                .map((acc: any) => `${acc.name} (${acc.id})`)
+                .join(', ');
+              return { 
+                valid: false, 
+                error: `O token não tem permissão para acessar a conta "${cleanAccountId}". Contas disponíveis: ${availableAccounts}` 
+              };
+            }
+          } catch (e) {
+            console.warn('⚠️ Não foi possível listar contas disponíveis:', e);
+          }
+          
           return { 
             valid: false, 
-            error: 'Sem permissão para acessar esta conta. Verifique se o token tem permissão ads_read.' 
+            error: 'O token não tem permissão para acessar esta conta de anúncios. Verifique se você selecionou a conta correta ao gerar o token no Graph API Explorer.' 
           };
         }
         if (data.error.code === 17) {
