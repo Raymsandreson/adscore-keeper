@@ -87,6 +87,9 @@ serve(async (req) => {
 
     const allComments: any[] = [];
     const myUsername = await getAccountUsername(igAccountId, token);
+    
+    // Map to track which comments have been replied by owner (manual replies detection)
+    const manuallyRepliedComments = new Map<string, { replied_at: string; reply_text: string }>();
 
     // Get comments for each media
     if (mediaData.data) {
@@ -103,6 +106,30 @@ serve(async (req) => {
                 // Determine if this is received or sent
                 const isOwnComment = myUsername && comment.username?.toLowerCase() === myUsername.toLowerCase();
                 
+                // Check if this comment has a reply from the account owner (manual reply detection)
+                let wasManuallyReplied = false;
+                let manualReplyTimestamp: string | null = null;
+                
+                if (!isOwnComment && comment.replies?.data) {
+                  // Look for replies from the account owner
+                  for (const reply of comment.replies.data) {
+                    const isOwnerReply = myUsername && reply.username?.toLowerCase() === myUsername.toLowerCase();
+                    if (isOwnerReply) {
+                      wasManuallyReplied = true;
+                      manualReplyTimestamp = reply.timestamp;
+                      // Store the earliest reply from owner
+                      if (!manuallyRepliedComments.has(comment.id) || 
+                          new Date(reply.timestamp) < new Date(manuallyRepliedComments.get(comment.id)!.replied_at)) {
+                        manuallyRepliedComments.set(comment.id, {
+                          replied_at: reply.timestamp,
+                          reply_text: reply.text
+                        });
+                      }
+                      break;
+                    }
+                  }
+                }
+                
                 allComments.push({
                   comment_id: comment.id,
                   comment_text: comment.text,
@@ -113,6 +140,8 @@ serve(async (req) => {
                   post_url: media.permalink,
                   comment_type: isOwnComment ? "sent" : "received",
                   like_count: comment.like_count || 0,
+                  was_manually_replied: wasManuallyReplied,
+                  manual_reply_at: manualReplyTimestamp,
                 });
 
                 // Add replies
@@ -143,6 +172,7 @@ serve(async (req) => {
     }
 
     console.log(`💬 Total de comentários encontrados: ${allComments.length}`);
+    console.log(`🔄 Comentários com resposta manual detectada: ${manuallyRepliedComments.size}`);
 
     // Fetch mentions on third-party posts (where someone tagged us)
     const mentions: any[] = [];
@@ -264,6 +294,13 @@ serve(async (req) => {
     const allData = [...allComments, ...mentions, ...outboundReplies];
     console.log(`📊 Total (comentários + menções + outbound): ${allData.length}`);
 
+    // Convert manuallyRepliedComments Map to array for response
+    const manualRepliesArray = Array.from(manuallyRepliedComments.entries()).map(([commentId, data]) => ({
+      comment_id: commentId,
+      replied_at: data.replied_at,
+      reply_text: data.reply_text
+    }));
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -272,7 +309,10 @@ serve(async (req) => {
         commentsCount: allComments.length,
         mentionsCount: mentions.length,
         outboundRepliesCount: outboundReplies.length,
-        instagramAccountId: igAccountId
+        instagramAccountId: igAccountId,
+        // New: manual replies detection data
+        manualReplies: manualRepliesArray,
+        manualRepliesCount: manualRepliesArray.length
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

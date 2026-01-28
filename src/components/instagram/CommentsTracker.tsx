@@ -278,6 +278,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     
     setIsSyncing(true);
     let totalSaved = 0;
+    let totalMarkedAsReplied = 0;
     let accountsWithErrors = 0;
     
     try {
@@ -312,16 +313,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             // First check existing comment_ids to avoid duplicates
             const { data: existingComments } = await supabase
               .from('instagram_comments')
-              .select('comment_id')
+              .select('comment_id, replied_at')
               .not('comment_id', 'is', null);
             
             const existingIds = new Set((existingComments || []).map(c => c.comment_id));
+            const existingNotReplied = new Map((existingComments || [])
+              .filter(c => !c.replied_at)
+              .map(c => [c.comment_id, true]));
             
             // Filter new comments
             const newComments = data.comments.filter((c: any) => !existingIds.has(c.comment_id));
             
             if (newComments.length > 0) {
               // Insert new comments with account reference
+              // Also check if they were manually replied (has was_manually_replied flag)
               const commentsToInsert = newComments.map((comment: any) => ({
                 comment_id: comment.comment_id,
                 comment_text: comment.comment_text,
@@ -334,7 +339,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 parent_comment_id: comment.parent_comment_id || null,
                 platform: 'instagram',
                 ad_account_id: account.instagram_id, // Track which account this came from
-                metadata: { account_name: account.account_name, ...comment.metadata }
+                metadata: { account_name: account.account_name, ...comment.metadata },
+                // If it was manually replied on Instagram, mark as replied
+                replied_at: comment.was_manually_replied ? comment.manual_reply_at : null
               }));
               
               const { error: insertError, data: inserted } = await supabase
@@ -344,6 +351,39 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
 
               if (!insertError && inserted) {
                 totalSaved += inserted.length;
+              }
+            }
+          }
+
+          // Process manual replies - update existing comments that were replied manually on Instagram
+          if (data.manualReplies && data.manualReplies.length > 0) {
+            console.log(`🔄 Processando ${data.manualReplies.length} respostas manuais detectadas...`);
+            
+            for (const manualReply of data.manualReplies) {
+              // Find the comment in database that matches and is not yet marked as replied
+              const { data: existingComment } = await supabase
+                .from('instagram_comments')
+                .select('id, replied_at')
+                .eq('comment_id', manualReply.comment_id)
+                .is('replied_at', null)
+                .maybeSingle();
+              
+              if (existingComment) {
+                // Mark as replied with the manual reply timestamp
+                const { error: updateError } = await supabase
+                  .from('instagram_comments')
+                  .update({ 
+                    replied_at: manualReply.replied_at,
+                    metadata: {
+                      manual_reply: true,
+                      manual_reply_text: manualReply.reply_text?.slice(0, 200)
+                    }
+                  })
+                  .eq('id', existingComment.id);
+                
+                if (!updateError) {
+                  totalMarkedAsReplied++;
+                }
               }
             }
           }
@@ -358,8 +398,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       setLastSyncTime(now);
       localStorage.setItem('comments_last_sync', now.toISOString());
 
-      if (totalSaved > 0) {
-        toast.success(`${totalSaved} comentários sincronizados de ${selectedAccounts.length - accountsWithErrors} conta(s)!`);
+      if (totalSaved > 0 || totalMarkedAsReplied > 0) {
+        let message = '';
+        if (totalSaved > 0) {
+          message += `${totalSaved} comentários sincronizados`;
+        }
+        if (totalMarkedAsReplied > 0) {
+          message += message ? `, ${totalMarkedAsReplied} marcados como respondidos` : `${totalMarkedAsReplied} comentários marcados como respondidos`;
+        }
+        toast.success(message);
         await fetchComments();
         await fetchStats();
         await checkExistingLeads();
