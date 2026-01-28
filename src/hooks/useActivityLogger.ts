@@ -14,7 +14,15 @@ export type ActivityType =
   | 'contact_classified'
   | 'follow_requested'
   | 'workflow_session_start'
-  | 'workflow_session_end';
+  | 'workflow_session_end'
+  | 'page_visit'
+  | 'login'
+  | 'logout'
+  | 'button_click'
+  | 'form_submit'
+  | 'filter_applied'
+  | 'export_data'
+  | 'search_performed';
 
 export type EntityType = 'comment' | 'lead' | 'contact' | 'dm' | 'workflow';
 

@@ -1528,6 +1528,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_sessions: {
+        Row: {
+          created_at: string
+          duration_seconds: number | null
+          end_reason: string | null
+          ended_at: string | null
+          id: string
+          last_activity_at: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_seconds?: number | null
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          last_activity_at?: string
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          duration_seconds?: number | null
+          end_reason?: string | null
+          ended_at?: string | null
+          id?: string
+          last_activity_at?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       workflow_daily_goals: {
         Row: {
           created_at: string
