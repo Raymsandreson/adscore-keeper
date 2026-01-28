@@ -45,8 +45,8 @@ export const NewClassificationDialog: React.FC<NewClassificationDialogProps> = (
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[425px] max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Tag className="h-5 w-5" />
             Nova Classificação
@@ -56,7 +56,7 @@ export const NewClassificationDialog: React.FC<NewClassificationDialogProps> = (
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 flex-1 overflow-y-auto">
           <div className="space-y-2">
             <Label htmlFor="classification-name">Nome da classificação</Label>
             <Input

@@ -353,14 +353,14 @@ export const ContactLeadsManager: React.FC<ContactLeadsManagerProps> = ({
 
       {/* Dialog para adicionar observações ao vincular */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[425px] max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-primary" />
               Vincular Lead
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 flex-1 overflow-y-auto">
             <div className="bg-muted/50 rounded-lg p-3">
               <p className="font-medium text-sm">
                 {selectedLeadToLink?.lead_name || 'Lead sem nome'}

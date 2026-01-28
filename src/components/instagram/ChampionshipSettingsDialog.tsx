@@ -100,8 +100,8 @@ export const ChampionshipSettingsDialog: React.FC<ChampionshipSettingsDialogProp
           Configurar
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Settings className="w-5 h-5" />
             Configurações do Campeonato
@@ -111,7 +111,7 @@ export const ChampionshipSettingsDialog: React.FC<ChampionshipSettingsDialogProp
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 flex-1 overflow-y-auto">
           {/* Points Section */}
           <div className="space-y-4">
             <h4 className="text-sm font-medium flex items-center gap-2">

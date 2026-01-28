@@ -154,8 +154,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
             Responder com IA
@@ -166,7 +166,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 flex-1 overflow-y-auto">
           {/* Original Comment */}
           <div className="p-3 rounded-lg bg-muted/50 border">
             <div className="flex items-center gap-2 mb-2">

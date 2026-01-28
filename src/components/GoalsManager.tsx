@@ -434,12 +434,12 @@ const GoalsManager = ({ currentMetrics, autoSync = true }: GoalsManagerProps) =>
               Nova Meta
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>{editingGoal ? 'Editar Meta' : 'Criar Nova Meta'}</DialogTitle>
             </DialogHeader>
             
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 flex-1 overflow-y-auto pr-2">
               <div className="space-y-2">
                 <Label>Título da Meta</Label>
                 <Input 

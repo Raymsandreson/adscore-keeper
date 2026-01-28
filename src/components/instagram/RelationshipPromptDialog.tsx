@@ -183,8 +183,8 @@ export const RelationshipPromptDialog: React.FC<RelationshipPromptDialogProps> =
       if (!value) resetState();
       onOpenChange(value);
     }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             Em relação a quem?
@@ -195,7 +195,7 @@ export const RelationshipPromptDialog: React.FC<RelationshipPromptDialogProps> =
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 flex-1 overflow-y-auto">
           {!createNew ? (
             <>
               {/* Search existing contacts */}
