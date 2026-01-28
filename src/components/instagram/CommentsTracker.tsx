@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils";
 import { CommentsEvolutionChart } from "./CommentsEvolutionChart";
 import { InstagramAccountSelector, InstagramAccount } from "./InstagramAccountSelector";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
+import { ReplyStatusBadge } from "./ReplyStatusBadge";
 
 import { useContactClassifications } from "@/hooks/useContactClassifications";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
@@ -80,6 +81,7 @@ interface Comment {
   converted_to_lead?: boolean;
   prospect_classification?: string[] | null;
   ad_account_id?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface CommentsTrackerProps {
@@ -137,7 +139,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [showOnlyLinked, setShowOnlyLinked] = useState<'all' | 'leads' | 'connections' | 'any'>('all');
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
-  const [showOnlyUnanswered, setShowOnlyUnanswered] = useState(false);
+  const [replyStatusFilter, setReplyStatusFilter] = useState<'all' | 'not_replied' | 'replied_system' | 'replied_manual' | 'replied_any'>('all');
   const [filterByClassifications, setFilterByClassifications] = useState<string[]>([]);
   const [filterByProfessions, setFilterByProfessions] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'created_at' | 'classification_updated'>('created_at');
@@ -203,7 +205,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         .limit(100);
 
       if (error) throw error;
-      setComments(data || []);
+      // Cast the data to handle Json type from Supabase
+      setComments((data || []).map(c => ({
+        ...c,
+        metadata: c.metadata as Record<string, unknown> | null
+      })) as Comment[]);
     } catch (error) {
       console.error('Error fetching comments:', error);
     } finally {
@@ -835,9 +841,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if (showOnlyLinked === 'any' && !hasLeads && !hasConnections) return false;
       }
       
-      // Filter by unanswered comments (replied_at = null)
-      if (showOnlyUnanswered) {
-        if ((c as any).replied_at !== null) return false;
+      // Filter by reply status
+      if (replyStatusFilter !== 'all') {
+        const isReplied = c.replied_at !== null;
+        const isManualReply = c.metadata && typeof c.metadata === 'object' && 'manual_reply' in c.metadata && c.metadata.manual_reply === true;
+        
+        if (replyStatusFilter === 'not_replied' && isReplied) return false;
+        if (replyStatusFilter === 'replied_any' && !isReplied) return false;
+        if (replyStatusFilter === 'replied_system' && (!isReplied || isManualReply)) return false;
+        if (replyStatusFilter === 'replied_manual' && (!isReplied || !isManualReply)) return false;
       }
       
       // Filter by classifications (multi-select)
@@ -885,20 +897,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     
     // Default: sort by created_at (already sorted from DB)
     return filtered;
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, showOnlyUnanswered, filterByClassifications, filterByProfessions, getContactData, sortBy]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, replyStatusFilter, filterByClassifications, filterByProfessions, getContactData, sortBy]);
 
   const clearFilters = () => {
     setSearchText('');
     setDateFrom(undefined);
     setDateTo(undefined);
     setShowOnlyLinked('all');
-    setShowOnlyUnanswered(false);
+    setReplyStatusFilter('all');
     setFilterByClassifications([]);
     setFilterByProfessions([]);
     setSortBy('created_at');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || showOnlyUnanswered || filterByClassifications.length > 0 || filterByProfessions.length > 0 || sortBy !== 'created_at';
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || replyStatusFilter !== 'all' || filterByClassifications.length > 0 || filterByProfessions.length > 0 || sortBy !== 'created_at';
   
   // Toggle classification in filter
   const toggleClassificationFilter = (classificationName: string) => {
@@ -911,21 +923,35 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     });
   };
   
-  // Count unanswered comments for badge (respecting date filters)
-  const unansweredCount = useMemo(() => {
-    return comments.filter(c => {
-      if (c.comment_type !== 'received') return false;
-      if ((c as any).replied_at !== null) return false;
+  // Count comments by reply status for stats
+  const replyStats = useMemo(() => {
+    let notReplied = 0;
+    let repliedSystem = 0;
+    let repliedManual = 0;
+    
+    comments.forEach(c => {
+      if (c.comment_type !== 'received') return;
       
       // Apply date filters
       if (dateFrom || dateTo) {
         const commentDate = new Date(c.created_at);
-        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
-        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return;
+        if (dateTo && commentDate > endOfDay(dateTo)) return;
       }
       
-      return true;
-    }).length;
+      if (!c.replied_at) {
+        notReplied++;
+      } else {
+        const isManual = c.metadata && typeof c.metadata === 'object' && 'manual_reply' in c.metadata && c.metadata.manual_reply === true;
+        if (isManual) {
+          repliedManual++;
+        } else {
+          repliedSystem++;
+        }
+      }
+    });
+    
+    return { notReplied, repliedSystem, repliedManual, repliedTotal: repliedSystem + repliedManual };
   }, [comments, dateFrom, dateTo]);
   
   // Count comments per tab respecting date filters
@@ -1513,22 +1539,41 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </SelectContent>
             </Select>
             
-            {/* Unanswered filter */}
+            {/* Reply Status filter - enhanced dropdown */}
             {activeTab === 'received' && (
-              <Button
-                variant={showOnlyUnanswered ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowOnlyUnanswered(!showOnlyUnanswered)}
-                className={cn("gap-2", showOnlyUnanswered && "bg-orange-500 hover:bg-orange-600")}
-              >
-                <Reply className="h-4 w-4" />
-                Não respondidos
-                {unansweredCount > 0 && (
-                  <Badge variant="secondary" className={cn("ml-1", showOnlyUnanswered ? "bg-white/20 text-white" : "")}>
-                    {unansweredCount}
-                  </Badge>
-                )}
-              </Button>
+              <Select value={replyStatusFilter} onValueChange={(val: 'all' | 'not_replied' | 'replied_system' | 'replied_manual' | 'replied_any') => setReplyStatusFilter(val)}>
+                <SelectTrigger className={cn("w-[180px] h-9", replyStatusFilter !== 'all' && "border-primary")}>
+                  <Reply className="h-3.5 w-3.5 mr-2" />
+                  <SelectValue placeholder="Status resposta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="not_replied">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-orange-500" />
+                      Não respondidos
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="replied_any">
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      Respondidos (todos)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="replied_system">
+                    <span className="flex items-center gap-2">
+                      <Bot className="h-3 w-3 text-green-500" />
+                      Respondidos (Sistema)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="replied_manual">
+                    <span className="flex items-center gap-2">
+                      <MessageCircle className="h-3 w-3 text-blue-500" />
+                      Respondidos (Instagram)
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             )}
 
             {hasActiveFilters && (
@@ -1672,9 +1717,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               </div>
             )}
             
-            {/* Stats summary */}
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-4">
+            {/* Stats summary with reply status breakdown */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-muted/50 rounded-lg">
+              <div className="flex flex-wrap items-center gap-4">
                 <div className="text-sm">
                   <span className="text-muted-foreground">Total: </span>
                   <span className="font-semibold">{filteredComments.length}</span>
@@ -1683,6 +1728,36 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                   )}
                   <span className="text-muted-foreground"> comentário{filteredComments.length !== 1 ? 's' : ''}</span>
                 </div>
+                
+                {/* Reply status breakdown - only for received tab */}
+                {activeTab === 'received' && (
+                  <div className="flex items-center gap-2 pl-3 border-l border-border">
+                    <Badge 
+                      variant="outline" 
+                      className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-950 dark:text-orange-300 gap-1 cursor-pointer hover:bg-orange-200"
+                      onClick={() => setReplyStatusFilter('not_replied')}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-orange-500" />
+                      {replyStats.notReplied} pendente{replyStats.notReplied !== 1 ? 's' : ''}
+                    </Badge>
+                    <Badge 
+                      variant="outline" 
+                      className="bg-green-100 text-green-700 border-green-300 dark:bg-green-950 dark:text-green-300 gap-1 cursor-pointer hover:bg-green-200"
+                      onClick={() => setReplyStatusFilter('replied_system')}
+                    >
+                      <Bot className="h-3 w-3" />
+                      {replyStats.repliedSystem} sistema
+                    </Badge>
+                    <Badge 
+                      variant="outline" 
+                      className="bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 gap-1 cursor-pointer hover:bg-blue-200"
+                      onClick={() => setReplyStatusFilter('replied_manual')}
+                    >
+                      <MessageCircle className="h-3 w-3" />
+                      {replyStats.repliedManual} manual
+                    </Badge>
+                  </div>
+                )}
               </div>
               {hasActiveFilters && (
                 <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
@@ -1814,6 +1889,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                 <Clock className="h-3 w-3" />
                                 {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
                               </div>
+                              
+                              {/* Reply status badge - shows if replied and how */}
+                              <ReplyStatusBadge 
+                                repliedAt={comment.replied_at}
+                                metadata={comment.metadata as { manual_reply?: boolean; manual_reply_text?: string } | null}
+                              />
                               
                               {/* Classification badges - read from centralized contacts table */}
                               {(() => {
