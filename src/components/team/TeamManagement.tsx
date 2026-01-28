@@ -41,20 +41,33 @@ import {
   Loader2,
   Crown,
   Send,
+  Eye,
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
+import { MemberDetailSheet } from './MemberDetailSheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+interface TeamMember {
+  id: string;
+  user_id: string;
+  role: 'admin' | 'member';
+  email: string | null;
+  full_name: string | null;
+  created_at: string;
+}
+
 export function TeamManagement() {
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember } = useTeamMembers();
+  const { members, invitations, loading, inviteMember, cancelInvitation, updateMemberRole, removeMember, refetch } = useTeamMembers();
   
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [inviting, setInviting] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   if (roleLoading || loading) {
     return (
@@ -254,7 +267,14 @@ export function TeamManagement() {
             </TableHeader>
             <TableBody>
               {members.map((member) => (
-                <TableRow key={member.id}>
+                <TableRow 
+                  key={member.id} 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => {
+                    setSelectedMember(member);
+                    setDetailOpen(true);
+                  }}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -266,7 +286,7 @@ export function TeamManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Select
                       value={member.role}
                       onValueChange={(v) => handleRoleChange(member.user_id, v as 'admin' | 'member')}
@@ -283,29 +303,41 @@ export function TeamManagement() {
                   <TableCell className="text-muted-foreground text-sm">
                     {format(new Date(member.created_at), "dd/MM/yyyy", { locale: ptBR })}
                   </TableCell>
-                  <TableCell>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remover membro?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta ação removerá {member.full_name || member.email} da equipe. 
-                            O usuário perderá acesso ao sistema.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleRemove(member.user_id)}>
-                            Remover
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setSelectedMember(member);
+                          setDetailOpen(true);
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta ação removerá {member.full_name || member.email} da equipe. 
+                              O usuário perderá acesso ao sistema.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleRemove(member.user_id)}>
+                              Remover
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -313,6 +345,13 @@ export function TeamManagement() {
           </Table>
         </CardContent>
       </Card>
+
+      <MemberDetailSheet
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        member={selectedMember}
+        onUpdate={refetch}
+      />
     </div>
   );
 }
