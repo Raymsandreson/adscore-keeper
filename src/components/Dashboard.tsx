@@ -28,6 +28,7 @@ import OrganicMetrics from "./OrganicMetrics";
 import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
+import { UserMenu } from "./auth/UserMenu";
 import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useMetaAPI, DateRangeOption } from "@/hooks/useMetaAPI";
@@ -298,7 +299,12 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-dashboard p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header Clean */}
-        <div className="text-center space-y-4">
+        <div className="text-center space-y-4 relative">
+          {/* User Menu - Top Right */}
+          <div className="absolute top-0 right-0">
+            <UserMenu />
+          </div>
+          
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2">
             Dashboard de Marketing Digital
           </h1>
