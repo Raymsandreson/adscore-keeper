@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from './useUserRole';
-import { startOfDay, endOfDay, subDays, format } from 'date-fns';
+import { startOfDay, endOfDay, format } from 'date-fns';
 
 interface UserProductivity {
   userId: string;
@@ -12,6 +12,7 @@ interface UserProductivity {
   leadsCreated: number;
   sessionMinutes: number;
   totalActions: number;
+  pageVisits: number;
 }
 
 interface ActivityLogEntry {
@@ -33,11 +34,24 @@ interface DailyMetric {
   leads: number;
 }
 
+interface UserSession {
+  id: string;
+  user_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  end_reason: string | null;
+  last_activity_at: string;
+  user_name?: string | null;
+  user_email?: string | null;
+}
+
 export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
   const { isAdmin } = useUserRole();
   const [productivity, setProductivity] = useState<UserProductivity[]>([]);
   const [timeline, setTimeline] = useState<ActivityLogEntry[]>([]);
   const [dailyMetrics, setDailyMetrics] = useState<DailyMetric[]>([]);
+  const [sessions, setSessions] = useState<UserSession[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchProductivity = useCallback(async () => {
@@ -60,8 +74,20 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
 
       if (activitiesError) throw activitiesError;
 
-      // Get unique user IDs
-      const userIds = [...new Set((activities || []).map(a => a.user_id))];
+      // Fetch user sessions
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('user_sessions')
+        .select('*')
+        .gte('started_at', startDate)
+        .lte('started_at', endDate)
+        .order('started_at', { ascending: false });
+
+      if (sessionsError) throw sessionsError;
+
+      // Get unique user IDs from both activities and sessions
+      const activityUserIds = (activities || []).map(a => a.user_id);
+      const sessionUserIds = (sessionsData || []).map(s => s.user_id);
+      const userIds = [...new Set([...activityUserIds, ...sessionUserIds])];
 
       // Fetch user profiles
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
@@ -77,6 +103,28 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       // Calculate productivity per user
       const userProductivityMap = new Map<string, UserProductivity>();
 
+      // Initialize from sessions
+      (sessionsData || []).forEach(session => {
+        const existing = userProductivityMap.get(session.user_id) || {
+          userId: session.user_id,
+          userName: profileMap.get(session.user_id)?.full_name || null,
+          email: profileMap.get(session.user_id)?.email || null,
+          replies: 0,
+          dmsSent: 0,
+          leadsCreated: 0,
+          sessionMinutes: 0,
+          totalActions: 0,
+          pageVisits: 0,
+        };
+
+        if (session.duration_seconds) {
+          existing.sessionMinutes += Math.round(session.duration_seconds / 60);
+        }
+
+        userProductivityMap.set(session.user_id, existing);
+      });
+
+      // Add activity data
       (activities || []).forEach(activity => {
         const existing = userProductivityMap.get(activity.user_id) || {
           userId: activity.user_id,
@@ -87,6 +135,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           leadsCreated: 0,
           sessionMinutes: 0,
           totalActions: 0,
+          pageVisits: 0,
         };
 
         existing.totalActions++;
@@ -101,6 +150,9 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
             break;
           case 'lead_created':
             existing.leadsCreated++;
+            break;
+          case 'page_visit':
+            existing.pageVisits++;
             break;
           case 'workflow_session_end':
             const duration = (activity.metadata as any)?.duration_seconds || 0;
@@ -123,7 +175,15 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         user_name: profileMap.get(a.user_id)?.full_name,
         user_email: profileMap.get(a.user_id)?.email,
       }));
-      setTimeline(timelineWithNames.slice(0, 100)); // Limit to last 100 activities
+      setTimeline(timelineWithNames.slice(0, 100));
+
+      // Set sessions with user names
+      const sessionsWithNames: UserSession[] = (sessionsData || []).map(s => ({
+        ...s,
+        user_name: profileMap.get(s.user_id)?.full_name,
+        user_email: profileMap.get(s.user_id)?.email,
+      }));
+      setSessions(sessionsWithNames);
 
       // Calculate daily metrics
       const dailyMap = new Map<string, DailyMetric>();
@@ -167,6 +227,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
     productivity,
     timeline,
     dailyMetrics,
+    sessions,
     loading,
     refetch: fetchProductivity,
   };

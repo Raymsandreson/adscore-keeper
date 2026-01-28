@@ -66,7 +66,7 @@ export function TeamProductivityDashboard() {
     }
   }, [dateRangeOption]);
 
-  const { productivity, timeline, dailyMetrics, loading } = useTeamProductivity(dateRange);
+  const { productivity, timeline, dailyMetrics, sessions, loading } = useTeamProductivity(dateRange);
 
   if (roleLoading || loading) {
     return (
@@ -119,8 +119,40 @@ export function TeamProductivityDashboard() {
       follow_requested: 'Solicitou seguir',
       workflow_session_start: 'Iniciou sessão',
       workflow_session_end: 'Finalizou sessão',
+      page_visit: 'Visitou página',
+      login: 'Entrou no sistema',
+      logout: 'Saiu do sistema',
+      button_click: 'Clicou em botão',
+      form_submit: 'Enviou formulário',
+      filter_applied: 'Aplicou filtro',
+      export_data: 'Exportou dados',
+      search_performed: 'Realizou busca',
     };
     return labels[type] || type;
+  };
+
+  const getEndReasonLabel = (reason: string | null) => {
+    if (!reason) return 'Ativa';
+    const labels: Record<string, string> = {
+      logout: 'Logout',
+      inactivity: 'Inatividade',
+      tab_close: 'Fechou aba',
+      session_expired: 'Sessão expirada',
+      new_session: 'Nova sessão',
+    };
+    return labels[reason] || reason;
+  };
+
+  const getEndReasonColor = (reason: string | null) => {
+    if (!reason) return 'bg-green-100 text-green-700';
+    const colors: Record<string, string> = {
+      logout: 'bg-blue-100 text-blue-700',
+      inactivity: 'bg-yellow-100 text-yellow-700',
+      tab_close: 'bg-orange-100 text-orange-700',
+      session_expired: 'bg-red-100 text-red-700',
+      new_session: 'bg-gray-100 text-gray-700',
+    };
+    return colors[reason] || 'bg-gray-100 text-gray-700';
   };
 
   const getActionTypeColor = (type: string) => {
@@ -134,8 +166,21 @@ export function TeamProductivityDashboard() {
       follow_requested: 'bg-orange-100 text-orange-700',
       workflow_session_start: 'bg-emerald-100 text-emerald-700',
       workflow_session_end: 'bg-red-100 text-red-700',
+      page_visit: 'bg-sky-100 text-sky-700',
+      login: 'bg-green-100 text-green-700',
+      logout: 'bg-gray-100 text-gray-700',
     };
     return colors[type] || 'bg-gray-100 text-gray-700';
+  };
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return '-';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}h ${minutes}min`;
+    }
+    return `${minutes}min`;
   };
 
   // Summary stats
@@ -232,17 +277,21 @@ export function TeamProductivityDashboard() {
       </div>
 
       <Tabs defaultValue="ranking" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap">
           <TabsTrigger value="ranking" className="gap-2">
             <Trophy className="h-4 w-4" />
             Ranking
+          </TabsTrigger>
+          <TabsTrigger value="sessions" className="gap-2">
+            <Clock className="h-4 w-4" />
+            Sessões
           </TabsTrigger>
           <TabsTrigger value="chart" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             Gráfico
           </TabsTrigger>
           <TabsTrigger value="timeline" className="gap-2">
-            <Clock className="h-4 w-4" />
+            <Users className="h-4 w-4" />
             Timeline
           </TabsTrigger>
           <TabsTrigger value="evolution" className="gap-2">
@@ -316,6 +365,82 @@ export function TeamProductivityDashboard() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Sessions Tab */}
+        <TabsContent value="sessions">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Histórico de Sessões
+              </CardTitle>
+              <CardDescription>
+                Entradas, saídas e tempo de uso no sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[500px] pr-4">
+                {sessions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhuma sessão registrada no período
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className="flex items-start gap-3 p-4 rounded-lg border bg-card"
+                      >
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">
+                              {session.user_name || session.user_email?.split('@')[0] || 'Usuário'}
+                            </span>
+                            <Badge className={`text-xs ${getEndReasonColor(session.end_reason)}`}>
+                              {getEndReasonLabel(session.end_reason)}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3 text-sm">
+                            <div>
+                              <p className="text-xs text-muted-foreground">Entrada</p>
+                              <p className="font-medium">
+                                {format(new Date(session.started_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Saída</p>
+                              <p className="font-medium">
+                                {session.ended_at 
+                                  ? format(new Date(session.ended_at), "dd/MM/yyyy HH:mm", { locale: ptBR })
+                                  : 'Ainda ativo'
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Duração</p>
+                              <p className="font-medium text-primary">
+                                {formatDuration(session.duration_seconds)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground">Última atividade</p>
+                              <p className="font-medium">
+                                {format(new Date(session.last_activity_at), "HH:mm", { locale: ptBR })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
             </CardContent>
           </Card>
         </TabsContent>
