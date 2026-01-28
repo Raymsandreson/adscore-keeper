@@ -40,6 +40,8 @@ import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
 import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
+import { PasteLeadMessage } from '@/components/leads/PasteLeadMessage';
+import { ParsedLeadData, normalizeState } from '@/utils/leadMessageParser';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -200,6 +202,12 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       console.error('Error moving lead to board:', error);
       toast.error('Erro ao mover lead');
     }
+  };
+
+  const handleParsedMessage = (data: ParsedLeadData) => {
+    if (data.lead_name) setNewLeadName(data.lead_name);
+    if (data.notes) setNewLeadNotes(data.notes);
+    toast.success('Dados extraídos da mensagem!');
   };
 
   const handleAddLead = async () => {
@@ -376,9 +384,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
       {/* Add Lead Dialog */}
       <Dialog open={showAddLeadDialog} onOpenChange={setShowAddLeadDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Adicionar Lead</DialogTitle>
+        <DialogContent className="max-h-[90vh] flex flex-col w-[95vw] sm:max-w-[500px]">
+          <DialogHeader className="flex-shrink-0 space-y-3 pb-4 border-b">
+            <div className="flex items-center justify-between gap-2">
+              <DialogTitle>Adicionar Lead</DialogTitle>
+              <PasteLeadMessage 
+                onParsed={handleParsedMessage}
+                customFieldNames={[]}
+              />
+            </div>
           </DialogHeader>
 
           <div className="space-y-4">
