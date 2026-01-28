@@ -32,7 +32,6 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
-import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
 import { ImportInstagramProspects } from '@/components/kanban/ImportInstagramProspects';
@@ -41,8 +40,6 @@ import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
 import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
-import { PasteLeadMessage } from '@/components/leads/PasteLeadMessage';
-import { ParsedLeadData, normalizeState } from '@/utils/leadMessageParser';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -60,7 +57,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [newLeadEmail, setNewLeadEmail] = useState('');
   const [newLeadNotes, setNewLeadNotes] = useState('');
   const [newLeadSource, setNewLeadSource] = useState('manual');
-  const [newLeadCustomFieldValues, setNewLeadCustomFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
 
   // Kanban boards hook
   const {
@@ -83,9 +79,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     updateLead,
     deleteLead,
   } = useLeads(adAccountId);
-
-  // Custom fields hook
-  const { customFields, saveAllFieldValues } = useLeadCustomFields(adAccountId);
 
   // Stage history hook
   const { addHistoryEntry } = useLeadStageHistory();
@@ -209,60 +202,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     }
   };
 
-  const handleParsedMessage = (data: ParsedLeadData) => {
-    if (data.lead_name) setNewLeadName(data.lead_name);
-    if (data.notes) setNewLeadNotes(data.notes);
-
-    // Map extracted custom fields to existing custom fields
-    if (data.customFields && Object.keys(data.customFields).length > 0 && customFields.length > 0) {
-      const mappedValues: Record<string, { type: FieldType; value: string | number | boolean | null }> = {};
-      let matchedCount = 0;
-
-      Object.entries(data.customFields).forEach(([extractedName, value]) => {
-        const normalizedExtracted = extractedName.toLowerCase().trim();
-        
-        const matchingField = customFields.find(cf => {
-          const normalizedFieldName = cf.field_name.toLowerCase().trim();
-          return normalizedFieldName === normalizedExtracted ||
-                 normalizedFieldName.includes(normalizedExtracted) ||
-                 normalizedExtracted.includes(normalizedFieldName);
-        });
-
-        if (matchingField) {
-          let typedValue: string | number | boolean | null = value;
-          
-          if (matchingField.field_type === 'number') {
-            const parsed = parseFloat(value.replace(/[^\d.,]/g, '').replace(',', '.'));
-            typedValue = isNaN(parsed) ? null : parsed;
-          } else if (matchingField.field_type === 'checkbox') {
-            typedValue = ['sim', 'yes', 'true', '1', 'positivo', 'ativo'].includes(value.toLowerCase());
-          } else if (matchingField.field_type === 'date') {
-            const dateMatch = value.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-            if (dateMatch) {
-              const [, day, month, year] = dateMatch;
-              const fullYear = year.length === 2 ? `20${year}` : year;
-              typedValue = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            }
-          }
-
-          mappedValues[matchingField.id] = {
-            type: matchingField.field_type as FieldType,
-            value: typedValue,
-          };
-          matchedCount++;
-        }
-      });
-
-      if (matchedCount > 0) {
-        setNewLeadCustomFieldValues(prev => ({ ...prev, ...mappedValues }));
-        toast.success(`Dados extraídos! ${matchedCount} campo(s) mapeado(s)`);
-        return;
-      }
-    }
-    
-    toast.success('Dados extraídos da mensagem!');
-  };
-
   const handleAddLead = async () => {
     if (!newLeadName.trim()) {
       toast.error('Nome é obrigatório');
@@ -271,7 +210,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
     const firstStage = selectedBoard?.stages[0]?.id || 'new';
     
-    const createdLead = await addLead({
+    await addLead({
       lead_name: newLeadName,
       lead_phone: newLeadPhone || null,
       lead_email: newLeadEmail || null,
@@ -281,22 +220,12 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       board_id: selectedBoardId,
     } as Partial<Lead>);
 
-    // Save custom field values for the new lead
-    if (createdLead && Object.keys(newLeadCustomFieldValues).length > 0) {
-      try {
-        await saveAllFieldValues(createdLead.id, newLeadCustomFieldValues);
-      } catch (error) {
-        console.error('Error saving custom fields for new lead:', error);
-      }
-    }
-
     // Reset form
     setNewLeadName('');
     setNewLeadPhone('');
     setNewLeadEmail('');
     setNewLeadNotes('');
     setNewLeadSource('manual');
-    setNewLeadCustomFieldValues({});
     setShowAddLeadDialog(false);
   };
 
@@ -447,16 +376,9 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
       {/* Add Lead Dialog */}
       <Dialog open={showAddLeadDialog} onOpenChange={setShowAddLeadDialog}>
-        <DialogContent className="max-h-[90vh] flex flex-col w-[95vw] sm:max-w-[500px]">
-          <DialogHeader className="flex-shrink-0 space-y-3 pb-4 border-b">
-            <div className="flex items-center justify-between gap-2">
-              <DialogTitle>Adicionar Lead</DialogTitle>
-              <PasteLeadMessage 
-                onParsed={handleParsedMessage}
-                customFieldNames={customFields.map(f => f.field_name)}
-                existingCustomFieldNames={customFields.map(f => f.field_name)}
-              />
-            </div>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adicionar Lead</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">

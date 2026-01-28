@@ -38,8 +38,7 @@ import {
   PlayCircle,
   Filter,
   X,
-  Settings,
-  ClipboardPaste
+  Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -60,8 +59,6 @@ import { StagnationSettings } from './leads/StagnationSettings';
 import { StagnantLeadsList } from './leads/StagnantLeadsList';
 import { useStagnationAlerts, StagnantLead } from '@/hooks/useStagnationAlerts';
 import { BarChart3 } from 'lucide-react';
-import { PasteLeadMessage } from './leads/PasteLeadMessage';
-import { ParsedLeadData, normalizeState } from '@/utils/leadMessageParser';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -119,7 +116,6 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
   const [csvPreview, setCsvPreview] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
-  const [newLeadCustomFieldValues, setNewLeadCustomFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [activeTab, setActiveTab] = useState('leads');
   const [newLead, setNewLead] = useState({
     lead_name: '',
@@ -391,15 +387,6 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
 
     const createdLead = await addLead(leadData, testEventCode || undefined);
 
-    // Save custom field values for the new lead
-    if (createdLead && Object.keys(newLeadCustomFieldValues).length > 0) {
-      try {
-        await saveAllFieldValues(createdLead.id, newLeadCustomFieldValues);
-      } catch (error) {
-        console.error('Error saving custom fields for new lead:', error);
-      }
-    }
-
     // Link to contact if pending
     if (createdLead && pendingContactLink) {
       try {
@@ -430,75 +417,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       city: '',
       neighborhood: '',
     });
-    setNewLeadCustomFieldValues({});
     setIsAddDialogOpen(false);
-  };
-
-  // Handle parsed message data
-  const handleParsedMessage = (data: ParsedLeadData) => {
-    // Apply parsed data to form
-    setNewLead(prev => ({
-      ...prev,
-      lead_name: data.lead_name || prev.lead_name,
-      city: data.city || prev.city,
-      state: data.state || prev.state,
-      notes: data.notes || prev.notes,
-    }));
-
-    // If state was parsed, fetch cities
-    if (data.state) {
-      fetchCities(data.state);
-    }
-
-    // Map extracted custom fields to existing custom fields
-    if (data.customFields && Object.keys(data.customFields).length > 0) {
-      const mappedValues: Record<string, { type: FieldType; value: string | number | boolean | null }> = {};
-      let matchedCount = 0;
-
-      // Try to match extracted fields with existing custom fields
-      Object.entries(data.customFields).forEach(([extractedName, value]) => {
-        const normalizedExtracted = extractedName.toLowerCase().trim();
-        
-        // Find matching custom field (fuzzy matching)
-        const matchingField = customFields.find(cf => {
-          const normalizedFieldName = cf.field_name.toLowerCase().trim();
-          return normalizedFieldName === normalizedExtracted ||
-                 normalizedFieldName.includes(normalizedExtracted) ||
-                 normalizedExtracted.includes(normalizedFieldName);
-        });
-
-        if (matchingField) {
-          // Map the value based on field type
-          let typedValue: string | number | boolean | null = value;
-          
-          if (matchingField.field_type === 'number') {
-            const parsed = parseFloat(value.replace(/[^\d.,]/g, '').replace(',', '.'));
-            typedValue = isNaN(parsed) ? null : parsed;
-          } else if (matchingField.field_type === 'checkbox') {
-            typedValue = ['sim', 'yes', 'true', '1', 'positivo', 'ativo'].includes(value.toLowerCase());
-          } else if (matchingField.field_type === 'date') {
-            // Try to parse common date formats
-            const dateMatch = value.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-            if (dateMatch) {
-              const [, day, month, year] = dateMatch;
-              const fullYear = year.length === 2 ? `20${year}` : year;
-              typedValue = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            }
-          }
-
-          mappedValues[matchingField.id] = {
-            type: matchingField.field_type as FieldType,
-            value: typedValue,
-          };
-          matchedCount++;
-        }
-      });
-
-      if (matchedCount > 0) {
-        setNewLeadCustomFieldValues(prev => ({ ...prev, ...mappedValues }));
-        toast.success(`${matchedCount} campo(s) personalizado(s) mapeado(s) automaticamente!`);
-      }
-    }
   };
 
   const handleStatusChange = async (leadId: string, status: LeadStatus) => {
@@ -809,16 +728,9 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               </Button>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogContent className="max-h-[90vh] flex flex-col w-[95vw] sm:max-w-[600px]">
-                  <DialogHeader className="flex-shrink-0 space-y-3 pb-4 border-b">
-                    <div className="flex items-center justify-between gap-2">
-                      <DialogTitle>Adicionar Lead</DialogTitle>
-                      <PasteLeadMessage 
-                        onParsed={handleParsedMessage}
-                        customFieldNames={customFields.map(f => f.field_name)}
-                        existingCustomFieldNames={customFields.map(f => f.field_name)}
-                      />
-                    </div>
+                <DialogContent className="max-h-[85vh] flex flex-col">
+                  <DialogHeader className="flex-shrink-0">
+                    <DialogTitle>Adicionar Novo Lead</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                     <div>
@@ -960,84 +872,6 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                         />
                       </div>
                     </div>
-                    
-                    {/* Custom Fields Section */}
-                    {customFields.length > 0 && (
-                      <div className="space-y-3 pt-2 border-t">
-                        <Label className="text-sm font-medium flex items-center gap-2">
-                          <Settings className="h-4 w-4" />
-                          Campos Personalizados
-                          {Object.keys(newLeadCustomFieldValues).length > 0 && (
-                            <Badge variant="secondary" className="text-xs">
-                              {Object.keys(newLeadCustomFieldValues).length} preenchido(s)
-                            </Badge>
-                          )}
-                        </Label>
-                        <div className="grid grid-cols-2 gap-3">
-                          {customFields.map(field => {
-                            const currentValue = newLeadCustomFieldValues[field.id];
-                            return (
-                              <div key={field.id}>
-                                <Label className="text-xs">{field.field_name}</Label>
-                                {field.field_type === 'text' && (
-                                  <Input
-                                    placeholder={field.field_name}
-                                    value={(currentValue?.value as string) || ''}
-                                    onChange={(e) => setNewLeadCustomFieldValues(prev => ({
-                                      ...prev,
-                                      [field.id]: { type: 'text', value: e.target.value }
-                                    }))}
-                                    className="h-8 text-sm"
-                                  />
-                                )}
-                                {field.field_type === 'number' && (
-                                  <Input
-                                    type="number"
-                                    placeholder="0"
-                                    value={(currentValue?.value as number) || ''}
-                                    onChange={(e) => setNewLeadCustomFieldValues(prev => ({
-                                      ...prev,
-                                      [field.id]: { type: 'number', value: parseFloat(e.target.value) || null }
-                                    }))}
-                                    className="h-8 text-sm"
-                                  />
-                                )}
-                                {field.field_type === 'date' && (
-                                  <Input
-                                    type="date"
-                                    value={(currentValue?.value as string) || ''}
-                                    onChange={(e) => setNewLeadCustomFieldValues(prev => ({
-                                      ...prev,
-                                      [field.id]: { type: 'date', value: e.target.value }
-                                    }))}
-                                    className="h-8 text-sm"
-                                  />
-                                )}
-                                {field.field_type === 'select' && (
-                                  <Select
-                                    value={(currentValue?.value as string) || ''}
-                                    onValueChange={(value) => setNewLeadCustomFieldValues(prev => ({
-                                      ...prev,
-                                      [field.id]: { type: 'text', value }
-                                    }))}
-                                  >
-                                    <SelectTrigger className="h-8 text-sm">
-                                      <SelectValue placeholder="Selecione..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {field.field_options.map(opt => (
-                                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
                     <div>
                       <Label>Observações</Label>
                       <Textarea
