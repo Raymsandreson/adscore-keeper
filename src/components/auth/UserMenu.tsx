@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 import { LogOut, User, Settings } from 'lucide-react';
 
 export const UserMenu = () => {
+  const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -64,7 +66,7 @@ export const UserMenu = () => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem onClick={() => navigate('/profile')}>
           <User className="mr-2 h-4 w-4" />
           <span>Perfil</span>
         </DropdownMenuItem>
