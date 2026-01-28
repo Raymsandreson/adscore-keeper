@@ -294,7 +294,7 @@ export const useContacts = () => {
       const contact = contacts.find(c => c.id === contactId);
       if (!contact) throw new Error('Contato não encontrado');
 
-      // Create lead from contact
+      // Create lead from contact data
       const { data: leadResult, error: leadError } = await supabase
         .from('leads')
         .insert({
@@ -316,7 +316,17 @@ export const useContacts = () => {
 
       if (leadError) throw leadError;
 
-      // Update contact with lead reference
+      // Create link in contact_leads junction table
+      const { error: linkError } = await supabase
+        .from('contact_leads')
+        .insert({
+          contact_id: contactId,
+          lead_id: leadResult.id,
+        });
+
+      if (linkError) throw linkError;
+
+      // Update contact with lead reference (legacy support)
       const { error: updateError } = await supabase
         .from('contacts')
         .update({
@@ -327,12 +337,12 @@ export const useContacts = () => {
 
       if (updateError) throw updateError;
 
-      toast.success('Contato convertido em lead');
+      toast.success('Lead criado e vinculado ao contato');
       fetchContacts();
       return leadResult;
     } catch (error) {
-      console.error('Error converting contact to lead:', error);
-      toast.error('Erro ao converter contato em lead');
+      console.error('Error linking contact to lead:', error);
+      toast.error('Erro ao vincular contato a lead');
       throw error;
     }
   };
