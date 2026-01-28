@@ -367,11 +367,25 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
       return;
     }
 
-    const createdLead = await addLead({
-      ...newLead,
+    // Convert empty strings to null for database compatibility
+    const leadData = {
+      lead_name: newLead.lead_name || null,
+      lead_phone: newLead.lead_phone || null,
+      lead_email: newLead.lead_email || null,
+      campaign_id: newLead.campaign_id || null,
+      campaign_name: newLead.campaign_name || null,
+      ad_name: newLead.ad_name || null,
+      ad_start_date: newLead.ad_start_date || null,
+      notes: newLead.notes || null,
+      ad_spend_at_conversion: newLead.ad_spend_at_conversion || 0,
+      state: newLead.state || null,
+      city: newLead.city || null,
+      neighborhood: newLead.neighborhood || null,
       source: 'whatsapp',
-      status: 'new',
-    }, testEventCode || undefined);
+      status: 'new' as const,
+    };
+
+    const createdLead = await addLead(leadData, testEventCode || undefined);
 
     // Link to contact if pending
     if (createdLead && pendingContactLink) {
