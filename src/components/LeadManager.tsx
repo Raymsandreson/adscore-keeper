@@ -748,11 +748,14 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               </Button>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogContent className="max-h-[85vh] flex flex-col">
+                <DialogContent className="max-h-[85vh] flex flex-col sm:max-w-[600px]">
                   <DialogHeader className="flex-shrink-0">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
                       <DialogTitle>Adicionar Novo Lead</DialogTitle>
-                      <PasteLeadMessage onParsed={handleParsedMessage} />
+                      <PasteLeadMessage 
+                        onParsed={handleParsedMessage}
+                        customFieldNames={customFields.map(f => f.field_name)}
+                      />
                     </div>
                   </DialogHeader>
                   <div className="space-y-4 flex-1 overflow-y-auto pr-2">
