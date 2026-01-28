@@ -1299,11 +1299,11 @@ export const ContactsManager: React.FC = () => {
                     Adicionar
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
+                <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+                  <DialogHeader className="flex-shrink-0">
                     <DialogTitle>Novo Contato</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4">
+                  <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                     <div>
                       <Label>Nome *</Label>
                       <Input
@@ -2485,14 +2485,14 @@ export const ContactsManager: React.FC = () => {
 
       {/* Convert to Lead Dialog */}
       <Dialog open={isConvertDialogOpen} onOpenChange={setIsConvertDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
               Converter em Lead
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 flex-1 overflow-y-auto">
             <p className="text-sm text-muted-foreground">
               Escolha em qual quadro Kanban o lead <strong>{contactToConvert?.full_name}</strong> deve ser criado:
             </p>

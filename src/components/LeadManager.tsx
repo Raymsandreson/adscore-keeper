@@ -714,11 +714,11 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               </Button>
               
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogContent>
-                  <DialogHeader>
+                <DialogContent className="max-h-[85vh] flex flex-col">
+                  <DialogHeader className="flex-shrink-0">
                     <DialogTitle>Adicionar Novo Lead</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4">
+                  <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                     <div>
                       <Label>Nome</Label>
                       <Input
@@ -867,7 +867,7 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
                       />
                     </div>
                   </div>
-                  <DialogFooter>
+                  <DialogFooter className="flex-shrink-0 pt-4 border-t">
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                       Cancelar
                     </Button>

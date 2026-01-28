@@ -28,8 +28,8 @@ export const ClassificationWorkflowSettings: React.FC<ClassificationWorkflowSett
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
             Configurar Visibilidade no Workflow
@@ -39,7 +39,7 @@ export const ClassificationWorkflowSettings: React.FC<ClassificationWorkflowSett
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-4 py-2 border-b">
+        <div className="flex items-center gap-4 py-2 border-b flex-shrink-0">
           <Badge variant="outline" className="gap-1">
             <Eye className="h-3 w-3" />
             {visibleCount} visíveis

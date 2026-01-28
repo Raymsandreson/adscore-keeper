@@ -494,15 +494,15 @@ const GoalReportScheduler = ({ goals, getProgress, getStatus }: GoalReportSchedu
                 Novo Agendamento
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
+              <DialogHeader className="flex-shrink-0">
                 <DialogTitle>Novo Agendamento de Relatório</DialogTitle>
                 <DialogDescription>
                   Configure quando e para quem enviar os relatórios
                 </DialogDescription>
               </DialogHeader>
               
-              <div className="space-y-4 py-4">
+              <div className="space-y-4 py-4 flex-1 overflow-y-auto">
                 <div className="space-y-2">
                   <Label>Nome do Agendamento</Label>
                   <Input 

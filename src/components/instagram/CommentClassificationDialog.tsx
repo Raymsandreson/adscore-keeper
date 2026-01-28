@@ -667,8 +667,8 @@ export const CommentClassificationDialog = ({
   if (showRelationshipStep) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 text-primary" />
               Em relação a quem?
@@ -680,7 +680,7 @@ export const CommentClassificationDialog = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 flex-1 overflow-y-auto">
             <div className="flex items-center justify-between">
               <Label htmlFor="has-relationship" className="text-sm">
                 Este contato tem um vínculo com alguém?
