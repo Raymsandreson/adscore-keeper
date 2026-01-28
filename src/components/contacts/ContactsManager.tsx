@@ -708,12 +708,11 @@ export const ContactsManager: React.FC = () => {
   const handleConfirmConvert = async () => {
     if (!contactToConvert) return;
     
-    const selectedBoard = kanbanBoards.find(b => b.id === selectedBoardId);
-    const selectedStage = selectedBoard?.stages.find(s => s.id === selectedStageId);
-    
+    // Use the stage ID directly as status, since kanban boards use UUIDs for stages
+    // The leads table stores the stage ID in the status field when using dynamic kanban boards
     await convertToLead(contactToConvert.id, {
       board_id: selectedBoardId || null,
-      status: selectedStage?.name?.toLowerCase().replace(/\s+/g, '_') || 'new',
+      status: selectedStageId || 'new',
     });
     
     setIsConvertDialogOpen(false);
