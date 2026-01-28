@@ -38,7 +38,8 @@ import {
   PlayCircle,
   Filter,
   X,
-  Settings
+  Settings,
+  ClipboardPaste
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -59,6 +60,8 @@ import { StagnationSettings } from './leads/StagnationSettings';
 import { StagnantLeadsList } from './leads/StagnantLeadsList';
 import { useStagnationAlerts, StagnantLead } from '@/hooks/useStagnationAlerts';
 import { BarChart3 } from 'lucide-react';
+import { PasteLeadMessage } from './leads/PasteLeadMessage';
+import { ParsedLeadData, normalizeState } from '@/utils/leadMessageParser';
 
 const daysOfWeek = [
   { value: 0, label: 'Domingo', short: 'Dom' },
@@ -420,6 +423,23 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
     setIsAddDialogOpen(false);
   };
 
+  // Handle parsed message data
+  const handleParsedMessage = (data: ParsedLeadData) => {
+    // Apply parsed data to form
+    setNewLead(prev => ({
+      ...prev,
+      lead_name: data.lead_name || prev.lead_name,
+      city: data.city || prev.city,
+      state: data.state || prev.state,
+      notes: data.notes || prev.notes,
+    }));
+
+    // If state was parsed, fetch cities
+    if (data.state) {
+      fetchCities(data.state);
+    }
+  };
+
   const handleStatusChange = async (leadId: string, status: LeadStatus) => {
     if (status === 'converted') {
       const value = prompt('Qual foi o valor da conversão? (R$)');
@@ -730,7 +750,10 @@ const LeadManager = ({ adAccountId, campaigns = [], totalSpend = 0 }: LeadManage
               <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                 <DialogContent className="max-h-[85vh] flex flex-col">
                   <DialogHeader className="flex-shrink-0">
-                    <DialogTitle>Adicionar Novo Lead</DialogTitle>
+                    <div className="flex items-center justify-between">
+                      <DialogTitle>Adicionar Novo Lead</DialogTitle>
+                      <PasteLeadMessage onParsed={handleParsedMessage} />
+                    </div>
                   </DialogHeader>
                   <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                     <div>
