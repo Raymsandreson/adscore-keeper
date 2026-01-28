@@ -12,13 +12,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 interface PasteLeadMessageProps {
   onParsed: (data: ParsedLeadData) => void;
   customFieldNames?: string[];
+  existingCustomFieldNames?: string[];
 }
 
-export function PasteLeadMessage({ onParsed, customFieldNames = [] }: PasteLeadMessageProps) {
+export function PasteLeadMessage({ onParsed, customFieldNames = [], existingCustomFieldNames = [] }: PasteLeadMessageProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<ParsedLeadData | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [matchedFields, setMatchedFields] = useState<string[]>([]);
 
   const handleParse = () => {
     if (!message.trim()) return;
@@ -29,6 +31,24 @@ export function PasteLeadMessage({ onParsed, customFieldNames = [] }: PasteLeadM
     if (parsed.state) {
       parsed.state = normalizeState(parsed.state);
     }
+    
+    // Find matches between extracted fields and existing custom fields
+    const matched: string[] = [];
+    if (parsed.customFields && existingCustomFieldNames.length > 0) {
+      Object.keys(parsed.customFields).forEach(extractedName => {
+        const normalizedExtracted = extractedName.toLowerCase().trim();
+        const matchingField = existingCustomFieldNames.find(cfName => {
+          const normalizedFieldName = cfName.toLowerCase().trim();
+          return normalizedFieldName === normalizedExtracted ||
+                 normalizedFieldName.includes(normalizedExtracted) ||
+                 normalizedExtracted.includes(normalizedFieldName);
+        });
+        if (matchingField) {
+          matched.push(extractedName);
+        }
+      });
+    }
+    setMatchedFields(matched);
     
     setPreview(parsed);
   };
@@ -45,6 +65,7 @@ export function PasteLeadMessage({ onParsed, customFieldNames = [] }: PasteLeadM
     setIsOpen(false);
     setMessage('');
     setPreview(null);
+    setMatchedFields([]);
   };
 
   return (
@@ -131,17 +152,30 @@ export function PasteLeadMessage({ onParsed, customFieldNames = [] }: PasteLeadM
                     Campos Personalizados ({Object.keys(preview.customFields).length}):
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {Object.entries(preview.customFields).slice(0, 6).map(([key, value]) => (
-                      <Badge key={key} variant="secondary" className="text-xs">
-                        {key}
-                      </Badge>
-                    ))}
-                    {Object.keys(preview.customFields).length > 6 && (
+                    {Object.entries(preview.customFields).slice(0, 8).map(([key, value]) => {
+                      const isMatched = matchedFields.includes(key);
+                      return (
+                        <Badge 
+                          key={key} 
+                          variant={isMatched ? "default" : "secondary"} 
+                          className={`text-xs ${isMatched ? 'bg-green-500 hover:bg-green-600' : ''}`}
+                          title={isMatched ? `Será mapeado para campo existente: ${value}` : value}
+                        >
+                          {isMatched && '✓ '}{key}
+                        </Badge>
+                      );
+                    })}
+                    {Object.keys(preview.customFields).length > 8 && (
                       <Badge variant="secondary" className="text-xs">
-                        +{Object.keys(preview.customFields).length - 6} mais
+                        +{Object.keys(preview.customFields).length - 8} mais
                       </Badge>
                     )}
                   </div>
+                  {matchedFields.length > 0 && (
+                    <p className="text-xs text-green-600">
+                      ✓ {matchedFields.length} campo(s) serão mapeados automaticamente
+                    </p>
+                  )}
                 </div>
               )}
 
