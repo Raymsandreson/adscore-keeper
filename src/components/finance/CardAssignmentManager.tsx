@@ -38,17 +38,33 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
   const [loadingContacts, setLoadingContacts] = useState(false);
 
   // Fetch all contacts - any contact can be linked to a card
+  // Note: Supabase has a 1000 row default limit, we need to fetch all contacts in batches
   useEffect(() => {
     const fetchContacts = async () => {
       setLoadingContacts(true);
       try {
-        const { data, error } = await supabase
+        // First, get total count
+        const { count } = await supabase
           .from('contacts')
-          .select('id, full_name, instagram_username, phone, classification, classifications')
-          .order('full_name', { ascending: true });
+          .select('*', { count: 'exact', head: true });
 
-        if (error) throw error;
-        setContacts(data || []);
+        // Fetch in batches of 1000
+        const pageSize = 1000;
+        const allContacts: Contact[] = [];
+        const totalPages = Math.ceil((count || 0) / pageSize);
+
+        for (let page = 0; page < totalPages; page++) {
+          const { data, error } = await supabase
+            .from('contacts')
+            .select('id, full_name, instagram_username, phone, classification, classifications')
+            .order('full_name', { ascending: true })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (error) throw error;
+          if (data) allContacts.push(...data);
+        }
+
+        setContacts(allContacts);
       } catch (err) {
         console.error('Error fetching contacts:', err);
       } finally {
