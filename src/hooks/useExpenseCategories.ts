@@ -11,6 +11,7 @@ export interface ExpenseCategory {
   limit_unit: 'per_transaction' | 'per_day' | 'per_month' | null;
   is_system: boolean;
   display_order: number;
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,12 +100,13 @@ export function useExpenseCategories() {
           limit_unit: category.limit_unit || null,
           is_system: false,
           display_order: category.display_order || 50,
+          parent_id: category.parent_id || null,
         }])
         .select()
         .single();
 
       if (error) throw error;
-      toast.success('Categoria criada');
+      toast.success(category.parent_id ? 'Subcategoria criada' : 'Categoria criada');
       await fetchCategories();
       return data as ExpenseCategory;
     } catch (err: any) {
@@ -113,6 +115,14 @@ export function useExpenseCategories() {
       throw err;
     }
   }, [fetchCategories]);
+
+  const getParentCategories = useCallback(() => {
+    return categories.filter(c => !c.parent_id);
+  }, [categories]);
+
+  const getSubcategories = useCallback((parentId: string) => {
+    return categories.filter(c => c.parent_id === parentId);
+  }, [categories]);
 
   const updateCategory = useCallback(async (id: string, updates: Partial<ExpenseCategory>) => {
     try {
@@ -284,5 +294,7 @@ export function useExpenseCategories() {
     getTransactionOverride,
     getCategoryById,
     checkLimitViolation,
+    getParentCategories,
+    getSubcategories,
   };
 }

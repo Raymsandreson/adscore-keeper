@@ -742,6 +742,7 @@ export type Database = {
           limit_unit: string | null
           max_limit_per_unit: number | null
           name: string
+          parent_id: string | null
           updated_at: string
         }
         Insert: {
@@ -754,6 +755,7 @@ export type Database = {
           limit_unit?: string | null
           max_limit_per_unit?: number | null
           name: string
+          parent_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -766,9 +768,18 @@ export type Database = {
           limit_unit?: string | null
           max_limit_per_unit?: number | null
           name?: string
+          parent_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       goal_history: {
         Row: {
