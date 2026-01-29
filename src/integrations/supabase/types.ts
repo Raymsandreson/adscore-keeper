@@ -87,6 +87,7 @@ export type Database = {
         Row: {
           card_last_digits: string
           card_name: string | null
+          contact_id: string | null
           created_at: string
           id: string
           lead_id: string | null
@@ -98,6 +99,7 @@ export type Database = {
         Insert: {
           card_last_digits: string
           card_name?: string | null
+          contact_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -109,6 +111,7 @@ export type Database = {
         Update: {
           card_last_digits?: string
           card_name?: string | null
+          contact_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -118,6 +121,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "card_assignments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "card_assignments_lead_id_fkey"
             columns: ["lead_id"]
