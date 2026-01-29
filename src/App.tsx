@@ -8,6 +8,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PageTracker } from "@/components/PageTracker";
+import { GlobalCommandPalette } from "@/components/GlobalCommandPalette";
+import { FloatingNav } from "@/components/FloatingNav";
 import Index from "./pages/Index";
 import LeadsCenter from "./pages/LeadsCenter";
 import EditorialCalendarPage from "./pages/EditorialCalendarPage";
@@ -44,6 +46,8 @@ function AppRoutes() {
   return (
     <>
       <PageTracker />
+      <GlobalCommandPalette />
+      <FloatingNav />
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
