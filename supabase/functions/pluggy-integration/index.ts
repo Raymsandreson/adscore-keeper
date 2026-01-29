@@ -51,6 +51,9 @@ async function getPluggyApiKey(): Promise<string> {
   const clientId = Deno.env.get('PLUGGY_CLIENT_ID');
   const clientSecret = Deno.env.get('PLUGGY_CLIENT_SECRET');
 
+  console.log('Pluggy auth - clientId present:', !!clientId);
+  console.log('Pluggy auth - clientSecret present:', !!clientSecret);
+
   if (!clientId || !clientSecret) {
     throw new Error('Pluggy credentials not configured');
   }
@@ -61,13 +64,25 @@ async function getPluggyApiKey(): Promise<string> {
     body: JSON.stringify({ clientId, clientSecret }),
   });
 
+  const responseText = await response.text();
+  console.log('Pluggy auth response status:', response.status);
+  console.log('Pluggy auth response:', responseText.substring(0, 200));
+
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Pluggy auth failed: ${error}`);
+    throw new Error(`Pluggy auth failed: ${responseText}`);
   }
 
-  const data: PluggyAuthResponse = await response.json();
-  return data.apiKey;
+  const data = JSON.parse(responseText);
+  // Pluggy API returns 'apiKey' field
+  const apiKey = data.apiKey || data.accessToken || data.access_token;
+  
+  if (!apiKey) {
+    console.log('Full response data:', JSON.stringify(data));
+    throw new Error('No API key found in Pluggy auth response');
+  }
+  
+  console.log('Got API key, length:', apiKey.length);
+  return apiKey;
 }
 
 async function createConnectToken(apiKey: string, itemId?: string): Promise<string> {
@@ -304,78 +319,72 @@ serve(async (req) => {
       }
 
       case 'list_pluggy_items': {
-        // List all items from Pluggy API (not saved to our DB yet)
-        console.log('Listing items from Pluggy API');
+        // Note: Pluggy API doesn't support listing all items
+        // We can only retrieve items by ID if we have them saved
+        console.log('list_pluggy_items: This operation is not supported by Pluggy API');
         
-        const response = await fetch(`${PLUGGY_API_URL}/items`, {
-          headers: { 'X-API-KEY': apiKey },
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Failed to list items: ${error}`);
-        }
-
-        const data = await response.json();
-        const items = data.results || [];
+        // Return connections from our database instead
+        const { data: dbConnections } = await supabase
+          .from('pluggy_connections')
+          .select('*')
+          .eq('user_id', user.id);
         
-        console.log('Found Pluggy items:', items.length);
-        
-        return new Response(JSON.stringify({ items }), {
+        return new Response(JSON.stringify({ 
+          items: dbConnections || [],
+          message: 'Pluggy API does not support listing all items. Showing saved connections.'
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'import_existing_connections': {
-        // Import all existing connections from Pluggy to our DB
-        console.log('Importing existing connections from Pluggy');
+        // Since Pluggy doesn't have a list endpoint, we need to update existing connections
+        // by checking their status individually
+        console.log('Checking existing connections status');
         
-        const response = await fetch(`${PLUGGY_API_URL}/items`, {
-          headers: { 'X-API-KEY': apiKey },
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Failed to list items: ${error}`);
+        const { data: existingConnections } = await supabase
+          .from('pluggy_connections')
+          .select('*')
+          .eq('user_id', user.id);
+        
+        if (!existingConnections || existingConnections.length === 0) {
+          return new Response(JSON.stringify({ 
+            success: true, 
+            imported: 0,
+            message: 'Nenhuma conexão encontrada. Use o Pluggy Connect para adicionar uma nova conexão.',
+            connections: [] 
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
-
-        const data = await response.json();
-        const items = data.results || [];
         
-        console.log('Found', items.length, 'items to import');
-        
-        const imported = [];
-        for (const item of items) {
-          // Only import active items
-          if (item.status === 'UPDATED' || item.status === 'UPDATING' || item.status === 'LOGIN_ERROR') {
-            const connectionData = {
-              user_id: user.id,
-              pluggy_item_id: item.id,
-              connector_name: item.connector?.name || 'Unknown',
-              connector_type: item.connector?.type || 'Unknown',
-              status: item.status,
-              last_sync_at: new Date().toISOString(),
-            };
-            
-            const { data: upsertData, error: upsertError } = await supabase
+        // Update status of existing connections
+        const updated = [];
+        for (const conn of existingConnections) {
+          try {
+            const item = await getItem(apiKey, conn.pluggy_item_id);
+            const { error: updateError } = await supabase
               .from('pluggy_connections')
-              .upsert(connectionData, { onConflict: 'pluggy_item_id' })
-              .select();
-
-            if (!upsertError && upsertData) {
-              imported.push(upsertData[0]);
-            } else {
-              console.error('Error importing item:', item.id, upsertError);
+              .update({ 
+                status: item.status,
+                connector_name: item.connector?.name || conn.connector_name,
+                last_sync_at: new Date().toISOString()
+              })
+              .eq('id', conn.id);
+            
+            if (!updateError) {
+              updated.push({ ...conn, status: item.status });
             }
+          } catch (err) {
+            console.log(`Error updating connection ${conn.id}:`, err);
           }
         }
         
-        console.log('Imported', imported.length, 'connections');
-        
         return new Response(JSON.stringify({ 
           success: true, 
-          imported: imported.length,
-          connections: imported 
+          updated: updated.length,
+          connections: updated,
+          message: `${updated.length} conexões atualizadas.`
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
