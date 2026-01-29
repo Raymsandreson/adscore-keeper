@@ -291,23 +291,12 @@ export default function FinancePage() {
               <Link2Off className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">Nenhuma conta conectada</h3>
               <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
-                Se você já conectou contas pelo app Pluggy/Way, clique em "Importar Contas" para sincronizá-las.
-                Ou conecte uma nova conta bancária através do Open Finance.
+                Conecte uma conta bancária através do Open Finance para acompanhar seus gastos no cartão de crédito.
               </p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={handleImportConnections} 
-                  disabled={isImporting}
-                >
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isImporting && "animate-spin")} />
-                  Importar Contas
-                </Button>
-                <Button onClick={handleConnect} disabled={isConnecting}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Conectar Banco
-                </Button>
-              </div>
+              <Button onClick={handleConnect} disabled={isConnecting}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Conectar Banco
+              </Button>
             </CardContent>
           </Card>
         )}
