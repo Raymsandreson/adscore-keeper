@@ -1,0 +1,462 @@
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { 
+  CreditCard, 
+  RefreshCw, 
+  CalendarIcon, 
+  Search, 
+  ArrowLeft,
+  Link2,
+  Link2Off,
+  Building2,
+  TrendingDown,
+  Filter,
+  Download,
+  Trash2
+} from "lucide-react";
+import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+
+declare global {
+  interface Window {
+    PluggyConnect?: {
+      init: (config: {
+        connectToken: string;
+        onSuccess: (data: { item: { id: string } }) => void;
+        onError: (error: any) => void;
+        onClose: () => void;
+      }) => { open: () => void };
+    };
+  }
+}
+
+export default function FinancePage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const {
+    transactions,
+    connections,
+    loading,
+    syncing,
+    error,
+    fetchTransactions,
+    fetchConnections,
+    createConnectToken,
+    saveConnection,
+    syncTransactions,
+    deleteConnection,
+    getCategoryTotals,
+    getTotalSpent,
+  } = useCreditCardTransactions();
+
+  const [dateRange, setDateRange] = useState({
+    start: startOfMonth(new Date()),
+    end: endOfMonth(new Date()),
+  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  useEffect(() => {
+    // Load Pluggy Connect SDK
+    const script = document.createElement('script');
+    script.src = 'https://cdn.pluggy.ai/pluggy-connect/v2.2.0/pluggy-connect.js';
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchConnections();
+      fetchTransactions(dateRange);
+    }
+  }, [user, fetchConnections, fetchTransactions, dateRange]);
+
+  const handleConnect = useCallback(async () => {
+    setIsConnecting(true);
+    try {
+      const connectToken = await createConnectToken();
+      
+      if (window.PluggyConnect) {
+        const pluggyConnect = window.PluggyConnect.init({
+          connectToken,
+          onSuccess: async (data) => {
+            await saveConnection(data.item.id);
+            toast.success('Conta conectada com sucesso!');
+            await syncTransactions(dateRange);
+          },
+          onError: (error) => {
+            console.error('Pluggy Connect error:', error);
+            toast.error('Erro ao conectar conta');
+          },
+          onClose: () => {
+            setIsConnecting(false);
+          },
+        });
+        pluggyConnect.open();
+      } else {
+        toast.error('SDK Pluggy não carregado');
+        setIsConnecting(false);
+      }
+    } catch (err: any) {
+      console.error('Error creating connect token:', err);
+      toast.error('Erro ao iniciar conexão');
+      setIsConnecting(false);
+    }
+  }, [createConnectToken, saveConnection, syncTransactions, dateRange]);
+
+  const handleSync = useCallback(async () => {
+    await syncTransactions(dateRange);
+    toast.success('Transações sincronizadas!');
+  }, [syncTransactions, dateRange]);
+
+  const handleDeleteConnection = useCallback(async (itemId: string) => {
+    if (confirm('Tem certeza que deseja desconectar esta conta?')) {
+      await deleteConnection(itemId);
+      toast.success('Conta desconectada');
+    }
+  }, [deleteConnection]);
+
+  const filteredTransactions = transactions.filter(t => {
+    const matchesSearch = searchTerm === "" || 
+      t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = categoryFilter === null || t.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  const categoryTotals = getCategoryTotals();
+  const totalSpent = getTotalSpent();
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
+
+  const quickDateRanges = [
+    { label: 'Este mês', start: startOfMonth(new Date()), end: endOfMonth(new Date()) },
+    { label: 'Mês passado', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) },
+    { label: 'Últimos 3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
+  ];
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Faça login para acessar</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  <CreditCard className="h-6 w-6 text-primary" />
+                  Gastos do Cartão
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Open Finance via Pluggy
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleSync}
+                disabled={syncing || connections.length === 0}
+              >
+                <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
+                Sincronizar
+              </Button>
+              <Button onClick={handleConnect} disabled={isConnecting}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Conectar Banco
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-6 space-y-6">
+        {/* Connected Accounts */}
+        {connections.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Contas Conectadas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-3">
+                {connections.map((conn) => (
+                  <div
+                    key={conn.id}
+                    className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2"
+                  >
+                    <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'}>
+                      {conn.connector_name}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {conn.last_sync_at
+                        ? `Sync: ${format(new Date(conn.last_sync_at), "dd/MM HH:mm")}`
+                        : 'Nunca sincronizado'}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleDeleteConnection(conn.pluggy_item_id)}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State */}
+        {connections.length === 0 && !loading && (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Link2Off className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">Nenhuma conta conectada</h3>
+              <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
+                Conecte sua conta bancária através do Open Finance para visualizar seus gastos do cartão de crédito.
+              </p>
+              <Button onClick={handleConnect} disabled={isConnecting}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Conectar Banco
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Date Range & Filters */}
+        {connections.length > 0 && (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex gap-2">
+                {quickDateRanges.map((range, i) => (
+                  <Button
+                    key={i}
+                    variant={
+                      dateRange.start.getTime() === range.start.getTime() &&
+                      dateRange.end.getTime() === range.end.getTime()
+                        ? 'default'
+                        : 'outline'
+                    }
+                    size="sm"
+                    onClick={() => setDateRange(range)}
+                  >
+                    {range.label}
+                  </Button>
+                ))}
+              </div>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <CalendarIcon className="h-4 w-4 mr-2" />
+                    {format(dateRange.start, "dd/MM/yy")} - {format(dateRange.end, "dd/MM/yy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={{ from: dateRange.start, to: dateRange.end }}
+                    onSelect={(range) => {
+                      if (range?.from && range?.to) {
+                        setDateRange({ start: range.from, end: range.to });
+                      }
+                    }}
+                    locale={ptBR}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <div className="flex-1" />
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar transação..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 w-64"
+                />
+              </div>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Total Gasto
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-destructive">
+                    {loading ? <Skeleton className="h-8 w-32" /> : formatCurrency(totalSpent)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {filteredTransactions.length} transações
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="md:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
+                    Categorias
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge
+                      variant={categoryFilter === null ? 'default' : 'outline'}
+                      className="cursor-pointer"
+                      onClick={() => setCategoryFilter(null)}
+                    >
+                      Todas
+                    </Badge>
+                    {categoryTotals.slice(0, 6).map(({ category, total }) => (
+                      <Badge
+                        key={category}
+                        variant={categoryFilter === category ? 'default' : 'outline'}
+                        className="cursor-pointer"
+                        onClick={() => setCategoryFilter(category)}
+                      >
+                        {category} ({formatCurrency(total)})
+                      </Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Transactions Table */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5" />
+                    Transações
+                  </CardTitle>
+                  <Button variant="outline" size="sm" disabled>
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {loading ? (
+                  <div className="p-6 space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : filteredTransactions.length === 0 ? (
+                  <div className="p-12 text-center text-muted-foreground">
+                    Nenhuma transação encontrada
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[500px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead>Categoria</TableHead>
+                          <TableHead>Cartão</TableHead>
+                          <TableHead className="text-right">Valor</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredTransactions.map((transaction) => (
+                          <TableRow key={transaction.id}>
+                            <TableCell className="font-mono text-sm">
+                              {format(new Date(transaction.transaction_date), "dd/MM/yy")}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-medium truncate max-w-[300px]">
+                                  {transaction.description}
+                                </p>
+                                {transaction.merchant_name && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {transaction.merchant_name}
+                                  </p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">
+                                {transaction.category || 'Outros'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {transaction.card_last_digits
+                                ? `****${transaction.card_last_digits}`
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              <span className={transaction.amount < 0 ? 'text-destructive' : 'text-green-600'}>
+                                {formatCurrency(transaction.amount)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {error && (
+          <Card className="border-destructive">
+            <CardContent className="py-4">
+              <p className="text-destructive text-sm">{error}</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}

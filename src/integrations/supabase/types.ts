@@ -340,6 +340,57 @@ export type Database = {
           },
         ]
       }
+      credit_card_transactions: {
+        Row: {
+          amount: number
+          card_last_digits: string | null
+          category: string | null
+          created_at: string
+          currency_code: string | null
+          description: string | null
+          id: string
+          merchant_name: string | null
+          payment_data: Json | null
+          pluggy_account_id: string
+          pluggy_transaction_id: string
+          transaction_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          card_last_digits?: string | null
+          category?: string | null
+          created_at?: string
+          currency_code?: string | null
+          description?: string | null
+          id?: string
+          merchant_name?: string | null
+          payment_data?: Json | null
+          pluggy_account_id: string
+          pluggy_transaction_id: string
+          transaction_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          card_last_digits?: string | null
+          category?: string | null
+          created_at?: string
+          currency_code?: string | null
+          description?: string | null
+          id?: string
+          merchant_name?: string | null
+          payment_data?: Json | null
+          pluggy_account_id?: string
+          pluggy_transaction_id?: string
+          transaction_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dm_history: {
         Row: {
           action_type: string
@@ -1417,6 +1468,42 @@ export type Database = {
           target_rate?: number
           total_replies?: number
           total_sent?: number
+        }
+        Relationships: []
+      }
+      pluggy_connections: {
+        Row: {
+          connector_name: string | null
+          connector_type: string | null
+          created_at: string
+          id: string
+          last_sync_at: string | null
+          pluggy_item_id: string
+          status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          connector_name?: string | null
+          connector_type?: string | null
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          pluggy_item_id: string
+          status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          connector_name?: string | null
+          connector_type?: string | null
+          created_at?: string
+          id?: string
+          last_sync_at?: string | null
+          pluggy_item_id?: string
+          status?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
