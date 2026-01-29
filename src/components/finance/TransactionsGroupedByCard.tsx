@@ -155,8 +155,13 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                         </div>
                         <div>
                           <CardTitle className="text-lg">
-                            **** {cardDigits}
+                            {data.assignment?.card_name || `**** ${cardDigits}`}
                           </CardTitle>
+                          {data.assignment?.card_name && (
+                            <p className="text-xs text-muted-foreground font-mono">
+                              **** {cardDigits}
+                            </p>
+                          )}
                           {data.assignment && (
                             <p className="text-sm text-muted-foreground">
                               {data.assignment.lead_name}

@@ -86,6 +86,7 @@ export type Database = {
       card_assignments: {
         Row: {
           card_last_digits: string
+          card_name: string | null
           created_at: string
           id: string
           lead_id: string | null
@@ -96,6 +97,7 @@ export type Database = {
         }
         Insert: {
           card_last_digits: string
+          card_name?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -106,6 +108,7 @@ export type Database = {
         }
         Update: {
           card_last_digits?: string
+          card_name?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null

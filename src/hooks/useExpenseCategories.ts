@@ -18,6 +18,7 @@ export interface ExpenseCategory {
 export interface CardAssignment {
   id: string;
   card_last_digits: string;
+  card_name: string | null;
   lead_id: string | null;
   lead_name: string | null;
   pluggy_account_id: string | null;
@@ -153,6 +154,7 @@ export function useExpenseCategories() {
         .from('card_assignments')
         .upsert([{
           card_last_digits: assignment.card_last_digits,
+          card_name: assignment.card_name || null,
           lead_id: assignment.lead_id || null,
           lead_name: assignment.lead_name || null,
           pluggy_account_id: assignment.pluggy_account_id || null,
@@ -168,6 +170,23 @@ export function useExpenseCategories() {
     } catch (err: any) {
       console.error('Error assigning card:', err);
       toast.error('Erro ao vincular cartão');
+      throw err;
+    }
+  }, [fetchCardAssignments]);
+
+  const updateCardAssignment = useCallback(async (id: string, updates: Partial<CardAssignment>) => {
+    try {
+      const { error } = await supabase
+        .from('card_assignments')
+        .update(updates)
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Cartão atualizado');
+      await fetchCardAssignments();
+    } catch (err: any) {
+      console.error('Error updating card assignment:', err);
+      toast.error('Erro ao atualizar cartão');
       throw err;
     }
   }, [fetchCardAssignments]);
@@ -258,6 +277,7 @@ export function useExpenseCategories() {
     updateCategory,
     deleteCategory,
     assignCard,
+    updateCardAssignment,
     removeCardAssignment,
     setTransactionOverride,
     getCardAssignment,
