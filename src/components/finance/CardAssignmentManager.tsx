@@ -35,9 +35,9 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingContacts, setLoadingContacts] = useState(false);
 
-  // Fetch contacts with "acolhedor" classification
+  // Fetch all contacts - any contact can be linked to a card
   useEffect(() => {
-    const fetchAcolhedores = async () => {
+    const fetchContacts = async () => {
       setLoadingContacts(true);
       try {
         const { data, error } = await supabase
@@ -46,16 +46,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
           .order('full_name', { ascending: true });
 
         if (error) throw error;
-        
-        // Filter contacts that have "acolhedor" in their classifications
-        const acolhedores = (data || []).filter(contact => {
-          const hasAcolhedorClassification = 
-            contact.classification?.toLowerCase() === 'acolhedor' ||
-            (contact.classifications || []).some(c => c.toLowerCase() === 'acolhedor');
-          return hasAcolhedorClassification;
-        });
-        
-        setContacts(acolhedores);
+        setContacts(data || []);
       } catch (err) {
         console.error('Error fetching contacts:', err);
       } finally {
@@ -63,7 +54,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
       }
     };
 
-    fetchAcolhedores();
+    fetchContacts();
   }, []);
 
   const unassignedCards = availableCards.filter(
@@ -85,7 +76,8 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
       card_last_digits: selectedCard,
       card_name: cardName || null,
       contact_id: selectedContact,
-      lead_name: contact?.full_name || contact?.instagram_username || 'Acolhedor',
+      contact_name: contact?.full_name || contact?.instagram_username || null,
+      lead_name: contact?.full_name || contact?.instagram_username || 'Contato',
     });
 
     closeDialog();
@@ -99,8 +91,11 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     await updateCardAssignment(editingAssignment.id, {
       card_name: cardName || null,
       contact_id: selectedContact || editingAssignment.contact_id,
+      contact_name: contact 
+        ? (contact.full_name || contact.instagram_username || null)
+        : editingAssignment.contact_name,
       lead_name: contact 
-        ? (contact.full_name || contact.instagram_username || 'Acolhedor')
+        ? (contact.full_name || contact.instagram_username || 'Contato')
         : editingAssignment.lead_name,
     });
 
@@ -134,7 +129,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <UserCheck className="h-5 w-5" />
-            Cartões x Acolhedores
+            Cartões x Contatos
           </CardTitle>
           <Dialog open={isOpen} onOpenChange={(open) => open ? setIsOpen(true) : closeDialog()}>
             <DialogTrigger asChild>
@@ -146,7 +141,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>
-                  {editingAssignment ? 'Editar Cartão' : 'Vincular Cartão a Acolhedor'}
+                  {editingAssignment ? 'Editar Vínculo' : 'Vincular Cartão a Contato'}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
@@ -196,15 +191,15 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                 <div>
                   <Label className="flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    Acolhedor (Contato)
+                    Contato Responsável
                   </Label>
                   <p className="text-xs text-muted-foreground mb-2">
-                    Apenas contatos com classificação "acolhedor" aparecem aqui
+                    Todas as despesas deste cartão serão atribuídas a este contato por padrão
                   </p>
                   <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Buscar acolhedor..."
+                      placeholder="Buscar contato..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-9"
@@ -218,39 +213,46 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                         </p>
                       ) : filteredContacts.length === 0 ? (
                         <div className="text-sm text-muted-foreground p-4 text-center space-y-2">
-                          <p>Nenhum acolhedor encontrado</p>
+                          <p>Nenhum contato encontrado</p>
                           <p className="text-xs">
-                            Adicione a classificação "acolhedor" a um contato para vinculá-lo
+                            Cadastre contatos no módulo de Contatos
                           </p>
                         </div>
                       ) : (
-                        filteredContacts.map((contact) => (
-                          <button
-                            key={contact.id}
-                            type="button"
-                            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                              selectedContact === contact.id 
-                                ? 'bg-primary text-primary-foreground' 
-                                : 'hover:bg-muted'
-                            }`}
-                            onClick={() => setSelectedContact(contact.id)}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-medium">{getContactDisplay(contact)}</p>
-                                {contact.instagram_username && contact.full_name && (
-                                  <p className="text-xs opacity-70">@{contact.instagram_username}</p>
-                                )}
-                                {contact.phone && (
-                                  <p className="text-xs opacity-70">{contact.phone}</p>
+                        filteredContacts.map((contact) => {
+                          const isAcolhedor = contact.classification?.toLowerCase() === 'acolhedor' ||
+                            (contact.classifications || []).some(c => c.toLowerCase() === 'acolhedor');
+                          
+                          return (
+                            <button
+                              key={contact.id}
+                              type="button"
+                              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                                selectedContact === contact.id 
+                                  ? 'bg-primary text-primary-foreground' 
+                                  : 'hover:bg-muted'
+                              }`}
+                              onClick={() => setSelectedContact(contact.id)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium">{getContactDisplay(contact)}</p>
+                                  {contact.instagram_username && contact.full_name && (
+                                    <p className="text-xs opacity-70">@{contact.instagram_username}</p>
+                                  )}
+                                  {contact.phone && (
+                                    <p className="text-xs opacity-70">{contact.phone}</p>
+                                  )}
+                                </div>
+                                {isAcolhedor && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Acolhedor
+                                  </Badge>
                                 )}
                               </div>
-                              <Badge variant="secondary" className="text-xs">
-                                Acolhedor
-                              </Badge>
-                            </div>
-                          </button>
-                        ))
+                            </button>
+                          );
+                        })
                       )}
                     </div>
                   </ScrollArea>
@@ -349,7 +351,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
         {contacts.length === 0 && !loadingContacts && (
           <div className="mt-4 pt-4 border-t">
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              💡 Dica: Para vincular cartões, adicione a classificação "acolhedor" aos contatos desejados em Contatos
+              💡 Dica: Cadastre contatos no módulo de Contatos para vincular cartões
             </p>
           </div>
         )}
