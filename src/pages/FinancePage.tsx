@@ -24,7 +24,8 @@ import {
   Download,
   Trash2,
   Settings,
-  LayoutGrid
+  LayoutGrid,
+  Users
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -36,6 +37,7 @@ import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryMana
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
+import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -83,7 +85,7 @@ export default function FinancePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
-  const [activeTab, setActiveTab] = useState("by-card");
+  const [activeTab, setActiveTab] = useState("logistics");
 
   // Get unique card digits for assignment manager
   const availableCards = useMemo(() => {
@@ -474,7 +476,11 @@ export default function FinancePage() {
 
             {/* Tabs for different views */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="logistics" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Acolhedores
+                </TabsTrigger>
                 <TabsTrigger value="by-card" className="flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
                   Por Cartão
@@ -488,6 +494,10 @@ export default function FinancePage() {
                   Configurações
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="logistics" className="mt-4">
+                <AcolhedorLogisticsDashboard transactions={filteredTransactions} />
+              </TabsContent>
 
               <TabsContent value="by-card" className="mt-4">
                 {loading ? (
