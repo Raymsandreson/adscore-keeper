@@ -1671,6 +1671,7 @@ export type Database = {
       transaction_category_overrides: {
         Row: {
           category_id: string
+          contact_id: string | null
           created_at: string
           id: string
           lead_id: string | null
@@ -1679,6 +1680,7 @@ export type Database = {
         }
         Insert: {
           category_id: string
+          contact_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -1687,6 +1689,7 @@ export type Database = {
         }
         Update: {
           category_id?: string
+          contact_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -1699,6 +1702,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
           {
