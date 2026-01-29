@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Plus, 
   Pencil, 
@@ -24,6 +23,7 @@ import {
   FolderPlus
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { DeleteCategoryDialog } from './DeleteCategoryDialog';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   tag: Tag,
@@ -56,10 +56,14 @@ interface CategoryFormData {
 }
 
 export function ExpenseCategoryManager() {
-  const { categories, loading, addCategory, updateCategory, deleteCategory, getParentCategories, getSubcategories } = useExpenseCategories();
+  const { categories, loading, addCategory, updateCategory, deleteCategory, getCategoryExpenseCount, getParentCategories, getSubcategories } = useExpenseCategories();
   const [isOpen, setIsOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<ExpenseCategory | null>(null);
+  const [expenseCountToDelete, setExpenseCountToDelete] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     icon: 'tag',
@@ -126,10 +130,29 @@ export function ExpenseCategoryManager() {
     resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir esta categoria?')) {
-      await deleteCategory(id);
+  const handleDeleteClick = async (category: ExpenseCategory) => {
+    setCategoryToDelete(category);
+    const count = await getCategoryExpenseCount(category.id);
+    setExpenseCountToDelete(count);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async (reassignToCategoryId?: string) => {
+    if (!categoryToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await deleteCategory(categoryToDelete.id, reassignToCategoryId);
+      setDeleteDialogOpen(false);
+      setCategoryToDelete(null);
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const getAvailableCategoriesForReassign = () => {
+    if (!categoryToDelete) return [];
+    return categories.filter(c => c.id !== categoryToDelete.id && !c.is_system);
   };
 
   const toggleExpanded = (categoryId: string) => {
@@ -223,15 +246,15 @@ export function ExpenseCategoryManager() {
             >
               <Pencil className="h-4 w-4" />
             </Button>
-            {!category.is_system && (
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={() => handleDelete(category.id)}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            )}
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => handleDeleteClick(category)}
+              title={category.is_system ? 'Categoria do sistema' : 'Excluir categoria'}
+              disabled={category.is_system}
+            >
+              <Trash2 className={`h-4 w-4 ${category.is_system ? 'text-muted-foreground' : 'text-destructive'}`} />
+            </Button>
           </div>
         </div>
 
@@ -397,6 +420,16 @@ export function ExpenseCategoryManager() {
           {parentCategories.map((category) => renderCategoryItem(category))}
         </div>
       </CardContent>
+
+      <DeleteCategoryDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        category={categoryToDelete}
+        expenseCount={expenseCountToDelete}
+        availableCategories={getAvailableCategoriesForReassign()}
+        onConfirm={handleDeleteConfirm}
+        loading={isDeleting}
+      />
     </Card>
   );
 }
