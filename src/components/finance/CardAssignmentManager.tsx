@@ -64,6 +64,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
           if (data) allContacts.push(...data);
         }
 
+        console.log(`[CardAssignment] Loaded ${allContacts.length} contacts in ${totalPages} batches`);
         setContacts(allContacts);
       } catch (err) {
         console.error('Error fetching contacts:', err);
