@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Plus, 
   Pencil, 
@@ -18,7 +19,9 @@ import {
   Plane,
   Briefcase,
   Package,
-  AlertTriangle
+  AlertTriangle,
+  ChevronRight,
+  FolderPlus
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 
@@ -49,19 +52,24 @@ interface CategoryFormData {
   color: string;
   max_limit_per_unit: string;
   limit_unit: string;
+  parent_id: string;
 }
 
 export function ExpenseCategoryManager() {
-  const { categories, loading, addCategory, updateCategory, deleteCategory } = useExpenseCategories();
+  const { categories, loading, addCategory, updateCategory, deleteCategory, getParentCategories, getSubcategories } = useExpenseCategories();
   const [isOpen, setIsOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     icon: 'tag',
     color: 'bg-gray-500',
     max_limit_per_unit: '',
     limit_unit: '',
+    parent_id: '',
   });
+
+  const parentCategories = getParentCategories();
 
   const resetForm = () => {
     setFormData({
@@ -70,6 +78,7 @@ export function ExpenseCategoryManager() {
       color: 'bg-gray-500',
       max_limit_per_unit: '',
       limit_unit: '',
+      parent_id: '',
     });
     setEditingCategory(null);
   };
@@ -82,7 +91,14 @@ export function ExpenseCategoryManager() {
       color: category.color,
       max_limit_per_unit: category.max_limit_per_unit?.toString() || '',
       limit_unit: category.limit_unit || '',
+      parent_id: category.parent_id || '',
     });
+    setIsOpen(true);
+  };
+
+  const handleAddSubcategory = (parentId: string) => {
+    resetForm();
+    setFormData(prev => ({ ...prev, parent_id: parentId }));
     setIsOpen(true);
   };
 
@@ -97,6 +113,7 @@ export function ExpenseCategoryManager() {
       color: formData.color,
       max_limit_per_unit: formData.max_limit_per_unit ? parseFloat(formData.max_limit_per_unit) : null,
       limit_unit: limitUnit || null,
+      parent_id: formData.parent_id || null,
     };
 
     if (editingCategory) {
@@ -113,6 +130,18 @@ export function ExpenseCategoryManager() {
     if (confirm('Tem certeza que deseja excluir esta categoria?')) {
       await deleteCategory(id);
     }
+  };
+
+  const toggleExpanded = (categoryId: string) => {
+    setExpandedCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
+      } else {
+        newSet.add(categoryId);
+      }
+      return newSet;
+    });
   };
 
   const formatCurrency = (value: number) => {
@@ -136,6 +165,85 @@ export function ExpenseCategoryManager() {
     return Icon;
   };
 
+  const renderCategoryItem = (category: ExpenseCategory, isSubcategory = false) => {
+    const Icon = IconComponent(category.icon);
+    const subcategories = getSubcategories(category.id);
+    const hasSubcategories = subcategories.length > 0;
+    const isExpanded = expandedCategories.has(category.id);
+
+    return (
+      <div key={category.id}>
+        <div
+          className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors ${isSubcategory ? 'ml-6 border-l-2 border-l-primary/30' : ''}`}
+        >
+          <div className="flex items-center gap-3">
+            {!isSubcategory && hasSubcategories && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => toggleExpanded(category.id)}
+              >
+                <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              </Button>
+            )}
+            {!isSubcategory && !hasSubcategories && <div className="w-6" />}
+            <div className={`p-2 rounded-lg ${category.color} text-white`}>
+              <Icon className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-medium">{category.name}</p>
+              {category.max_limit_per_unit && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-amber-500" />
+                  Limite: {formatCurrency(category.max_limit_per_unit)} {getLimitLabel(category.limit_unit)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {category.is_system && (
+              <Badge variant="outline" className="text-xs">Sistema</Badge>
+            )}
+            {!isSubcategory && (
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => handleAddSubcategory(category.id)}
+                title="Adicionar subcategoria"
+              >
+                <FolderPlus className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            )}
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => handleEdit(category)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            {!category.is_system && (
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => handleDelete(category.id)}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {!isSubcategory && hasSubcategories && isExpanded && (
+          <div className="mt-1 space-y-1">
+            {subcategories.map(sub => renderCategoryItem(sub, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -151,13 +259,35 @@ export function ExpenseCategoryManager() {
                 Nova Categoria
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
+                  {editingCategory ? 'Editar Categoria' : formData.parent_id ? 'Nova Subcategoria' : 'Nova Categoria'}
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                {!editingCategory && (
+                  <div>
+                    <Label>Categoria Pai (opcional)</Label>
+                    <Select
+                      value={formData.parent_id}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, parent_id: value === 'none' ? '' : value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Nenhuma (categoria principal)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Nenhuma (categoria principal)</SelectItem>
+                        {parentCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div>
                   <Label>Nome</Label>
                   <Input
@@ -264,63 +394,7 @@ export function ExpenseCategoryManager() {
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {categories.map((category) => {
-            const Icon = IconComponent(category.icon);
-            return (
-              <div
-                key={category.id}
-                className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${category.color} text-white`}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{category.name}</p>
-                    {category.max_limit_per_unit && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-amber-500" />
-                        Limite: {formatCurrency(category.max_limit_per_unit)} {getLimitLabel(category.limit_unit)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {category.is_system && (
-                    <Badge variant="outline" className="text-xs">Sistema</Badge>
-                  )}
-                  {!category.is_system && (
-                    <>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleEdit(category)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleDelete(category.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </>
-                  )}
-                  {category.is_system && (
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => handleEdit(category)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {parentCategories.map((category) => renderCategoryItem(category))}
         </div>
       </CardContent>
     </Card>
