@@ -480,9 +480,21 @@ export function useExpenseCategories() {
   }, [categories, overrides, calculateAverageAnalysis]);
 
   useEffect(() => {
-    fetchCategories();
-    fetchCardAssignments();
-    fetchOverrides();
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (isMounted) {
+        await fetchCategories();
+        await fetchCardAssignments();
+        await fetchOverrides();
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
   }, [fetchCategories, fetchCardAssignments, fetchOverrides]);
 
   return {
