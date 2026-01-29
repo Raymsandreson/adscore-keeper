@@ -64,17 +64,25 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
   );
 
   const filteredContacts = contacts.filter(contact => {
-    // Text search - also search without @ prefix
-    const normalizedSearch = searchTerm.toLowerCase().replace('@', '');
-    const matchesSearch = !searchTerm || 
-      contact.full_name?.toLowerCase().replace('@', '').includes(normalizedSearch) ||
-      contact.instagram_username?.toLowerCase().includes(normalizedSearch) ||
-      contact.phone?.includes(searchTerm);
+    // Text search - normalize by removing @ and trimming
+    const normalizedSearch = searchTerm.trim().toLowerCase().replace(/@/g, '');
+    const normalizedFullName = (contact.full_name || '').toLowerCase().replace(/@/g, '');
+    const normalizedUsername = (contact.instagram_username || '').toLowerCase().replace(/@/g, '');
+    const normalizedPhone = (contact.phone || '').toLowerCase();
     
-    // Classification filter
+    const matchesSearch = !normalizedSearch || 
+      normalizedFullName.includes(normalizedSearch) ||
+      normalizedUsername.includes(normalizedSearch) ||
+      normalizedPhone.includes(normalizedSearch);
+    
+    // Classification filter - check both singular and array fields
+    const contactClassification = (contact.classification || '').toLowerCase();
+    const contactClassifications = (contact.classifications || []).map(c => c.toLowerCase());
+    const filterClassification = selectedClassification.toLowerCase();
+    
     const matchesClassification = selectedClassification === 'all' || 
-      contact.classification?.toLowerCase() === selectedClassification.toLowerCase() ||
-      (contact.classifications || []).some(c => c.toLowerCase() === selectedClassification.toLowerCase());
+      contactClassification === filterClassification ||
+      contactClassifications.includes(filterClassification);
     
     return matchesSearch && matchesClassification;
   });
