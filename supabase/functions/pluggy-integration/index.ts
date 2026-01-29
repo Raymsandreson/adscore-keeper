@@ -184,6 +184,8 @@ serve(async (req) => {
       }
 
       case 'save_connection': {
+        console.log('save_connection called with itemId:', itemId);
+        
         if (!itemId) {
           return new Response(JSON.stringify({ error: 'itemId is required' }), {
             status: 400,
@@ -192,34 +194,46 @@ serve(async (req) => {
         }
 
         const item = await getItem(apiKey, itemId);
+        console.log('Pluggy item fetched:', JSON.stringify(item));
         
-        const { error: insertError } = await supabase
+        const connectionData = {
+          user_id: user.id,
+          pluggy_item_id: itemId,
+          connector_name: item.connector?.name || 'Unknown',
+          connector_type: item.connector?.type || 'Unknown',
+          status: item.status || 'UPDATING',
+          last_sync_at: new Date().toISOString(),
+        };
+        console.log('Saving connection:', JSON.stringify(connectionData));
+        
+        const { data: upsertData, error: insertError } = await supabase
           .from('pluggy_connections')
-          .upsert({
-            user_id: user.id,
-            pluggy_item_id: itemId,
-            connector_name: item.connector?.name || 'Unknown',
-            connector_type: item.connector?.type || 'Unknown',
-            status: item.status,
-            last_sync_at: new Date().toISOString(),
-          }, { onConflict: 'pluggy_item_id' });
+          .upsert(connectionData, { onConflict: 'pluggy_item_id' })
+          .select();
 
         if (insertError) {
+          console.error('Error saving connection:', insertError);
           throw new Error(`Failed to save connection: ${insertError.message}`);
         }
+        
+        console.log('Connection saved successfully:', upsertData);
 
-        return new Response(JSON.stringify({ success: true }), {
+        return new Response(JSON.stringify({ success: true, connection: upsertData }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'sync_transactions': {
-        const { data: connections } = await supabase
+        console.log('sync_transactions called for user:', user.id);
+        
+        // Get all connections, not just UPDATED ones (status can vary)
+        const { data: connections, error: connError } = await supabase
           .from('pluggy_connections')
           .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'UPDATED');
+          .eq('user_id', user.id);
 
+        console.log('Found connections:', connections?.length, 'Error:', connError);
+        
         if (!connections || connections.length === 0) {
           return new Response(JSON.stringify({ transactions: [], message: 'No active connections' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
