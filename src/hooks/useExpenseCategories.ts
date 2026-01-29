@@ -37,6 +37,36 @@ export interface TransactionOverride {
   created_at: string;
 }
 
+export interface DailyLimitAnalysis {
+  date: string;
+  categoryId: string;
+  categoryName: string;
+  limit: number;
+  totalSpent: number;
+  exceeded: boolean;
+  diff: number;
+  transactionCount: number;
+}
+
+export interface AverageLimitAnalysis {
+  categoryId: string;
+  categoryName: string;
+  limit: number;
+  averageDaily: number;
+  averageMonthly: number;
+  daysWithTransactions: number;
+  totalSpent: number;
+  exceedsAverageDaily: boolean;
+  exceedsAverageMonthly: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  amount: number;
+  transaction_date: string;
+  category?: string | null;
+}
+
 export function useExpenseCategories() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [cardAssignments, setCardAssignments] = useState<CardAssignment[]>([]);
@@ -256,8 +286,9 @@ export function useExpenseCategories() {
     return categories.find(c => c.id === id);
   }, [categories]);
 
+  // Check limit violation for a single transaction (per_transaction type)
   const checkLimitViolation = useCallback((category: ExpenseCategory, amount: number) => {
-    if (!category.max_limit_per_unit || !category.limit_unit) return null;
+    if (!category.max_limit_per_unit || category.limit_unit !== 'per_transaction') return null;
     
     if (Math.abs(amount) > category.max_limit_per_unit) {
       return {
@@ -269,6 +300,149 @@ export function useExpenseCategories() {
     }
     return null;
   }, []);
+
+  // Calculate daily totals for a category from a list of transactions
+  const calculateDailyLimits = useCallback((
+    transactions: Transaction[],
+    categoryId: string,
+    overridesMap: Map<string, string>
+  ): DailyLimitAnalysis[] => {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category || !category.max_limit_per_unit || category.limit_unit !== 'per_day') {
+      return [];
+    }
+
+    // Group transactions by date
+    const dailyTotals = new Map<string, { total: number; count: number }>();
+
+    transactions.forEach(tx => {
+      const txCategoryId = overridesMap.get(tx.id) || null;
+      if (txCategoryId !== categoryId) return;
+
+      const dateKey = tx.transaction_date;
+      const current = dailyTotals.get(dateKey) || { total: 0, count: 0 };
+      dailyTotals.set(dateKey, {
+        total: current.total + Math.abs(tx.amount),
+        count: current.count + 1,
+      });
+    });
+
+    const results: DailyLimitAnalysis[] = [];
+    dailyTotals.forEach((data, date) => {
+      const exceeded = data.total > category.max_limit_per_unit!;
+      results.push({
+        date,
+        categoryId,
+        categoryName: category.name,
+        limit: category.max_limit_per_unit!,
+        totalSpent: data.total,
+        exceeded,
+        diff: exceeded ? data.total - category.max_limit_per_unit! : 0,
+        transactionCount: data.count,
+      });
+    });
+
+    return results.sort((a, b) => b.date.localeCompare(a.date));
+  }, [categories]);
+
+  // Calculate average spending analysis for a category
+  const calculateAverageAnalysis = useCallback((
+    transactions: Transaction[],
+    categoryId: string,
+    overridesMap: Map<string, string>
+  ): AverageLimitAnalysis | null => {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category || !category.max_limit_per_unit) {
+      return null;
+    }
+
+    // Filter transactions for this category
+    const categoryTransactions = transactions.filter(tx => {
+      const txCategoryId = overridesMap.get(tx.id) || null;
+      return txCategoryId === categoryId;
+    });
+
+    if (categoryTransactions.length === 0) {
+      return null;
+    }
+
+    // Calculate totals
+    const totalSpent = categoryTransactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    
+    // Get unique days with transactions
+    const uniqueDays = new Set(categoryTransactions.map(tx => tx.transaction_date));
+    const daysWithTransactions = uniqueDays.size;
+
+    // Calculate averages
+    const averageDaily = daysWithTransactions > 0 ? totalSpent / daysWithTransactions : 0;
+    
+    // For monthly average, we estimate based on the date range
+    const dates = categoryTransactions.map(tx => new Date(tx.transaction_date));
+    const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+    const monthsSpan = Math.max(1, (maxDate.getFullYear() - minDate.getFullYear()) * 12 + (maxDate.getMonth() - minDate.getMonth()) + 1);
+    const averageMonthly = totalSpent / monthsSpan;
+
+    // Check if averages exceed limits based on limit_unit
+    let exceedsAverageDaily = false;
+    let exceedsAverageMonthly = false;
+
+    if (category.limit_unit === 'per_day') {
+      exceedsAverageDaily = averageDaily > category.max_limit_per_unit;
+    } else if (category.limit_unit === 'per_month') {
+      exceedsAverageMonthly = averageMonthly > category.max_limit_per_unit;
+    }
+
+    return {
+      categoryId,
+      categoryName: category.name,
+      limit: category.max_limit_per_unit,
+      averageDaily,
+      averageMonthly,
+      daysWithTransactions,
+      totalSpent,
+      exceedsAverageDaily,
+      exceedsAverageMonthly,
+    };
+  }, [categories]);
+
+  // Get all daily violations across all categories
+  const getAllDailyViolations = useCallback((
+    transactions: Transaction[]
+  ): DailyLimitAnalysis[] => {
+    const overridesMap = new Map(overrides.map(o => [o.transaction_id, o.category_id]));
+    
+    const allViolations: DailyLimitAnalysis[] = [];
+    
+    categories.forEach(category => {
+      if (category.limit_unit === 'per_day' && category.max_limit_per_unit) {
+        const dailyResults = calculateDailyLimits(transactions, category.id, overridesMap);
+        allViolations.push(...dailyResults.filter(r => r.exceeded));
+      }
+    });
+
+    return allViolations.sort((a, b) => b.date.localeCompare(a.date));
+  }, [categories, overrides, calculateDailyLimits]);
+
+  // Get average analysis for all categories
+  const getAllAverageAnalysis = useCallback((
+    transactions: Transaction[]
+  ): AverageLimitAnalysis[] => {
+    const overridesMap = new Map(overrides.map(o => [o.transaction_id, o.category_id]));
+    
+    const analyses: AverageLimitAnalysis[] = [];
+    
+    categories.forEach(category => {
+      if (category.max_limit_per_unit) {
+        const analysis = calculateAverageAnalysis(transactions, category.id, overridesMap);
+        if (analysis) {
+          analyses.push(analysis);
+        }
+      }
+    });
+
+    return analyses;
+  }, [categories, overrides, calculateAverageAnalysis]);
 
   useEffect(() => {
     fetchCategories();
@@ -296,5 +470,9 @@ export function useExpenseCategories() {
     checkLimitViolation,
     getParentCategories,
     getSubcategories,
+    calculateDailyLimits,
+    calculateAverageAnalysis,
+    getAllDailyViolations,
+    getAllAverageAnalysis,
   };
 }

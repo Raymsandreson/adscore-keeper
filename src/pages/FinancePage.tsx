@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
+import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -587,6 +588,7 @@ export default function FinancePage() {
               </TabsContent>
 
               <TabsContent value="settings" className="mt-4 space-y-4">
+                <LimitAnalysisPanel transactions={filteredTransactions} />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <ExpenseCategoryManager />
                   <CardAssignmentManager availableCards={availableCards} />
