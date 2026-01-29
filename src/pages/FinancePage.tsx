@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   CreditCard, 
   RefreshCw, 
@@ -21,7 +22,9 @@ import {
   TrendingDown,
   Filter,
   Download,
-  Trash2
+  Trash2,
+  Settings,
+  LayoutGrid
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -29,6 +32,9 @@ import { cn } from "@/lib/utils";
 import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
+import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
+import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -76,6 +82,13 @@ export default function FinancePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
+  const [activeTab, setActiveTab] = useState("by-card");
+
+  // Get unique card digits for assignment manager
+  const availableCards = useMemo(() => {
+    const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
+    return Array.from(cards);
+  }, [transactions]);
 
   useEffect(() => {
     // Load Pluggy Connect SDK - using latest version
@@ -458,84 +471,128 @@ export default function FinancePage() {
               </Card>
             </div>
 
-            {/* Transactions Table */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingDown className="h-5 w-5" />
-                    Transações
-                  </CardTitle>
-                  <Button variant="outline" size="sm" disabled>
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
+            {/* Tabs for different views */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="by-card" className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Por Cartão
+                </TabsTrigger>
+                <TabsTrigger value="list" className="flex items-center gap-2">
+                  <LayoutGrid className="h-4 w-4" />
+                  Lista
+                </TabsTrigger>
+                <TabsTrigger value="settings" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="by-card" className="mt-4">
                 {loading ? (
-                  <div className="p-6 space-y-3">
-                    {[...Array(5)].map((_, i) => (
-                      <Skeleton key={i} className="h-12 w-full" />
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-24 w-full" />
                     ))}
                   </div>
                 ) : filteredTransactions.length === 0 ? (
-                  <div className="p-12 text-center text-muted-foreground">
-                    Nenhuma transação encontrada
-                  </div>
+                  <Card>
+                    <CardContent className="py-12 text-center text-muted-foreground">
+                      Nenhuma transação encontrada
+                    </CardContent>
+                  </Card>
                 ) : (
-                  <ScrollArea className="h-[500px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Data</TableHead>
-                          <TableHead>Descrição</TableHead>
-                          <TableHead>Categoria</TableHead>
-                          <TableHead>Cartão</TableHead>
-                          <TableHead className="text-right">Valor</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredTransactions.map((transaction) => (
-                          <TableRow key={transaction.id}>
-                            <TableCell className="font-mono text-sm">
-                              {format(new Date(transaction.transaction_date), "dd/MM/yy")}
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium truncate max-w-[300px]">
-                                  {transaction.description}
-                                </p>
-                                {transaction.merchant_name && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {transaction.merchant_name}
-                                  </p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="text-xs">
-                                {transaction.category || 'Outros'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {transaction.card_last_digits
-                                ? `****${transaction.card_last_digits}`
-                                : '-'}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              <span className={transaction.amount < 0 ? 'text-destructive' : 'text-green-600'}>
-                                {formatCurrency(transaction.amount)}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
+                  <TransactionsGroupedByCard transactions={filteredTransactions} />
                 )}
-              </CardContent>
-            </Card>
+              </TabsContent>
+
+              <TabsContent value="list" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <TrendingDown className="h-5 w-5" />
+                        Transações
+                      </CardTitle>
+                      <Button variant="outline" size="sm" disabled>
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {loading ? (
+                      <div className="p-6 space-y-3">
+                        {[...Array(5)].map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                      </div>
+                    ) : filteredTransactions.length === 0 ? (
+                      <div className="p-12 text-center text-muted-foreground">
+                        Nenhuma transação encontrada
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-[500px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Data</TableHead>
+                              <TableHead>Descrição</TableHead>
+                              <TableHead>Categoria</TableHead>
+                              <TableHead>Cartão</TableHead>
+                              <TableHead className="text-right">Valor</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredTransactions.map((transaction) => (
+                              <TableRow key={transaction.id}>
+                                <TableCell className="font-mono text-sm">
+                                  {format(new Date(transaction.transaction_date), "dd/MM/yy")}
+                                </TableCell>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium truncate max-w-[300px]">
+                                      {transaction.description}
+                                    </p>
+                                    {transaction.merchant_name && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {transaction.merchant_name}
+                                      </p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary" className="text-xs">
+                                    {transaction.category || 'Outros'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  {transaction.card_last_digits
+                                    ? `****${transaction.card_last_digits}`
+                                    : '-'}
+                                </TableCell>
+                                <TableCell className="text-right font-mono">
+                                  <span className={transaction.amount < 0 ? 'text-destructive' : 'text-green-600'}>
+                                    {formatCurrency(transaction.amount)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="settings" className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <ExpenseCategoryManager />
+                  <CardAssignmentManager availableCards={availableCards} />
+                </div>
+              </TabsContent>
+            </Tabs>
           </>
         )}
 

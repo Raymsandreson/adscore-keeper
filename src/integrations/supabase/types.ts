@@ -83,6 +83,47 @@ export type Database = {
         }
         Relationships: []
       }
+      card_assignments: {
+        Row: {
+          card_last_digits: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          notes: string | null
+          pluggy_account_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          card_last_digits: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          notes?: string | null
+          pluggy_account_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          card_last_digits?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          notes?: string | null
+          pluggy_account_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_assignments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cbo_professions: {
         Row: {
           cbo_code: string
@@ -684,6 +725,45 @@ export type Database = {
           username?: string
           week_end?: string
           week_start?: string
+        }
+        Relationships: []
+      }
+      expense_categories: {
+        Row: {
+          color: string | null
+          created_at: string
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_system: boolean | null
+          limit_unit: string | null
+          max_limit_per_unit: number | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          limit_unit?: string | null
+          max_limit_per_unit?: number | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_system?: boolean | null
+          limit_unit?: string | null
+          max_limit_per_unit?: number | null
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1563,6 +1643,55 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
+      }
+      transaction_category_overrides: {
+        Row: {
+          category_id: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          notes: string | null
+          transaction_id: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          transaction_id: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transaction_category_overrides_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: true
+            referencedRelation: "credit_card_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_activity_log: {
         Row: {
