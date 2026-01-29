@@ -290,7 +290,7 @@ export function useExpenseCategories() {
   const setTransactionOverride = useCallback(async (
     transactionId: string, 
     categoryId: string, 
-    leadId?: string,
+    contactId?: string,
     notes?: string
   ) => {
     try {
@@ -299,7 +299,7 @@ export function useExpenseCategories() {
         .upsert([{
           transaction_id: transactionId,
           category_id: categoryId,
-          lead_id: leadId || null,
+          contact_id: contactId || null,
           notes: notes || null,
         }], { onConflict: 'transaction_id' });
 
