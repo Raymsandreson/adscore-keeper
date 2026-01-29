@@ -32,14 +32,13 @@ import { toast } from "sonner";
 
 declare global {
   interface Window {
-    PluggyConnect?: {
-      init: (config: {
-        connectToken: string;
-        onSuccess: (data: { item: { id: string } }) => void;
-        onError: (error: any) => void;
-        onClose: () => void;
-      }) => { open: () => void };
-    };
+    PluggyConnect?: new (config: {
+      connectToken: string;
+      includeSandbox?: boolean;
+      onSuccess?: (data: { item: { id: string } }) => void;
+      onError?: (error: { message: string; data?: any }) => void;
+      onClose?: () => void;
+    }) => { init: () => Promise<void> };
   }
 }
 
@@ -71,14 +70,22 @@ export default function FinancePage() {
   const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
-    // Load Pluggy Connect SDK
+    // Load Pluggy Connect SDK - using latest version
     const script = document.createElement('script');
-    script.src = 'https://cdn.pluggy.ai/pluggy-connect/v2.2.0/pluggy-connect.js';
+    script.src = 'https://cdn.pluggy.ai/pluggy-connect/latest/pluggy-connect.js';
     script.async = true;
+    script.onload = () => {
+      console.log('Pluggy Connect SDK loaded');
+    };
+    script.onerror = () => {
+      console.error('Failed to load Pluggy Connect SDK');
+    };
     document.body.appendChild(script);
 
     return () => {
-      document.body.removeChild(script);
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
     };
   }, []);
 
@@ -95,24 +102,27 @@ export default function FinancePage() {
       const connectToken = await createConnectToken();
       
       if (window.PluggyConnect) {
-        const pluggyConnect = window.PluggyConnect.init({
+        const pluggyConnect = new window.PluggyConnect({
           connectToken,
+          includeSandbox: false,
           onSuccess: async (data) => {
             await saveConnection(data.item.id);
             toast.success('Conta conectada com sucesso!');
             await syncTransactions(dateRange);
+            setIsConnecting(false);
           },
           onError: (error) => {
             console.error('Pluggy Connect error:', error);
             toast.error('Erro ao conectar conta');
+            setIsConnecting(false);
           },
           onClose: () => {
             setIsConnecting(false);
           },
         });
-        pluggyConnect.open();
+        await pluggyConnect.init();
       } else {
-        toast.error('SDK Pluggy não carregado');
+        toast.error('SDK Pluggy não carregado. Tente recarregar a página.');
         setIsConnecting(false);
       }
     } catch (err: any) {
