@@ -30,17 +30,20 @@ import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-declare global {
-  interface Window {
-    PluggyConnect?: new (config: {
-      connectToken: string;
-      includeSandbox?: boolean;
-      onSuccess?: (data: { item: { id: string } }) => void;
-      onError?: (error: { message: string; data?: any }) => void;
-      onClose?: () => void;
-    }) => { init: () => Promise<void> };
-  }
+// Pluggy Connect type definition
+interface PluggyConnectConfig {
+  connectToken: string;
+  includeSandbox?: boolean;
+  onSuccess?: (data: { item: { id: string } }) => void;
+  onError?: (error: { message: string; data?: unknown }) => void;
+  onClose?: () => void;
 }
+
+interface PluggyConnectInstance {
+  init: () => Promise<void>;
+}
+
+type PluggyConnectConstructor = new (config: PluggyConnectConfig) => PluggyConnectInstance;
 
 export default function FinancePage() {
   const navigate = useNavigate();
@@ -101,8 +104,10 @@ export default function FinancePage() {
     try {
       const connectToken = await createConnectToken();
       
-      if (window.PluggyConnect) {
-        const pluggyConnect = new window.PluggyConnect({
+      const PluggyConnect = (window as unknown as { PluggyConnect?: PluggyConnectConstructor }).PluggyConnect;
+      
+      if (PluggyConnect) {
+        const pluggyConnect = new PluggyConnect({
           connectToken,
           includeSandbox: false,
           onSuccess: async (data) => {
