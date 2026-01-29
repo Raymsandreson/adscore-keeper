@@ -29,7 +29,7 @@ import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
 import { UserMenu } from "./auth/UserMenu";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound, CreditCard } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useMetaAPI, DateRangeOption } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
@@ -332,6 +332,13 @@ const Dashboard = () => {
               <Button variant="outline" size="sm">
                 <TrendingUp className="h-4 w-4 mr-2" />
                 Analytics
+              </Button>
+            </Link>
+
+            <Link to="/finance">
+              <Button variant="outline" size="sm" className="border-green-500/50 hover:bg-green-500/10">
+                <CreditCard className="h-4 w-4 mr-2 text-green-500" />
+                Finanças
               </Button>
             </Link>
 
