@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, UserCheck, Trash2, Link2, Search, Pencil, Users } from 'lucide-react';
+import { CreditCard, UserCheck, Trash2, Link2, Search, Pencil, Users, Filter } from 'lucide-react';
 import { CardAssignment, useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Contact {
@@ -33,6 +34,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
   const [cardName, setCardName] = useState('');
   const [selectedContact, setSelectedContact] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedClassification, setSelectedClassification] = useState<string>('all');
   const [loadingContacts, setLoadingContacts] = useState(false);
 
   // Fetch all contacts - any contact can be linked to a card
@@ -61,11 +63,21 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     card => !cardAssignments.some(a => a.card_last_digits === card)
   );
 
-  const filteredContacts = contacts.filter(contact => 
-    contact.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.phone?.includes(searchTerm)
-  );
+  const filteredContacts = contacts.filter(contact => {
+    // Text search - also search without @ prefix
+    const normalizedSearch = searchTerm.toLowerCase().replace('@', '');
+    const matchesSearch = !searchTerm || 
+      contact.full_name?.toLowerCase().replace('@', '').includes(normalizedSearch) ||
+      contact.instagram_username?.toLowerCase().includes(normalizedSearch) ||
+      contact.phone?.includes(searchTerm);
+    
+    // Classification filter
+    const matchesClassification = selectedClassification === 'all' || 
+      contact.classification?.toLowerCase() === selectedClassification.toLowerCase() ||
+      (contact.classifications || []).some(c => c.toLowerCase() === selectedClassification.toLowerCase());
+    
+    return matchesSearch && matchesClassification;
+  });
 
   const handleAssign = async () => {
     if (!selectedCard || !selectedContact) return;
@@ -117,7 +129,10 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     setCardName('');
     setSelectedContact('');
     setSearchTerm('');
+    setSelectedClassification('all');
   };
+
+  const { classifications: classificationsList } = useContactClassifications();
 
   const getContactDisplay = (contact: Contact) => {
     return contact.full_name || contact.instagram_username || 'Sem nome';
@@ -196,14 +211,33 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                   <p className="text-xs text-muted-foreground mb-2">
                     Todas as despesas deste cartão serão atribuídas a este contato por padrão
                   </p>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar contato..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
+                  <div className="flex gap-2 mb-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar contato..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <Select value={selectedClassification} onValueChange={setSelectedClassification}>
+                      <SelectTrigger className="w-36">
+                        <Filter className="h-4 w-4 mr-1" />
+                        <SelectValue placeholder="Filtrar" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[100] bg-popover">
+                        <SelectItem value="all">Todos</SelectItem>
+                        {classificationsList.map((c) => (
+                          <SelectItem key={c.id} value={c.name}>
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${c.color}`} />
+                              {c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <ScrollArea className="h-48 border rounded-md">
                     <div className="p-2 space-y-1">
