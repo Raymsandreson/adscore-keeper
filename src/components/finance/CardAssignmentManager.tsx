@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CreditCard, UserCheck, Trash2, Link2, Search } from 'lucide-react';
+import { CreditCard, UserCheck, Trash2, Link2, Search, Pencil } from 'lucide-react';
 import { CardAssignment, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useLeads, Lead } from '@/hooks/useLeads';
 
@@ -15,10 +15,12 @@ interface CardAssignmentManagerProps {
 }
 
 export function CardAssignmentManager({ availableCards }: CardAssignmentManagerProps) {
-  const { cardAssignments, assignCard, removeCardAssignment } = useExpenseCategories();
+  const { cardAssignments, assignCard, updateCardAssignment, removeCardAssignment } = useExpenseCategories();
   const { leads } = useLeads();
   const [isOpen, setIsOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<CardAssignment | null>(null);
   const [selectedCard, setSelectedCard] = useState('');
+  const [cardName, setCardName] = useState('');
   const [selectedLead, setSelectedLead] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -38,12 +40,41 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     
     await assignCard({
       card_last_digits: selectedCard,
+      card_name: cardName || null,
       lead_id: selectedLead,
       lead_name: lead?.lead_name || lead?.instagram_username || 'Acolhedor',
     });
 
+    closeDialog();
+  };
+
+  const handleEdit = async () => {
+    if (!editingAssignment) return;
+
+    await updateCardAssignment(editingAssignment.id, {
+      card_name: cardName || null,
+      lead_id: selectedLead || editingAssignment.lead_id,
+      lead_name: selectedLead 
+        ? (leads.find(l => l.id === selectedLead)?.lead_name || leads.find(l => l.id === selectedLead)?.instagram_username || 'Acolhedor')
+        : editingAssignment.lead_name,
+    });
+
+    closeDialog();
+  };
+
+  const openEditDialog = (assignment: CardAssignment) => {
+    setEditingAssignment(assignment);
+    setSelectedCard(assignment.card_last_digits);
+    setCardName(assignment.card_name || '');
+    setSelectedLead(assignment.lead_id || '');
+    setIsOpen(true);
+  };
+
+  const closeDialog = () => {
     setIsOpen(false);
+    setEditingAssignment(null);
     setSelectedCard('');
+    setCardName('');
     setSelectedLead('');
     setSearchTerm('');
   };
@@ -60,7 +91,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
             <UserCheck className="h-5 w-5" />
             Cartões x Acolhedores
           </CardTitle>
-          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <Dialog open={isOpen} onOpenChange={(open) => !open && closeDialog()}>
             <DialogTrigger asChild>
               <Button size="sm" disabled={unassignedCards.length === 0}>
                 <Link2 className="h-4 w-4 mr-2" />
@@ -69,26 +100,52 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>Vincular Cartão a Acolhedor</DialogTitle>
+                <DialogTitle>
+                  {editingAssignment ? 'Editar Cartão' : 'Vincular Cartão a Acolhedor'}
+                </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                {!editingAssignment && (
+                  <div>
+                    <Label>Cartão</Label>
+                    <Select value={selectedCard} onValueChange={setSelectedCard}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o cartão..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {unassignedCards.map((card) => (
+                          <SelectItem key={card} value={card}>
+                            <div className="flex items-center gap-2">
+                              <CreditCard className="h-4 w-4" />
+                              **** {card}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {editingAssignment && (
+                  <div>
+                    <Label>Cartão</Label>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="font-mono">**** {editingAssignment.card_last_digits}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div>
-                  <Label>Cartão</Label>
-                  <Select value={selectedCard} onValueChange={setSelectedCard}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cartão..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {unassignedCards.map((card) => (
-                        <SelectItem key={card} value={card}>
-                          <div className="flex items-center gap-2">
-                            <CreditCard className="h-4 w-4" />
-                            **** {card}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Nome do Cartão (opcional)</Label>
+                  <Input
+                    placeholder="Ex: Cartão Corporativo João"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Um nome amigável para identificar este cartão
+                  </p>
                 </div>
 
                 <div>
@@ -132,12 +189,18 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" onClick={closeDialog}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleAssign} disabled={!selectedCard || !selectedLead}>
-                    Vincular
-                  </Button>
+                  {editingAssignment ? (
+                    <Button onClick={handleEdit}>
+                      Salvar
+                    </Button>
+                  ) : (
+                    <Button onClick={handleAssign} disabled={!selectedCard || !selectedLead}>
+                      Vincular
+                    </Button>
+                  )}
                 </div>
               </div>
             </DialogContent>
@@ -161,19 +224,35 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                     <CreditCard className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="font-medium">**** {assignment.card_last_digits}</p>
+                    <p className="font-medium">
+                      {assignment.card_name || `**** ${assignment.card_last_digits}`}
+                    </p>
+                    {assignment.card_name && (
+                      <p className="text-xs text-muted-foreground font-mono">
+                        **** {assignment.card_last_digits}
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {assignment.lead_name || 'Acolhedor'}
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeCardAssignment(assignment.id)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openEditDialog(assignment)}
+                  >
+                    <Pencil className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeCardAssignment(assignment.id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
