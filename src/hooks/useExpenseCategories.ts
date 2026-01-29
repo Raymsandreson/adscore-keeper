@@ -171,8 +171,43 @@ export function useExpenseCategories() {
     }
   }, [fetchCategories]);
 
-  const deleteCategory = useCallback(async (id: string) => {
+  // Check if a category has linked expenses (overrides)
+  const getCategoryExpenseCount = useCallback(async (categoryId: string): Promise<number> => {
+    const { count, error } = await supabase
+      .from('transaction_category_overrides')
+      .select('*', { count: 'exact', head: true })
+      .eq('category_id', categoryId);
+    
+    if (error) {
+      console.error('Error counting expenses:', error);
+      return 0;
+    }
+    return count || 0;
+  }, []);
+
+  // Reassign expenses from one category to another
+  const reassignExpenses = useCallback(async (fromCategoryId: string, toCategoryId: string) => {
     try {
+      const { error } = await supabase
+        .from('transaction_category_overrides')
+        .update({ category_id: toCategoryId })
+        .eq('category_id', fromCategoryId);
+
+      if (error) throw error;
+      await fetchOverrides();
+    } catch (err: any) {
+      console.error('Error reassigning expenses:', err);
+      throw err;
+    }
+  }, [fetchOverrides]);
+
+  const deleteCategory = useCallback(async (id: string, reassignToCategoryId?: string) => {
+    try {
+      // If reassignment is needed, do it first
+      if (reassignToCategoryId) {
+        await reassignExpenses(id, reassignToCategoryId);
+      }
+
       const { error } = await supabase
         .from('expense_categories')
         .delete()
@@ -186,7 +221,7 @@ export function useExpenseCategories() {
       toast.error('Erro ao remover categoria');
       throw err;
     }
-  }, [fetchCategories]);
+  }, [fetchCategories, reassignExpenses]);
 
   const assignCard = useCallback(async (assignment: Partial<CardAssignment>) => {
     try {
@@ -460,6 +495,8 @@ export function useExpenseCategories() {
     addCategory,
     updateCategory,
     deleteCategory,
+    getCategoryExpenseCount,
+    reassignExpenses,
     assignCard,
     updateCardAssignment,
     removeCardAssignment,
