@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { 
@@ -20,7 +19,7 @@ import {
   Package
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
-import { useLeads, Lead } from '@/hooks/useLeads';
+import { useContacts } from '@/hooks/useContacts';
 
 interface Transaction {
   id: string;
@@ -58,18 +57,19 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     getCategoryById,
     checkLimitViolation 
   } = useExpenseCategories();
-  const { leads } = useLeads();
+  const { contacts } = useContacts();
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedLead, setSelectedLead] = useState<string>('');
+  const [selectedContact, setSelectedContact] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
 
   const existingOverride = getTransactionOverride(transaction.id);
 
-  const filteredLeads = leads.filter(lead => 
-    lead.lead_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    lead.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredContacts = contacts.filter(contact => 
+    contact.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contact.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    contact.phone?.includes(searchTerm)
   );
 
   const handleSubmit = async () => {
@@ -78,13 +78,13 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     await setTransactionOverride(
       transaction.id, 
       selectedCategory, 
-      selectedLead || undefined,
+      selectedContact || undefined,
       notes || undefined
     );
     
     onOpenChange(false);
     setSelectedCategory('');
-    setSelectedLead('');
+    setSelectedContact('');
     setNotes('');
   };
 
@@ -95,8 +95,8 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     }).format(value);
   };
 
-  const getLeadDisplay = (lead: Lead) => {
-    return lead.lead_name || lead.instagram_username || 'Sem nome';
+  const getContactDisplay = (contact: { full_name: string; instagram_username?: string | null }) => {
+    return contact.full_name || contact.instagram_username || 'Sem nome';
   };
 
   const selectedCategoryData = selectedCategory ? getCategoryById(selectedCategory) : null;
@@ -179,16 +179,16 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
             </div>
           )}
 
-          {/* Lead Selection (Optional) */}
+          {/* Contact Selection (Optional) */}
           <div>
             <Label className="flex items-center gap-2">
               <UserCheck className="h-4 w-4" />
-              Vincular a Acolhedor (opcional)
+              Vincular a Contato (opcional)
             </Label>
             <div className="relative mb-2 mt-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar acolhedor..."
+                placeholder="Buscar contato..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
@@ -199,24 +199,24 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                 <button
                   type="button"
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    !selectedLead ? 'bg-muted' : 'hover:bg-muted'
+                    !selectedContact ? 'bg-muted' : 'hover:bg-muted'
                   }`}
-                  onClick={() => setSelectedLead('')}
+                  onClick={() => setSelectedContact('')}
                 >
                   Nenhum
                 </button>
-                {filteredLeads.map((lead) => (
+                {filteredContacts.map((contact) => (
                   <button
-                    key={lead.id}
+                    key={contact.id}
                     type="button"
                     className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      selectedLead === lead.id 
+                      selectedContact === contact.id 
                         ? 'bg-primary text-primary-foreground' 
                         : 'hover:bg-muted'
                     }`}
-                    onClick={() => setSelectedLead(lead.id)}
+                    onClick={() => setSelectedContact(contact.id)}
                   >
-                    {getLeadDisplay(lead)}
+                    {getContactDisplay(contact)}
                   </button>
                 ))}
               </div>

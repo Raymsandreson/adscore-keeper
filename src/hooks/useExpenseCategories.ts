@@ -35,6 +35,7 @@ export interface TransactionOverride {
   transaction_id: string;
   category_id: string;
   lead_id: string | null;
+  contact_id: string | null;
   notes: string | null;
   created_at: string;
 }
