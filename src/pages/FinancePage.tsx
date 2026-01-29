@@ -61,6 +61,7 @@ export default function FinancePage() {
     syncTransactions,
     deleteConnection,
     importExistingConnections,
+    importByItemId,
     getCategoryTotals,
     getTotalSpent,
   } = useCreditCardTransactions();
@@ -73,6 +74,8 @@ export default function FinancePage() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [manualItemId, setManualItemId] = useState("");
+  const [isImportingManual, setIsImportingManual] = useState(false);
 
   useEffect(() => {
     // Load Pluggy Connect SDK - using latest version
@@ -122,6 +125,26 @@ export default function FinancePage() {
       setIsImporting(false);
     }
   }, [importExistingConnections, syncTransactions, dateRange]);
+
+  const handleImportByItemId = useCallback(async () => {
+    if (!manualItemId.trim()) {
+      toast.error('Informe o itemId');
+      return;
+    }
+    
+    setIsImportingManual(true);
+    try {
+      const result = await importByItemId(manualItemId.trim());
+      toast.success(`Conexão "${result.connection.connector_name}" importada com sucesso!`);
+      setManualItemId("");
+      await syncTransactions(dateRange);
+    } catch (err: any) {
+      console.error('Error importing by itemId:', err);
+      toast.error(`Erro ao importar: ${err.message}`);
+    } finally {
+      setIsImportingManual(false);
+    }
+  }, [manualItemId, importByItemId, syncTransactions, dateRange]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -293,10 +316,38 @@ export default function FinancePage() {
               <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
                 Conecte uma conta bancária através do Open Finance para acompanhar seus gastos no cartão de crédito.
               </p>
-              <Button onClick={handleConnect} disabled={isConnecting}>
-                <Link2 className="h-4 w-4 mr-2" />
-                Conectar Banco
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={handleConnect} disabled={isConnecting}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Conectar Banco
+                </Button>
+              </div>
+              
+              {/* Manual Import Section */}
+              <div className="mt-6 pt-6 border-t w-full max-w-md">
+                <p className="text-sm text-muted-foreground mb-3 text-center">
+                  Ou importe uma conexão existente pelo itemId:
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Cole o itemId aqui..."
+                    value={manualItemId}
+                    onChange={(e) => setManualItemId(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={handleImportByItemId} 
+                    disabled={isImportingManual || !manualItemId.trim()}
+                    variant="secondary"
+                  >
+                    {isImportingManual ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Importar"
+                    )}
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}

@@ -113,6 +113,12 @@ export function useCreditCardTransactions() {
     }
   }, [callPluggyFunction, fetchConnections]);
 
+  const importByItemId = useCallback(async (itemId: string) => {
+    const data = await callPluggyFunction('import_by_item_id', { itemId });
+    await fetchConnections();
+    return data;
+  }, [callPluggyFunction, fetchConnections]);
+
   const createConnectToken = useCallback(async (itemId?: string) => {
     const data = await callPluggyFunction('create_connect_token', { itemId });
     return data.connectToken;
@@ -180,6 +186,7 @@ export function useCreditCardTransactions() {
     syncTransactions,
     deleteConnection,
     importExistingConnections,
+    importByItemId,
     getCategoryTotals,
     getTotalSpent,
   };

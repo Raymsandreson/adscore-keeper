@@ -390,6 +390,57 @@ serve(async (req) => {
         });
       }
 
+      case 'import_by_item_id': {
+        console.log('import_by_item_id called with itemId:', itemId);
+        
+        if (!itemId) {
+          return new Response(JSON.stringify({ error: 'itemId is required' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Fetch item details from Pluggy API
+        const item = await getItem(apiKey, itemId);
+        console.log('Pluggy item fetched for import:', JSON.stringify(item));
+        
+        // Save connection to database
+        const connectionData = {
+          user_id: user.id,
+          pluggy_item_id: itemId,
+          connector_name: item.connector?.name || 'Unknown',
+          connector_type: item.connector?.type || 'Unknown',
+          status: item.status || 'UPDATING',
+          last_sync_at: new Date().toISOString(),
+        };
+        
+        const { data: connection, error: upsertError } = await supabase
+          .from('pluggy_connections')
+          .upsert(connectionData, { onConflict: 'pluggy_item_id' })
+          .select()
+          .single();
+
+        if (upsertError) {
+          console.error('Error saving connection:', upsertError);
+          throw new Error(`Failed to save connection: ${upsertError.message}`);
+        }
+        
+        console.log('Connection imported successfully:', connection);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          connection,
+          item: {
+            id: item.id,
+            status: item.status,
+            executionStatus: item.executionStatus,
+            connector: item.connector
+          }
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'delete_connection': {
         if (!itemId) {
           return new Response(JSON.stringify({ error: 'itemId is required' }), {
