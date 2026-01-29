@@ -60,6 +60,7 @@ export default function FinancePage() {
     saveConnection,
     syncTransactions,
     deleteConnection,
+    importExistingConnections,
     getCategoryTotals,
     getTotalSpent,
   } = useCreditCardTransactions();
@@ -71,6 +72,7 @@ export default function FinancePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     // Load Pluggy Connect SDK - using latest version
@@ -93,11 +95,33 @@ export default function FinancePage() {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchConnections();
-      fetchTransactions(dateRange);
-    }
+    const loadData = async () => {
+      if (user) {
+        await fetchConnections();
+        fetchTransactions(dateRange);
+      }
+    };
+    loadData();
   }, [user, fetchConnections, fetchTransactions, dateRange]);
+
+  // Auto-import existing Pluggy connections if none found
+  const handleImportConnections = useCallback(async () => {
+    setIsImporting(true);
+    try {
+      const result = await importExistingConnections();
+      if (result.imported > 0) {
+        toast.success(`${result.imported} conta(s) importada(s) com sucesso!`);
+        await syncTransactions(dateRange);
+      } else {
+        toast.info('Nenhuma conexão ativa encontrada no Pluggy');
+      }
+    } catch (err: any) {
+      console.error('Error importing:', err);
+      toast.error('Erro ao importar conexões');
+    } finally {
+      setIsImporting(false);
+    }
+  }, [importExistingConnections, syncTransactions, dateRange]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -267,12 +291,23 @@ export default function FinancePage() {
               <Link2Off className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">Nenhuma conta conectada</h3>
               <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
-                Conecte sua conta bancária através do Open Finance para visualizar seus gastos do cartão de crédito.
+                Se você já conectou contas pelo app Pluggy/Way, clique em "Importar Contas" para sincronizá-las.
+                Ou conecte uma nova conta bancária através do Open Finance.
               </p>
-              <Button onClick={handleConnect} disabled={isConnecting}>
-                <Link2 className="h-4 w-4 mr-2" />
-                Conectar Banco
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleImportConnections} 
+                  disabled={isImporting}
+                >
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isImporting && "animate-spin")} />
+                  Importar Contas
+                </Button>
+                <Button onClick={handleConnect} disabled={isConnecting}>
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Conectar Banco
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

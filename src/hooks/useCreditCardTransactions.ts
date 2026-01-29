@@ -100,6 +100,19 @@ export function useCreditCardTransactions() {
     }
   }, [user, callPluggyFunction]);
 
+  const importExistingConnections = useCallback(async () => {
+    try {
+      const data = await callPluggyFunction('import_existing_connections');
+      if (data.imported > 0) {
+        await fetchConnections();
+      }
+      return data;
+    } catch (err: any) {
+      console.error('Error importing connections:', err);
+      throw err;
+    }
+  }, [callPluggyFunction, fetchConnections]);
+
   const createConnectToken = useCallback(async (itemId?: string) => {
     const data = await callPluggyFunction('create_connect_token', { itemId });
     return data.connectToken;
@@ -166,6 +179,7 @@ export function useCreditCardTransactions() {
     saveConnection,
     syncTransactions,
     deleteConnection,
+    importExistingConnections,
     getCategoryTotals,
     getTotalSpent,
   };

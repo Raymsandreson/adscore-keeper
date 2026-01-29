@@ -303,6 +303,84 @@ serve(async (req) => {
         });
       }
 
+      case 'list_pluggy_items': {
+        // List all items from Pluggy API (not saved to our DB yet)
+        console.log('Listing items from Pluggy API');
+        
+        const response = await fetch(`${PLUGGY_API_URL}/items`, {
+          headers: { 'X-API-KEY': apiKey },
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Failed to list items: ${error}`);
+        }
+
+        const data = await response.json();
+        const items = data.results || [];
+        
+        console.log('Found Pluggy items:', items.length);
+        
+        return new Response(JSON.stringify({ items }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'import_existing_connections': {
+        // Import all existing connections from Pluggy to our DB
+        console.log('Importing existing connections from Pluggy');
+        
+        const response = await fetch(`${PLUGGY_API_URL}/items`, {
+          headers: { 'X-API-KEY': apiKey },
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Failed to list items: ${error}`);
+        }
+
+        const data = await response.json();
+        const items = data.results || [];
+        
+        console.log('Found', items.length, 'items to import');
+        
+        const imported = [];
+        for (const item of items) {
+          // Only import active items
+          if (item.status === 'UPDATED' || item.status === 'UPDATING' || item.status === 'LOGIN_ERROR') {
+            const connectionData = {
+              user_id: user.id,
+              pluggy_item_id: item.id,
+              connector_name: item.connector?.name || 'Unknown',
+              connector_type: item.connector?.type || 'Unknown',
+              status: item.status,
+              last_sync_at: new Date().toISOString(),
+            };
+            
+            const { data: upsertData, error: upsertError } = await supabase
+              .from('pluggy_connections')
+              .upsert(connectionData, { onConflict: 'pluggy_item_id' })
+              .select();
+
+            if (!upsertError && upsertData) {
+              imported.push(upsertData[0]);
+            } else {
+              console.error('Error importing item:', item.id, upsertError);
+            }
+          }
+        }
+        
+        console.log('Imported', imported.length, 'connections');
+        
+        return new Response(JSON.stringify({ 
+          success: true, 
+          imported: imported.length,
+          connections: imported 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'delete_connection': {
         if (!itemId) {
           return new Response(JSON.stringify({ error: 'itemId is required' }), {
