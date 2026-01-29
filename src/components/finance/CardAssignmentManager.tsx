@@ -136,7 +136,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
             <UserCheck className="h-5 w-5" />
             Cartões x Acolhedores
           </CardTitle>
-          <Dialog open={isOpen} onOpenChange={(open) => !open && closeDialog()}>
+          <Dialog open={isOpen} onOpenChange={(open) => open ? setIsOpen(true) : closeDialog()}>
             <DialogTrigger asChild>
               <Button size="sm" disabled={unassignedCards.length === 0}>
                 <Link2 className="h-4 w-4 mr-2" />
