@@ -65,7 +65,7 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
     }).format(value);
   };
 
-  // Aggregate stats by acolhedor (lead linked to cards)
+  // Aggregate stats by acolhedor (contact linked to cards)
   const acolhedorStats = useMemo((): AcolhedorStats[] => {
     const statsMap: Record<string, AcolhedorStats> = {};
 
@@ -73,12 +73,12 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
       const cardDigits = tx.card_last_digits || 'unknown';
       const assignment = cardAssignments.find(a => a.card_last_digits === cardDigits);
       
-      // Key by lead_id if assigned, otherwise by card_digits
-      const key = assignment?.lead_id || `card_${cardDigits}`;
+      // Key by contact_id if assigned, fallback to lead_id, otherwise by card_digits
+      const key = assignment?.contact_id || assignment?.lead_id || `card_${cardDigits}`;
       
       if (!statsMap[key]) {
         statsMap[key] = {
-          leadId: assignment?.lead_id || null,
+          leadId: assignment?.contact_id || assignment?.lead_id || null,
           leadName: assignment?.lead_name || 'Não atribuído',
           cardDigits,
           cardName: assignment?.card_name || null,

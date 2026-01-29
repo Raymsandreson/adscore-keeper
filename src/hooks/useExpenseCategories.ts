@@ -22,6 +22,8 @@ export interface CardAssignment {
   card_name: string | null;
   lead_id: string | null;
   lead_name: string | null;
+  contact_id: string | null;
+  contact_name: string | null;
   pluggy_account_id: string | null;
   notes: string | null;
   created_at: string;
@@ -232,6 +234,7 @@ export function useExpenseCategories() {
           card_name: assignment.card_name || null,
           lead_id: assignment.lead_id || null,
           lead_name: assignment.lead_name || null,
+          contact_id: assignment.contact_id || null,
           pluggy_account_id: assignment.pluggy_account_id || null,
           notes: assignment.notes || null,
         }], { onConflict: 'card_last_digits,pluggy_account_id' })
