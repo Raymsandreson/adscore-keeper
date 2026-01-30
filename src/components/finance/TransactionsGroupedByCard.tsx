@@ -24,7 +24,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { TransactionCategorizer } from './TransactionCategorizer';
-import { translateCategory } from '@/utils/categoryTranslations';
+import { translateCategory, findMatchingLocalCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
   id: string;
@@ -129,14 +129,13 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
     if (override) {
       return getCategoryById(override.category_id) || null;
     }
-    // Try to match from Pluggy category (translated)
-    const pluggyCategory = transaction.category?.toLowerCase();
-    if (pluggyCategory) {
-      const translatedCategory = translateCategory(transaction.category).toLowerCase();
-      return categories.find(c => 
-        c.name.toLowerCase().includes(pluggyCategory) || 
-        c.name.toLowerCase().includes(translatedCategory)
-      ) || null;
+    // Usa o mapeamento automático para encontrar a categoria local
+    const matchedCategory = findMatchingLocalCategory(
+      transaction.category,
+      categories.map(c => ({ id: c.id, name: c.name }))
+    );
+    if (matchedCategory) {
+      return getCategoryById(matchedCategory.id) || null;
     }
     return null;
   };
