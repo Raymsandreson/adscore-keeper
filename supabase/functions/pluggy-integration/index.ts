@@ -313,11 +313,41 @@ serve(async (req) => {
       }
 
       case 'get_connections': {
-        const { data: connections } = await supabase
-          .from('pluggy_connections')
-          .select('*')
+        // First check if user is admin or has any card permissions
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .eq('role', 'admin')
+          .maybeSingle();
+        
+        const isAdmin = !!userRole;
+        
+        const { data: cardPermissions } = await supabase
+          .from('user_card_permissions')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+        
+        const hasCardPermissions = (cardPermissions?.length || 0) > 0;
+        
+        // If admin or has any card permissions, show all connections
+        // Otherwise, only show own connections
+        let connections;
+        if (isAdmin || hasCardPermissions) {
+          const { data } = await supabase
+            .from('pluggy_connections')
+            .select('*')
+            .order('created_at', { ascending: false });
+          connections = data;
+        } else {
+          const { data } = await supabase
+            .from('pluggy_connections')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+          connections = data;
+        }
 
         return new Response(JSON.stringify({ connections: connections || [] }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
