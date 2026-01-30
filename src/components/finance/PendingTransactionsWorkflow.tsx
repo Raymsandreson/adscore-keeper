@@ -78,6 +78,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [notes, setNotes] = useState('');
   const [isLookingUpLocation, setIsLookingUpLocation] = useState(false);
   const [enrichedLocation, setEnrichedLocation] = useState<{city: string; state: string} | null>(null);
+  const [manualCity, setManualCity] = useState('');
+  const [manualState, setManualState] = useState('');
+  const [showManualLocation, setShowManualLocation] = useState(false);
 
   // Filter transactions that don't have a lead or contact linked
   const pendingTransactions = useMemo(() => {
@@ -105,6 +108,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       setSearchLead('');
       setSearchContact('');
       setEnrichedLocation(null);
+      setManualCity('');
+      setManualState('');
+      setShowManualLocation(false);
       
       // Try to get category from override or API mapping
       const override = getTransactionOverride(currentTransaction.id);
@@ -159,9 +165,12 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     }
   };
 
-  // Get display location (enriched or from transaction)
+  // Get display location (enriched, manual, or from transaction)
   const displayLocation = useMemo(() => {
     if (enrichedLocation) return enrichedLocation;
+    if (manualCity || manualState) {
+      return { city: manualCity, state: manualState };
+    }
     if (currentTransaction?.merchant_city || currentTransaction?.merchant_state) {
       return {
         city: currentTransaction.merchant_city || '',
@@ -169,7 +178,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       };
     }
     return null;
-  }, [enrichedLocation, currentTransaction]);
+  }, [enrichedLocation, manualCity, manualState, currentTransaction]);
 
   const filteredLeads = useMemo(() => {
     if (!searchLead.trim()) return leads.slice(0, 10);
@@ -331,31 +340,79 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
               </div>
               
               {/* Location Display - Prominent */}
-              <div className="flex items-center gap-2 p-2 bg-background rounded-md border">
-                <MapPin className="h-5 w-5 text-primary" />
-                {displayLocation ? (
-                  <span className="font-medium">
-                    {[displayLocation.city, displayLocation.state].filter(Boolean).join(' - ')}
-                  </span>
-                ) : currentTransaction.merchant_cnpj ? (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="p-0 h-auto text-muted-foreground"
-                    onClick={lookupLocation}
-                    disabled={isLookingUpLocation}
-                  >
-                    {isLookingUpLocation ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        Buscando...
-                      </>
+              <div className="p-3 bg-background rounded-md border space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-primary" />
+                    {displayLocation && !showManualLocation ? (
+                      <span className="font-medium">
+                        {[displayLocation.city, displayLocation.state].filter(Boolean).join(' - ')}
+                      </span>
+                    ) : !showManualLocation ? (
+                      currentTransaction.merchant_cnpj ? (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="p-0 h-auto text-muted-foreground"
+                          onClick={lookupLocation}
+                          disabled={isLookingUpLocation}
+                        >
+                          {isLookingUpLocation ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              Buscando...
+                            </>
+                          ) : (
+                            'Buscar localização via CNPJ'
+                          )}
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">Localização não disponível</span>
+                      )
                     ) : (
-                      'Buscar localização via CNPJ'
+                      <span className="text-muted-foreground text-sm">Cadastrar manualmente</span>
                     )}
-                  </Button>
-                ) : (
-                  <span className="text-muted-foreground text-sm">Localização não disponível</span>
+                  </div>
+                  {!displayLocation && !showManualLocation && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowManualLocation(true)}
+                    >
+                      Cadastrar
+                    </Button>
+                  )}
+                  {showManualLocation && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowManualLocation(false);
+                        setManualCity('');
+                        setManualState('');
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
+                
+                {showManualLocation && (
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Cidade"
+                      value={manualCity}
+                      onChange={(e) => setManualCity(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="UF"
+                      value={manualState}
+                      onChange={(e) => setManualState(e.target.value.toUpperCase())}
+                      className="w-16"
+                      maxLength={2}
+                    />
+                  </div>
                 )}
               </div>
               
