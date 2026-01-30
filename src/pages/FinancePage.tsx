@@ -27,7 +27,8 @@ import {
   LayoutGrid,
   Users,
   Shield,
-  EyeOff
+  EyeOff,
+  AlertCircle
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -43,6 +44,7 @@ import { CardPermissionsManager } from "@/components/finance/CardPermissionsMana
 import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
+import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransactionsWorkflow";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -96,7 +98,7 @@ export default function FinancePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
-  const [activeTab, setActiveTab] = useState("logistics");
+  const [activeTab, setActiveTab] = useState("workflow");
 
   // Get unique card digits for assignment manager
   const availableCards = useMemo(() => {
@@ -565,7 +567,11 @@ export default function FinancePage() {
 
             {/* Tabs for different views */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
+                <TabsTrigger value="workflow" className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Pendentes
+                </TabsTrigger>
                 <TabsTrigger value="logistics" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   Acolhedores
@@ -583,6 +589,13 @@ export default function FinancePage() {
                   Configurações
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="workflow" className="mt-4">
+                <PendingTransactionsWorkflow 
+                  transactions={filteredTransactions} 
+                  onComplete={() => setActiveTab('logistics')}
+                />
+              </TabsContent>
 
               <TabsContent value="logistics" className="mt-4">
                 <AcolhedorLogisticsDashboard transactions={filteredTransactions} />
