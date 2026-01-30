@@ -91,8 +91,8 @@ export function ExpenseCategoryManager() {
     setEditingCategory(category);
     setFormData({
       name: category.name,
-      icon: category.icon,
-      color: category.color,
+      icon: category.icon || 'tag',
+      color: category.color || 'bg-gray-500',
       max_limit_per_unit: category.max_limit_per_unit?.toString() || '',
       limit_unit: category.limit_unit || '',
       parent_id: category.parent_id || '',
@@ -109,16 +109,24 @@ export function ExpenseCategoryManager() {
   const handleSubmit = async () => {
     if (!formData.name.trim()) return;
 
-    const limitUnit = formData.limit_unit as 'per_transaction' | 'per_day' | 'per_month' | null;
+    const limitUnit = formData.limit_unit && formData.limit_unit !== '' 
+      ? formData.limit_unit as 'per_transaction' | 'per_day' | 'per_month' 
+      : null;
+    
+    const maxLimit = formData.max_limit_per_unit && formData.max_limit_per_unit !== '' 
+      ? parseFloat(formData.max_limit_per_unit) 
+      : null;
 
     const data: Partial<ExpenseCategory> = {
       name: formData.name,
       icon: formData.icon,
       color: formData.color,
-      max_limit_per_unit: formData.max_limit_per_unit ? parseFloat(formData.max_limit_per_unit) : null,
-      limit_unit: limitUnit || null,
+      max_limit_per_unit: maxLimit,
+      limit_unit: limitUnit,
       parent_id: formData.parent_id || null,
     };
+
+    console.log('Saving category with data:', data);
 
     if (editingCategory) {
       await updateCategory(editingCategory.id, data);
