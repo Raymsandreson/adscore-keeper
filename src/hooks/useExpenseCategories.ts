@@ -306,6 +306,7 @@ export function useExpenseCategories() {
     transactionId: string, 
     categoryId: string, 
     contactId?: string,
+    leadId?: string,
     notes?: string
   ) => {
     try {
@@ -315,6 +316,7 @@ export function useExpenseCategories() {
           transaction_id: transactionId,
           category_id: categoryId,
           contact_id: contactId || null,
+          lead_id: leadId || null,
           notes: notes || null,
         }], { onConflict: 'transaction_id' });
 
