@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Tag,
   UserCheck,
@@ -18,11 +19,13 @@ import {
   Briefcase,
   Package,
   Users,
-  Building
+  Building,
+  MapPin
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useContacts } from '@/hooks/useContacts';
 import { useLeads } from '@/hooks/useLeads';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 
 interface Transaction {
   id: string;
@@ -30,6 +33,9 @@ interface Transaction {
   amount: number;
   category: string | null;
   merchant_name: string | null;
+  merchant_cnpj: string | null;
+  merchant_city: string | null;
+  merchant_state: string | null;
   card_last_digits: string | null;
   transaction_date: string;
 }
@@ -62,6 +68,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   } = useExpenseCategories();
   const { contacts } = useContacts();
   const { leads } = useLeads();
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedContact, setSelectedContact] = useState<string>('');
@@ -70,6 +77,8 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
   const [activeTab, setActiveTab] = useState<'lead' | 'contact'>('lead');
+  const [manualCity, setManualCity] = useState('');
+  const [manualState, setManualState] = useState('');
 
   const existingOverride = getTransactionOverride(transaction.id);
 
@@ -80,6 +89,12 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       setSelectedContact(existingOverride.contact_id || '');
       setSelectedLead(existingOverride.lead_id || '');
       setNotes(existingOverride.notes || '');
+      setManualCity(existingOverride.manual_city || '');
+      setManualState(existingOverride.manual_state || '');
+      // Load cities if we have a state
+      if (existingOverride.manual_state) {
+        fetchCities(existingOverride.manual_state);
+      }
       // Set active tab based on what's linked
       if (existingOverride.lead_id) {
         setActiveTab('lead');
@@ -93,8 +108,14 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       setSelectedLead('');
       setNotes('');
       setActiveTab('lead');
+      setManualCity(transaction.merchant_city || '');
+      setManualState(transaction.merchant_state || '');
+      // Load cities if we have a state from merchant
+      if (transaction.merchant_state) {
+        fetchCities(transaction.merchant_state);
+      }
     }
-  }, [open, existingOverride]);
+  }, [open, existingOverride, transaction, fetchCities]);
 
   const filteredContacts = contacts.filter(contact => 
     contact.full_name?.toLowerCase().includes(contactSearchTerm.toLowerCase()) ||
@@ -117,7 +138,9 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       selectedCategory, 
       selectedContact || undefined,
       selectedLead || undefined,
-      notes || undefined
+      notes || undefined,
+      manualCity || undefined,
+      manualState || undefined
     );
     
     onOpenChange(false);
@@ -166,6 +189,52 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
               {new Date(transaction.transaction_date).toLocaleDateString('pt-BR')}
               {transaction.card_last_digits && ` • **** ${transaction.card_last_digits}`}
             </p>
+          </div>
+
+          {/* Location Section */}
+          <div>
+            <Label className="flex items-center gap-2 mb-2">
+              <MapPin className="h-4 w-4" />
+              Localização do Gasto
+            </Label>
+            <div className="flex gap-2">
+              <Select
+                value={manualState}
+                onValueChange={(value) => {
+                  setManualState(value);
+                  setManualCity('');
+                  fetchCities(value);
+                }}
+              >
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  {states.map((state) => (
+                    <SelectItem key={state.sigla} value={state.sigla}>
+                      {state.sigla}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select
+                value={manualCity}
+                onValueChange={setManualCity}
+                disabled={!manualState || loadingCities}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder={loadingCities ? "Carregando..." : "Cidade"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cities.map((city) => (
+                    <SelectItem key={city.id} value={city.nome}>
+                      {city.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Category Selection */}
@@ -289,9 +358,13 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                   </div>
                 </ScrollArea>
                 {selectedLeadData && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Selecionado: <span className="font-medium">{getLeadDisplay(selectedLeadData)}</span>
-                  </p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2 p-2 bg-muted/50 rounded">
+                    <MapPin className="h-4 w-4" />
+                    <span>
+                      Destino: {selectedLeadData.city || 'Cidade não cadastrada'}
+                      {selectedLeadData.state && `, ${selectedLeadData.state}`}
+                    </span>
+                  </div>
                 )}
               </TabsContent>
 
@@ -336,9 +409,13 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                   </div>
                 </ScrollArea>
                 {selectedContactData && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Selecionado: <span className="font-medium">{getContactDisplay(selectedContactData)}</span>
-                  </p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2 p-2 bg-muted/50 rounded">
+                    <MapPin className="h-4 w-4" />
+                    <span>
+                      Destino: {selectedContactData.city || 'Cidade não cadastrada'}
+                      {selectedContactData.state && `, ${selectedContactData.state}`}
+                    </span>
+                  </div>
                 )}
               </TabsContent>
             </Tabs>

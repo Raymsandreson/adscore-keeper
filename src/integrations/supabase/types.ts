@@ -1713,6 +1713,8 @@ export type Database = {
           created_at: string
           id: string
           lead_id: string | null
+          manual_city: string | null
+          manual_state: string | null
           notes: string | null
           transaction_id: string
         }
@@ -1722,6 +1724,8 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          manual_city?: string | null
+          manual_state?: string | null
           notes?: string | null
           transaction_id: string
         }
@@ -1731,6 +1735,8 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          manual_city?: string | null
+          manual_state?: string | null
           notes?: string | null
           transaction_id?: string
         }

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -26,6 +27,7 @@ import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategor
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
 import { useLeads } from '@/hooks/useLeads';
 import { useContacts } from '@/hooks/useContacts';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,6 +69,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
   const { leads } = useLeads();
   const { contacts } = useContacts();
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [searchLead, setSearchLead] = useState('');
@@ -231,7 +234,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         selectedCategory,
         linkType === 'contact' ? selectedContact || undefined : undefined,
         linkType === 'lead' ? selectedLead || undefined : undefined,
-        notes || undefined
+        notes || undefined,
+        manualCity || displayLocation?.city || undefined,
+        manualState || displayLocation?.state || undefined
       );
       
       // Move to next transaction
@@ -399,19 +404,42 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                 
                 {showManualLocation && (
                   <div className="flex gap-2">
-                    <Input
-                      placeholder="Cidade"
-                      value={manualCity}
-                      onChange={(e) => setManualCity(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Input
-                      placeholder="UF"
+                    <Select
                       value={manualState}
-                      onChange={(e) => setManualState(e.target.value.toUpperCase())}
-                      className="w-16"
-                      maxLength={2}
-                    />
+                      onValueChange={(value) => {
+                        setManualState(value);
+                        setManualCity('');
+                        fetchCities(value);
+                      }}
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue placeholder="UF" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {states.map((state) => (
+                          <SelectItem key={state.sigla} value={state.sigla}>
+                            {state.sigla}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select
+                      value={manualCity}
+                      onValueChange={setManualCity}
+                      disabled={!manualState || loadingCities}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder={loadingCities ? "Carregando..." : "Cidade"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cities.map((city) => (
+                          <SelectItem key={city.id} value={city.nome}>
+                            {city.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </div>
@@ -499,7 +527,14 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                       >
                         <div className="font-medium">{lead.lead_name || 'Sem nome'}</div>
                         <div className="text-xs opacity-70 flex items-center gap-2">
-                          {lead.city && <span>{lead.city}</span>}
+                          {lead.city && lead.state ? (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {lead.city}, {lead.state}
+                            </span>
+                          ) : lead.city ? (
+                            <span>{lead.city}</span>
+                          ) : null}
                           {lead.lead_email && <span>{lead.lead_email}</span>}
                         </div>
                       </div>
@@ -511,6 +546,16 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                     )}
                   </div>
                 </ScrollArea>
+                {selectedLead && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted/50 rounded">
+                    <MapPin className="h-4 w-4" />
+                    <span>
+                      Destino: {leads.find(l => l.id === selectedLead)?.city || 'Cidade não cadastrada'}
+                      {leads.find(l => l.id === selectedLead)?.state && 
+                        `, ${leads.find(l => l.id === selectedLead)?.state}`}
+                    </span>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="contact" className="space-y-3">
@@ -537,7 +582,14 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                       >
                         <div className="font-medium">{contact.full_name}</div>
                         <div className="text-xs opacity-70 flex items-center gap-2">
-                          {contact.city && <span>{contact.city}</span>}
+                          {contact.city && contact.state ? (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {contact.city}, {contact.state}
+                            </span>
+                          ) : contact.city ? (
+                            <span>{contact.city}</span>
+                          ) : null}
                           {contact.email && <span>{contact.email}</span>}
                         </div>
                       </div>
@@ -549,6 +601,16 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                     )}
                   </div>
                 </ScrollArea>
+                {selectedContact && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted/50 rounded">
+                    <MapPin className="h-4 w-4" />
+                    <span>
+                      Destino: {contacts.find(c => c.id === selectedContact)?.city || 'Cidade não cadastrada'}
+                      {contacts.find(c => c.id === selectedContact)?.state && 
+                        `, ${contacts.find(c => c.id === selectedContact)?.state}`}
+                    </span>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 

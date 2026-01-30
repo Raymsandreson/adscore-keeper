@@ -37,6 +37,8 @@ export interface TransactionOverride {
   lead_id: string | null;
   contact_id: string | null;
   notes: string | null;
+  manual_city: string | null;
+  manual_state: string | null;
   created_at: string;
 }
 
@@ -307,7 +309,9 @@ export function useExpenseCategories() {
     categoryId: string, 
     contactId?: string,
     leadId?: string,
-    notes?: string
+    notes?: string,
+    manualCity?: string,
+    manualState?: string
   ) => {
     try {
       const { error } = await supabase
@@ -318,6 +322,8 @@ export function useExpenseCategories() {
           contact_id: contactId || null,
           lead_id: leadId || null,
           notes: notes || null,
+          manual_city: manualCity || null,
+          manual_state: manualState || null,
         }], { onConflict: 'transaction_id' });
 
       if (error) throw error;
