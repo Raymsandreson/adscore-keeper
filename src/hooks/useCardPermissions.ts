@@ -66,16 +66,12 @@ export function useCardPermissions() {
         .filter(p => p.user_id === user.id)
         .map(p => p.card_last_digits);
       
-      // Fetch all cards to know what exists
-      const allCards = await fetchAllCards();
+      // Fetch all cards to know what exists (for admin permission management UI)
+      await fetchAllCards();
       
-      // If user is admin, they can see ALL cards
-      // If user has explicit permissions, they see those cards
-      if (isAdmin) {
-        setAllowedCards(allCards);
-      } else {
-        setAllowedCards(myCards);
-      }
+      // ALL users (including admins) follow only explicit permissions
+      // Admins must be granted access to cards just like any other user
+      setAllowedCards(myCards);
     } catch (error) {
       console.error('Error fetching card permissions:', error);
     } finally {

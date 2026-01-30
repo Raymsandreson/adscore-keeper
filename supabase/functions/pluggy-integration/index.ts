@@ -313,16 +313,7 @@ serve(async (req) => {
       }
 
       case 'get_connections': {
-        // First check if user is admin or has any card permissions
-        const { data: userRole } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('role', 'admin')
-          .maybeSingle();
-        
-        const isAdmin = !!userRole;
-        
+        // Check if user has any card permissions (explicit access only)
         const { data: cardPermissions } = await supabase
           .from('user_card_permissions')
           .select('id')
@@ -331,16 +322,18 @@ serve(async (req) => {
         
         const hasCardPermissions = (cardPermissions?.length || 0) > 0;
         
-        // If admin or has any card permissions, show all connections
+        // Only users with explicit card permissions can see connections
         // Otherwise, only show own connections
         let connections;
-        if (isAdmin || hasCardPermissions) {
+        if (hasCardPermissions) {
+          // User has card permissions, show all connections
           const { data } = await supabase
             .from('pluggy_connections')
             .select('*')
             .order('created_at', { ascending: false });
           connections = data;
         } else {
+          // No card permissions, only show own connections
           const { data } = await supabase
             .from('pluggy_connections')
             .select('*')
