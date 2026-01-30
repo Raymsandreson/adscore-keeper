@@ -22,11 +22,31 @@ interface TeamMember {
 
 export function useCardPermissions() {
   const { user } = useAuth();
-  const { isAdmin } = useUserRole();
+  const { isAdmin, loading: roleLoading } = useUserRole();
   const [permissions, setPermissions] = useState<CardPermission[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [allowedCards, setAllowedCards] = useState<string[]>([]);
+  const [allKnownCards, setAllKnownCards] = useState<string[]>([]);
+
+  // Fetch all known cards from transactions (for admin access)
+  const fetchAllCards = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('credit_card_transactions')
+        .select('card_last_digits')
+        .not('card_last_digits', 'is', null);
+
+      if (error) throw error;
+      
+      const uniqueCards = [...new Set((data || []).map(t => t.card_last_digits).filter(Boolean))] as string[];
+      setAllKnownCards(uniqueCards);
+      return uniqueCards;
+    } catch (error) {
+      console.error('Error fetching all cards:', error);
+      return [];
+    }
+  }, []);
 
   // Fetch all permissions (for admins) or just own (for members)
   const fetchPermissions = useCallback(async () => {
@@ -45,13 +65,23 @@ export function useCardPermissions() {
       const myCards = (data || [])
         .filter(p => p.user_id === user.id)
         .map(p => p.card_last_digits);
-      setAllowedCards(myCards);
+      
+      // Fetch all cards to know what exists
+      const allCards = await fetchAllCards();
+      
+      // If user is admin, they can see ALL cards
+      // If user has explicit permissions, they see those cards
+      if (isAdmin) {
+        setAllowedCards(allCards);
+      } else {
+        setAllowedCards(myCards);
+      }
     } catch (error) {
       console.error('Error fetching card permissions:', error);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, isAdmin, fetchAllCards]);
 
   // Fetch team members for admin UI
   const fetchTeamMembers = useCallback(async () => {
@@ -89,10 +119,13 @@ export function useCardPermissions() {
     }
   }, [isAdmin]);
 
+  // Wait for role loading to complete before fetching permissions
   useEffect(() => {
-    fetchPermissions();
-    fetchTeamMembers();
-  }, [fetchPermissions, fetchTeamMembers]);
+    if (!roleLoading && user) {
+      fetchPermissions();
+      fetchTeamMembers();
+    }
+  }, [fetchPermissions, fetchTeamMembers, roleLoading, user]);
 
   // Grant card permission to a user
   const grantPermission = useCallback(async (userId: string, cardLastDigits: string, pluggyAccountId?: string) => {
@@ -183,11 +216,15 @@ export function useCardPermissions() {
     );
   }, [allowedCards]);
 
+  // Combined loading state includes role loading
+  const isLoading = loading || roleLoading;
+
   return {
     permissions,
     teamMembers,
-    loading,
+    loading: isLoading,
     allowedCards,
+    allKnownCards,
     grantPermission,
     revokePermission,
     grantMultiplePermissions,
