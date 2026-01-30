@@ -4,16 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   AlertCircle, 
   CheckCircle2, 
   CreditCard, 
-  Search, 
-  Users, 
-  Briefcase,
   ChevronRight,
   ChevronLeft,
   MapPin,
@@ -23,7 +19,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
+import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
 import { useLeads } from '@/hooks/useLeads';
 import { useContacts } from '@/hooks/useContacts';
@@ -31,6 +27,7 @@ import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { LeadContactSelector } from './LeadContactSelector';
 
 interface Transaction {
   id: string;
@@ -67,13 +64,11 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   } = useExpenseCategories();
   
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
-  const { leads } = useLeads();
-  const { contacts } = useContacts();
+  const { leads, fetchLeads } = useLeads();
+  const { contacts, fetchContacts } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [searchLead, setSearchLead] = useState('');
-  const [searchContact, setSearchContact] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
@@ -108,8 +103,6 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       setSelectedLead(null);
       setSelectedContact(null);
       setNotes('');
-      setSearchLead('');
-      setSearchContact('');
       setEnrichedLocation(null);
       setManualCity('');
       setManualState('');
@@ -182,26 +175,6 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     }
     return null;
   }, [enrichedLocation, manualCity, manualState, currentTransaction]);
-
-  const filteredLeads = useMemo(() => {
-    if (!searchLead.trim()) return leads.slice(0, 10);
-    const search = searchLead.toLowerCase();
-    return leads.filter(l => 
-      l.lead_name?.toLowerCase().includes(search) ||
-      l.lead_email?.toLowerCase().includes(search) ||
-      l.city?.toLowerCase().includes(search)
-    ).slice(0, 10);
-  }, [leads, searchLead]);
-
-  const filteredContacts = useMemo(() => {
-    if (!searchContact.trim()) return contacts.slice(0, 10);
-    const search = searchContact.toLowerCase();
-    return contacts.filter(c => 
-      c.full_name?.toLowerCase().includes(search) ||
-      c.email?.toLowerCase().includes(search) ||
-      c.city?.toLowerCase().includes(search)
-    ).slice(0, 10);
-  }, [contacts, searchContact]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -491,128 +464,18 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
             </div>
 
             {/* Lead/Contact Selection */}
-            <Tabs value={linkType} onValueChange={(v) => setLinkType(v as 'lead' | 'contact')}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="lead" className="gap-2">
-                  <Briefcase className="h-4 w-4" />
-                  Lead
-                </TabsTrigger>
-                <TabsTrigger value="contact" className="gap-2">
-                  <Users className="h-4 w-4" />
-                  Contato
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="lead" className="space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar lead por nome, email ou cidade..."
-                    value={searchLead}
-                    onChange={(e) => setSearchLead(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <ScrollArea className="h-40 border rounded-lg">
-                  <div className="p-2 space-y-1">
-                    {filteredLeads.map(lead => (
-                      <div
-                        key={lead.id}
-                        onClick={() => setSelectedLead(lead.id)}
-                        className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                          selectedLead === lead.id 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'hover:bg-muted'
-                        }`}
-                      >
-                        <div className="font-medium">{lead.lead_name || 'Sem nome'}</div>
-                        <div className="text-xs opacity-70 flex items-center gap-2">
-                          {lead.city && lead.state ? (
-                            <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {lead.city}, {lead.state}
-                            </span>
-                          ) : lead.city ? (
-                            <span>{lead.city}</span>
-                          ) : null}
-                          {lead.lead_email && <span>{lead.lead_email}</span>}
-                        </div>
-                      </div>
-                    ))}
-                    {filteredLeads.length === 0 && (
-                      <div className="text-center text-muted-foreground py-4">
-                        Nenhum lead encontrado
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-                {selectedLead && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted/50 rounded">
-                    <MapPin className="h-4 w-4" />
-                    <span>
-                      Destino: {leads.find(l => l.id === selectedLead)?.city || 'Cidade não cadastrada'}
-                      {leads.find(l => l.id === selectedLead)?.state && 
-                        `, ${leads.find(l => l.id === selectedLead)?.state}`}
-                    </span>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="contact" className="space-y-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar contato por nome, email ou cidade..."
-                    value={searchContact}
-                    onChange={(e) => setSearchContact(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                <ScrollArea className="h-40 border rounded-lg">
-                  <div className="p-2 space-y-1">
-                    {filteredContacts.map(contact => (
-                      <div
-                        key={contact.id}
-                        onClick={() => setSelectedContact(contact.id)}
-                        className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                          selectedContact === contact.id 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'hover:bg-muted'
-                        }`}
-                      >
-                        <div className="font-medium">{contact.full_name}</div>
-                        <div className="text-xs opacity-70 flex items-center gap-2">
-                          {contact.city && contact.state ? (
-                            <span className="flex items-center gap-1">
-                              <MapPin className="h-3 w-3" />
-                              {contact.city}, {contact.state}
-                            </span>
-                          ) : contact.city ? (
-                            <span>{contact.city}</span>
-                          ) : null}
-                          {contact.email && <span>{contact.email}</span>}
-                        </div>
-                      </div>
-                    ))}
-                    {filteredContacts.length === 0 && (
-                      <div className="text-center text-muted-foreground py-4">
-                        Nenhum contato encontrado
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-                {selectedContact && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground p-2 bg-muted/50 rounded">
-                    <MapPin className="h-4 w-4" />
-                    <span>
-                      Destino: {contacts.find(c => c.id === selectedContact)?.city || 'Cidade não cadastrada'}
-                      {contacts.find(c => c.id === selectedContact)?.state && 
-                        `, ${contacts.find(c => c.id === selectedContact)?.state}`}
-                    </span>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+            <LeadContactSelector
+              linkType={linkType}
+              onLinkTypeChange={setLinkType}
+              selectedLead={selectedLead}
+              onSelectLead={setSelectedLead}
+              selectedContact={selectedContact}
+              onSelectContact={setSelectedContact}
+              leads={leads}
+              contacts={contacts}
+              onLeadsChange={fetchLeads}
+              onContactsChange={fetchContacts}
+            />
 
             {/* Notes */}
             <div>
