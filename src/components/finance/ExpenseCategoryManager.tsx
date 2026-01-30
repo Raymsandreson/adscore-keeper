@@ -83,6 +83,65 @@ export function ExpenseCategoryManager() {
 
   const parentCategories = getParentCategories();
 
+  // Função para sugerir categorias da API baseado no nome da categoria
+  const suggestApiCategories = (categoryName: string): string[] => {
+    const name = categoryName.toLowerCase().trim();
+    const suggestions: string[] = [];
+    
+    const mappings: Record<string, string[]> = {
+      'alimentação': ['Restaurantes', 'Alimentação', 'Fast Food', 'Cafeterias', 'Supermercado', 'Supermercados', 'Padarias', 'Refeições Fora'],
+      'alimentos': ['Restaurantes', 'Alimentação', 'Fast Food', 'Supermercado', 'Supermercados'],
+      'comida': ['Restaurantes', 'Alimentação', 'Fast Food', 'Refeições Fora'],
+      'restaurante': ['Restaurantes', 'Alimentação', 'Fast Food', 'Cafeterias'],
+      'transporte': ['Transporte', 'Transporte Público', 'Táxi', 'Uber', 'Aplicativos de Transporte', 'Estacionamento'],
+      'combustível': ['Postos de Combustível', 'Combustível', 'Fuel'],
+      'combustivel': ['Postos de Combustível', 'Combustível', 'Fuel'],
+      'gasolina': ['Postos de Combustível', 'Combustível'],
+      'hospedagem': ['Hotéis', 'Hospedagem', 'Férias'],
+      'hotel': ['Hotéis', 'Hospedagem'],
+      'viagem': ['Viagem', 'Companhias Aéreas', 'Hotéis', 'Hospedagem', 'Férias'],
+      'passagem': ['Viagem', 'Companhias Aéreas'],
+      'aéreo': ['Viagem', 'Companhias Aéreas'],
+      'saúde': ['Saúde', 'Farmácia', 'Médico', 'Hospitais', 'Dentista'],
+      'saude': ['Saúde', 'Farmácia', 'Médico', 'Hospitais', 'Dentista'],
+      'farmácia': ['Farmácia', 'Saúde'],
+      'farmacia': ['Farmácia', 'Saúde'],
+      'entretenimento': ['Entretenimento', 'Cinema', 'Música', 'Jogos', 'Streaming'],
+      'lazer': ['Entretenimento', 'Cinema', 'Esportes'],
+      'compras': ['Compras', 'Vestuário', 'Eletrônicos', 'Lojas de Departamento', 'Compras Online'],
+      'roupa': ['Vestuário', 'Compras'],
+      'vestuário': ['Vestuário', 'Compras'],
+      'carro': ['Automóvel', 'Manutenção de Veículo', 'Combustível', 'Estacionamento'],
+      'veículo': ['Automóvel', 'Manutenção de Veículo', 'Aluguel de Carro'],
+      'uber': ['Uber', 'Táxi', 'Aplicativos de Transporte'],
+      'táxi': ['Táxi', 'Uber', 'Aplicativos de Transporte'],
+      'taxi': ['Táxi', 'Uber', 'Aplicativos de Transporte'],
+      'educação': ['Educação', 'Livros', 'Cursos'],
+      'educacao': ['Educação', 'Livros', 'Cursos'],
+      'curso': ['Educação', 'Cursos'],
+      'casa': ['Casa', 'Reforma', 'Móveis', 'Artigos para Casa', 'Aluguel'],
+      'moradia': ['Casa', 'Aluguel', 'Utilidades'],
+      'serviço': ['Serviços', 'Serviços Profissionais', 'Serviços Digitais'],
+      'servico': ['Serviços', 'Serviços Profissionais', 'Serviços Digitais'],
+      'assinatura': ['Assinatura', 'Assinaturas', 'Streaming', 'Serviços Digitais'],
+      'streaming': ['Streaming', 'Assinatura', 'Assinaturas'],
+      'pet': ['Animais de Estimação', 'Pet Shop', 'Veterinário'],
+      'animal': ['Animais de Estimação', 'Pet Shop', 'Veterinário'],
+      'outros': ['Outros', 'Geral', 'Diversos'],
+    };
+
+    // Busca correspondências exatas ou parciais
+    for (const [key, values] of Object.entries(mappings)) {
+      if (name.includes(key) || key.includes(name)) {
+        values.forEach(v => {
+          if (!suggestions.includes(v)) suggestions.push(v);
+        });
+      }
+    }
+
+    return suggestions;
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -95,6 +154,19 @@ export function ExpenseCategoryManager() {
     });
     setEditingCategory(null);
   };
+
+  // Atualiza sugestões quando o nome muda
+  useEffect(() => {
+    if (!editingCategory && formData.name.length >= 3) {
+      const suggestions = suggestApiCategories(formData.name);
+      if (suggestions.length > 0 && formData.selectedApiCategories.length === 0) {
+        setFormData(prev => ({
+          ...prev,
+          selectedApiCategories: suggestions
+        }));
+      }
+    }
+  }, [formData.name, editingCategory]);
 
   const handleEdit = (category: ExpenseCategory) => {
     setEditingCategory(category);
@@ -490,19 +562,21 @@ export function ExpenseCategoryManager() {
 
                   <ScrollArea className="h-40 border rounded-md p-2">
                     <div className="space-y-1">
-                      {availableApiCategories.map((apiCat) => (
-                        <div 
-                          key={apiCat} 
-                          className="flex items-center gap-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
-                          onClick={() => toggleApiCategory(apiCat)}
-                        >
-                          <Checkbox 
-                            checked={formData.selectedApiCategories.includes(apiCat)}
-                            onCheckedChange={() => toggleApiCategory(apiCat)}
-                          />
-                          <span className="text-sm">{apiCat}</span>
-                        </div>
-                      ))}
+                      {availableApiCategories.map((apiCat) => {
+                        const isChecked = formData.selectedApiCategories.includes(apiCat);
+                        return (
+                          <label 
+                            key={apiCat} 
+                            className="flex items-center gap-2 py-1.5 px-2 hover:bg-muted rounded cursor-pointer select-none"
+                          >
+                            <Checkbox 
+                              checked={isChecked}
+                              onCheckedChange={() => toggleApiCategory(apiCat)}
+                            />
+                            <span className="text-sm">{apiCat}</span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </ScrollArea>
                 </div>
