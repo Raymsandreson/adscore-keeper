@@ -15,6 +15,9 @@ interface Transaction {
   payment_data: Record<string, any>;
   card_last_digits: string | null;
   merchant_name: string | null;
+  merchant_cnpj: string | null;
+  merchant_city: string | null;
+  merchant_state: string | null;
   created_at: string;
 }
 

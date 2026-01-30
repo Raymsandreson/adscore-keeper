@@ -403,7 +403,10 @@ export type Database = {
           currency_code: string | null
           description: string | null
           id: string
+          merchant_city: string | null
+          merchant_cnpj: string | null
           merchant_name: string | null
+          merchant_state: string | null
           payment_data: Json | null
           pluggy_account_id: string
           pluggy_transaction_id: string
@@ -419,7 +422,10 @@ export type Database = {
           currency_code?: string | null
           description?: string | null
           id?: string
+          merchant_city?: string | null
+          merchant_cnpj?: string | null
           merchant_name?: string | null
+          merchant_state?: string | null
           payment_data?: Json | null
           pluggy_account_id: string
           pluggy_transaction_id: string
@@ -435,7 +441,10 @@ export type Database = {
           currency_code?: string | null
           description?: string | null
           id?: string
+          merchant_city?: string | null
+          merchant_cnpj?: string | null
           merchant_name?: string | null
+          merchant_state?: string | null
           payment_data?: Json | null
           pluggy_account_id?: string
           pluggy_transaction_id?: string
