@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { TransactionCategorizer } from './TransactionCategorizer';
+import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
   id: string;
@@ -128,12 +129,22 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
     if (override) {
       return getCategoryById(override.category_id) || null;
     }
-    // Try to match from Pluggy category
+    // Try to match from Pluggy category (translated)
     const pluggyCategory = transaction.category?.toLowerCase();
     if (pluggyCategory) {
-      return categories.find(c => c.name.toLowerCase().includes(pluggyCategory)) || null;
+      const translatedCategory = translateCategory(transaction.category).toLowerCase();
+      return categories.find(c => 
+        c.name.toLowerCase().includes(pluggyCategory) || 
+        c.name.toLowerCase().includes(translatedCategory)
+      ) || null;
     }
     return null;
+  };
+
+  const getDisplayCategory = (transaction: Transaction): string => {
+    const category = getTransactionCategory(transaction);
+    if (category) return category.name;
+    return translateCategory(transaction.category);
   };
 
   return (
@@ -235,11 +246,9 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                               {[t.merchant_city, t.merchant_state].filter(Boolean).join(' - ')}
                                             </span>
                                           )}
-                                          {category && (
-                                            <Badge variant="outline" className="text-xs">
-                                              {category.name}
-                                            </Badge>
-                                          )}
+                                          <Badge variant="outline" className="text-xs">
+                                            {getDisplayCategory(t)}
+                                          </Badge>
                                           {override?.lead_id && (
                                             <Badge variant="secondary" className="text-xs">
                                               Vinculado
