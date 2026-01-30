@@ -367,7 +367,12 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                 {currentTransaction.card_last_digits && (
                   <span className="flex items-center gap-1">
                     <CreditCard className="h-4 w-4" />
-                    **** {currentTransaction.card_last_digits}
+                    {(() => {
+                      const assignment = getCardAssignment(currentTransaction.card_last_digits);
+                      return assignment?.card_name 
+                        ? `${assignment.card_name} (**** ${currentTransaction.card_last_digits})`
+                        : `**** ${currentTransaction.card_last_digits}`;
+                    })()}
                   </span>
                 )}
                 {currentTransaction.category && (
