@@ -159,9 +159,24 @@ export function useExpenseCategories() {
 
   const updateCategory = useCallback(async (id: string, updates: Partial<ExpenseCategory>) => {
     try {
+      // Prepare update data with correct types for database
+      const updateData: Record<string, any> = { ...updates };
+      
+      // Ensure limit_unit is properly formatted for DB
+      if ('limit_unit' in updateData) {
+        updateData.limit_unit = updateData.limit_unit || null;
+      }
+      
+      // Ensure max_limit_per_unit is properly formatted
+      if ('max_limit_per_unit' in updateData) {
+        updateData.max_limit_per_unit = updateData.max_limit_per_unit ?? null;
+      }
+
+      console.log('Updating category with:', updateData);
+
       const { error } = await supabase
         .from('expense_categories')
-        .update(updates)
+        .update(updateData)
         .eq('id', id);
 
       if (error) throw error;
