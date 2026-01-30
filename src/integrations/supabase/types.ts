@@ -137,6 +137,35 @@ export type Database = {
           },
         ]
       }
+      category_api_mappings: {
+        Row: {
+          api_category_name: string
+          category_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          api_category_name: string
+          category_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          api_category_name?: string
+          category_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_api_mappings_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cbo_professions: {
         Row: {
           cbo_code: string
