@@ -8,11 +8,14 @@ export const categoryTranslations: Record<string, string> = {
   'Groceries': 'Supermercado',
   'Supermarkets': 'Supermercados',
   'Bakeries': 'Padarias',
+  'Eating out': 'Refeições Fora',
+  'Eating Out': 'Refeições Fora',
   
   // Transporte
   'Transport': 'Transporte',
   'Transportation': 'Transporte',
   'Gas Stations': 'Postos de Combustível',
+  'Gas stations': 'Postos de Combustível',
   'Fuel': 'Combustível',
   'Parking': 'Estacionamento',
   'Public Transportation': 'Transporte Público',
@@ -23,12 +26,14 @@ export const categoryTranslations: Record<string, string> = {
   'Auto': 'Automóvel',
   'Car Maintenance': 'Manutenção de Veículo',
   
-  // Viagem
+  // Viagem e Hospedagem
   'Travel': 'Viagem',
   'Airlines': 'Companhias Aéreas',
   'Hotels': 'Hotéis',
   'Lodging': 'Hospedagem',
   'Vacation': 'Férias',
+  'Accomodation': 'Hospedagem',
+  'Accommodation': 'Hospedagem',
   
   // Compras
   'Shopping': 'Compras',
@@ -36,6 +41,8 @@ export const categoryTranslations: Record<string, string> = {
   'Electronics': 'Eletrônicos',
   'Department Stores': 'Lojas de Departamento',
   'Online Shopping': 'Compras Online',
+  'Houseware': 'Artigos para Casa',
+  'Home Goods': 'Artigos para Casa',
   
   // Entretenimento
   'Entertainment': 'Entretenimento',
@@ -63,6 +70,8 @@ export const categoryTranslations: Record<string, string> = {
   'Insurance': 'Seguros',
   'Professional Services': 'Serviços Profissionais',
   'Legal': 'Jurídico',
+  'Digital services': 'Serviços Digitais',
+  'Digital Services': 'Serviços Digitais',
   
   // Educação
   'Education': 'Educação',
@@ -82,6 +91,9 @@ export const categoryTranslations: Record<string, string> = {
   'Transfer': 'Transferência',
   'Investment': 'Investimento',
   'Taxes': 'Impostos',
+  'Credit card payment': 'Pagamento de Cartão',
+  'Credit Card Payment': 'Pagamento de Cartão',
+  'Credit Card': 'Cartão de Crédito',
   
   // Pets
   'Pets': 'Animais de Estimação',
