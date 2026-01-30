@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useCardPermissions } from '@/hooks/useCardPermissions';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { toast } from 'sonner';
 
 interface CardPermissionsManagerProps {
@@ -49,11 +50,23 @@ export function CardPermissionsManager({ availableCards }: CardPermissionsManage
     revokePermission,
     getPermissionsForUser,
   } = useCardPermissions();
+  const { cardAssignments, fetchCardAssignments } = useExpenseCategories();
 
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+
+  // Fetch card assignments on mount
+  useEffect(() => {
+    fetchCardAssignments();
+  }, [fetchCardAssignments]);
+
+  // Helper to get card display name
+  const getCardDisplayName = (cardLastDigits: string) => {
+    const assignment = cardAssignments.find(a => a.card_last_digits === cardLastDigits);
+    return assignment?.card_name || null;
+  };
 
   // Get the selected user's current permissions
   const selectedUserPermissions = useMemo(() => {
@@ -198,12 +211,15 @@ export function CardPermissionsManager({ availableCards }: CardPermissionsManage
                         <div className="flex items-center gap-2">
                           <Eye className="h-4 w-4 text-green-600" />
                           <span className="text-sm">{permCount} cartão(ões)</span>
-                          <div className="flex gap-1 ml-2">
-                            {memberPerms.slice(0, 3).map(p => (
-                              <Badge key={p.id} variant="secondary" className="text-xs font-mono">
-                                ****{p.card_last_digits}
-                              </Badge>
-                            ))}
+                          <div className="flex gap-1 ml-2 flex-wrap">
+                            {memberPerms.slice(0, 3).map(p => {
+                              const cardName = getCardDisplayName(p.card_last_digits);
+                              return (
+                                <Badge key={p.id} variant="secondary" className="text-xs">
+                                  {cardName || `****${p.card_last_digits}`}
+                                </Badge>
+                              );
+                            })}
                             {permCount > 3 && (
                               <Badge variant="secondary" className="text-xs">
                                 +{permCount - 3}
@@ -264,21 +280,31 @@ export function CardPermissionsManager({ availableCards }: CardPermissionsManage
                 ) : (
                   <ScrollArea className="h-64 border rounded-lg">
                     <div className="p-3 space-y-2">
-                      {availableCards.map((card) => (
-                        <label
-                          key={card}
-                          className="flex items-center justify-between p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <CreditCard className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-mono">**** {card}</span>
-                          </div>
-                          <Checkbox
-                            checked={pendingChanges[card] || false}
-                            onCheckedChange={() => handleToggleCard(card)}
-                          />
-                        </label>
-                      ))}
+                      {availableCards.map((card) => {
+                        const cardName = getCardDisplayName(card);
+                        return (
+                          <label
+                            key={card}
+                            className="flex items-center justify-between p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <CreditCard className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col">
+                                {cardName && (
+                                  <span className="font-medium">{cardName}</span>
+                                )}
+                                <span className={`font-mono ${cardName ? 'text-xs text-muted-foreground' : ''}`}>
+                                  **** {card}
+                                </span>
+                              </div>
+                            </div>
+                            <Checkbox
+                              checked={pendingChanges[card] || false}
+                              onCheckedChange={() => handleToggleCard(card)}
+                            />
+                          </label>
+                        );
+                      })}
                     </div>
                   </ScrollArea>
                 )}
