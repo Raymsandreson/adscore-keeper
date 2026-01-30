@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Tag,
   UserCheck,
@@ -16,10 +16,13 @@ import {
   Fuel,
   Plane,
   Briefcase,
-  Package
+  Package,
+  Users,
+  Building
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useContacts } from '@/hooks/useContacts';
+import { useLeads } from '@/hooks/useLeads';
 
 interface Transaction {
   id: string;
@@ -58,18 +61,52 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     checkLimitViolation 
   } = useExpenseCategories();
   const { contacts } = useContacts();
+  const { leads } = useLeads();
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedContact, setSelectedContact] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLead, setSelectedLead] = useState<string>('');
+  const [contactSearchTerm, setContactSearchTerm] = useState('');
+  const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
+  const [activeTab, setActiveTab] = useState<'lead' | 'contact'>('lead');
 
   const existingOverride = getTransactionOverride(transaction.id);
 
+  // Load existing override data when opening
+  useEffect(() => {
+    if (open && existingOverride) {
+      setSelectedCategory(existingOverride.category_id || '');
+      setSelectedContact(existingOverride.contact_id || '');
+      setSelectedLead(existingOverride.lead_id || '');
+      setNotes(existingOverride.notes || '');
+      // Set active tab based on what's linked
+      if (existingOverride.lead_id) {
+        setActiveTab('lead');
+      } else if (existingOverride.contact_id) {
+        setActiveTab('contact');
+      }
+    } else if (open) {
+      // Reset when opening without override
+      setSelectedCategory('');
+      setSelectedContact('');
+      setSelectedLead('');
+      setNotes('');
+      setActiveTab('lead');
+    }
+  }, [open, existingOverride]);
+
   const filteredContacts = contacts.filter(contact => 
-    contact.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.instagram_username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    contact.phone?.includes(searchTerm)
+    contact.full_name?.toLowerCase().includes(contactSearchTerm.toLowerCase()) ||
+    contact.instagram_username?.toLowerCase().includes(contactSearchTerm.toLowerCase()) ||
+    contact.phone?.includes(contactSearchTerm)
+  );
+
+  const filteredLeads = leads.filter(lead => 
+    lead.lead_name?.toLowerCase().includes(leadSearchTerm.toLowerCase()) ||
+    lead.lead_email?.toLowerCase().includes(leadSearchTerm.toLowerCase()) ||
+    lead.lead_phone?.includes(leadSearchTerm) ||
+    lead.instagram_username?.toLowerCase().includes(leadSearchTerm.toLowerCase())
   );
 
   const handleSubmit = async () => {
@@ -79,13 +116,11 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       transaction.id, 
       selectedCategory, 
       selectedContact || undefined,
+      selectedLead || undefined,
       notes || undefined
     );
     
     onOpenChange(false);
-    setSelectedCategory('');
-    setSelectedContact('');
-    setNotes('');
   };
 
   const formatCurrency = (value: number) => {
@@ -99,10 +134,18 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     return contact.full_name || contact.instagram_username || 'Sem nome';
   };
 
+  const getLeadDisplay = (lead: { lead_name: string | null; lead_email: string | null; instagram_username: string | null }) => {
+    return lead.lead_name || lead.lead_email || lead.instagram_username || 'Sem nome';
+  };
+
   const selectedCategoryData = selectedCategory ? getCategoryById(selectedCategory) : null;
   const limitViolation = selectedCategoryData 
     ? checkLimitViolation(selectedCategoryData, transaction.amount) 
     : null;
+
+  // Get selected lead/contact names for display
+  const selectedLeadData = leads.find(l => l.id === selectedLead);
+  const selectedContactData = contacts.find(c => c.id === selectedContact);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -179,48 +222,126 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
             </div>
           )}
 
-          {/* Contact Selection (Optional) */}
+          {/* Lead/Contact Selection */}
           <div>
-            <Label className="flex items-center gap-2">
-              <UserCheck className="h-4 w-4" />
-              Vincular a Contato (opcional)
+            <Label className="flex items-center gap-2 mb-2">
+              <Users className="h-4 w-4" />
+              Vincular a Lead ou Contato (opcional)
             </Label>
-            <div className="relative mb-2 mt-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar contato..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <ScrollArea className="h-32 border rounded-md">
-              <div className="p-2 space-y-1">
-                <button
-                  type="button"
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    !selectedContact ? 'bg-muted' : 'hover:bg-muted'
-                  }`}
-                  onClick={() => setSelectedContact('')}
-                >
-                  Nenhum
-                </button>
-                {filteredContacts.map((contact) => (
-                  <button
-                    key={contact.id}
-                    type="button"
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      selectedContact === contact.id 
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'hover:bg-muted'
-                    }`}
-                    onClick={() => setSelectedContact(contact.id)}
-                  >
-                    {getContactDisplay(contact)}
-                  </button>
-                ))}
-              </div>
-            </ScrollArea>
+
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'lead' | 'contact')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="lead" className="gap-2">
+                  <Building className="h-3.5 w-3.5" />
+                  Lead
+                </TabsTrigger>
+                <TabsTrigger value="contact" className="gap-2">
+                  <UserCheck className="h-3.5 w-3.5" />
+                  Contato
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="lead" className="mt-3">
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar lead..."
+                    value={leadSearchTerm}
+                    onChange={(e) => setLeadSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <ScrollArea className="h-32 border rounded-md">
+                  <div className="p-2 space-y-1">
+                    <button
+                      type="button"
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        !selectedLead ? 'bg-muted' : 'hover:bg-muted'
+                      }`}
+                      onClick={() => setSelectedLead('')}
+                    >
+                      Nenhum
+                    </button>
+                    {filteredLeads.map((lead) => (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          selectedLead === lead.id 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'hover:bg-muted'
+                        }`}
+                        onClick={() => {
+                          setSelectedLead(lead.id);
+                          setSelectedContact(''); // Clear contact when selecting lead
+                        }}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium">{getLeadDisplay(lead)}</span>
+                          {lead.city && lead.state && (
+                            <span className={`text-xs ${selectedLead === lead.id ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                              {lead.city}, {lead.state}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+                {selectedLeadData && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Selecionado: <span className="font-medium">{getLeadDisplay(selectedLeadData)}</span>
+                  </p>
+                )}
+              </TabsContent>
+
+              <TabsContent value="contact" className="mt-3">
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar contato..."
+                    value={contactSearchTerm}
+                    onChange={(e) => setContactSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <ScrollArea className="h-32 border rounded-md">
+                  <div className="p-2 space-y-1">
+                    <button
+                      type="button"
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        !selectedContact ? 'bg-muted' : 'hover:bg-muted'
+                      }`}
+                      onClick={() => setSelectedContact('')}
+                    >
+                      Nenhum
+                    </button>
+                    {filteredContacts.map((contact) => (
+                      <button
+                        key={contact.id}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          selectedContact === contact.id 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'hover:bg-muted'
+                        }`}
+                        onClick={() => {
+                          setSelectedContact(contact.id);
+                          setSelectedLead(''); // Clear lead when selecting contact
+                        }}
+                      >
+                        {getContactDisplay(contact)}
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+                {selectedContactData && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Selecionado: <span className="font-medium">{getContactDisplay(selectedContactData)}</span>
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
 
           {/* Notes */}
