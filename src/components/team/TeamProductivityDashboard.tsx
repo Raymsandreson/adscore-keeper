@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
-import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { subDays, format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   BarChart,
@@ -45,15 +45,20 @@ import {
   Legend,
 } from 'recharts';
 
-type DateRangeOption = '7d' | '14d' | '30d' | 'week' | 'month';
+type DateRangeOption = 'today' | 'yesterday' | '7d' | '14d' | '30d' | 'week' | 'month';
 
 export function TeamProductivityDashboard() {
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('7d');
+  const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('today');
 
   const dateRange = useMemo(() => {
     const now = new Date();
+    const yesterday = subDays(now, 1);
     switch (dateRangeOption) {
+      case 'today':
+        return { start: startOfDay(now), end: endOfDay(now) };
+      case 'yesterday':
+        return { start: startOfDay(yesterday), end: endOfDay(yesterday) };
       case '7d':
         return { start: subDays(now, 7), end: now };
       case '14d':
@@ -65,7 +70,7 @@ export function TeamProductivityDashboard() {
       case 'month':
         return { start: startOfMonth(now), end: endOfMonth(now) };
       default:
-        return { start: subDays(now, 7), end: now };
+        return { start: startOfDay(now), end: endOfDay(now) };
     }
   }, [dateRangeOption]);
 
@@ -207,11 +212,13 @@ export function TeamProductivityDashboard() {
           </p>
         </div>
         <Select value={dateRangeOption} onValueChange={(v) => setDateRangeOption(v as DateRangeOption)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <Calendar className="h-4 w-4 mr-2" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="today">Hoje</SelectItem>
+            <SelectItem value="yesterday">Ontem</SelectItem>
             <SelectItem value="7d">Últimos 7 dias</SelectItem>
             <SelectItem value="14d">Últimos 14 dias</SelectItem>
             <SelectItem value="30d">Últimos 30 dias</SelectItem>
