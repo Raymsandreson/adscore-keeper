@@ -113,6 +113,10 @@ export default function FinancePage() {
     };
   }, []);
 
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [autoSyncing, setAutoSyncing] = useState(false);
+
+  // Auto-sync on page load
   useEffect(() => {
     const loadData = async () => {
       if (user) {
@@ -122,6 +126,29 @@ export default function FinancePage() {
     };
     loadData();
   }, [user, fetchConnections, fetchTransactions, dateRange]);
+
+  // Auto-sync when connections exist and page loads
+  useEffect(() => {
+    const autoSync = async () => {
+      if (connections.length > 0 && !syncing && !autoSyncing) {
+        setAutoSyncing(true);
+        try {
+          await syncTransactions(dateRange);
+          setLastSyncTime(new Date());
+          toast.success('Transações atualizadas automaticamente');
+        } catch (err) {
+          console.error('Auto-sync failed:', err);
+        } finally {
+          setAutoSyncing(false);
+        }
+      }
+    };
+    
+    // Only run auto-sync once when connections are loaded
+    if (connections.length > 0 && !lastSyncTime) {
+      autoSync();
+    }
+  }, [connections.length]);
 
   // Auto-import existing Pluggy connections if none found
   const handleImportConnections = useCallback(async () => {
@@ -202,6 +229,7 @@ export default function FinancePage() {
 
   const handleSync = useCallback(async () => {
     await syncTransactions(dateRange);
+    setLastSyncTime(new Date());
     toast.success('Transações sincronizadas!');
   }, [syncTransactions, dateRange]);
 
@@ -266,13 +294,18 @@ export default function FinancePage() {
             </div>
 
             <div className="flex items-center gap-2">
+              {lastSyncTime && (
+                <span className="text-xs text-muted-foreground">
+                  Atualizado às {format(lastSyncTime, "HH:mm")}
+                </span>
+              )}
               <Button
                 variant="outline"
                 onClick={handleSync}
-                disabled={syncing || connections.length === 0}
+                disabled={syncing || autoSyncing || connections.length === 0}
               >
-                <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
-                Sincronizar
+                <RefreshCw className={cn("h-4 w-4 mr-2", (syncing || autoSyncing) && "animate-spin")} />
+                {autoSyncing ? 'Atualizando...' : 'Sincronizar'}
               </Button>
               <Button onClick={handleConnect} disabled={isConnecting}>
                 <Link2 className="h-4 w-4 mr-2" />
