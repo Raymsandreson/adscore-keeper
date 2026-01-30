@@ -68,10 +68,11 @@ export function useCreditCardTransactions() {
     setError(null);
 
     try {
+      // RLS policies handle access control - no need to filter by user_id
+      // Admins and users with card permissions can see all transactions
       let query = supabase
         .from('credit_card_transactions')
         .select('*')
-        .eq('user_id', user.id)
         .order('transaction_date', { ascending: false });
 
       if (dateRange) {
