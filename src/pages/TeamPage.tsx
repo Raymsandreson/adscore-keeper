@@ -1,22 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { TeamManagement } from '@/components/team/TeamManagement';
 import { TeamProductivityDashboard } from '@/components/team/TeamProductivityDashboard';
+import { CardPermissionsManager } from '@/components/finance/CardPermissionsManager';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
 import {
   Users,
   BarChart3,
   ArrowLeft,
   Shield,
   Loader2,
+  CreditCard,
 } from 'lucide-react';
 
 export default function TeamPage() {
   const navigate = useNavigate();
   const { isAdmin, loading } = useUserRole();
   const [activeTab, setActiveTab] = useState('productivity');
+  
+  // Fetch transactions to get available cards for permissions
+  const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
+  
+  useEffect(() => {
+    fetchConnections();
+    fetchTransactions();
+  }, [fetchConnections, fetchTransactions]);
+
+  const availableCards = useMemo(() => {
+    const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
+    return Array.from(cards);
+  }, [transactions]);
 
   if (loading) {
     return (
@@ -62,7 +78,7 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Produtividade
@@ -70,6 +86,10 @@ export default function TeamPage() {
             <TabsTrigger value="members" className="gap-2">
               <Users className="h-4 w-4" />
               Membros
+            </TabsTrigger>
+            <TabsTrigger value="permissions" className="gap-2">
+              <CreditCard className="h-4 w-4" />
+              Cartões
             </TabsTrigger>
           </TabsList>
 
@@ -79,6 +99,10 @@ export default function TeamPage() {
 
           <TabsContent value="members">
             <TeamManagement />
+          </TabsContent>
+
+          <TabsContent value="permissions">
+            <CardPermissionsManager availableCards={availableCards} />
           </TabsContent>
         </Tabs>
       </div>
