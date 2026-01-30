@@ -192,6 +192,16 @@ export function TeamProductivityDashboard() {
     return `${minutes}min`;
   };
 
+  const formatMinutesToHours = (totalMinutes: number) => {
+    if (!totalMinutes) return '0min';
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${minutes}min`;
+    }
+    return `${minutes}min`;
+  };
+
   // Summary stats
   const totalReplies = productivity.reduce((sum, p) => sum + p.replies, 0);
   const totalDms = productivity.reduce((sum, p) => sum + p.dmsSent, 0);
@@ -414,7 +424,7 @@ export function TeamProductivityDashboard() {
                           <p className="text-xs text-muted-foreground">visitas</p>
                         </div>
                         <div className="text-center">
-                          <p className="font-semibold text-orange-600">{member.sessionMinutes}min</p>
+                          <p className="font-semibold text-orange-600">{formatMinutesToHours(member.sessionMinutes)}</p>
                           <p className="text-xs text-muted-foreground">tempo</p>
                         </div>
                       </div>
