@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Plus, 
   Pencil, 
@@ -20,9 +22,12 @@ import {
   Package,
   AlertTriangle,
   ChevronRight,
-  FolderPlus
+  FolderPlus,
+  Link2,
+  X
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { useCategoryApiMappings, availableApiCategories } from '@/hooks/useCategoryApiMappings';
 import { DeleteCategoryDialog } from './DeleteCategoryDialog';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -53,10 +58,12 @@ interface CategoryFormData {
   max_limit_per_unit: string;
   limit_unit: string;
   parent_id: string;
+  selectedApiCategories: string[];
 }
 
 export function ExpenseCategoryManager() {
   const { categories, loading, addCategory, updateCategory, deleteCategory, getCategoryExpenseCount, getParentCategories, getSubcategories } = useExpenseCategories();
+  const { mappings, getMappingsForCategory, setMappingsForCategory } = useCategoryApiMappings();
   const [isOpen, setIsOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -71,6 +78,7 @@ export function ExpenseCategoryManager() {
     max_limit_per_unit: '',
     limit_unit: '',
     parent_id: '',
+    selectedApiCategories: [],
   });
 
   const parentCategories = getParentCategories();
@@ -83,19 +91,24 @@ export function ExpenseCategoryManager() {
       max_limit_per_unit: '',
       limit_unit: '',
       parent_id: '',
+      selectedApiCategories: [],
     });
     setEditingCategory(null);
   };
 
   const handleEdit = (category: ExpenseCategory) => {
     setEditingCategory(category);
+    const currentMappings = getMappingsForCategory(category.id);
     setFormData({
       name: category.name,
       icon: category.icon || 'tag',
       color: category.color || 'bg-gray-500',
-      max_limit_per_unit: category.max_limit_per_unit?.toString() || '',
+      max_limit_per_unit: category.max_limit_per_unit !== null && category.max_limit_per_unit !== undefined 
+        ? category.max_limit_per_unit.toString() 
+        : '',
       limit_unit: category.limit_unit || '',
       parent_id: category.parent_id || '',
+      selectedApiCategories: currentMappings.map(m => m.api_category_name),
     });
     setIsOpen(true);
   };
@@ -106,14 +119,23 @@ export function ExpenseCategoryManager() {
     setIsOpen(true);
   };
 
+  const toggleApiCategory = (apiCategory: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedApiCategories: prev.selectedApiCategories.includes(apiCategory)
+        ? prev.selectedApiCategories.filter(c => c !== apiCategory)
+        : [...prev.selectedApiCategories, apiCategory]
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!formData.name.trim()) return;
 
-    const limitUnit = formData.limit_unit && formData.limit_unit !== '' 
+    const limitUnit = formData.limit_unit && formData.limit_unit !== '' && formData.limit_unit !== 'none'
       ? formData.limit_unit as 'per_transaction' | 'per_day' | 'per_month' 
       : null;
     
-    const maxLimit = formData.max_limit_per_unit && formData.max_limit_per_unit !== '' 
+    const maxLimit = formData.max_limit_per_unit && formData.max_limit_per_unit.trim() !== '' 
       ? parseFloat(formData.max_limit_per_unit) 
       : null;
 
@@ -128,14 +150,27 @@ export function ExpenseCategoryManager() {
 
     console.log('Saving category with data:', data);
 
-    if (editingCategory) {
-      await updateCategory(editingCategory.id, data);
-    } else {
-      await addCategory(data);
-    }
+    try {
+      let categoryId: string;
+      
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, data);
+        categoryId = editingCategory.id;
+      } else {
+        const newCategory = await addCategory(data);
+        categoryId = newCategory?.id || '';
+      }
 
-    setIsOpen(false);
-    resetForm();
+      // Save API category mappings
+      if (categoryId) {
+        await setMappingsForCategory(categoryId, formData.selectedApiCategories);
+      }
+
+      setIsOpen(false);
+      resetForm();
+    } catch (err) {
+      console.error('Error saving category:', err);
+    }
   };
 
   const handleDeleteClick = async (category: ExpenseCategory) => {
@@ -201,28 +236,29 @@ export function ExpenseCategoryManager() {
     const subcategories = getSubcategories(category.id);
     const hasSubcategories = subcategories.length > 0;
     const isExpanded = expandedCategories.has(category.id);
+    const categoryMappings = getMappingsForCategory(category.id);
 
     return (
       <div key={category.id}>
         <div
           className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors ${isSubcategory ? 'ml-6 border-l-2 border-l-primary/30' : ''}`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             {!isSubcategory && hasSubcategories && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6"
+                className="h-6 w-6 shrink-0"
                 onClick={() => toggleExpanded(category.id)}
               >
                 <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
               </Button>
             )}
-            {!isSubcategory && !hasSubcategories && <div className="w-6" />}
-            <div className={`p-2 rounded-lg ${category.color} text-white`}>
+            {!isSubcategory && !hasSubcategories && <div className="w-6 shrink-0" />}
+            <div className={`p-2 rounded-lg ${category.color} text-white shrink-0`}>
               <Icon className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-medium">{category.name}</p>
               {category.max_limit_per_unit && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -230,10 +266,25 @@ export function ExpenseCategoryManager() {
                   Limite: {formatCurrency(category.max_limit_per_unit)} {getLimitLabel(category.limit_unit)}
                 </p>
               )}
+              {categoryMappings.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {categoryMappings.slice(0, 3).map((m, idx) => (
+                    <Badge key={idx} variant="secondary" className="text-xs py-0">
+                      <Link2 className="h-2.5 w-2.5 mr-1" />
+                      {m.api_category_name}
+                    </Badge>
+                  ))}
+                  {categoryMappings.length > 3 && (
+                    <Badge variant="outline" className="text-xs py-0">
+                      +{categoryMappings.length - 3}
+                    </Badge>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {category.is_system && (
               <Badge variant="outline" className="text-xs">Sistema</Badge>
             )}
@@ -290,7 +341,7 @@ export function ExpenseCategoryManager() {
                 Nova Categoria
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingCategory ? 'Editar Categoria' : formData.parent_id ? 'Nova Subcategoria' : 'Nova Categoria'}
@@ -386,6 +437,7 @@ export function ExpenseCategoryManager() {
                       <Label>Valor Máximo (R$)</Label>
                       <Input
                         type="number"
+                        step="0.01"
                         value={formData.max_limit_per_unit}
                         onChange={(e) => setFormData(prev => ({ ...prev, max_limit_per_unit: e.target.value }))}
                         placeholder="0,00"
@@ -394,13 +446,14 @@ export function ExpenseCategoryManager() {
                     <div>
                       <Label>Unidade</Label>
                       <Select
-                        value={formData.limit_unit}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, limit_unit: value }))}
+                        value={formData.limit_unit || 'none'}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, limit_unit: value === 'none' ? '' : value }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione..." />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="none">Sem limite</SelectItem>
                           <SelectItem value="per_transaction">Por transação</SelectItem>
                           <SelectItem value="per_day">Por dia</SelectItem>
                           <SelectItem value="per_month">Por mês</SelectItem>
@@ -408,6 +461,50 @@ export function ExpenseCategoryManager() {
                       </Select>
                     </div>
                   </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Link2 className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-medium">Categorias da API (correlação automática)</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Selecione as categorias do Pluggy que devem ser automaticamente vinculadas a esta categoria
+                  </p>
+                  
+                  {formData.selectedApiCategories.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {formData.selectedApiCategories.map((cat) => (
+                        <Badge 
+                          key={cat} 
+                          variant="secondary" 
+                          className="cursor-pointer hover:bg-destructive/20"
+                          onClick={() => toggleApiCategory(cat)}
+                        >
+                          {cat}
+                          <X className="h-3 w-3 ml-1" />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <ScrollArea className="h-40 border rounded-md p-2">
+                    <div className="space-y-1">
+                      {availableApiCategories.map((apiCat) => (
+                        <div 
+                          key={apiCat} 
+                          className="flex items-center gap-2 py-1 px-2 hover:bg-muted rounded cursor-pointer"
+                          onClick={() => toggleApiCategory(apiCat)}
+                        >
+                          <Checkbox 
+                            checked={formData.selectedApiCategories.includes(apiCat)}
+                            onCheckedChange={() => toggleApiCategory(apiCat)}
+                          />
+                          <span className="text-sm">{apiCat}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">

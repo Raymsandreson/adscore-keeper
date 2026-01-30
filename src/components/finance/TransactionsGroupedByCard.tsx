@@ -23,8 +23,9 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
+import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
 import { TransactionCategorizer } from './TransactionCategorizer';
-import { translateCategory, findMatchingLocalCategory } from '@/utils/categoryTranslations';
+import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
   id: string;
@@ -70,6 +71,8 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
     getTransactionOverride,
     checkLimitViolation 
   } = useExpenseCategories();
+  
+  const { mappings, findLocalCategoryByApiName } = useCategoryApiMappings();
   
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -125,18 +128,29 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
   };
 
   const getTransactionCategory = (transaction: Transaction): ExpenseCategory | null => {
+    // Primeiro verifica se tem override manual
     const override = getTransactionOverride(transaction.id);
     if (override) {
       return getCategoryById(override.category_id) || null;
     }
-    // Usa o mapeamento automático para encontrar a categoria local
-    const matchedCategory = findMatchingLocalCategory(
-      transaction.category,
-      categories.map(c => ({ id: c.id, name: c.name }))
-    );
-    if (matchedCategory) {
-      return getCategoryById(matchedCategory.id) || null;
+    
+    // Tenta encontrar via mapeamento do banco de dados
+    if (transaction.category) {
+      const translatedCategory = translateCategory(transaction.category);
+      
+      // Busca no mapeamento do banco de dados
+      const categoryId = findLocalCategoryByApiName(translatedCategory);
+      if (categoryId) {
+        return getCategoryById(categoryId) || null;
+      }
+      
+      // Também tenta pelo nome original (antes da tradução)
+      const categoryIdOriginal = findLocalCategoryByApiName(transaction.category);
+      if (categoryIdOriginal) {
+        return getCategoryById(categoryIdOriginal) || null;
+      }
     }
+    
     return null;
   };
 
