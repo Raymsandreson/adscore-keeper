@@ -18,7 +18,8 @@ import {
   Plane,
   Briefcase,
   Package,
-  MapPin
+  MapPin,
+  Building2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -253,6 +254,12 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                           {t.description || t.merchant_name || 'Transação'}
                                         </p>
                                         <div className="flex items-center gap-2 flex-wrap">
+                                          {t.merchant_cnpj && (
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
+                                              <Building2 className="h-3 w-3" />
+                                              {t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                                            </span>
+                                          )}
                                           {(t.merchant_city || t.merchant_state) && (
                                             <span className="text-xs text-muted-foreground flex items-center gap-1">
                                               <MapPin className="h-3 w-3" />

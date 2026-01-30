@@ -46,8 +46,35 @@ interface PluggyTransaction {
     name?: string;
     cnpj?: string;
     city?: string;
+    state?: string;
     businessName?: string;
   };
+}
+
+// Lookup CNPJ to get city and state from BrasilAPI
+async function lookupCNPJLocation(cnpj: string): Promise<{ city: string | null; state: string | null }> {
+  try {
+    const cleanCnpj = cnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) return { city: null, state: null };
+    
+    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      console.log(`CNPJ lookup failed for ${cleanCnpj}: ${response.status}`);
+      return { city: null, state: null };
+    }
+    
+    const data = await response.json();
+    return {
+      city: data.municipio || null,
+      state: data.uf || null,
+    };
+  } catch (error) {
+    console.error(`Error looking up CNPJ ${cnpj}:`, error);
+    return { city: null, state: null };
+  }
 }
 
 async function getPluggyApiKey(): Promise<string> {
@@ -267,22 +294,41 @@ serve(async (req) => {
           for (const account of creditAccounts) {
             const transactions = await getTransactions(apiKey, account.id, from, to);
             
-            const formattedTransactions = transactions.map(t => ({
-              user_id: user.id,
-              pluggy_account_id: account.id,
-              pluggy_transaction_id: t.id,
-              description: t.description,
-              amount: t.amount,
-              currency_code: 'BRL',
-              transaction_date: t.date.split('T')[0],
-              category: t.category || 'Outros',
-              payment_data: t.paymentData || {},
-              card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),
-              merchant_name: t.merchant?.name,
-              merchant_cnpj: t.merchant?.cnpj || null,
-              merchant_city: t.merchant?.city || null,
-              merchant_state: null,
-            }));
+            // Process transactions with CNPJ lookup for missing location data
+            const formattedTransactions = [];
+            for (const t of transactions) {
+              let city = t.merchant?.city || null;
+              let state = t.merchant?.state || null;
+              const cnpj = t.merchant?.cnpj || null;
+              
+              // If we have CNPJ but missing city/state, lookup via BrasilAPI
+              if (cnpj && (!city || !state)) {
+                console.log(`Looking up CNPJ ${cnpj} for location data...`);
+                const location = await lookupCNPJLocation(cnpj);
+                if (location.city) city = location.city;
+                if (location.state) state = location.state;
+                
+                // Add small delay to respect rate limits
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              
+              formattedTransactions.push({
+                user_id: user.id,
+                pluggy_account_id: account.id,
+                pluggy_transaction_id: t.id,
+                description: t.description,
+                amount: t.amount,
+                currency_code: 'BRL',
+                transaction_date: t.date.split('T')[0],
+                category: t.category || 'Outros',
+                payment_data: t.paymentData || {},
+                card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),
+                merchant_name: t.merchant?.name || null,
+                merchant_cnpj: cnpj,
+                merchant_city: city,
+                merchant_state: state,
+              });
+            }
 
             if (formattedTransactions.length > 0) {
               const { error: upsertError } = await supabase
