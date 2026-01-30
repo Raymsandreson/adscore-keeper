@@ -1,58 +1,116 @@
 
-# Plano: Importar Conexão Existente pelo ItemId
+# Plano: Restringir Acesso a Cartões por Permissão Explícita
 
-## Resumo
-Adicionar uma nova ação na Edge Function para importar uma conexão existente diretamente pelo `itemId`, e atualizar o hook e a página para suportar essa funcionalidade.
+## Resumo da Mudança
+Atualmente, administradores veem **todos** os cartões automaticamente. A mudança fará com que **todos os usuários** (admins e membros) só vejam os cartões que foram **explicitamente atribuídos** na tabela de permissões.
 
-## O que será feito
+## O Que Vai Mudar
 
-### 1. Atualizar Edge Function (`pluggy-integration`)
-Adicionar nova ação `import_by_item_id` que:
-- Recebe o `itemId` como parâmetro
-- Busca os dados do item na API Pluggy (`GET /items/{itemId}`)
-- Salva a conexão no banco de dados local
-- Retorna os dados da conexão
+### Para Usuários
+- Administradores não terão mais acesso automático a todos os cartões
+- Cada pessoa só verá os cartões que um admin atribuiu para ela
+- O gerenciamento de permissões na aba "Cartões" continua funcionando normalmente
 
-### 2. Atualizar Hook (`useCreditCardTransactions.ts`)
-Adicionar nova função `importByItemId(itemId: string)` que:
-- Chama a Edge Function com a ação `import_by_item_id`
-- Atualiza a lista de conexões após importar
+### Para o Sistema
+- A lógica de "se é admin, vê tudo" será removida
+- O banco de dados usará apenas a função `can_view_card()` para validar acesso
+- A Edge Function também respeitará apenas permissões explícitas
 
-### 3. Atualizar Página Finance (`FinancePage.tsx`)
-Adicionar interface para importação manual:
-- Campo de input para o usuário inserir o `itemId`
-- Botão "Importar" para processar a importação
-- Após importar com sucesso, sincronizar transações automaticamente
+---
 
 ## Detalhes Técnicos
 
-### Nova ação na Edge Function
+### Arquivo 1: `src/hooks/useCardPermissions.ts`
+
+**Mudança:** Remover a lógica que dá acesso total a admins
+
 ```typescript
-case 'import_by_item_id': {
-  // 1. Buscar item na API Pluggy
-  const item = await getItem(apiKey, itemId);
-  
-  // 2. Salvar conexão no banco
-  const connectionData = {
-    user_id: user.id,
-    pluggy_item_id: itemId,
-    connector_name: item.connector?.name,
-    status: item.status,
-  };
-  
-  // 3. Upsert na tabela pluggy_connections
-  await supabase.from('pluggy_connections').upsert(...);
+// ANTES (linhas 72-78):
+if (isAdmin) {
+  setAllowedCards(allCards);
+} else {
+  setAllowedCards(myCards);
 }
+
+// DEPOIS:
+// Todos os usuários seguem apenas permissões explícitas
+setAllowedCards(myCards);
 ```
 
-### Arquivos que serão modificados
-1. `supabase/functions/pluggy-integration/index.ts` - Nova ação
-2. `src/hooks/useCreditCardTransactions.ts` - Nova função
-3. `src/pages/FinancePage.tsx` - Interface de importação manual
+O hook `allKnownCards` continuará funcionando para admins gerenciarem permissões na interface.
 
-## Resultado Esperado
-Ao aprovar este plano, você poderá:
-1. Inserir o `itemId` `b598de07-c7e5-4dec-b559-e915e47a072c`
-2. Clicar em "Importar"
-3. Ver a conexão Santander Cartões aparecer
-4. Sincronizar as transações automaticamente
+---
+
+### Arquivo 2: `supabase/functions/pluggy-integration/index.ts`
+
+**Mudança:** No caso `get_connections`, restringir a busca baseando-se apenas em permissões explícitas
+
+```typescript
+// ANTES (linhas 315-350):
+// Se admin ou tem permissões, mostra todas as conexões
+
+// DEPOIS:
+// Buscar conexões vinculadas apenas aos cartões que o usuário tem permissão
+// Se não tem nenhuma permissão, retorna vazio
+```
+
+---
+
+### Arquivo 3: Política RLS de `credit_card_transactions`
+
+**Mudança:** Remover a condição `is_admin(auth.uid())` da política de SELECT
+
+```sql
+-- ANTES:
+USING (
+  user_id = auth.uid() 
+  OR is_admin(auth.uid())
+  OR can_view_card(auth.uid(), card_last_digits)
+)
+
+-- DEPOIS:
+USING (
+  user_id = auth.uid() 
+  OR can_view_card(auth.uid(), card_last_digits)
+)
+```
+
+---
+
+### Arquivo 4: Política RLS de `pluggy_connections`
+
+**Mudança:** Remover acesso automático para admins, manter apenas para quem tem permissões
+
+```sql
+-- ANTES:
+USING (
+  user_id = auth.uid() 
+  OR is_admin(auth.uid())
+  OR EXISTS (SELECT 1 FROM user_card_permissions WHERE user_id = auth.uid())
+)
+
+-- DEPOIS:
+USING (
+  user_id = auth.uid() 
+  OR EXISTS (SELECT 1 FROM user_card_permissions WHERE user_id = auth.uid())
+)
+```
+
+---
+
+## Resultado Final
+
+| Cenário | Antes | Depois |
+|---------|-------|--------|
+| Admin sem permissões | Vê tudo | Não vê nada |
+| Admin com 3 cartões | Vê tudo | Vê só os 3 cartões |
+| Membro com 3 cartões | Vê só os 3 | Vê só os 3 |
+| Membro sem permissões | Não vê nada | Não vê nada |
+
+---
+
+## Importante
+
+Certifique-se de que o **seu próprio usuário admin** (`79c5c9d1...`) tenha **todos os cartões atribuídos** antes de aplicar essa mudança, senão você também perderá acesso.
+
+Pelo que vi no banco, você já tem 10 cartões atribuídos ao seu usuário, então está seguro.
