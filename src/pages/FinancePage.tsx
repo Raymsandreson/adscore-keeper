@@ -25,16 +25,21 @@ import {
   Trash2,
   Settings,
   LayoutGrid,
-  Users
+  Users,
+  Shield,
+  EyeOff
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
 import { useAuth } from "@/hooks/useAuth";
+import { useCardPermissions } from "@/hooks/useCardPermissions";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
+import { CardPermissionsManager } from "@/components/finance/CardPermissionsManager";
 import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
@@ -57,6 +62,12 @@ type PluggyConnectConstructor = new (config: PluggyConnectConfig) => PluggyConne
 export default function FinancePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isAdmin, loading: roleLoading } = useUserRole();
+  const { 
+    allowedCards, 
+    loading: permissionsLoading, 
+    filterByPermissions 
+  } = useCardPermissions();
   const {
     transactions,
     connections,
@@ -240,7 +251,15 @@ export default function FinancePage() {
     }
   }, [deleteConnection]);
 
-  const filteredTransactions = transactions.filter(t => {
+  // Filter transactions by card permissions first, then by search/category
+  const permittedTransactions = useMemo(() => {
+    // If permissions still loading or user has no allowed cards, show nothing
+    if (permissionsLoading) return [];
+    if (allowedCards.length === 0) return [];
+    return filterByPermissions(transactions);
+  }, [transactions, allowedCards, permissionsLoading, filterByPermissions]);
+
+  const filteredTransactions = permittedTransactions.filter(t => {
     const matchesSearch = searchTerm === "" || 
       t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -248,8 +267,23 @@ export default function FinancePage() {
     return matchesSearch && matchesCategory;
   });
 
-  const categoryTotals = getCategoryTotals();
-  const totalSpent = getTotalSpent();
+  // Calculate totals only from permitted transactions
+  const categoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    filteredTransactions.forEach(t => {
+      const category = t.category || 'Outros';
+      totals[category] = (totals[category] || 0) + Math.abs(t.amount);
+    });
+    return Object.entries(totals)
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [filteredTransactions]);
+
+  const totalSpent = useMemo(() => {
+    return filteredTransactions
+      .filter(t => t.amount < 0)
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  }, [filteredTransactions]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -356,7 +390,7 @@ export default function FinancePage() {
           </Card>
         )}
 
-        {/* Empty State */}
+        {/* Empty State - No Connections */}
         {connections.length === 0 && !loading && (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -401,8 +435,30 @@ export default function FinancePage() {
           </Card>
         )}
 
-        {/* Date Range & Filters */}
-        {connections.length > 0 && (
+        {/* Empty State - No Permissions */}
+        {connections.length > 0 && !permissionsLoading && allowedCards.length === 0 && (
+          <Card className="border-dashed border-amber-500/50">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <EyeOff className="h-12 w-12 text-amber-500 mb-4" />
+              <h3 className="text-lg font-medium mb-2">Acesso Restrito</h3>
+              <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
+                Você ainda não tem permissão para visualizar nenhum cartão. 
+                Solicite ao administrador que libere o acesso aos cartões desejados.
+              </p>
+              {isAdmin && (
+                <div className="mt-4 p-4 bg-muted rounded-lg text-center">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    <Shield className="h-4 w-4 inline mr-1" />
+                    Você é admin. Vá em Configurações para liberar acesso aos cartões.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Date Range & Filters - Show only when has connections AND permissions */}
+        {connections.length > 0 && allowedCards.length > 0 && (
           <>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex gap-2">
@@ -632,6 +688,12 @@ export default function FinancePage() {
 
               <TabsContent value="settings" className="mt-4 space-y-4">
                 <LimitAnalysisPanel transactions={filteredTransactions} />
+                
+                {/* Card Permissions Manager - Admin only */}
+                {isAdmin && (
+                  <CardPermissionsManager availableCards={availableCards} />
+                )}
+                
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <ExpenseCategoryManager />
                   <CardAssignmentManager availableCards={availableCards} />
