@@ -17,7 +17,8 @@ import {
   Fuel,
   Plane,
   Briefcase,
-  Package
+  Package,
+  MapPin
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,6 +37,9 @@ interface Transaction {
   payment_data: Record<string, any>;
   card_last_digits: string | null;
   merchant_name: string | null;
+  merchant_cnpj: string | null;
+  merchant_city: string | null;
+  merchant_state: string | null;
   created_at: string;
 }
 
@@ -224,7 +228,13 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                         <p className="text-sm font-medium">
                                           {t.description || t.merchant_name || 'Transação'}
                                         </p>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          {(t.merchant_city || t.merchant_state) && (
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                              <MapPin className="h-3 w-3" />
+                                              {[t.merchant_city, t.merchant_state].filter(Boolean).join(' - ')}
+                                            </span>
+                                          )}
                                           {category && (
                                             <Badge variant="outline" className="text-xs">
                                               {category.name}

@@ -44,6 +44,9 @@ interface PluggyTransaction {
   };
   merchant?: {
     name?: string;
+    cnpj?: string;
+    city?: string;
+    businessName?: string;
   };
 }
 
@@ -276,6 +279,9 @@ serve(async (req) => {
               payment_data: t.paymentData || {},
               card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),
               merchant_name: t.merchant?.name,
+              merchant_cnpj: t.merchant?.cnpj || null,
+              merchant_city: t.merchant?.city || null,
+              merchant_state: null,
             }));
 
             if (formattedTransactions.length > 0) {
