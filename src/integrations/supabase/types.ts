@@ -1795,6 +1795,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_card_permissions: {
+        Row: {
+          card_last_digits: string
+          created_at: string
+          granted_by: string | null
+          id: string
+          pluggy_account_id: string | null
+          user_id: string
+        }
+        Insert: {
+          card_last_digits: string
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          pluggy_account_id?: string | null
+          user_id: string
+        }
+        Update: {
+          card_last_digits?: string
+          created_at?: string
+          granted_by?: string | null
+          id?: string
+          pluggy_account_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1938,6 +1965,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_view_card: {
+        Args: { _card_last_digits: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
