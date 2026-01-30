@@ -1,116 +1,213 @@
 
-# Plano: Restringir Acesso a Cartões por Permissão Explícita
+# Plano: Rastrear Localização do Gasto e do Lead/Contato Visitado
 
-## Resumo da Mudança
-Atualmente, administradores veem **todos** os cartões automaticamente. A mudança fará com que **todos os usuários** (admins e membros) só vejam os cartões que foram **explicitamente atribuídos** na tabela de permissões.
+## Objetivo
+Ao categorizar uma despesa no workflow de pendentes, o usuário poderá:
+1. **Ver/Cadastrar a localização do gasto** (onde o acolhedor estava - posto, hotel, restaurante)
+2. **Ver a cidade do Lead/Contato visitado** (para onde foi a viagem)
+3. **Selecionar estado e cidade com API do IBGE** (dropdown dinâmico)
+
+Isso permitirá cruzar: "O acolhedor estava em São Paulo (gasto) visitando um Lead de Campinas".
+
+---
 
 ## O Que Vai Mudar
 
-### Para Usuários
-- Administradores não terão mais acesso automático a todos os cartões
-- Cada pessoa só verá os cartões que um admin atribuiu para ela
-- O gerenciamento de permissões na aba "Cartões" continua funcionando normalmente
+### Para o Usuário
+- Ao categorizar um gasto, verá dois campos de localização:
+  - **Localização do Gasto**: onde o acolhedor fez a compra (vem do CNPJ ou cadastro manual)
+  - **Cidade do Lead/Contato**: exibida automaticamente ao selecionar o lead
+- Ao cadastrar localização manual, terá **Select de Estado → Select de Cidade** (API IBGE)
+- Os Leads/Contatos exibirão sua cidade/estado para facilitar a escolha
 
-### Para o Sistema
-- A lógica de "se é admin, vê tudo" será removida
-- O banco de dados usará apenas a função `can_view_card()` para validar acesso
-- A Edge Function também respeitará apenas permissões explícitas
+### Para o Dashboard de Logística
+- Poderá comparar "cidade do gasto" vs "cidade do lead visitado"
+- Facilitará análise de rotas e rastreamento de viagens
 
 ---
 
 ## Detalhes Técnicos
 
-### Arquivo 1: `src/hooks/useCardPermissions.ts`
+### 1. Banco de Dados: Adicionar colunas de localização manual
 
-**Mudança:** Remover a lógica que dá acesso total a admins
+Adicionar colunas na tabela `transaction_category_overrides` para armazenar localização quando não vier do CNPJ:
+
+```sql
+ALTER TABLE transaction_category_overrides 
+ADD COLUMN manual_city TEXT,
+ADD COLUMN manual_state TEXT;
+```
+
+---
+
+### 2. Arquivo: `src/components/finance/PendingTransactionsWorkflow.tsx`
+
+#### 2.1. Importar o hook de localizações brasileiras
+```typescript
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+```
+
+#### 2.2. Usar o hook no componente
+```typescript
+const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+```
+
+#### 2.3. Substituir inputs manuais de texto por Selects
+**Antes (linhas 400-416):**
+```tsx
+<div className="flex gap-2">
+  <Input placeholder="Cidade" value={manualCity} ... />
+  <Input placeholder="UF" value={manualState} ... />
+</div>
+```
+
+**Depois:**
+```tsx
+<div className="flex gap-2">
+  <Select 
+    value={manualState}
+    onValueChange={(value) => {
+      setManualState(value);
+      setManualCity('');
+      fetchCities(value);
+    }}
+  >
+    <SelectTrigger className="w-20">
+      <SelectValue placeholder="UF" />
+    </SelectTrigger>
+    <SelectContent>
+      {states.map((state) => (
+        <SelectItem key={state.sigla} value={state.sigla}>
+          {state.sigla}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  
+  <Select 
+    value={manualCity}
+    onValueChange={setManualCity}
+    disabled={!manualState || loadingCities}
+  >
+    <SelectTrigger className="flex-1">
+      <SelectValue placeholder={loadingCities ? "Carregando..." : "Cidade"} />
+    </SelectTrigger>
+    <SelectContent>
+      {cities.map((city) => (
+        <SelectItem key={city.id} value={city.nome}>
+          {city.nome}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+</div>
+```
+
+#### 2.4. Exibir cidade do Lead/Contato selecionado
+Ao selecionar um Lead ou Contato, mostrar sua cidade embaixo da seleção:
+
+```tsx
+{selectedLead && (
+  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2 p-2 bg-muted/50 rounded">
+    <MapPin className="h-4 w-4" />
+    <span>
+      Lead de: {leads.find(l => l.id === selectedLead)?.city || 'Cidade não cadastrada'}
+      {leads.find(l => l.id === selectedLead)?.state && 
+        `, ${leads.find(l => l.id === selectedLead)?.state}`}
+    </span>
+  </div>
+)}
+```
+
+---
+
+### 3. Arquivo: `src/hooks/useExpenseCategories.ts`
+
+#### 3.1. Atualizar a função `setTransactionOverride` para salvar localização
 
 ```typescript
-// ANTES (linhas 72-78):
-if (isAdmin) {
-  setAllowedCards(allCards);
-} else {
-  setAllowedCards(myCards);
+const setTransactionOverride = useCallback(async (
+  transactionId: string, 
+  categoryId: string, 
+  contactId?: string,
+  leadId?: string,
+  notes?: string,
+  manualCity?: string,   // NOVO
+  manualState?: string   // NOVO
+) => {
+  try {
+    const { error } = await supabase
+      .from('transaction_category_overrides')
+      .upsert([{
+        transaction_id: transactionId,
+        category_id: categoryId,
+        contact_id: contactId || null,
+        lead_id: leadId || null,
+        notes: notes || null,
+        manual_city: manualCity || null,    // NOVO
+        manual_state: manualState || null,  // NOVO
+      }], { onConflict: 'transaction_id' });
+    // ...
+  }
+}, [fetchOverrides]);
+```
+
+#### 3.2. Atualizar interface `TransactionOverride`
+
+```typescript
+export interface TransactionOverride {
+  id: string;
+  transaction_id: string;
+  category_id: string;
+  lead_id: string | null;
+  contact_id: string | null;
+  notes: string | null;
+  manual_city: string | null;   // NOVO
+  manual_state: string | null;  // NOVO
+  created_at: string;
 }
-
-// DEPOIS:
-// Todos os usuários seguem apenas permissões explícitas
-setAllowedCards(myCards);
-```
-
-O hook `allKnownCards` continuará funcionando para admins gerenciarem permissões na interface.
-
----
-
-### Arquivo 2: `supabase/functions/pluggy-integration/index.ts`
-
-**Mudança:** No caso `get_connections`, restringir a busca baseando-se apenas em permissões explícitas
-
-```typescript
-// ANTES (linhas 315-350):
-// Se admin ou tem permissões, mostra todas as conexões
-
-// DEPOIS:
-// Buscar conexões vinculadas apenas aos cartões que o usuário tem permissão
-// Se não tem nenhuma permissão, retorna vazio
 ```
 
 ---
 
-### Arquivo 3: Política RLS de `credit_card_transactions`
+### 4. Arquivo: `src/components/finance/TransactionCategorizer.tsx`
 
-**Mudança:** Remover a condição `is_admin(auth.uid())` da política de SELECT
+Aplicar as mesmas mudanças do workflow (Selects de UF/Cidade via IBGE) neste componente de categorização individual.
 
-```sql
--- ANTES:
-USING (
-  user_id = auth.uid() 
-  OR is_admin(auth.uid())
-  OR can_view_card(auth.uid(), card_last_digits)
-)
+---
 
--- DEPOIS:
-USING (
-  user_id = auth.uid() 
-  OR can_view_card(auth.uid(), card_last_digits)
-)
+## Resumo Visual
+
+```text
+┌─────────────────────────────────────────────────────┐
+│  Gasto: Posto Shell - R$ 180,00                     │
+│  Data: 30/01/2026                                   │
+├─────────────────────────────────────────────────────┤
+│  📍 Localização do Gasto                            │
+│  ┌──────┐  ┌────────────────────────┐               │
+│  │ SP ▼ │  │ Campinas            ▼ │  ← API IBGE   │
+│  └──────┘  └────────────────────────┘               │
+├─────────────────────────────────────────────────────┤
+│  👤 Vincular a: [Lead] [Contato]                    │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ João Silva - São Carlos, SP               ○│    │
+│  │ Maria Santos - Ribeirão Preto, SP         ○│    │
+│  └─────────────────────────────────────────────┘    │
+│  📍 Lead de: São Carlos, SP  ← Cidade do destino   │
+├─────────────────────────────────────────────────────┤
+│  [Pular]                            [Salvar] →      │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Arquivo 4: Política RLS de `pluggy_connections`
+## Arquivos a Modificar
 
-**Mudança:** Remover acesso automático para admins, manter apenas para quem tem permissões
+| Arquivo | Mudança |
+|---------|---------|
+| Banco de dados | Adicionar colunas `manual_city` e `manual_state` |
+| `src/hooks/useBrazilianLocations.ts` | Já existe, sem mudanças |
+| `src/hooks/useExpenseCategories.ts` | Adicionar parâmetros de localização |
+| `src/components/finance/PendingTransactionsWorkflow.tsx` | Substituir inputs por Selects com API IBGE |
+| `src/components/finance/TransactionCategorizer.tsx` | Adicionar Selects de localização |
 
-```sql
--- ANTES:
-USING (
-  user_id = auth.uid() 
-  OR is_admin(auth.uid())
-  OR EXISTS (SELECT 1 FROM user_card_permissions WHERE user_id = auth.uid())
-)
-
--- DEPOIS:
-USING (
-  user_id = auth.uid() 
-  OR EXISTS (SELECT 1 FROM user_card_permissions WHERE user_id = auth.uid())
-)
-```
-
----
-
-## Resultado Final
-
-| Cenário | Antes | Depois |
-|---------|-------|--------|
-| Admin sem permissões | Vê tudo | Não vê nada |
-| Admin com 3 cartões | Vê tudo | Vê só os 3 cartões |
-| Membro com 3 cartões | Vê só os 3 | Vê só os 3 |
-| Membro sem permissões | Não vê nada | Não vê nada |
-
----
-
-## Importante
-
-Certifique-se de que o **seu próprio usuário admin** (`79c5c9d1...`) tenha **todos os cartões atribuídos** antes de aplicar essa mudança, senão você também perderá acesso.
-
-Pelo que vi no banco, você já tem 10 cartões atribuídos ao seu usuário, então está seguro.
