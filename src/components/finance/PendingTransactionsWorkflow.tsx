@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   MapPin,
   Calendar,
-  Tag
+  Tag,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +28,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { useContacts } from '@/hooks/useContacts';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Transaction {
   id: string;
@@ -74,6 +76,8 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
   const [linkType, setLinkType] = useState<'lead' | 'contact'>('lead');
   const [notes, setNotes] = useState('');
+  const [isLookingUpLocation, setIsLookingUpLocation] = useState(false);
+  const [enrichedLocation, setEnrichedLocation] = useState<{city: string; state: string} | null>(null);
 
   // Filter transactions that don't have a lead or contact linked
   const pendingTransactions = useMemo(() => {
@@ -94,13 +98,13 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   // Pre-select category and assignment based on card assignment
   useEffect(() => {
     if (currentTransaction) {
-      // Reset selections
       setSelectedCategory(null);
       setSelectedLead(null);
       setSelectedContact(null);
       setNotes('');
       setSearchLead('');
       setSearchContact('');
+      setEnrichedLocation(null);
       
       // Try to get category from override or API mapping
       const override = getTransactionOverride(currentTransaction.id);
@@ -128,6 +132,44 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       }
     }
   }, [currentTransaction, getTransactionOverride, findLocalCategoryByApiName, getCardAssignment]);
+
+  // Lookup location via CNPJ
+  const lookupLocation = async () => {
+    if (!currentTransaction?.merchant_cnpj) return;
+    
+    setIsLookingUpLocation(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('lookup-cnpj', {
+        body: { cnpj: currentTransaction.merchant_cnpj }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success && (data.city || data.state)) {
+        setEnrichedLocation({ city: data.city, state: data.state });
+        toast.success(`Localização encontrada: ${data.city} - ${data.state}`);
+      } else {
+        toast.info('Localização não encontrada para este CNPJ');
+      }
+    } catch (err) {
+      console.error('Error looking up CNPJ:', err);
+      toast.error('Erro ao buscar localização');
+    } finally {
+      setIsLookingUpLocation(false);
+    }
+  };
+
+  // Get display location (enriched or from transaction)
+  const displayLocation = useMemo(() => {
+    if (enrichedLocation) return enrichedLocation;
+    if (currentTransaction?.merchant_city || currentTransaction?.merchant_state) {
+      return {
+        city: currentTransaction.merchant_city || '',
+        state: currentTransaction.merchant_state || ''
+      };
+    }
+    return null;
+  }, [enrichedLocation, currentTransaction]);
 
   const filteredLeads = useMemo(() => {
     if (!searchLead.trim()) return leads.slice(0, 10);
@@ -278,7 +320,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
           
           <CardContent className="space-y-4">
             {/* Transaction Details */}
-            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+            <div className="p-4 bg-muted/50 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-lg">
                   {currentTransaction.description || currentTransaction.merchant_name || 'Transação'}
@@ -287,6 +329,36 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                   {formatCurrency(currentTransaction.amount)}
                 </span>
               </div>
+              
+              {/* Location Display - Prominent */}
+              <div className="flex items-center gap-2 p-2 bg-background rounded-md border">
+                <MapPin className="h-5 w-5 text-primary" />
+                {displayLocation ? (
+                  <span className="font-medium">
+                    {[displayLocation.city, displayLocation.state].filter(Boolean).join(' - ')}
+                  </span>
+                ) : currentTransaction.merchant_cnpj ? (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="p-0 h-auto text-muted-foreground"
+                    onClick={lookupLocation}
+                    disabled={isLookingUpLocation}
+                  >
+                    {isLookingUpLocation ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        Buscando...
+                      </>
+                    ) : (
+                      'Buscar localização via CNPJ'
+                    )}
+                  </Button>
+                ) : (
+                  <span className="text-muted-foreground text-sm">Localização não disponível</span>
+                )}
+              </div>
+              
               <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
@@ -296,12 +368,6 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                   <span className="flex items-center gap-1">
                     <CreditCard className="h-4 w-4" />
                     **** {currentTransaction.card_last_digits}
-                  </span>
-                )}
-                {(currentTransaction.merchant_city || currentTransaction.merchant_state) && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {[currentTransaction.merchant_city, currentTransaction.merchant_state].filter(Boolean).join(' - ')}
                   </span>
                 )}
                 {currentTransaction.category && (
