@@ -20,6 +20,8 @@ import {
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
+import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
   id: string;
@@ -55,7 +57,8 @@ interface AcolhedorStats {
 }
 
 export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogisticsDashboardProps) {
-  const { cardAssignments, overrides, getCategoryById } = useExpenseCategories();
+  const { cardAssignments, overrides, getCategoryById, categories } = useExpenseCategories();
+  const { findLocalCategoryByApiName } = useCategoryApiMappings();
   const [selectedAcolhedor, setSelectedAcolhedor] = useState<string | null>(null);
 
   const formatCurrency = (value: number) => {
@@ -109,14 +112,26 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
       stats.byDate[tx.transaction_date].total += amount;
       stats.byDate[tx.transaction_date].count += 1;
 
-      // By category (from override or pluggy)
+      // By category - prioritize local categories
       const override = overrides.find(o => o.transaction_id === tx.id);
-      let categoryName = 'Outros';
+      let categoryName = 'Sem categoria';
+      
       if (override) {
+        // Transaction has manual override - use local category
         const cat = getCategoryById(override.category_id);
-        categoryName = cat?.name || 'Outros';
+        categoryName = cat?.name || 'Sem categoria';
       } else if (tx.category) {
-        categoryName = tx.category;
+        // Try to find matching local category via API mapping
+        const translatedCategory = translateCategory(tx.category);
+        const localCategoryId = findLocalCategoryByApiName(translatedCategory);
+        
+        if (localCategoryId) {
+          const localCat = getCategoryById(localCategoryId);
+          categoryName = localCat?.name || 'Sem categoria';
+        } else {
+          // No mapping found - show as uncategorized
+          categoryName = 'Sem categoria';
+        }
       }
       stats.byCategory[categoryName] = (stats.byCategory[categoryName] || 0) + amount;
     });
@@ -128,7 +143,7 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
     });
 
     return Object.values(statsMap).sort((a, b) => b.totalSpent - a.totalSpent);
-  }, [transactions, cardAssignments, overrides, getCategoryById]);
+  }, [transactions, cardAssignments, overrides, getCategoryById, findLocalCategoryByApiName]);
 
   // Summary totals
   const summary = useMemo(() => {
@@ -449,7 +464,7 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5" />
-                    Gastos por Categoria (Rotas)
+                    Gastos por Categoria
                   </CardTitle>
                   <CardDescription>
                     {selectedStats ? `Acolhedor: ${selectedStats.leadName}` : 'Todos os acolhedores'}
