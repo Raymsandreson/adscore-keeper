@@ -312,6 +312,13 @@ serve(async (req) => {
                 await new Promise(resolve => setTimeout(resolve, 100));
               }
               
+              // Extract installment info from creditCardMetadata
+              const installmentNumber = t.creditCardMetadata?.installmentNumber || null;
+              const totalInstallments = t.creditCardMetadata?.totalInstallments || null;
+              const originalPurchaseDate = t.creditCardMetadata?.purchaseDate 
+                ? t.creditCardMetadata.purchaseDate.split('T')[0] 
+                : null;
+              
               formattedTransactions.push({
                 user_id: user.id,
                 pluggy_account_id: account.id,
@@ -327,6 +334,9 @@ serve(async (req) => {
                 merchant_cnpj: cnpj,
                 merchant_city: city,
                 merchant_state: state,
+                installment_number: installmentNumber,
+                total_installments: totalInstallments,
+                original_purchase_date: originalPurchaseDate,
               });
             }
 

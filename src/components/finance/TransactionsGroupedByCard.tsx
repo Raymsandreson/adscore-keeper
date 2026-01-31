@@ -19,7 +19,8 @@ import {
   Briefcase,
   Package,
   MapPin,
-  Building2
+  Building2,
+  Layers
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -44,6 +45,10 @@ interface Transaction {
   merchant_city: string | null;
   merchant_state: string | null;
   created_at: string;
+  installment_number: number | null;
+  total_installments: number | null;
+  original_purchase_date: string | null;
+  purchase_group_id: string | null;
 }
 
 interface TransactionsGroupedByCardProps {
@@ -269,6 +274,12 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                           <Badge variant="outline" className="text-xs">
                                             {getDisplayCategory(t)}
                                           </Badge>
+                                          {t.total_installments && t.total_installments > 1 && (
+                                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                              <Layers className="h-3 w-3 mr-1" />
+                                              {t.installment_number || '?'}/{t.total_installments}
+                                            </Badge>
+                                          )}
                                           {override?.lead_id && (
                                             <Badge variant="secondary" className="text-xs">
                                               Vinculado

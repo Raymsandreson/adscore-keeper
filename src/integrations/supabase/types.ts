@@ -432,13 +432,17 @@ export type Database = {
           currency_code: string | null
           description: string | null
           id: string
+          installment_number: number | null
           merchant_city: string | null
           merchant_cnpj: string | null
           merchant_name: string | null
           merchant_state: string | null
+          original_purchase_date: string | null
           payment_data: Json | null
           pluggy_account_id: string
           pluggy_transaction_id: string
+          purchase_group_id: string | null
+          total_installments: number | null
           transaction_date: string
           updated_at: string
           user_id: string
@@ -451,13 +455,17 @@ export type Database = {
           currency_code?: string | null
           description?: string | null
           id?: string
+          installment_number?: number | null
           merchant_city?: string | null
           merchant_cnpj?: string | null
           merchant_name?: string | null
           merchant_state?: string | null
+          original_purchase_date?: string | null
           payment_data?: Json | null
           pluggy_account_id: string
           pluggy_transaction_id: string
+          purchase_group_id?: string | null
+          total_installments?: number | null
           transaction_date: string
           updated_at?: string
           user_id: string
@@ -470,13 +478,17 @@ export type Database = {
           currency_code?: string | null
           description?: string | null
           id?: string
+          installment_number?: number | null
           merchant_city?: string | null
           merchant_cnpj?: string | null
           merchant_name?: string | null
           merchant_state?: string | null
+          original_purchase_date?: string | null
           payment_data?: Json | null
           pluggy_account_id?: string
           pluggy_transaction_id?: string
+          purchase_group_id?: string | null
+          total_installments?: number | null
           transaction_date?: string
           updated_at?: string
           user_id?: string
@@ -1675,6 +1687,65 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      purchase_groups: {
+        Row: {
+          card_last_digits: string | null
+          category_id: string | null
+          created_at: string
+          description: string
+          id: string
+          merchant_cnpj: string | null
+          merchant_name: string | null
+          original_purchase_date: string
+          paid_installments: number
+          pending_amount: number
+          total_amount: number
+          total_installments: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          card_last_digits?: string | null
+          category_id?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          merchant_cnpj?: string | null
+          merchant_name?: string | null
+          original_purchase_date: string
+          paid_installments?: number
+          pending_amount?: number
+          total_amount: number
+          total_installments?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          card_last_digits?: string | null
+          category_id?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          merchant_cnpj?: string | null
+          merchant_name?: string | null
+          original_purchase_date?: string
+          paid_installments?: number
+          pending_amount?: number
+          total_amount?: number
+          total_installments?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_groups_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_invitations: {
         Row: {
