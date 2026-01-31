@@ -18,7 +18,7 @@ interface TransactionAggregationSelectorProps {
 }
 
 const aggregationOptions: { value: AggregationType; label: string; icon: React.ReactNode }[] = [
-  { value: 'card', label: 'Por Cartão', icon: <CreditCard className="h-4 w-4" /> },
+  { value: 'card', label: 'Por Final do Cartão', icon: <CreditCard className="h-4 w-4" /> },
   { value: 'lead', label: 'Por Lead/Acolhedor', icon: <Users className="h-4 w-4" /> },
   { value: 'city', label: 'Por Cidade', icon: <MapPin className="h-4 w-4" /> },
   { value: 'state', label: 'Por Estado', icon: <Map className="h-4 w-4" /> },
