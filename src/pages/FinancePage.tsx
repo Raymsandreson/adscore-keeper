@@ -860,8 +860,8 @@ export default function FinancePage() {
                   <span className="hidden sm:inline">Acolhedores</span>
                 </TabsTrigger>
                 <TabsTrigger value="by-card" className="flex items-center gap-2 text-xs sm:text-sm">
-                  <CreditCard className="h-4 w-4" />
-                  <span className="hidden sm:inline">Por Cartão</span>
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="hidden sm:inline">Agrupado</span>
                 </TabsTrigger>
                 <TabsTrigger value="by-day" className="flex items-center gap-2 text-xs sm:text-sm">
                   <TableIcon className="h-4 w-4" />
