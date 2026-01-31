@@ -171,10 +171,11 @@ export function useCreditCardTransactions() {
       .sort((a, b) => b.total - a.total);
   }, [transactions]);
 
+  // Credit card transactions from Pluggy come as positive values for expenses
   const getTotalSpent = useCallback(() => {
     return transactions
-      .filter(t => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      .filter(t => t.amount > 0)
+      .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
   return {

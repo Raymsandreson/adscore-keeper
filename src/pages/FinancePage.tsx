@@ -361,7 +361,8 @@ export default function FinancePage() {
       
       const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
       
-      return matchesDate && matchesSearch && matchesCard && t.amount < 0;
+      // Credit card transactions from Pluggy come as positive values for expenses
+      return matchesDate && matchesSearch && matchesCard && t.amount > 0;
     });
     
     baseFiltered.forEach(t => {
@@ -376,13 +377,14 @@ export default function FinancePage() {
     return { totals, uncategorizedTotal };
   }, [permittedTransactions, startDate, endDate, searchTerm, filterCard, getLocalCategoryForTransaction]);
 
-  // Calculate totals for LOCAL categories (not API categories) - ONLY expenses (negative amounts)
+  // Calculate totals for LOCAL categories (not API categories) - ONLY expenses
+  // Note: Credit card transactions from Pluggy come as positive values for expenses
   const localCategoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     let uncategorizedTotal = 0;
     
-    // Only consider expenses (negative amounts)
-    const expenses = filteredTransactions.filter(t => t.amount < 0);
+    // Credit card expenses come as positive values from Pluggy
+    const expenses = filteredTransactions.filter(t => t.amount > 0);
     
     expenses.forEach(t => {
       const localCategoryId = getLocalCategoryForTransaction(t);
@@ -422,10 +424,11 @@ export default function FinancePage() {
     return result;
   }, [filteredTransactions, categories, getLocalCategoryForTransaction]);
 
+  // Total spent - Credit card transactions from Pluggy come as positive values for expenses
   const totalSpent = useMemo(() => {
     return filteredTransactions
-      .filter(t => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      .filter(t => t.amount > 0)
+      .reduce((sum, t) => sum + t.amount, 0);
   }, [filteredTransactions]);
 
   // Count pending transactions (uncategorized)
