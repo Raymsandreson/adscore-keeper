@@ -51,6 +51,7 @@ import { TransactionAggregationSelector, AggregationType } from "@/components/fi
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
 import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransactionsWorkflow";
+import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelectFilter";
 import { translateCategory } from "@/utils/categoryTranslations";
 
 // Pluggy Connect type definition
@@ -102,8 +103,8 @@ export default function FinancePage() {
   const [startDate, setStartDate] = useState(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState(endOfMonth(new Date()));
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterCard, setFilterCard] = useState<string>("all");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterCards, setFilterCards] = useState<string[]>(["all"]);
+  const [filterCategories, setFilterCategories] = useState<string[]>(["all"]);
   const [filterSubcategory, setFilterSubcategory] = useState<string>("all");
   const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
@@ -125,9 +126,11 @@ export default function FinancePage() {
   }, [categories]);
 
   const subcategories = useMemo(() => {
-    if (filterCategory === 'all') return [];
-    return categories.filter(c => c.parent_id === filterCategory);
-  }, [categories, filterCategory]);
+    // For multi-select, only show subcategories if exactly one parent is selected
+    const selectedCats = filterCategories.filter(v => v !== 'all' && v !== 'uncategorized');
+    if (selectedCats.length !== 1) return [];
+    return categories.filter(c => c.parent_id === selectedCats[0]);
+  }, [categories, filterCategories]);
 
   // Function to get local category ID for a transaction (via overrides or API mapping)
   const getLocalCategoryForTransaction = useCallback((transaction: { id: string; category?: string | null }) => {
@@ -317,16 +320,18 @@ export default function FinancePage() {
         t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
+      const matchesCard = filterCards.includes("all") || filterCards.includes(t.card_last_digits || '');
       
-      // Filter by local category
-      let matchesCategory = filterCategory === "all";
+      // Filter by local categories (multi-select)
+      const isAllCategories = filterCategories.includes("all");
+      let matchesCategory = isAllCategories;
       if (!matchesCategory) {
         const localCategoryId = getLocalCategoryForTransaction(t);
-        if (filterCategory === "uncategorized") {
+        if (filterCategories.includes("uncategorized")) {
           matchesCategory = !localCategoryId;
-        } else {
-          matchesCategory = localCategoryId === filterCategory;
+        }
+        if (localCategoryId && filterCategories.includes(localCategoryId)) {
+          matchesCategory = true;
         }
       }
       
@@ -339,7 +344,7 @@ export default function FinancePage() {
       
       return matchesDate && matchesSearch && matchesCard && matchesCategory && matchesSubcategory;
     });
-  }, [permittedTransactions, searchTerm, filterCard, filterCategory, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction]);
+  }, [permittedTransactions, searchTerm, filterCards, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction]);
 
   // Calculate totals for PREVIEW in dropdown (without category filter applied)
   // This shows totals for each category based on date, search, and card filters only
@@ -361,7 +366,7 @@ export default function FinancePage() {
         t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
+      const matchesCard = filterCards.includes("all") || filterCards.includes(t.card_last_digits || '');
       
       // Credit card transactions from Pluggy come as positive values for expenses
       return matchesDate && matchesSearch && matchesCard && t.amount > 0;
@@ -377,7 +382,7 @@ export default function FinancePage() {
     });
     
     return { totals, uncategorizedTotal };
-  }, [permittedTransactions, startDate, endDate, searchTerm, filterCard, getLocalCategoryForTransaction]);
+  }, [permittedTransactions, startDate, endDate, searchTerm, filterCards, getLocalCategoryForTransaction]);
 
   // Calculate totals for LOCAL categories (not API categories) - ONLY expenses
   // Note: Credit card transactions from Pluggy come as positive values for expenses
@@ -478,11 +483,11 @@ export default function FinancePage() {
     return startDate.getTime() === range.start.getTime() && endDate.getTime() === range.end.getTime();
   };
 
-  const hasActiveFilters = filterCard !== 'all' || filterCategory !== 'all' || filterSubcategory !== 'all' || searchTerm !== '';
+  const hasActiveFilters = !filterCards.includes('all') || !filterCategories.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
 
   const clearAllFilters = () => {
-    setFilterCard('all');
-    setFilterCategory('all');
+    setFilterCards(['all']);
+    setFilterCategories(['all']);
     setFilterSubcategory('all');
     setSearchTerm('');
   };
@@ -711,68 +716,51 @@ export default function FinancePage() {
                     />
                   </div>
                   
-                  {/* Card Filter */}
-                  <Select value={filterCard} onValueChange={setFilterCard}>
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <CreditCard className="h-4 w-4 mr-2 text-muted-foreground" />
-                      <SelectValue placeholder="Cartão" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os cartões</SelectItem>
-                      {availableCards.map(card => {
-                        const assignment = getCardAssignment(card);
-                        return (
-                          <SelectItem key={card} value={card}>
-                            {assignment?.card_name 
-                              ? `${assignment.card_name} (**** ${card})`
-                              : `**** ${card}`}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  {/* Card Filter - Multi Select */}
+                  <MultiSelectFilter
+                    icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
+                    placeholder="Cartão"
+                    allLabel="Todos os cartões"
+                    options={availableCards.map(card => {
+                      const assignment = getCardAssignment(card);
+                      return {
+                        value: card,
+                        label: assignment?.card_name 
+                          ? `${assignment.card_name} (**** ${card})`
+                          : `**** ${card}`,
+                        sublabel: assignment?.lead_name || undefined
+                      };
+                    })}
+                    selectedValues={filterCards}
+                    onSelectionChange={setFilterCards}
+                    className="lg:col-span-1"
+                  />
                   
-                  {/* Category Filter with Preview Totals */}
-                  <Select 
-                    value={filterCategory} 
-                    onValueChange={(v) => {
-                      setFilterCategory(v);
+                  {/* Category Filter - Multi Select with Preview Totals */}
+                  <MultiSelectFilter
+                    icon={<Tag className="h-4 w-4 text-muted-foreground" />}
+                    placeholder="Categoria"
+                    allLabel="Todas as categorias"
+                    options={[
+                      {
+                        value: 'uncategorized',
+                        label: 'Sem categoria',
+                        previewAmount: categoryTotalsForPreview.uncategorizedTotal
+                      },
+                      ...parentCategories.map(cat => ({
+                        value: cat.id,
+                        label: cat.name,
+                        previewAmount: categoryTotalsForPreview.totals[cat.id] || 0
+                      }))
+                    ]}
+                    selectedValues={filterCategories}
+                    onSelectionChange={(values) => {
+                      setFilterCategories(values);
                       setFilterSubcategory('all');
                     }}
-                  >
-                    <SelectTrigger className="h-10 rounded-xl">
-                      <Tag className="h-4 w-4 mr-2 text-muted-foreground" />
-                      <SelectValue placeholder="Categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as categorias</SelectItem>
-                      <SelectItem value="uncategorized">
-                        <div className="flex justify-between items-center w-full gap-4">
-                          <span>Sem categoria</span>
-                          {categoryTotalsForPreview.uncategorizedTotal > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              {formatCurrency(categoryTotalsForPreview.uncategorizedTotal)}
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                      {parentCategories.map(cat => {
-                        const total = categoryTotalsForPreview.totals[cat.id] || 0;
-                        return (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            <div className="flex justify-between items-center w-full gap-4">
-                              <span>{cat.name}</span>
-                              {total > 0 && (
-                                <span className="text-xs text-muted-foreground">
-                                  {formatCurrency(total)}
-                                </span>
-                              )}
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                    formatCurrency={formatCurrency}
+                    className="lg:col-span-1"
+                  />
                   
                   {/* Subcategory Filter */}
                   <Select 
@@ -823,16 +811,26 @@ export default function FinancePage() {
                       </Button>
                     )}
                     
-                    {localCategoryTotals.slice(0, 6).map(({ categoryId, categoryName, total }) => (
-                      <Badge
-                        key={categoryId}
-                        variant={filterCategory === categoryId ? 'default' : 'outline'}
-                        className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
-                        onClick={() => setFilterCategory(filterCategory === categoryId ? 'all' : categoryId)}
-                      >
-                        {categoryName} ({formatCurrency(total)})
-                      </Badge>
-                    ))}
+                    {localCategoryTotals.slice(0, 6).map(({ categoryId, categoryName, total }) => {
+                      const isSelected = filterCategories.includes(categoryId);
+                      return (
+                        <Badge
+                          key={categoryId}
+                          variant={isSelected ? 'default' : 'outline'}
+                          className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
+                          onClick={() => {
+                            if (isSelected) {
+                              const newValues = filterCategories.filter(v => v !== categoryId);
+                              setFilterCategories(newValues.length === 0 ? ['all'] : newValues);
+                            } else {
+                              setFilterCategories([...filterCategories.filter(v => v !== 'all'), categoryId]);
+                            }
+                          }}
+                        >
+                          {categoryName} ({formatCurrency(total)})
+                        </Badge>
+                      );
+                    })}
                     {localCategoryTotals.length > 6 && (
                       <Badge variant="outline" className="rounded-full px-3 py-1.5">
                         +{localCategoryTotals.length - 6} mais
