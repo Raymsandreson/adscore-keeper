@@ -300,15 +300,15 @@ export default function FinancePage() {
   }, [transactions, allowedCards, permissionsLoading, filterByPermissions]);
 
   const filteredTransactions = useMemo(() => {
+    // Normalize dates once for filtering
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    
     return permittedTransactions.filter(t => {
-      // Date filter - CRITICAL: filter by date range
-      const transactionDate = new Date(t.transaction_date);
-      const startOfDay = new Date(startDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(endDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      const matchesDate = transactionDate >= startOfDay && transactionDate <= endOfDay;
+      // Date filter - Compare as strings (YYYY-MM-DD format)
+      // transaction_date is stored as 'YYYY-MM-DD' string in DB
+      const txDateStr = t.transaction_date; // Already 'YYYY-MM-DD' format
+      const matchesDate = txDateStr >= startDateStr && txDateStr <= endDateStr;
       
       const matchesSearch = searchTerm === "" || 
         t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -344,15 +344,15 @@ export default function FinancePage() {
     const totals: Record<string, number> = {};
     let uncategorizedTotal = 0;
     
+    // Normalize dates once for filtering
+    const startDateStr = format(startDate, 'yyyy-MM-dd');
+    const endDateStr = format(endDate, 'yyyy-MM-dd');
+    
     // Filter by date, search, and card only (NOT by category)
     const baseFiltered = permittedTransactions.filter(t => {
-      // Date filter
-      const transactionDate = new Date(t.transaction_date);
-      const startOfDay = new Date(startDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(endDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      const matchesDate = transactionDate >= startOfDay && transactionDate <= endOfDay;
+      // Date filter - Compare as strings (YYYY-MM-DD format)
+      const txDateStr = t.transaction_date;
+      const matchesDate = txDateStr >= startDateStr && txDateStr <= endDateStr;
       
       const matchesSearch = searchTerm === "" || 
         t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
