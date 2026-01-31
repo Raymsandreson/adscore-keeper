@@ -19,6 +19,10 @@ interface Transaction {
   merchant_city: string | null;
   merchant_state: string | null;
   created_at: string;
+  installment_number: number | null;
+  total_installments: number | null;
+  original_purchase_date: string | null;
+  purchase_group_id: string | null;
 }
 
 interface PluggyConnection {
