@@ -300,14 +300,15 @@ export default function FinancePage() {
   }, [transactions, allowedCards, permissionsLoading, filterByPermissions]);
 
   const filteredTransactions = useMemo(() => {
-    // Normalize dates once for filtering
+    if (permittedTransactions.length === 0) return [];
+    
+    // Normalize dates for string comparison (YYYY-MM-DD format)
     const startDateStr = format(startDate, 'yyyy-MM-dd');
     const endDateStr = format(endDate, 'yyyy-MM-dd');
     
     return permittedTransactions.filter(t => {
-      // Date filter - Compare as strings (YYYY-MM-DD format)
-      // transaction_date is stored as 'YYYY-MM-DD' string in DB
-      const txDateStr = t.transaction_date; // Already 'YYYY-MM-DD' format
+      // Date filter - Compare as strings since transaction_date is stored as 'YYYY-MM-DD'
+      const txDateStr = t.transaction_date;
       const matchesDate = txDateStr >= startDateStr && txDateStr <= endDateStr;
       
       const matchesSearch = searchTerm === "" || 
