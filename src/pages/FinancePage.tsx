@@ -30,7 +30,8 @@ import {
   EyeOff,
   AlertCircle,
   TableIcon,
-  X
+  X,
+  Tag
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -40,6 +41,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCardPermissions } from "@/hooks/useCardPermissions";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useExpenseCategories } from "@/hooks/useExpenseCategories";
+import { useCategoryApiMappings } from "@/hooks/useCategoryApiMappings";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
@@ -48,6 +50,7 @@ import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGrou
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
 import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransactionsWorkflow";
+import { translateCategory } from "@/utils/categoryTranslations";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -91,7 +94,8 @@ export default function FinancePage() {
     getTotalSpent,
   } = useCreditCardTransactions();
 
-  const { categories, cardAssignments, getCardAssignment } = useExpenseCategories();
+  const { categories, cardAssignments, getCardAssignment, overrides, getTransactionOverride } = useExpenseCategories();
+  const { mappings, findLocalCategoryByApiName } = useCategoryApiMappings();
 
   // Unified filters
   const [startDate, setStartDate] = useState(startOfMonth(new Date()));
@@ -113,13 +117,7 @@ export default function FinancePage() {
     return Array.from(cards);
   }, [transactions]);
 
-  // Get unique categories
-  const uniqueCategories = useMemo(() => {
-    const cats = new Set(transactions.map(t => t.category).filter(Boolean) as string[]);
-    return Array.from(cats).sort();
-  }, [transactions]);
-
-  // Get parent categories and subcategories
+  // Get parent categories and subcategories from our local categories
   const parentCategories = useMemo(() => {
     return categories.filter(c => !c.parent_id);
   }, [categories]);
@@ -128,6 +126,24 @@ export default function FinancePage() {
     if (filterCategory === 'all') return [];
     return categories.filter(c => c.parent_id === filterCategory);
   }, [categories, filterCategory]);
+
+  // Function to get local category ID for a transaction (via overrides or API mapping)
+  const getLocalCategoryForTransaction = useCallback((transaction: { id: string; category?: string | null }) => {
+    // First check if there's a manual override
+    const override = getTransactionOverride(transaction.id);
+    if (override) {
+      return override.category_id;
+    }
+    
+    // Otherwise, try to find via API category mapping
+    if (transaction.category) {
+      const translatedCategory = translateCategory(transaction.category);
+      const localCategoryId = findLocalCategoryByApiName(translatedCategory);
+      return localCategoryId;
+    }
+    
+    return null;
+  }, [getTransactionOverride, findLocalCategoryByApiName]);
 
   useEffect(() => {
     // Load Pluggy Connect SDK - using latest version
@@ -290,24 +306,71 @@ export default function FinancePage() {
         t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
-      const matchesCategory = filterCategory === "all" || t.category === filterCategory;
-      // Subcategory filter would need category mapping - simplified here
       
-      return matchesSearch && matchesCard && matchesCategory;
+      // Filter by local category
+      let matchesCategory = filterCategory === "all";
+      if (!matchesCategory) {
+        const localCategoryId = getLocalCategoryForTransaction(t);
+        if (filterCategory === "uncategorized") {
+          matchesCategory = !localCategoryId;
+        } else {
+          matchesCategory = localCategoryId === filterCategory;
+        }
+      }
+      
+      // Subcategory filter
+      let matchesSubcategory = filterSubcategory === "all";
+      if (!matchesSubcategory && filterSubcategory !== "all") {
+        const localCategoryId = getLocalCategoryForTransaction(t);
+        matchesSubcategory = localCategoryId === filterSubcategory;
+      }
+      
+      return matchesSearch && matchesCard && matchesCategory && matchesSubcategory;
     });
-  }, [permittedTransactions, searchTerm, filterCard, filterCategory]);
+  }, [permittedTransactions, searchTerm, filterCard, filterCategory, filterSubcategory, getLocalCategoryForTransaction]);
 
-  // Calculate totals only from filtered transactions
-  const categoryTotals = useMemo(() => {
+  // Calculate totals for LOCAL categories (not API categories)
+  const localCategoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
+    let uncategorizedTotal = 0;
+    
     filteredTransactions.forEach(t => {
-      const category = t.category || 'Outros';
-      totals[category] = (totals[category] || 0) + Math.abs(t.amount);
+      const localCategoryId = getLocalCategoryForTransaction(t);
+      
+      if (localCategoryId) {
+        totals[localCategoryId] = (totals[localCategoryId] || 0) + Math.abs(t.amount);
+      } else {
+        uncategorizedTotal += Math.abs(t.amount);
+      }
     });
-    return Object.entries(totals)
-      .map(([category, total]) => ({ category, total }))
+    
+    // Map category IDs to names and add uncategorized
+    const result = Object.entries(totals)
+      .map(([categoryId, total]) => {
+        const category = categories.find(c => c.id === categoryId);
+        return {
+          categoryId,
+          categoryName: category?.name || 'Desconhecida',
+          total,
+          color: category?.color || 'bg-gray-500',
+          icon: category?.icon || 'tag'
+        };
+      })
       .sort((a, b) => b.total - a.total);
-  }, [filteredTransactions]);
+    
+    // Add uncategorized if there are any
+    if (uncategorizedTotal > 0) {
+      result.push({
+        categoryId: 'uncategorized',
+        categoryName: 'Sem categoria',
+        total: uncategorizedTotal,
+        color: 'bg-gray-400',
+        icon: 'tag'
+      });
+    }
+    
+    return result;
+  }, [filteredTransactions, categories, getLocalCategoryForTransaction]);
 
   const totalSpent = useMemo(() => {
     return filteredTransactions
@@ -315,10 +378,10 @@ export default function FinancePage() {
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   }, [filteredTransactions]);
 
-  // Count pending transactions for badge
+  // Count pending transactions (uncategorized)
   const pendingCount = useMemo(() => {
-    return filteredTransactions.filter(t => !t.category || t.category === 'Outros').length;
-  }, [filteredTransactions]);
+    return filteredTransactions.filter(t => !getLocalCategoryForTransaction(t)).length;
+  }, [filteredTransactions, getLocalCategoryForTransaction]);
 
   // Group transactions by day for table view
   const transactionsByDay = useMemo(() => {
@@ -623,13 +686,15 @@ export default function FinancePage() {
                     }}
                   >
                     <SelectTrigger className="h-10 rounded-xl">
+                      <Tag className="h-4 w-4 mr-2 text-muted-foreground" />
                       <SelectValue placeholder="Categoria" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas as categorias</SelectItem>
-                      {uniqueCategories.map(cat => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
+                      <SelectItem value="uncategorized">Sem categoria</SelectItem>
+                      {parentCategories.map(cat => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -670,7 +735,7 @@ export default function FinancePage() {
                     </CardContent>
                   </Card>
                   
-                  {/* Category Chips + Clear Filter */}
+                  {/* Category Chips - Local Categories with Totals */}
                   <div className="md:col-span-3 flex flex-wrap items-center gap-2 content-center">
                     {hasActiveFilters && (
                       <Button
@@ -684,19 +749,19 @@ export default function FinancePage() {
                       </Button>
                     )}
                     
-                    {categoryTotals.slice(0, 6).map(({ category, total }) => (
+                    {localCategoryTotals.slice(0, 6).map(({ categoryId, categoryName, total }) => (
                       <Badge
-                        key={category}
-                        variant={filterCategory === category ? 'default' : 'outline'}
+                        key={categoryId}
+                        variant={filterCategory === categoryId ? 'default' : 'outline'}
                         className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
-                        onClick={() => setFilterCategory(filterCategory === category ? 'all' : category)}
+                        onClick={() => setFilterCategory(filterCategory === categoryId ? 'all' : categoryId)}
                       >
-                        {category} ({formatCurrency(total)})
+                        {categoryName} ({formatCurrency(total)})
                       </Badge>
                     ))}
-                    {categoryTotals.length > 6 && (
+                    {localCategoryTotals.length > 6 && (
                       <Badge variant="outline" className="rounded-full px-3 py-1.5">
-                        +{categoryTotals.length - 6} mais
+                        +{localCategoryTotals.length - 6} mais
                       </Badge>
                     )}
                   </div>
