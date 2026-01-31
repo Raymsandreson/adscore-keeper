@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -19,7 +20,9 @@ import {
   Tag,
   Loader2,
   Filter,
-  X
+  X,
+  List,
+  LayoutGrid
 } from 'lucide-react';
 import { format, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +36,7 @@ import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactSelector } from './LeadContactSelector';
+import { PendingTransactionsList } from './PendingTransactionsList';
 
 interface Transaction {
   id: string;
@@ -73,6 +77,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const { contacts, fetchContacts } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
@@ -91,7 +96,6 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [filterCard, setFilterCard] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterSubcategory, setFilterSubcategory] = useState<string>('all');
-  const [showFilters, setShowFilters] = useState(false);
 
   // Get unique cards from transactions
   const uniqueCards = useMemo(() => {
@@ -321,206 +325,216 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
 
   return (
     <div className="space-y-4">
-      {/* Progress Header with Filters */}
+      {/* Filters at Top */}
       <Card>
         <CardContent className="py-4 space-y-4">
-          <div className="flex items-center justify-between mb-2">
+          {/* Header Row */}
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-amber-500" />
               <span className="font-medium">
                 {pendingTransactions.length} gastos pendentes
               </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={showFilters ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setShowFilters(!showFilters)}
-                className="gap-1"
-              >
-                <Filter className="h-4 w-4" />
-                Filtros
-                {hasActiveFilters && (
-                  <Badge variant="destructive" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs">
-                    !
-                  </Badge>
-                )}
-              </Button>
               <Badge variant="outline">
                 {completedCount} / {transactions.length} vinculados
               </Badge>
             </div>
-          </div>
-          <Progress value={progressPercent} className="h-2" />
-          
-          {/* Filters Panel */}
-          {showFilters && (
-            <div className="pt-4 border-t space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium text-sm">Filtrar Transações</h4>
-                {hasActiveFilters && (
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">
-                    <X className="h-3 w-3 mr-1" />
-                    Limpar filtros
-                  </Button>
-                )}
+            <div className="flex items-center gap-2">
+              {/* View Mode Toggle */}
+              <div className="flex border rounded-md">
+                <Button
+                  variant={viewMode === 'card' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 px-3 rounded-r-none"
+                  onClick={() => setViewMode('card')}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  className="h-8 px-3 rounded-l-none"
+                  onClick={() => setViewMode('list')}
+                >
+                  <List className="h-4 w-4" />
+                </Button>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Start Date */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Data Início</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-9",
-                          !filterStartDate && "text-muted-foreground"
-                        )}
-                      >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {filterStartDate ? format(filterStartDate, "dd/MM/yyyy") : "Início"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={filterStartDate}
-                        onSelect={(date) => {
-                          setFilterStartDate(date);
-                          setCurrentIndex(0);
-                        }}
-                        initialFocus
-                        className="p-3 pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                
-                {/* End Date */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Data Fim</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-9",
-                          !filterEndDate && "text-muted-foreground"
-                        )}
-                      >
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {filterEndDate ? format(filterEndDate, "dd/MM/yyyy") : "Fim"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={filterEndDate}
-                        onSelect={(date) => {
-                          setFilterEndDate(date);
-                          setCurrentIndex(0);
-                        }}
-                        initialFocus
-                        className="p-3 pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                
-                {/* Card Filter */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Cartão</label>
-                  <Select 
-                    value={filterCard} 
-                    onValueChange={(v) => {
-                      setFilterCard(v);
-                      setCurrentIndex(0);
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os cartões</SelectItem>
-                      {uniqueCards.map(card => {
-                        const assignment = getCardAssignment(card);
-                        return (
-                          <SelectItem key={card} value={card}>
-                            {assignment?.card_name || `**** ${card}`}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {/* Category Filter */}
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Categoria</label>
-                  <Select 
-                    value={filterCategory} 
-                    onValueChange={(v) => {
-                      setFilterCategory(v);
-                      setFilterSubcategory('all');
-                      setCurrentIndex(0);
-                    }}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todas as categorias</SelectItem>
-                      {categories.filter(c => !c.parent_id).map(cat => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          <div className="flex items-center gap-2">
-                            <div className={cn("w-2 h-2 rounded-full", cat.color)} />
-                            {cat.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              {/* Subcategory Filter - Only show when category is selected */}
-              {filterCategory !== 'all' && subcategories.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div className="md:col-start-4 space-y-1">
-                    <label className="text-xs text-muted-foreground">Subcategoria</label>
-                    <Select 
-                      value={filterSubcategory} 
-                      onValueChange={(v) => {
-                        setFilterSubcategory(v);
-                        setCurrentIndex(0);
-                      }}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Todas" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todas subcategorias</SelectItem>
-                        {subcategories.map(sub => (
-                          <SelectItem key={sub.id} value={sub.id}>
-                            {sub.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
+                  <X className="h-3 w-3 mr-1" />
+                  Limpar
+                </Button>
               )}
             </div>
-          )}
+          </div>
+          
+          <Progress value={progressPercent} className="h-2" />
+          
+          {/* Filters - Always Visible */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            {/* Start Date */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Data Início</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-9",
+                      !filterStartDate && "text-muted-foreground"
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {filterStartDate ? format(filterStartDate, "dd/MM/yy") : "Início"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={filterStartDate}
+                    onSelect={(date) => {
+                      setFilterStartDate(date);
+                      setCurrentIndex(0);
+                    }}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            {/* End Date */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Data Fim</label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-9",
+                      !filterEndDate && "text-muted-foreground"
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {filterEndDate ? format(filterEndDate, "dd/MM/yy") : "Fim"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={filterEndDate}
+                    onSelect={(date) => {
+                      setFilterEndDate(date);
+                      setCurrentIndex(0);
+                    }}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            
+            {/* Card Filter */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Cartão</label>
+              <Select 
+                value={filterCard} 
+                onValueChange={(v) => {
+                  setFilterCard(v);
+                  setCurrentIndex(0);
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {uniqueCards.map(card => {
+                    const assignment = getCardAssignment(card);
+                    return (
+                      <SelectItem key={card} value={card}>
+                        {assignment?.card_name || `**** ${card}`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Category Filter */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Categoria</label>
+              <Select 
+                value={filterCategory} 
+                onValueChange={(v) => {
+                  setFilterCategory(v);
+                  setFilterSubcategory('all');
+                  setCurrentIndex(0);
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {categories.filter(c => !c.parent_id).map(cat => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", cat.color)} />
+                        {cat.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Subcategory Filter */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Subcategoria</label>
+              <Select 
+                value={filterSubcategory} 
+                onValueChange={(v) => {
+                  setFilterSubcategory(v);
+                  setCurrentIndex(0);
+                }}
+                disabled={filterCategory === 'all' || subcategories.length === 0}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {subcategories.map(sub => (
+                    <SelectItem key={sub.id} value={sub.id}>
+                      {sub.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardContent>
       </Card>
+      
+      {/* List View */}
+      {viewMode === 'list' && (
+        <Card>
+          <CardContent className="py-4">
+            <PendingTransactionsList
+              transactions={pendingTransactions}
+              leads={leads}
+              contacts={contacts}
+              onComplete={onComplete}
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Current Transaction */}
-      {currentTransaction && (
+      {/* Card View - Current Transaction */}
+      {viewMode === 'card' && currentTransaction && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -746,6 +760,19 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                 Salvar e Próximo
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Empty State for Card View */}
+      {viewMode === 'card' && pendingTransactions.length === 0 && (
+        <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Tudo Categorizado!</h3>
+            <p className="text-muted-foreground text-center max-w-md">
+              Todos os {transactions.length} gastos foram vinculados a Leads ou Contatos.
+            </p>
           </CardContent>
         </Card>
       )}
