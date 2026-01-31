@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,7 +28,9 @@ import {
   Users,
   Shield,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  TableIcon,
+  X
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -36,6 +39,7 @@ import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
 import { useAuth } from "@/hooks/useAuth";
 import { useCardPermissions } from "@/hooks/useCardPermissions";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useExpenseCategories } from "@/hooks/useExpenseCategories";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
@@ -87,12 +91,16 @@ export default function FinancePage() {
     getTotalSpent,
   } = useCreditCardTransactions();
 
-  const [dateRange, setDateRange] = useState({
-    start: startOfMonth(new Date()),
-    end: endOfMonth(new Date()),
-  });
+  const { categories, cardAssignments, getCardAssignment } = useExpenseCategories();
+
+  // Unified filters
+  const [startDate, setStartDate] = useState(startOfMonth(new Date()));
+  const [endDate, setEndDate] = useState(endOfMonth(new Date()));
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [filterCard, setFilterCard] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterSubcategory, setFilterSubcategory] = useState<string>("all");
+  
   const [isConnecting, setIsConnecting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
@@ -104,6 +112,22 @@ export default function FinancePage() {
     const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
     return Array.from(cards);
   }, [transactions]);
+
+  // Get unique categories
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set(transactions.map(t => t.category).filter(Boolean) as string[]);
+    return Array.from(cats).sort();
+  }, [transactions]);
+
+  // Get parent categories and subcategories
+  const parentCategories = useMemo(() => {
+    return categories.filter(c => !c.parent_id);
+  }, [categories]);
+
+  const subcategories = useMemo(() => {
+    if (filterCategory === 'all') return [];
+    return categories.filter(c => c.parent_id === filterCategory);
+  }, [categories, filterCategory]);
 
   useEffect(() => {
     // Load Pluggy Connect SDK - using latest version
@@ -133,11 +157,11 @@ export default function FinancePage() {
     const loadData = async () => {
       if (user) {
         await fetchConnections();
-        fetchTransactions(dateRange);
+        fetchTransactions({ start: startDate, end: endDate });
       }
     };
     loadData();
-  }, [user, fetchConnections, fetchTransactions, dateRange]);
+  }, [user, fetchConnections, fetchTransactions, startDate, endDate]);
 
   // Auto-sync when connections exist and page loads
   useEffect(() => {
@@ -145,7 +169,7 @@ export default function FinancePage() {
       if (connections.length > 0 && !syncing && !autoSyncing) {
         setAutoSyncing(true);
         try {
-          await syncTransactions(dateRange);
+          await syncTransactions({ start: startDate, end: endDate });
           setLastSyncTime(new Date());
           toast.success('Transações atualizadas automaticamente');
         } catch (err) {
@@ -169,7 +193,7 @@ export default function FinancePage() {
       const result = await importExistingConnections();
       if (result.imported > 0) {
         toast.success(`${result.imported} conta(s) importada(s) com sucesso!`);
-        await syncTransactions(dateRange);
+        await syncTransactions({ start: startDate, end: endDate });
       } else {
         toast.info('Nenhuma conexão ativa encontrada no Pluggy');
       }
@@ -179,7 +203,7 @@ export default function FinancePage() {
     } finally {
       setIsImporting(false);
     }
-  }, [importExistingConnections, syncTransactions, dateRange]);
+  }, [importExistingConnections, syncTransactions, startDate, endDate]);
 
   const handleImportByItemId = useCallback(async () => {
     if (!manualItemId.trim()) {
@@ -192,14 +216,14 @@ export default function FinancePage() {
       const result = await importByItemId(manualItemId.trim());
       toast.success(`Conexão "${result.connection.connector_name}" importada com sucesso!`);
       setManualItemId("");
-      await syncTransactions(dateRange);
+      await syncTransactions({ start: startDate, end: endDate });
     } catch (err: any) {
       console.error('Error importing by itemId:', err);
       toast.error(`Erro ao importar: ${err.message}`);
     } finally {
       setIsImportingManual(false);
     }
-  }, [manualItemId, importByItemId, syncTransactions, dateRange]);
+  }, [manualItemId, importByItemId, syncTransactions, startDate, endDate]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -215,7 +239,7 @@ export default function FinancePage() {
           onSuccess: async (data) => {
             await saveConnection(data.item.id);
             toast.success('Conta conectada com sucesso!');
-            await syncTransactions(dateRange);
+            await syncTransactions({ start: startDate, end: endDate });
             setIsConnecting(false);
           },
           onError: (error) => {
@@ -237,13 +261,13 @@ export default function FinancePage() {
       toast.error('Erro ao iniciar conexão');
       setIsConnecting(false);
     }
-  }, [createConnectToken, saveConnection, syncTransactions, dateRange]);
+  }, [createConnectToken, saveConnection, syncTransactions, startDate, endDate]);
 
   const handleSync = useCallback(async () => {
-    await syncTransactions(dateRange);
+    await syncTransactions({ start: startDate, end: endDate });
     setLastSyncTime(new Date());
     toast.success('Transações sincronizadas!');
-  }, [syncTransactions, dateRange]);
+  }, [syncTransactions, startDate, endDate]);
 
   const handleDeleteConnection = useCallback(async (itemId: string) => {
     if (confirm('Tem certeza que deseja desconectar esta conta?')) {
@@ -252,23 +276,28 @@ export default function FinancePage() {
     }
   }, [deleteConnection]);
 
-  // Filter transactions by card permissions first, then by search/category
+  // Filter transactions by card permissions first, then by all filters
   const permittedTransactions = useMemo(() => {
-    // If permissions still loading or user has no allowed cards, show nothing
     if (permissionsLoading) return [];
     if (allowedCards.length === 0) return [];
     return filterByPermissions(transactions);
   }, [transactions, allowedCards, permissionsLoading, filterByPermissions]);
 
-  const filteredTransactions = permittedTransactions.filter(t => {
-    const matchesSearch = searchTerm === "" || 
-      t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === null || t.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredTransactions = useMemo(() => {
+    return permittedTransactions.filter(t => {
+      const matchesSearch = searchTerm === "" || 
+        t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
+      const matchesCategory = filterCategory === "all" || t.category === filterCategory;
+      // Subcategory filter would need category mapping - simplified here
+      
+      return matchesSearch && matchesCard && matchesCategory;
+    });
+  }, [permittedTransactions, searchTerm, filterCard, filterCategory]);
 
-  // Calculate totals only from permitted transactions
+  // Calculate totals only from filtered transactions
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     filteredTransactions.forEach(t => {
@@ -291,6 +320,24 @@ export default function FinancePage() {
     return filteredTransactions.filter(t => !t.category || t.category === 'Outros').length;
   }, [filteredTransactions]);
 
+  // Group transactions by day for table view
+  const transactionsByDay = useMemo(() => {
+    const grouped: Record<string, typeof filteredTransactions> = {};
+    filteredTransactions.forEach(t => {
+      const date = format(new Date(t.transaction_date), 'yyyy-MM-dd');
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(t);
+    });
+    return Object.entries(grouped)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, trans]) => ({
+        date,
+        transactions: trans,
+        total: trans.reduce((sum, t) => sum + t.amount, 0),
+        count: trans.length
+      }));
+  }, [filteredTransactions]);
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -303,6 +350,24 @@ export default function FinancePage() {
     { label: 'Mês passado', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) },
     { label: '3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
   ];
+
+  const setQuickRange = (range: typeof quickDateRanges[0]) => {
+    setStartDate(range.start);
+    setEndDate(range.end);
+  };
+
+  const isQuickRangeActive = (range: typeof quickDateRanges[0]) => {
+    return startDate.getTime() === range.start.getTime() && endDate.getTime() === range.end.getTime();
+  };
+
+  const hasActiveFilters = filterCard !== 'all' || filterCategory !== 'all' || filterSubcategory !== 'all' || searchTerm !== '';
+
+  const clearAllFilters = () => {
+    setFilterCard('all');
+    setFilterCategory('all');
+    setFilterSubcategory('all');
+    setSearchTerm('');
+  };
 
   if (!user) {
     return (
@@ -455,63 +520,142 @@ export default function FinancePage() {
         {/* Main Content - Show when has connections AND permissions */}
         {connections.length > 0 && allowedCards.length > 0 && (
           <>
-            {/* Unified Filters - Inter Style */}
+            {/* Unified Global Filters - Inter Style */}
             <Card className="border-0 shadow-card">
               <CardContent className="py-4 space-y-4">
-                {/* Quick Period Pills */}
+                {/* Row 1: Quick Pills + Date Range */}
                 <div className="flex flex-wrap items-center gap-2">
                   {quickDateRanges.map((range, i) => (
                     <Button
                       key={i}
-                      variant={
-                        dateRange.start.getTime() === range.start.getTime() &&
-                        dateRange.end.getTime() === range.end.getTime()
-                          ? 'default'
-                          : 'outline'
-                      }
+                      variant={isQuickRangeActive(range) ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setDateRange(range)}
+                      onClick={() => setQuickRange(range)}
                       className="rounded-full px-4 h-8"
                     >
                       {range.label}
                     </Button>
                   ))}
-
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="rounded-full h-8">
-                        <CalendarIcon className="h-4 w-4 mr-2" />
-                        {format(dateRange.start, "dd/MM")} - {format(dateRange.end, "dd/MM/yy")}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={{ from: dateRange.start, to: dateRange.end }}
-                        onSelect={(range) => {
-                          if (range?.from && range?.to) {
-                            setDateRange({ start: range.from, end: range.to });
-                          }
-                        }}
-                        locale={ptBR}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  
+                  <div className="flex items-center gap-2 ml-auto">
+                    {/* Start Date */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          {format(startDate, "dd/MM/yy")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={startDate}
+                          onSelect={(date) => date && setStartDate(date)}
+                          locale={ptBR}
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    
+                    <span className="text-muted-foreground text-sm">até</span>
+                    
+                    {/* End Date */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          {format(endDate, "dd/MM/yy")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={(date) => date && setEndDate(date)}
+                          locale={ptBR}
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
 
-                {/* Search Bar - More Prominent */}
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar transação..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-11 rounded-xl bg-muted/50 border-0"
-                  />
+                {/* Row 2: Search + Filters */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {/* Search Bar */}
+                  <div className="relative lg:col-span-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar transação..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9 h-10 rounded-xl bg-muted/50 border-0"
+                    />
+                  </div>
+                  
+                  {/* Card Filter */}
+                  <Select value={filterCard} onValueChange={setFilterCard}>
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <CreditCard className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <SelectValue placeholder="Cartão" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os cartões</SelectItem>
+                      {availableCards.map(card => {
+                        const assignment = getCardAssignment(card);
+                        return (
+                          <SelectItem key={card} value={card}>
+                            {assignment?.card_name 
+                              ? `${assignment.card_name} (**** ${card})`
+                              : `**** ${card}`}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Category Filter */}
+                  <Select 
+                    value={filterCategory} 
+                    onValueChange={(v) => {
+                      setFilterCategory(v);
+                      setFilterSubcategory('all');
+                    }}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <SelectValue placeholder="Categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as categorias</SelectItem>
+                      {uniqueCategories.map(cat => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Subcategory Filter */}
+                  <Select 
+                    value={filterSubcategory} 
+                    onValueChange={setFilterSubcategory}
+                    disabled={subcategories.length === 0}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl">
+                      <SelectValue placeholder="Subcategoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      {subcategories.map(sub => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {/* Summary + Categories Row */}
+                {/* Row 3: Summary + Category Chips */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   {/* Total Card */}
                   <Card className="bg-gradient-to-br from-destructive/5 to-destructive/10 border-destructive/20">
@@ -526,28 +670,33 @@ export default function FinancePage() {
                     </CardContent>
                   </Card>
                   
-                  {/* Category Chips */}
+                  {/* Category Chips + Clear Filter */}
                   <div className="md:col-span-3 flex flex-wrap items-center gap-2 content-center">
-                    <Badge
-                      variant={categoryFilter === null ? 'default' : 'outline'}
-                      className="cursor-pointer rounded-full px-4 py-1.5 hover:bg-primary/10 transition-colors"
-                      onClick={() => setCategoryFilter(null)}
-                    >
-                      Todas
-                    </Badge>
-                    {categoryTotals.slice(0, 8).map(({ category, total }) => (
+                    {hasActiveFilters && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearAllFilters}
+                        className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                        Limpar filtros
+                      </Button>
+                    )}
+                    
+                    {categoryTotals.slice(0, 6).map(({ category, total }) => (
                       <Badge
                         key={category}
-                        variant={categoryFilter === category ? 'default' : 'outline'}
+                        variant={filterCategory === category ? 'default' : 'outline'}
                         className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
-                        onClick={() => setCategoryFilter(category)}
+                        onClick={() => setFilterCategory(filterCategory === category ? 'all' : category)}
                       >
                         {category} ({formatCurrency(total)})
                       </Badge>
                     ))}
-                    {categoryTotals.length > 8 && (
+                    {categoryTotals.length > 6 && (
                       <Badge variant="outline" className="rounded-full px-3 py-1.5">
-                        +{categoryTotals.length - 8} mais
+                        +{categoryTotals.length - 6} mais
                       </Badge>
                     )}
                   </div>
@@ -557,7 +706,7 @@ export default function FinancePage() {
 
             {/* Tabs for different views */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-5 h-10">
+              <TabsList className="grid w-full grid-cols-6 h-10">
                 <TabsTrigger value="workflow" className="flex items-center gap-2 text-xs sm:text-sm">
                   <AlertCircle className="h-4 w-4" />
                   <span className="hidden sm:inline">Pendentes</span>
@@ -574,6 +723,10 @@ export default function FinancePage() {
                 <TabsTrigger value="by-card" className="flex items-center gap-2 text-xs sm:text-sm">
                   <CreditCard className="h-4 w-4" />
                   <span className="hidden sm:inline">Por Cartão</span>
+                </TabsTrigger>
+                <TabsTrigger value="by-day" className="flex items-center gap-2 text-xs sm:text-sm">
+                  <TableIcon className="h-4 w-4" />
+                  <span className="hidden sm:inline">Por Dia</span>
                 </TabsTrigger>
                 <TabsTrigger value="list" className="flex items-center gap-2 text-xs sm:text-sm">
                   <LayoutGrid className="h-4 w-4" />
@@ -612,6 +765,78 @@ export default function FinancePage() {
                 ) : (
                   <TransactionsGroupedByCard transactions={filteredTransactions} />
                 )}
+              </TabsContent>
+
+              {/* New: By Day Tab - Consolidated Table */}
+              <TabsContent value="by-day" className="mt-4">
+                <Card className="border-0 shadow-card">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <TableIcon className="h-5 w-5" />
+                        Gastos por Dia
+                      </CardTitle>
+                      <Button variant="outline" size="sm" disabled>
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {loading ? (
+                      <div className="p-6 space-y-3">
+                        {[...Array(5)].map((_, i) => (
+                          <Skeleton key={i} className="h-12 w-full" />
+                        ))}
+                      </div>
+                    ) : transactionsByDay.length === 0 ? (
+                      <div className="p-12 text-center text-muted-foreground">
+                        Nenhuma transação encontrada
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-[500px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Data</TableHead>
+                              <TableHead className="text-center">Qtd</TableHead>
+                              <TableHead className="text-right">Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {transactionsByDay.map(({ date, transactions: dayTrans, total, count }) => (
+                              <TableRow 
+                                key={date}
+                                className="cursor-pointer hover:bg-muted/50"
+                              >
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">
+                                      {format(new Date(date), "EEEE", { locale: ptBR })}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {format(new Date(date), "dd 'de' MMMM", { locale: ptBR })}
+                                    </p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant="secondary" className="rounded-full">
+                                    {count}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-mono font-medium">
+                                  <span className={total < 0 ? 'text-destructive' : 'text-green-600'}>
+                                    {formatCurrency(total)}
+                                  </span>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="list" className="mt-4">

@@ -86,32 +86,14 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [manualCity, setManualCity] = useState('');
   const [manualState, setManualState] = useState('');
   const [showManualLocation, setShowManualLocation] = useState(false);
-  
-  // Filtro de cartão (único filtro restante dentro do workflow)
-  const [filterCard, setFilterCard] = useState<string>('all');
-
-  // Get unique cards from transactions
-  const uniqueCards = useMemo(() => {
-    const cards = new Set<string>();
-    transactions.forEach(t => {
-      if (t.card_last_digits) cards.add(t.card_last_digits);
-    });
-    return Array.from(cards);
-  }, [transactions]);
 
   // Filter transactions that don't have a lead or contact linked
   const pendingTransactions = useMemo(() => {
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
-      const isPending = !override || (!override.lead_id && !override.contact_id);
-      if (!isPending) return false;
-      
-      // Card filter
-      if (filterCard !== 'all' && t.card_last_digits !== filterCard) return false;
-      
-      return true;
+      return !override || (!override.lead_id && !override.contact_id);
     });
-  }, [transactions, getTransactionOverride, overrides, filterCard]);
+  }, [transactions, getTransactionOverride, overrides]);
 
   const completedCount = transactions.length - pendingTransactions.length;
   const progressPercent = transactions.length > 0 
@@ -260,23 +242,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     }
   };
 
-  // Count truly pending transactions (without filters)
-  const allPendingTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      const override = getTransactionOverride(t.id);
-      return !override || (!override.lead_id && !override.contact_id);
-    });
-  }, [transactions, getTransactionOverride, overrides]);
-
-  const isAllCategorized = allPendingTransactions.length === 0;
-  const isFilteredEmpty = pendingTransactions.length === 0 && !isAllCategorized;
-
-  const clearFilters = () => {
-    setFilterCard('all');
-    setCurrentIndex(0);
-  };
-
-  const hasActiveFilters = filterCard !== 'all';
+  const isAllCategorized = pendingTransactions.length === 0;
 
   return (
     <div className="space-y-4">
@@ -286,7 +252,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
           <div className="flex items-center gap-2">
             <AlertCircle className="h-5 w-5 text-amber-500" />
             <span className="font-medium">
-              {allPendingTransactions.length} pendentes
+              {pendingTransactions.length} pendentes
             </span>
           </div>
           <Badge variant="secondary" className="rounded-full">
@@ -295,40 +261,6 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Card Filter */}
-          {uniqueCards.length > 1 && (
-            <Select 
-              value={filterCard} 
-              onValueChange={(v) => {
-                setFilterCard(v);
-                setCurrentIndex(0);
-              }}
-            >
-              <SelectTrigger className="h-8 w-[160px]">
-                <CreditCard className="h-3.5 w-3.5 mr-2" />
-                <SelectValue placeholder="Cartão" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos cartões</SelectItem>
-                {uniqueCards.map(card => {
-                  const assignment = getCardAssignment(card);
-                  return (
-                    <SelectItem key={card} value={card}>
-                      {assignment?.card_name || `**** ${card}`}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          )}
-          
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
-              <X className="h-3 w-3 mr-1" />
-              Limpar
-            </Button>
-          )}
-          
           {/* View Mode Toggle */}
           <div className="flex border rounded-md">
             <Button
@@ -365,27 +297,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
           </CardContent>
         </Card>
       )}
-
-      {/* Filtered Empty Message */}
-      {isFilteredEmpty && (
-        <Card className="border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Filter className="h-16 w-16 text-amber-500 mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Nenhum gasto pendente encontrado</h3>
-            <p className="text-muted-foreground text-center max-w-md mb-4">
-              Não há gastos pendentes com os filtros selecionados. 
-              Ainda há {allPendingTransactions.length} gastos pendentes no total.
-            </p>
-            <Button variant="outline" onClick={clearFilters}>
-              <X className="h-4 w-4 mr-2" />
-              Limpar Filtros
-            </Button>
-          </CardContent>
-        </Card>
-      )}
       
       {/* List View */}
-      {viewMode === 'list' && !isAllCategorized && !isFilteredEmpty && (
+      {viewMode === 'list' && !isAllCategorized && (
         <Card className="border-0 shadow-card">
           <CardContent className="py-4">
             <PendingTransactionsList
@@ -630,14 +544,14 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         </Card>
       )}
       
-      {/* Empty State for Card View */}
-      {viewMode === 'card' && pendingTransactions.length === 0 && !isAllCategorized && !isFilteredEmpty && (
-        <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
+      {/* Empty State for Card View when no pending after filters */}
+      {viewMode === 'card' && pendingTransactions.length === 0 && transactions.length > 0 && !isAllCategorized && (
+        <Card className="border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Tudo Categorizado!</h3>
+            <Filter className="h-16 w-16 text-amber-500 mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Nenhum gasto pendente</h3>
             <p className="text-muted-foreground text-center max-w-md">
-              Todos os {transactions.length} gastos foram vinculados a Leads ou Contatos.
+              Com os filtros atuais, não há gastos pendentes para categorizar.
             </p>
           </CardContent>
         </Card>
