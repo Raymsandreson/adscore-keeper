@@ -298,19 +298,16 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     }
   };
 
-  if (pendingTransactions.length === 0) {
-    return (
-      <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
-          <h3 className="text-xl font-semibold mb-2">Tudo Categorizado!</h3>
-          <p className="text-muted-foreground text-center max-w-md">
-            Todos os {transactions.length} gastos foram vinculados a Leads ou Contatos.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  // Count truly pending transactions (without any filters)
+  const allPendingTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const override = getTransactionOverride(t.id);
+      return !override || (!override.lead_id && !override.contact_id);
+    });
+  }, [transactions, getTransactionOverride, overrides]);
+
+  const isAllCategorized = allPendingTransactions.length === 0;
+  const isFilteredEmpty = pendingTransactions.length === 0 && !isAllCategorized;
 
   const clearFilters = () => {
     setFilterStartDate(undefined);
@@ -518,9 +515,40 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
           </div>
         </CardContent>
       </Card>
+
+      {/* All Categorized Message */}
+      {isAllCategorized && (
+        <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Tudo Categorizado!</h3>
+            <p className="text-muted-foreground text-center max-w-md">
+              Todos os {transactions.length} gastos foram vinculados a Leads ou Contatos.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Filtered Empty Message */}
+      {isFilteredEmpty && (
+        <Card className="border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/10">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Filter className="h-16 w-16 text-amber-500 mb-4" />
+            <h3 className="text-xl font-semibold mb-2">Nenhum gasto pendente encontrado</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-4">
+              Não há gastos pendentes com os filtros selecionados. 
+              Ainda há {allPendingTransactions.length} gastos pendentes no total.
+            </p>
+            <Button variant="outline" onClick={clearFilters}>
+              <X className="h-4 w-4 mr-2" />
+              Limpar Filtros
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       
       {/* List View */}
-      {viewMode === 'list' && (
+      {viewMode === 'list' && !isAllCategorized && !isFilteredEmpty && (
         <Card>
           <CardContent className="py-4">
             <PendingTransactionsList
