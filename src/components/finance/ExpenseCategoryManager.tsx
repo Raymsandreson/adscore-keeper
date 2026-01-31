@@ -434,7 +434,7 @@ export function ExpenseCategoryManager() {
                   <div>
                     <Label>Categoria Pai (opcional)</Label>
                     <Select
-                      value={formData.parent_id}
+                      value={formData.parent_id || "none"}
                       onValueChange={(value) => setFormData(prev => ({ ...prev, parent_id: value === 'none' ? '' : value }))}
                     >
                       <SelectTrigger>
