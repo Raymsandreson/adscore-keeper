@@ -20,7 +20,6 @@ import {
   Link2Off,
   Building2,
   TrendingDown,
-  Filter,
   Download,
   Trash2,
   Settings,
@@ -287,6 +286,11 @@ export default function FinancePage() {
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
   }, [filteredTransactions]);
 
+  // Count pending transactions for badge
+  const pendingCount = useMemo(() => {
+    return filteredTransactions.filter(t => !t.category || t.category === 'Outros').length;
+  }, [filteredTransactions]);
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -297,7 +301,7 @@ export default function FinancePage() {
   const quickDateRanges = [
     { label: 'Este mês', start: startOfMonth(new Date()), end: endOfMonth(new Date()) },
     { label: 'Mês passado', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) },
-    { label: 'Últimos 3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
+    { label: '3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
   ];
 
   if (!user) {
@@ -310,42 +314,44 @@ export default function FinancePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      {/* Header - Inter Style */}
+      <div className="bg-card border-b sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-                <ArrowLeft className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="h-8 w-8">
+                <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <CreditCard className="h-6 w-6 text-primary" />
-                  Gastos do Cartão
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Open Finance via Pluggy
-                </p>
+              <div className="flex items-center gap-3">
+                <CreditCard className="h-6 w-6 text-primary" />
+                <div>
+                  <h1 className="text-xl font-semibold">Gastos do Cartão</h1>
+                  <p className="text-xs text-muted-foreground">
+                    Open Finance via Pluggy
+                  </p>
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               {lastSyncTime && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground hidden sm:inline">
                   Atualizado às {format(lastSyncTime, "HH:mm")}
                 </span>
               )}
               <Button
                 variant="outline"
+                size="sm"
                 onClick={handleSync}
                 disabled={syncing || autoSyncing || connections.length === 0}
+                className="h-8"
               >
                 <RefreshCw className={cn("h-4 w-4 mr-2", (syncing || autoSyncing) && "animate-spin")} />
                 {autoSyncing ? 'Atualizando...' : 'Sincronizar'}
               </Button>
-              <Button onClick={handleConnect} disabled={isConnecting}>
+              <Button size="sm" onClick={handleConnect} disabled={isConnecting} className="h-8">
                 <Link2 className="h-4 w-4 mr-2" />
-                Conectar Banco
+                Conectar
               </Button>
             </div>
           </div>
@@ -353,43 +359,30 @@ export default function FinancePage() {
       </div>
 
       <div className="container mx-auto px-4 py-6 space-y-6">
-        {/* Connected Accounts */}
+        {/* Connected Accounts - Compact */}
         {connections.length > 0 && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                Contas Conectadas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3">
-                {connections.map((conn) => (
-                  <div
-                    key={conn.id}
-                    className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2"
-                  >
-                    <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'}>
-                      {conn.connector_name}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {conn.last_sync_at
-                        ? `Sync: ${format(new Date(conn.last_sync_at), "dd/MM HH:mm")}`
-                        : 'Nunca sincronizado'}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => handleDeleteConnection(conn.pluggy_item_id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                ))}
+          <div className="flex flex-wrap gap-2">
+            {connections.map((conn) => (
+              <div
+                key={conn.id}
+                className="flex items-center gap-2 bg-muted/50 rounded-full px-3 py-1.5"
+              >
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm font-medium">{conn.connector_name}</span>
+                <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'} className="text-[10px] h-4 px-1.5">
+                  {conn.status === 'UPDATED' ? 'OK' : conn.status}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 hover:bg-destructive/10"
+                  onClick={() => handleDeleteConnection(conn.pluggy_item_id)}
+                >
+                  <Trash2 className="h-3 w-3 text-destructive" />
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
         )}
 
         {/* Empty State - No Connections */}
@@ -459,134 +452,136 @@ export default function FinancePage() {
           </Card>
         )}
 
-        {/* Date Range & Filters - Show only when has connections AND permissions */}
+        {/* Main Content - Show when has connections AND permissions */}
         {connections.length > 0 && allowedCards.length > 0 && (
           <>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex gap-2">
-                {quickDateRanges.map((range, i) => (
-                  <Button
-                    key={i}
-                    variant={
-                      dateRange.start.getTime() === range.start.getTime() &&
-                      dateRange.end.getTime() === range.end.getTime()
-                        ? 'default'
-                        : 'outline'
-                    }
-                    size="sm"
-                    onClick={() => setDateRange(range)}
-                  >
-                    {range.label}
-                  </Button>
-                ))}
-              </div>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <CalendarIcon className="h-4 w-4 mr-2" />
-                    {format(dateRange.start, "dd/MM/yy")} - {format(dateRange.end, "dd/MM/yy")}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={{ from: dateRange.start, to: dateRange.end }}
-                    onSelect={(range) => {
-                      if (range?.from && range?.to) {
-                        setDateRange({ start: range.from, end: range.to });
+            {/* Unified Filters - Inter Style */}
+            <Card className="border-0 shadow-card">
+              <CardContent className="py-4 space-y-4">
+                {/* Quick Period Pills */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {quickDateRanges.map((range, i) => (
+                    <Button
+                      key={i}
+                      variant={
+                        dateRange.start.getTime() === range.start.getTime() &&
+                        dateRange.end.getTime() === range.end.getTime()
+                          ? 'default'
+                          : 'outline'
                       }
-                    }}
-                    locale={ptBR}
-                    className="pointer-events-auto"
+                      size="sm"
+                      onClick={() => setDateRange(range)}
+                      className="rounded-full px-4 h-8"
+                    >
+                      {range.label}
+                    </Button>
+                  ))}
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="rounded-full h-8">
+                        <CalendarIcon className="h-4 w-4 mr-2" />
+                        {format(dateRange.start, "dd/MM")} - {format(dateRange.end, "dd/MM/yy")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={{ from: dateRange.start, to: dateRange.end }}
+                        onSelect={(range) => {
+                          if (range?.from && range?.to) {
+                            setDateRange({ start: range.from, end: range.to });
+                          }
+                        }}
+                        locale={ptBR}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Search Bar - More Prominent */}
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar transação..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 h-11 rounded-xl bg-muted/50 border-0"
                   />
-                </PopoverContent>
-              </Popover>
+                </div>
 
-              <div className="flex-1" />
-
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar transação..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
-            </div>
-
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Gasto
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-destructive">
-                    {loading ? <Skeleton className="h-8 w-32" /> : formatCurrency(totalSpent)}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {filteredTransactions.length} transações
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="md:col-span-2">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Filter className="h-4 w-4" />
-                    Categorias
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
+                {/* Summary + Categories Row */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {/* Total Card */}
+                  <Card className="bg-gradient-to-br from-destructive/5 to-destructive/10 border-destructive/20">
+                    <CardContent className="py-4">
+                      <p className="text-sm text-muted-foreground">Total Gasto</p>
+                      <p className="text-2xl font-bold text-destructive">
+                        {loading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalSpent)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {filteredTransactions.length} transações
+                      </p>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Category Chips */}
+                  <div className="md:col-span-3 flex flex-wrap items-center gap-2 content-center">
                     <Badge
                       variant={categoryFilter === null ? 'default' : 'outline'}
-                      className="cursor-pointer"
+                      className="cursor-pointer rounded-full px-4 py-1.5 hover:bg-primary/10 transition-colors"
                       onClick={() => setCategoryFilter(null)}
                     >
                       Todas
                     </Badge>
-                    {categoryTotals.slice(0, 6).map(({ category, total }) => (
+                    {categoryTotals.slice(0, 8).map(({ category, total }) => (
                       <Badge
                         key={category}
                         variant={categoryFilter === category ? 'default' : 'outline'}
-                        className="cursor-pointer"
+                        className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
                         onClick={() => setCategoryFilter(category)}
                       >
                         {category} ({formatCurrency(total)})
                       </Badge>
                     ))}
+                    {categoryTotals.length > 8 && (
+                      <Badge variant="outline" className="rounded-full px-3 py-1.5">
+                        +{categoryTotals.length - 8} mais
+                      </Badge>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Tabs for different views */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-5">
-                <TabsTrigger value="workflow" className="flex items-center gap-2">
+              <TabsList className="grid w-full grid-cols-5 h-10">
+                <TabsTrigger value="workflow" className="flex items-center gap-2 text-xs sm:text-sm">
                   <AlertCircle className="h-4 w-4" />
-                  Pendentes
+                  <span className="hidden sm:inline">Pendentes</span>
+                  {pendingCount > 0 && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      {pendingCount}
+                    </Badge>
+                  )}
                 </TabsTrigger>
-                <TabsTrigger value="logistics" className="flex items-center gap-2">
+                <TabsTrigger value="logistics" className="flex items-center gap-2 text-xs sm:text-sm">
                   <Users className="h-4 w-4" />
-                  Acolhedores
+                  <span className="hidden sm:inline">Acolhedores</span>
                 </TabsTrigger>
-                <TabsTrigger value="by-card" className="flex items-center gap-2">
+                <TabsTrigger value="by-card" className="flex items-center gap-2 text-xs sm:text-sm">
                   <CreditCard className="h-4 w-4" />
-                  Por Cartão
+                  <span className="hidden sm:inline">Por Cartão</span>
                 </TabsTrigger>
-                <TabsTrigger value="list" className="flex items-center gap-2">
+                <TabsTrigger value="list" className="flex items-center gap-2 text-xs sm:text-sm">
                   <LayoutGrid className="h-4 w-4" />
-                  Lista
+                  <span className="hidden sm:inline">Lista</span>
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="flex items-center gap-2">
+                <TabsTrigger value="settings" className="flex items-center gap-2 text-xs sm:text-sm">
                   <Settings className="h-4 w-4" />
-                  Configurações
+                  <span className="hidden sm:inline">Config</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -620,7 +615,7 @@ export default function FinancePage() {
               </TabsContent>
 
               <TabsContent value="list" className="mt-4">
-                <Card>
+                <Card className="border-0 shadow-card">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg flex items-center gap-2">
@@ -675,7 +670,7 @@ export default function FinancePage() {
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="secondary" className="text-xs">
+                                  <Badge variant="secondary" className="text-xs rounded-full">
                                     {transaction.category || 'Outros'}
                                   </Badge>
                                 </TableCell>

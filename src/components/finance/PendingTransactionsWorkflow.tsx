@@ -6,9 +6,6 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AlertCircle, 
   CheckCircle2, 
@@ -24,7 +21,7 @@ import {
   List,
   LayoutGrid
 } from 'lucide-react';
-import { format, isWithinInterval, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
@@ -90,12 +87,8 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [manualState, setManualState] = useState('');
   const [showManualLocation, setShowManualLocation] = useState(false);
   
-  // Filtros
-  const [filterStartDate, setFilterStartDate] = useState<Date | undefined>(undefined);
-  const [filterEndDate, setFilterEndDate] = useState<Date | undefined>(undefined);
+  // Filtro de cartão (único filtro restante dentro do workflow)
   const [filterCard, setFilterCard] = useState<string>('all');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterSubcategory, setFilterSubcategory] = useState<string>('all');
 
   // Get unique cards from transactions
   const uniqueCards = useMemo(() => {
@@ -106,50 +99,19 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     return Array.from(cards);
   }, [transactions]);
 
-  // Get subcategories for selected category
-  const subcategories = useMemo(() => {
-    if (filterCategory === 'all') return [];
-    return categories.filter(c => c.parent_id === filterCategory);
-  }, [categories, filterCategory]);
-
-  // Filter transactions that don't have a lead or contact linked AND match filters
+  // Filter transactions that don't have a lead or contact linked
   const pendingTransactions = useMemo(() => {
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
-      // Transaction is pending if it has no override OR override has no lead/contact
       const isPending = !override || (!override.lead_id && !override.contact_id);
       if (!isPending) return false;
-      
-      // Date filters
-      if (filterStartDate || filterEndDate) {
-        const transactionDate = parseISO(t.transaction_date);
-        if (filterStartDate && transactionDate < filterStartDate) return false;
-        if (filterEndDate && transactionDate > filterEndDate) return false;
-      }
       
       // Card filter
       if (filterCard !== 'all' && t.card_last_digits !== filterCard) return false;
       
-      // Category filter
-      if (filterCategory !== 'all' || filterSubcategory !== 'all') {
-        const translatedCategory = t.category ? translateCategory(t.category) : '';
-        const localCategoryId = findLocalCategoryByApiName(translatedCategory) || 
-                               findLocalCategoryByApiName(t.category || '');
-        
-        if (filterSubcategory !== 'all') {
-          // Filter by subcategory
-          if (localCategoryId !== filterSubcategory) return false;
-        } else if (filterCategory !== 'all') {
-          // Filter by parent category (include subcategories)
-          const localCategory = localCategoryId ? getCategoryById(localCategoryId) : null;
-          if (!localCategory) return false;
-          if (localCategory.id !== filterCategory && localCategory.parent_id !== filterCategory) return false;
-        }
-      }
-      
       return true;
     });
-  }, [transactions, getTransactionOverride, overrides, filterStartDate, filterEndDate, filterCard, filterCategory, filterSubcategory, findLocalCategoryByApiName, getCategoryById]);
+  }, [transactions, getTransactionOverride, overrides, filterCard]);
 
   const completedCount = transactions.length - pendingTransactions.length;
   const progressPercent = transactions.length > 0 
@@ -298,7 +260,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     }
   };
 
-  // Count truly pending transactions (without any filters)
+  // Count truly pending transactions (without filters)
   const allPendingTransactions = useMemo(() => {
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
@@ -310,211 +272,86 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const isFilteredEmpty = pendingTransactions.length === 0 && !isAllCategorized;
 
   const clearFilters = () => {
-    setFilterStartDate(undefined);
-    setFilterEndDate(undefined);
     setFilterCard('all');
-    setFilterCategory('all');
-    setFilterSubcategory('all');
     setCurrentIndex(0);
   };
 
-  const hasActiveFilters = filterStartDate || filterEndDate || filterCard !== 'all' || filterCategory !== 'all';
+  const hasActiveFilters = filterCard !== 'all';
 
   return (
     <div className="space-y-4">
-      {/* Filters at Top */}
-      <Card>
-        <CardContent className="py-4 space-y-4">
-          {/* Header Row */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-              <span className="font-medium">
-                {pendingTransactions.length} gastos pendentes
-              </span>
-              <Badge variant="outline">
-                {completedCount} / {transactions.length} vinculados
-              </Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* View Mode Toggle */}
-              <div className="flex border rounded-md">
-                <Button
-                  variant={viewMode === 'card' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 px-3 rounded-r-none"
-                  onClick={() => setViewMode('card')}
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-8 px-3 rounded-l-none"
-                  onClick={() => setViewMode('list')}
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </div>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
-                  <X className="h-3 w-3 mr-1" />
-                  Limpar
-                </Button>
-              )}
-            </div>
+      {/* Compact Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <span className="font-medium">
+              {allPendingTransactions.length} pendentes
+            </span>
           </div>
-          
-          <Progress value={progressPercent} className="h-2" />
-          
-          {/* Filters - Always Visible */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {/* Start Date */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Data Início</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-9",
-                      !filterStartDate && "text-muted-foreground"
-                    )}
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {filterStartDate ? format(filterStartDate, "dd/MM/yy") : "Início"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={filterStartDate}
-                    onSelect={(date) => {
-                      setFilterStartDate(date);
-                      setCurrentIndex(0);
-                    }}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            {/* End Date */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Data Fim</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-9",
-                      !filterEndDate && "text-muted-foreground"
-                    )}
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {filterEndDate ? format(filterEndDate, "dd/MM/yy") : "Fim"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={filterEndDate}
-                    onSelect={(date) => {
-                      setFilterEndDate(date);
-                      setCurrentIndex(0);
-                    }}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            {/* Card Filter */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Cartão</label>
-              <Select 
-                value={filterCard} 
-                onValueChange={(v) => {
-                  setFilterCard(v);
-                  setCurrentIndex(0);
-                }}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {uniqueCards.map(card => {
-                    const assignment = getCardAssignment(card);
-                    return (
-                      <SelectItem key={card} value={card}>
-                        {assignment?.card_name || `**** ${card}`}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Category Filter */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Categoria</label>
-              <Select 
-                value={filterCategory} 
-                onValueChange={(v) => {
-                  setFilterCategory(v);
-                  setFilterSubcategory('all');
-                  setCurrentIndex(0);
-                }}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {categories.filter(c => !c.parent_id).map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", cat.color)} />
-                        {cat.name}
-                      </div>
+          <Badge variant="secondary" className="rounded-full">
+            {completedCount} / {transactions.length} vinculados
+          </Badge>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {/* Card Filter */}
+          {uniqueCards.length > 1 && (
+            <Select 
+              value={filterCard} 
+              onValueChange={(v) => {
+                setFilterCard(v);
+                setCurrentIndex(0);
+              }}
+            >
+              <SelectTrigger className="h-8 w-[160px]">
+                <CreditCard className="h-3.5 w-3.5 mr-2" />
+                <SelectValue placeholder="Cartão" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos cartões</SelectItem>
+                {uniqueCards.map(card => {
+                  const assignment = getCardAssignment(card);
+                  return (
+                    <SelectItem key={card} value={card}>
+                      {assignment?.card_name || `**** ${card}`}
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Subcategory Filter */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Subcategoria</label>
-              <Select 
-                value={filterSubcategory} 
-                onValueChange={(v) => {
-                  setFilterSubcategory(v);
-                  setCurrentIndex(0);
-                }}
-                disabled={filterCategory === 'all' || subcategories.length === 0}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  {subcategories.map(sub => (
-                    <SelectItem key={sub.id} value={sub.id}>
-                      {sub.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          )}
+          
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 text-xs">
+              <X className="h-3 w-3 mr-1" />
+              Limpar
+            </Button>
+          )}
+          
+          {/* View Mode Toggle */}
+          <div className="flex border rounded-md">
+            <Button
+              variant={viewMode === 'card' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 px-3 rounded-r-none"
+              onClick={() => setViewMode('card')}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 px-3 rounded-l-none"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+      
+      <Progress value={progressPercent} className="h-1.5" />
 
       {/* All Categorized Message */}
       {isAllCategorized && (
@@ -549,7 +386,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       
       {/* List View */}
       {viewMode === 'list' && !isAllCategorized && !isFilteredEmpty && (
-        <Card>
+        <Card className="border-0 shadow-card">
           <CardContent className="py-4">
             <PendingTransactionsList
               transactions={pendingTransactions}
@@ -563,7 +400,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
 
       {/* Card View - Current Transaction */}
       {viewMode === 'card' && currentTransaction && (
-        <Card>
+        <Card className="border-0 shadow-card">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -725,7 +562,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                   </span>
                 )}
                 {currentTransaction.category && (
-                  <Badge variant="outline" className="flex items-center gap-1">
+                  <Badge variant="outline" className="flex items-center gap-1 rounded-full">
                     <Tag className="h-3 w-3" />
                     {translateCategory(currentTransaction.category)}
                   </Badge>
@@ -744,9 +581,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                       variant={selectedCategory === cat.id ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => setSelectedCategory(cat.id)}
-                      className="gap-1"
+                      className="gap-1 rounded-full"
                     >
-                      <div className={`w-3 h-3 rounded ${cat.color}`} />
+                      <div className={`w-3 h-3 rounded-full ${cat.color}`} />
                       {cat.name}
                     </Button>
                   ))}
@@ -775,6 +612,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                 placeholder="Adicione uma nota sobre este gasto..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                className="rounded-xl"
               />
             </div>
 
@@ -793,7 +631,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       )}
       
       {/* Empty State for Card View */}
-      {viewMode === 'card' && pendingTransactions.length === 0 && (
+      {viewMode === 'card' && pendingTransactions.length === 0 && !isAllCategorized && !isFilteredEmpty && (
         <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
