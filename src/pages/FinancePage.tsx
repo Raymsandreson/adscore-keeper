@@ -46,7 +46,8 @@ import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { CardPermissionsManager } from "@/components/finance/CardPermissionsManager";
-import { TransactionsGroupedByCard } from "@/components/finance/TransactionsGroupedByCard";
+import { TransactionsAggregatedView } from "@/components/finance/TransactionsAggregatedView";
+import { TransactionAggregationSelector, AggregationType } from "@/components/finance/TransactionAggregationSelector";
 import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
 import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransactionsWorkflow";
@@ -104,6 +105,7 @@ export default function FinancePage() {
   const [filterCard, setFilterCard] = useState<string>("all");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterSubcategory, setFilterSubcategory] = useState<string>("all");
+  const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
   const [isConnecting, setIsConnecting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -887,6 +889,15 @@ export default function FinancePage() {
               </TabsContent>
 
               <TabsContent value="by-card" className="mt-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <TransactionAggregationSelector 
+                    value={aggregationType} 
+                    onChange={setAggregationType} 
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    {filteredTransactions.length} transações
+                  </p>
+                </div>
                 {loading ? (
                   <div className="space-y-3">
                     {[...Array(3)].map((_, i) => (
@@ -900,7 +911,10 @@ export default function FinancePage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <TransactionsGroupedByCard transactions={filteredTransactions} />
+                  <TransactionsAggregatedView 
+                    transactions={filteredTransactions} 
+                    aggregationType={aggregationType}
+                  />
                 )}
               </TabsContent>
 
