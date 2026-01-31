@@ -165,6 +165,28 @@ All colors MUST be HSL.
   .status-danger {
     @apply bg-danger/10 text-danger border border-danger/20;
   }
+
+  /* Inter-style utility classes */
+  .pill-button {
+    @apply rounded-full px-4 transition-all duration-200;
+  }
+
+  .card-elevated {
+    @apply bg-card border shadow-sm hover:shadow-md transition-shadow;
+  }
+
+  .search-inter {
+    @apply rounded-xl bg-muted/50 border-0 pl-10 h-11;
+  }
+
+  /* Shadow card utility */
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-card-hover {
+    box-shadow: var(--shadow-card-hover);
+  }
 }
 
 @layer utilities {
