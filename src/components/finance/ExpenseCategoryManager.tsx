@@ -26,6 +26,7 @@ import {
   Link2,
   X
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings, availableApiCategories } from '@/hooks/useCategoryApiMappings';
 import { DeleteCategoryDialog } from './DeleteCategoryDialog';
@@ -82,6 +83,15 @@ export function ExpenseCategoryManager() {
   });
 
   const parentCategories = getParentCategories();
+
+  // Get all API categories that are already mapped to other categories
+  const getAlreadyMappedApiCategories = () => {
+    // When editing, exclude mappings from the current category being edited
+    const currentCategoryId = editingCategory?.id;
+    return mappings
+      .filter(m => currentCategoryId ? m.category_id !== currentCategoryId : true)
+      .map(m => m.api_category_name);
+  };
 
   // Função para sugerir categorias da API baseado no nome da categoria
   const suggestApiCategories = (categoryName: string): string[] => {
@@ -564,16 +574,29 @@ export function ExpenseCategoryManager() {
                     <div className="space-y-1">
                       {availableApiCategories.map((apiCat) => {
                         const isChecked = formData.selectedApiCategories.includes(apiCat);
+                        const alreadyMapped = getAlreadyMappedApiCategories().includes(apiCat);
+                        
+                        // Hide already mapped categories (unless currently selected in this form)
+                        if (alreadyMapped && !isChecked) {
+                          return null;
+                        }
+                        
                         return (
                           <label 
                             key={apiCat} 
-                            className="flex items-center gap-2 py-1.5 px-2 hover:bg-muted rounded cursor-pointer select-none"
+                            className={cn(
+                              "flex items-center gap-2 py-1.5 px-2 hover:bg-muted rounded cursor-pointer select-none",
+                              alreadyMapped && isChecked && "opacity-70"
+                            )}
                           >
                             <Checkbox 
                               checked={isChecked}
                               onCheckedChange={() => toggleApiCategory(apiCat)}
                             />
                             <span className="text-sm">{apiCat}</span>
+                            {alreadyMapped && isChecked && (
+                              <span className="text-xs text-muted-foreground">(já vinculada)</span>
+                            )}
                           </label>
                         );
                       })}
