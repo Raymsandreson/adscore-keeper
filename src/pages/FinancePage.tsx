@@ -301,6 +301,15 @@ export default function FinancePage() {
 
   const filteredTransactions = useMemo(() => {
     return permittedTransactions.filter(t => {
+      // Date filter - CRITICAL: filter by date range
+      const transactionDate = new Date(t.transaction_date);
+      const startOfDay = new Date(startDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const matchesDate = transactionDate >= startOfDay && transactionDate <= endOfDay;
+      
       const matchesSearch = searchTerm === "" || 
         t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -325,9 +334,46 @@ export default function FinancePage() {
         matchesSubcategory = localCategoryId === filterSubcategory;
       }
       
-      return matchesSearch && matchesCard && matchesCategory && matchesSubcategory;
+      return matchesDate && matchesSearch && matchesCard && matchesCategory && matchesSubcategory;
     });
-  }, [permittedTransactions, searchTerm, filterCard, filterCategory, filterSubcategory, getLocalCategoryForTransaction]);
+  }, [permittedTransactions, searchTerm, filterCard, filterCategory, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction]);
+
+  // Calculate totals for PREVIEW in dropdown (without category filter applied)
+  // This shows totals for each category based on date, search, and card filters only
+  const categoryTotalsForPreview = useMemo(() => {
+    const totals: Record<string, number> = {};
+    let uncategorizedTotal = 0;
+    
+    // Filter by date, search, and card only (NOT by category)
+    const baseFiltered = permittedTransactions.filter(t => {
+      // Date filter
+      const transactionDate = new Date(t.transaction_date);
+      const startOfDay = new Date(startDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      const matchesDate = transactionDate >= startOfDay && transactionDate <= endOfDay;
+      
+      const matchesSearch = searchTerm === "" || 
+        t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.merchant_name?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesCard = filterCard === "all" || t.card_last_digits === filterCard;
+      
+      return matchesDate && matchesSearch && matchesCard && t.amount < 0;
+    });
+    
+    baseFiltered.forEach(t => {
+      const localCategoryId = getLocalCategoryForTransaction(t);
+      if (localCategoryId) {
+        totals[localCategoryId] = (totals[localCategoryId] || 0) + Math.abs(t.amount);
+      } else {
+        uncategorizedTotal += Math.abs(t.amount);
+      }
+    });
+    
+    return { totals, uncategorizedTotal };
+  }, [permittedTransactions, startDate, endDate, searchTerm, filterCard, getLocalCategoryForTransaction]);
 
   // Calculate totals for LOCAL categories (not API categories) - ONLY expenses (negative amounts)
   const localCategoryTotals = useMemo(() => {
@@ -680,7 +726,7 @@ export default function FinancePage() {
                     </SelectContent>
                   </Select>
                   
-                  {/* Category Filter */}
+                  {/* Category Filter with Preview Totals */}
                   <Select 
                     value={filterCategory} 
                     onValueChange={(v) => {
@@ -694,12 +740,31 @@ export default function FinancePage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas as categorias</SelectItem>
-                      <SelectItem value="uncategorized">Sem categoria</SelectItem>
-                      {parentCategories.map(cat => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="uncategorized">
+                        <div className="flex justify-between items-center w-full gap-4">
+                          <span>Sem categoria</span>
+                          {categoryTotalsForPreview.uncategorizedTotal > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              {formatCurrency(categoryTotalsForPreview.uncategorizedTotal)}
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                      {parentCategories.map(cat => {
+                        const total = categoryTotalsForPreview.totals[cat.id] || 0;
+                        return (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            <div className="flex justify-between items-center w-full gap-4">
+                              <span>{cat.name}</span>
+                              {total > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {formatCurrency(total)}
+                                </span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                   
