@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -121,7 +120,7 @@ export function MultiSelectFilter({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[280px] p-0" align="start">
-        <ScrollArea className="max-h-[300px]">
+        <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           <div className="p-2">
             {/* Select All Option */}
             <div
@@ -170,7 +169,7 @@ export function MultiSelectFilter({
               </div>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   );
