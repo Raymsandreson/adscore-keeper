@@ -329,12 +329,15 @@ export default function FinancePage() {
     });
   }, [permittedTransactions, searchTerm, filterCard, filterCategory, filterSubcategory, getLocalCategoryForTransaction]);
 
-  // Calculate totals for LOCAL categories (not API categories)
+  // Calculate totals for LOCAL categories (not API categories) - ONLY expenses (negative amounts)
   const localCategoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     let uncategorizedTotal = 0;
     
-    filteredTransactions.forEach(t => {
+    // Only consider expenses (negative amounts)
+    const expenses = filteredTransactions.filter(t => t.amount < 0);
+    
+    expenses.forEach(t => {
       const localCategoryId = getLocalCategoryForTransaction(t);
       
       if (localCategoryId) {
