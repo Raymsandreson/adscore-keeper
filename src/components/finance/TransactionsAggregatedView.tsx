@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,16 @@ import {
   CalendarDays,
   Calendar,
   Building2,
-  AlertTriangle
+  AlertTriangle,
+  UserCircle,
+  Contact
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
+import { useLeads } from '@/hooks/useLeads';
+import { useContacts } from '@/hooks/useContacts';
 import { TransactionCategorizer } from './TransactionCategorizer';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { AggregationType } from './TransactionAggregationSelector';
@@ -52,6 +56,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   tag: Tag,
   card: CreditCard,
   users: Users,
+  userCircle: UserCircle,
+  contact: Contact,
   mapPin: MapPin,
   map: Map,
   calendarDays: CalendarDays,
@@ -70,9 +76,36 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
   } = useExpenseCategories();
   
   const { mappings, findLocalCategoryByApiName } = useCategoryApiMappings();
+  const { leads, fetchLeads } = useLeads();
+  const { contacts, fetchContacts } = useContacts();
   
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+
+  // Fetch leads and contacts when needed
+  useEffect(() => {
+    if (aggregationType === 'lead' || aggregationType === 'contact') {
+      fetchLeads();
+      fetchContacts();
+    }
+  }, [aggregationType, fetchLeads, fetchContacts]);
+
+  // Create lookup maps for leads and contacts
+  const leadsMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    leads.forEach(l => {
+      map[l.id] = l.lead_name || l.instagram_username || 'Lead sem nome';
+    });
+    return map;
+  }, [leads]);
+
+  const contactsMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    contacts.forEach(c => {
+      map[c.id] = c.full_name;
+    });
+    return map;
+  }, [contacts]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -102,17 +135,24 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
     return null;
   };
 
-  const getLeadForTransaction = (transaction: Transaction): string | null => {
+  // Get lead ID and name for a transaction (from override)
+  const getLeadForTransaction = (transaction: Transaction): { id: string | null; name: string | null } => {
     const override = getTransactionOverride(transaction.id);
     if (override?.lead_id) {
-      // Try to get lead name from card assignment or override
-      const assignment = getCardAssignment(transaction.card_last_digits || '');
-      if (assignment?.lead_name) return assignment.lead_name;
+      const leadName = leadsMap[override.lead_id] || null;
+      return { id: override.lead_id, name: leadName };
     }
-    
-    // Try from card assignment
-    const assignment = getCardAssignment(transaction.card_last_digits || '');
-    return assignment?.lead_name || null;
+    return { id: null, name: null };
+  };
+
+  // Get contact ID and name for a transaction (from override)
+  const getContactForTransaction = (transaction: Transaction): { id: string | null; name: string | null } => {
+    const override = getTransactionOverride(transaction.id);
+    if (override?.contact_id) {
+      const contactName = contactsMap[override.contact_id] || null;
+      return { id: override.contact_id, name: contactName };
+    }
+    return { id: null, name: null };
   };
 
   const groupedData = useMemo(() => {
@@ -140,10 +180,17 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
           break;
         }
         case 'lead': {
-          const leadName = getLeadForTransaction(t);
-          groupKey = leadName || 'sem-lead';
-          label = leadName || 'Sem Lead Vinculado';
-          icon = 'users';
+          const leadInfo = getLeadForTransaction(t);
+          groupKey = leadInfo.id || 'sem-lead';
+          label = leadInfo.name || 'Sem Lead Vinculado';
+          icon = 'userCircle';
+          break;
+        }
+        case 'contact': {
+          const contactInfo = getContactForTransaction(t);
+          groupKey = contactInfo.id || 'sem-contact';
+          label = contactInfo.name || 'Sem Contato Vinculado';
+          icon = 'contact';
           break;
         }
         case 'city': {
@@ -200,7 +247,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
 
     // Sort by total (descending)
     return Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
-  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction]);
+  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction, getContactForTransaction]);
 
   const toggleGroup = (groupKey: string) => {
     setExpandedGroups(prev => {
@@ -218,6 +265,8 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
     switch (iconName) {
       case 'card': return CreditCard;
       case 'users': return Users;
+      case 'userCircle': return UserCircle;
+      case 'contact': return Contact;
       case 'mapPin': return MapPin;
       case 'map': return Map;
       case 'calendarDays': return CalendarDays;
