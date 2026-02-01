@@ -242,7 +242,10 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
         };
       }
       groups[groupKey].transactions.push(t);
-      groups[groupKey].total += Math.abs(t.amount);
+      // Credit card expenses come as positive values from Pluggy - only sum expenses
+      if (t.amount > 0) {
+        groups[groupKey].total += t.amount;
+      }
     });
 
     // Sort by total (descending)
