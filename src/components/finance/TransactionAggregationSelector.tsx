@@ -7,10 +7,12 @@ import {
   Calendar, 
   Tag,
   CreditCard,
-  LayoutGrid
+  LayoutGrid,
+  UserCircle,
+  Contact
 } from 'lucide-react';
 
-export type AggregationType = 'card' | 'lead' | 'city' | 'state' | 'day' | 'month' | 'category';
+export type AggregationType = 'card' | 'lead' | 'contact' | 'city' | 'state' | 'day' | 'month' | 'category';
 
 interface TransactionAggregationSelectorProps {
   value: AggregationType;
@@ -19,7 +21,8 @@ interface TransactionAggregationSelectorProps {
 
 const aggregationOptions: { value: AggregationType; label: string; icon: React.ReactNode }[] = [
   { value: 'card', label: 'Por Final do Cartão', icon: <CreditCard className="h-4 w-4" /> },
-  { value: 'lead', label: 'Por Lead/Acolhedor', icon: <Users className="h-4 w-4" /> },
+  { value: 'lead', label: 'Por Lead', icon: <UserCircle className="h-4 w-4" /> },
+  { value: 'contact', label: 'Por Contato', icon: <Contact className="h-4 w-4" /> },
   { value: 'city', label: 'Por Cidade', icon: <MapPin className="h-4 w-4" /> },
   { value: 'state', label: 'Por Estado', icon: <Map className="h-4 w-4" /> },
   { value: 'day', label: 'Por Dia', icon: <CalendarDays className="h-4 w-4" /> },
