@@ -96,44 +96,51 @@ export function AcolhedorLogisticsDashboard({ transactions }: AcolhedorLogistics
       }
 
       const stats = statsMap[key];
-      const amount = Math.abs(tx.amount);
-      stats.totalSpent += amount;
-      stats.transactionCount += 1;
+      // Credit card expenses come as positive values from Pluggy - only sum expenses
+      const amount = tx.amount > 0 ? tx.amount : 0;
+      if (amount > 0) {
+        stats.totalSpent += amount;
+        stats.transactionCount += 1;
+      }
 
       // Track unique dates
       if (!stats.uniqueDates.includes(tx.transaction_date)) {
         stats.uniqueDates.push(tx.transaction_date);
       }
 
-      // By date
-      if (!stats.byDate[tx.transaction_date]) {
-        stats.byDate[tx.transaction_date] = { total: 0, count: 0 };
-      }
-      stats.byDate[tx.transaction_date].total += amount;
-      stats.byDate[tx.transaction_date].count += 1;
-
-      // By category - prioritize local categories
-      const override = overrides.find(o => o.transaction_id === tx.id);
-      let categoryName = 'Sem categoria';
-      
-      if (override) {
-        // Transaction has manual override - use local category
-        const cat = getCategoryById(override.category_id);
-        categoryName = cat?.name || 'Sem categoria';
-      } else if (tx.category) {
-        // Try to find matching local category via API mapping
-        const translatedCategory = translateCategory(tx.category);
-        const localCategoryId = findLocalCategoryByApiName(translatedCategory);
-        
-        if (localCategoryId) {
-          const localCat = getCategoryById(localCategoryId);
-          categoryName = localCat?.name || 'Sem categoria';
-        } else {
-          // No mapping found - show as uncategorized
-          categoryName = 'Sem categoria';
+      // By date - only count expenses
+      if (amount > 0) {
+        if (!stats.byDate[tx.transaction_date]) {
+          stats.byDate[tx.transaction_date] = { total: 0, count: 0 };
         }
+        stats.byDate[tx.transaction_date].total += amount;
+        stats.byDate[tx.transaction_date].count += 1;
       }
-      stats.byCategory[categoryName] = (stats.byCategory[categoryName] || 0) + amount;
+
+      // By category - prioritize local categories (only for expenses)
+      if (amount > 0) {
+        const override = overrides.find(o => o.transaction_id === tx.id);
+        let categoryName = 'Sem categoria';
+        
+        if (override) {
+          // Transaction has manual override - use local category
+          const cat = getCategoryById(override.category_id);
+          categoryName = cat?.name || 'Sem categoria';
+        } else if (tx.category) {
+          // Try to find matching local category via API mapping
+          const translatedCategory = translateCategory(tx.category);
+          const localCategoryId = findLocalCategoryByApiName(translatedCategory);
+          
+          if (localCategoryId) {
+            const localCat = getCategoryById(localCategoryId);
+            categoryName = localCat?.name || 'Sem categoria';
+          } else {
+            // No mapping found - show as uncategorized
+            categoryName = 'Sem categoria';
+          }
+        }
+        stats.byCategory[categoryName] = (stats.byCategory[categoryName] || 0) + amount;
+      }
     });
 
     // Calculate derived stats
