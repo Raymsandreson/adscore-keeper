@@ -23,7 +23,9 @@ import {
   ArrowUp,
   ArrowDown,
   DollarSign,
-  Hash
+  Hash,
+  Receipt,
+  ShoppingCart
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -51,6 +53,19 @@ interface Transaction {
   merchant_city: string | null;
   merchant_state: string | null;
   created_at: string;
+  installment_number?: number | null;
+  total_installments?: number | null;
+  original_purchase_date?: string | null;
+  purchase_group_id?: string | null;
+}
+
+interface GroupData {
+  label: string;
+  sublabel?: string;
+  icon: string;
+  transactions: Transaction[];
+  total: number;
+  totalOriginal: number;
 }
 
 interface TransactionsAggregatedViewProps {
@@ -88,6 +103,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [sortField, setSortField] = useState<'total' | 'date' | 'count'>('date');
+  const [valueMode, setValueMode] = useState<'installment' | 'total'>('installment');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Fetch leads and contacts when needed
@@ -164,13 +180,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
   };
 
   const groupedData = useMemo(() => {
-    const groups: Record<string, {
-      label: string;
-      sublabel?: string;
-      icon: string;
-      transactions: Transaction[];
-      total: number;
-    }> = {};
+    const groups: Record<string, GroupData> = {};
 
     transactions.forEach((t) => {
       let groupKey: string;
@@ -247,12 +257,23 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
           icon,
           transactions: [],
           total: 0,
+          totalOriginal: 0,
         };
       }
       groups[groupKey].transactions.push(t);
       // Credit card expenses come as positive values from Pluggy - only sum expenses
       if (t.amount > 0) {
         groups[groupKey].total += t.amount;
+        
+        // For total original value, calculate based on installments
+        if (t.total_installments && t.total_installments > 1) {
+          // This is an installment - calculate original purchase value
+          const originalValue = t.amount * t.total_installments;
+          groups[groupKey].totalOriginal += originalValue;
+        } else {
+          // Single payment - same as installment value
+          groups[groupKey].totalOriginal += t.amount;
+        }
       }
     });
 
@@ -264,7 +285,10 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
       
       switch (sortField) {
         case 'total':
-          comparison = a[1].total - b[1].total;
+          // Sort by the value mode currently selected
+          const aValue = valueMode === 'installment' ? a[1].total : a[1].totalOriginal;
+          const bValue = valueMode === 'installment' ? b[1].total : b[1].totalOriginal;
+          comparison = aValue - bValue;
           break;
         case 'count':
           comparison = a[1].transactions.length - b[1].transactions.length;
@@ -282,7 +306,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
       
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction, getContactForTransaction, sortField, sortDirection]);
+  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction, getContactForTransaction, sortField, sortDirection, valueMode]);
 
   const toggleGroup = (groupKey: string) => {
     setExpandedGroups(prev => {
@@ -317,44 +341,62 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
   return (
     <>
       <div className="space-y-4">
-        {/* Sorting Controls */}
-        <div className="flex items-center justify-between gap-2 flex-wrap">
+        {/* Controls */}
+        <div className="flex flex-col gap-3">
+          {/* Value Mode Toggle */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Ordenar por:</span>
-            <ToggleGroup type="single" value={sortField} onValueChange={(v) => v && setSortField(v as typeof sortField)} size="sm">
-              <ToggleGroupItem value="date" aria-label="Ordenar por data/nome">
-                <CalendarDays className="h-4 w-4 mr-1" />
-                {aggregationType === 'day' || aggregationType === 'month' ? 'Data' : 'Nome'}
+            <span className="text-sm text-muted-foreground">Exibir valor:</span>
+            <ToggleGroup type="single" value={valueMode} onValueChange={(v) => v && setValueMode(v as typeof valueMode)} size="sm">
+              <ToggleGroupItem value="installment" aria-label="Valor da parcela">
+                <Receipt className="h-4 w-4 mr-1" />
+                Parcela
               </ToggleGroupItem>
-              <ToggleGroupItem value="total" aria-label="Ordenar por valor">
-                <DollarSign className="h-4 w-4 mr-1" />
-                Valor
-              </ToggleGroupItem>
-              <ToggleGroupItem value="count" aria-label="Ordenar por quantidade">
-                <Hash className="h-4 w-4 mr-1" />
-                Qtd
+              <ToggleGroupItem value="total" aria-label="Valor total da compra">
+                <ShoppingCart className="h-4 w-4 mr-1" />
+                Compra Total
               </ToggleGroupItem>
             </ToggleGroup>
           </div>
           
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={toggleSortDirection}
-            className="gap-1"
-          >
-            {sortDirection === 'asc' ? (
-              <>
-                <ArrowUp className="h-4 w-4" />
-                Crescente
-              </>
-            ) : (
-              <>
-                <ArrowDown className="h-4 w-4" />
-                Decrescente
-              </>
-            )}
-          </Button>
+          {/* Sorting Controls */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Ordenar por:</span>
+              <ToggleGroup type="single" value={sortField} onValueChange={(v) => v && setSortField(v as typeof sortField)} size="sm">
+                <ToggleGroupItem value="date" aria-label="Ordenar por data/nome">
+                  <CalendarDays className="h-4 w-4 mr-1" />
+                  {aggregationType === 'day' || aggregationType === 'month' ? 'Data' : 'Nome'}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="total" aria-label="Ordenar por valor">
+                  <DollarSign className="h-4 w-4 mr-1" />
+                  Valor
+                </ToggleGroupItem>
+                <ToggleGroupItem value="count" aria-label="Ordenar por quantidade">
+                  <Hash className="h-4 w-4 mr-1" />
+                  Qtd
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleSortDirection}
+              className="gap-1"
+            >
+              {sortDirection === 'asc' ? (
+                <>
+                  <ArrowUp className="h-4 w-4" />
+                  Crescente
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="h-4 w-4" />
+                  Decrescente
+                </>
+              )}
+            </Button>
+          </div>
         </div>
         {groupedData.map(([groupKey, data]) => {
           const isExpanded = expandedGroups.has(groupKey);
@@ -388,10 +430,13 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
                       </div>
                       <div className="text-right">
                         <p className="text-xl font-bold text-destructive">
-                          {formatCurrency(data.total)}
+                          {formatCurrency(valueMode === 'installment' ? data.total : data.totalOriginal)}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {data.transactions.length} transações
+                          {valueMode === 'total' && data.totalOriginal !== data.total && (
+                            <span className="ml-1">(parcelas: {formatCurrency(data.total)})</span>
+                          )}
                         </p>
                       </div>
                     </div>
