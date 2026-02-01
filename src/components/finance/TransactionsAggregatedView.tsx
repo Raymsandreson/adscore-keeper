@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -17,7 +18,12 @@ import {
   Building2,
   AlertTriangle,
   UserCircle,
-  Contact
+  Contact,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  DollarSign,
+  Hash
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -81,6 +87,8 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
   
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [sortField, setSortField] = useState<'total' | 'date' | 'count'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Fetch leads and contacts when needed
   useEffect(() => {
@@ -248,9 +256,33 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
       }
     });
 
-    // Sort by total (descending)
-    return Object.entries(groups).sort((a, b) => b[1].total - a[1].total);
-  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction, getContactForTransaction]);
+    // Sort based on selected field and direction
+    const entries = Object.entries(groups);
+    
+    return entries.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'total':
+          comparison = a[1].total - b[1].total;
+          break;
+        case 'count':
+          comparison = a[1].transactions.length - b[1].transactions.length;
+          break;
+        case 'date':
+          // For date-based aggregations, sort by the group key (which is a date string)
+          if (aggregationType === 'day' || aggregationType === 'month') {
+            comparison = a[0].localeCompare(b[0]);
+          } else {
+            // For non-date aggregations, sort alphabetically by label
+            comparison = a[1].label.localeCompare(b[1].label);
+          }
+          break;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [transactions, aggregationType, getCardAssignment, getTransactionCategory, getLeadForTransaction, getContactForTransaction, sortField, sortDirection]);
 
   const toggleGroup = (groupKey: string) => {
     setExpandedGroups(prev => {
@@ -278,9 +310,52 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
     }
   };
 
+  const toggleSortDirection = () => {
+    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+  };
+
   return (
     <>
       <div className="space-y-4">
+        {/* Sorting Controls */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Ordenar por:</span>
+            <ToggleGroup type="single" value={sortField} onValueChange={(v) => v && setSortField(v as typeof sortField)} size="sm">
+              <ToggleGroupItem value="date" aria-label="Ordenar por data/nome">
+                <CalendarDays className="h-4 w-4 mr-1" />
+                {aggregationType === 'day' || aggregationType === 'month' ? 'Data' : 'Nome'}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="total" aria-label="Ordenar por valor">
+                <DollarSign className="h-4 w-4 mr-1" />
+                Valor
+              </ToggleGroupItem>
+              <ToggleGroupItem value="count" aria-label="Ordenar por quantidade">
+                <Hash className="h-4 w-4 mr-1" />
+                Qtd
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleSortDirection}
+            className="gap-1"
+          >
+            {sortDirection === 'asc' ? (
+              <>
+                <ArrowUp className="h-4 w-4" />
+                Crescente
+              </>
+            ) : (
+              <>
+                <ArrowDown className="h-4 w-4" />
+                Decrescente
+              </>
+            )}
+          </Button>
+        </div>
         {groupedData.map(([groupKey, data]) => {
           const isExpanded = expandedGroups.has(groupKey);
           const GroupIcon = getGroupIcon(data.icon);
