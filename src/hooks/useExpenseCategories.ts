@@ -39,6 +39,7 @@ export interface TransactionOverride {
   notes: string | null;
   manual_city: string | null;
   manual_state: string | null;
+  link_acknowledged: boolean;
   created_at: string;
 }
 
@@ -311,7 +312,8 @@ export function useExpenseCategories() {
     leadId?: string,
     notes?: string,
     manualCity?: string,
-    manualState?: string
+    manualState?: string,
+    linkAcknowledged: boolean = false
   ) => {
     try {
       const { error } = await supabase
@@ -324,6 +326,7 @@ export function useExpenseCategories() {
           notes: notes || null,
           manual_city: manualCity || null,
           manual_state: manualState || null,
+          link_acknowledged: linkAcknowledged,
         }], { onConflict: 'transaction_id' });
 
       if (error) throw error;

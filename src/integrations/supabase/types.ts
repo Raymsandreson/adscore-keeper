@@ -1784,6 +1784,7 @@ export type Database = {
           created_at: string
           id: string
           lead_id: string | null
+          link_acknowledged: boolean
           manual_city: string | null
           manual_state: string | null
           notes: string | null
@@ -1795,6 +1796,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          link_acknowledged?: boolean
           manual_city?: string | null
           manual_state?: string | null
           notes?: string | null
@@ -1806,6 +1808,7 @@ export type Database = {
           created_at?: string
           id?: string
           lead_id?: string | null
+          link_acknowledged?: boolean
           manual_city?: string | null
           manual_state?: string | null
           notes?: string | null

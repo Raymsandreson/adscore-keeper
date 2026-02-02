@@ -136,6 +136,10 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   const handleSubmit = async () => {
     if (!selectedCategory) return;
     
+    // Determine if user explicitly acknowledged no link
+    const linkAcknowledged = (activeTab === 'lead' && !selectedLead) || 
+                             (activeTab === 'contact' && !selectedContact);
+    
     await setTransactionOverride(
       transaction.id, 
       selectedCategory, 
@@ -143,7 +147,8 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       selectedLead || undefined,
       notes || undefined,
       manualCity || undefined,
-      manualState || undefined
+      manualState || undefined,
+      linkAcknowledged
     );
     
     onOpenChange(false);

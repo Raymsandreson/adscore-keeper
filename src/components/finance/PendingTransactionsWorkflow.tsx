@@ -92,11 +92,18 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [manualState, setManualState] = useState('');
   const [showManualLocation, setShowManualLocation] = useState(false);
 
-  // Filter transactions that don't have a lead or contact linked
+  // Filter transactions that don't have a lead or contact linked AND haven't been acknowledged
   const pendingTransactions = useMemo(() => {
     return transactions.filter(t => {
       const override = getTransactionOverride(t.id);
-      return !override || (!override.lead_id && !override.contact_id);
+      // If no override exists, it's pending
+      if (!override) return true;
+      // If link_acknowledged is true, it means user explicitly chose "no link" - NOT pending
+      if (override.link_acknowledged) return false;
+      // If has lead or contact, not pending
+      if (override.lead_id || override.contact_id) return false;
+      // Otherwise it's pending
+      return true;
     });
   }, [transactions, getTransactionOverride, overrides]);
 
@@ -222,6 +229,10 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       const leadId = selectedLead === NONE_SELECTED ? undefined : (linkType === 'lead' ? selectedLead || undefined : undefined);
       const contactId = selectedContact === NONE_SELECTED ? undefined : (linkType === 'contact' ? selectedContact || undefined : undefined);
       
+      // Determine if user explicitly acknowledged no link
+      const linkAcknowledged = (linkType === 'lead' && selectedLead === NONE_SELECTED) || 
+                               (linkType === 'contact' && selectedContact === NONE_SELECTED);
+      
       await setTransactionOverride(
         currentTransaction.id,
         selectedCategory,
@@ -229,7 +240,8 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         leadId,
         notes || undefined,
         manualCity || displayLocation?.city || undefined,
-        manualState || displayLocation?.state || undefined
+        manualState || displayLocation?.state || undefined,
+        linkAcknowledged
       );
       
       // Move to next transaction
