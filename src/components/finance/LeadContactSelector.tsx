@@ -504,16 +504,16 @@ export function LeadContactSelector({
               {/* Option for no lead linked */}
               <div
                 className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  selectedLead === null 
-                    ? 'bg-muted font-medium' 
+                  selectedLead === 'NONE' 
+                    ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 font-medium' 
                     : 'hover:bg-muted/50'
                 }`}
-                onClick={() => onSelectLead(null)}
+                onClick={() => onSelectLead('NONE')}
               >
-                <div className="font-medium flex items-center gap-2 text-muted-foreground italic">
+                <div className="font-medium flex items-center gap-2 text-amber-700 dark:text-amber-400 italic">
                   <X className="h-4 w-4" />
                   Nenhum Lead Vinculado
-                  {selectedLead === null && <Check className="h-4 w-4" />}
+                  {selectedLead === 'NONE' && <Check className="h-4 w-4 ml-auto" />}
                 </div>
               </div>
               
@@ -626,16 +626,16 @@ export function LeadContactSelector({
               {/* Option for no contact linked */}
               <div
                 className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  selectedContact === null 
-                    ? 'bg-muted font-medium' 
+                  selectedContact === 'NONE' 
+                    ? 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 font-medium' 
                     : 'hover:bg-muted/50'
                 }`}
-                onClick={() => onSelectContact(null)}
+                onClick={() => onSelectContact('NONE')}
               >
-                <div className="font-medium flex items-center gap-2 text-muted-foreground italic">
+                <div className="font-medium flex items-center gap-2 text-amber-700 dark:text-amber-400 italic">
                   <X className="h-4 w-4" />
                   Nenhum Contato Vinculado
-                  {selectedContact === null && <Check className="h-4 w-4" />}
+                  {selectedContact === 'NONE' && <Check className="h-4 w-4 ml-auto" />}
                 </div>
               </div>
               

@@ -80,8 +80,10 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [expandedParent, setExpandedParent] = useState<string | null>(null);
+  // "NONE" means explicitly no link, null means not yet selected, string means selected ID
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
+  const NONE_SELECTED = 'NONE';
   const [linkType, setLinkType] = useState<'lead' | 'contact'>('lead');
   const [notes, setNotes] = useState('');
   const [isLookingUpLocation, setIsLookingUpLocation] = useState(false);
@@ -201,22 +203,30 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       return;
     }
     
-    if (linkType === 'lead' && !selectedLead) {
-      toast.error('Selecione um Lead para vincular');
+    // "NONE" is a valid explicit choice meaning no link
+    const hasLeadSelection = linkType === 'lead' && (selectedLead === NONE_SELECTED || selectedLead);
+    const hasContactSelection = linkType === 'contact' && (selectedContact === NONE_SELECTED || selectedContact);
+    
+    if (linkType === 'lead' && !hasLeadSelection) {
+      toast.error('Selecione um Lead ou "Nenhum Lead Vinculado"');
       return;
     }
     
-    if (linkType === 'contact' && !selectedContact) {
-      toast.error('Selecione um Contato para vincular');
+    if (linkType === 'contact' && !hasContactSelection) {
+      toast.error('Selecione um Contato ou "Nenhum Contato Vinculado"');
       return;
     }
 
     try {
+      // Convert "NONE" to undefined for database storage
+      const leadId = selectedLead === NONE_SELECTED ? undefined : (linkType === 'lead' ? selectedLead || undefined : undefined);
+      const contactId = selectedContact === NONE_SELECTED ? undefined : (linkType === 'contact' ? selectedContact || undefined : undefined);
+      
       await setTransactionOverride(
         currentTransaction.id,
         selectedCategory,
-        linkType === 'contact' ? selectedContact || undefined : undefined,
-        linkType === 'lead' ? selectedLead || undefined : undefined,
+        contactId,
+        leadId,
         notes || undefined,
         manualCity || displayLocation?.city || undefined,
         manualState || displayLocation?.state || undefined
