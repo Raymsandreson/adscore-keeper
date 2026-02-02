@@ -73,6 +73,15 @@ export function PostDialog({
   onUpdateTag: externalUpdateTag,
   onDeleteTag: externalDeleteTag,
 }: PostDialogProps) {
+  // Auto-save checklist changes for existing posts
+  const handleChecklistChange = (newChecklist: ChecklistItem[]) => {
+    setFormData(prev => ({ ...prev, checklist: newChecklist }));
+    
+    // Auto-save only for existing posts (not new ones)
+    if (post?.id) {
+      onSave({ ...formData, checklist: newChecklist });
+    }
+  };
   const [formData, setFormData] = useState<FormData>({
     title: "",
     description: "",
@@ -490,7 +499,7 @@ export function PostDialog({
             <CollapsibleContent className="pt-2">
               <PostChecklist
                 checklist={formData.checklist}
-                onChange={(checklist) => setFormData(prev => ({ ...prev, checklist }))}
+                onChange={handleChecklistChange}
                 checklistStatusConfig={checklistStatusConfig}
               />
             </CollapsibleContent>
