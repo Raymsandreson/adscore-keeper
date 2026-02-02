@@ -34,21 +34,16 @@ serve(async (req) => {
     console.log(`📤 Postando resposta para comentário ${commentId}...`);
 
     // Post reply to the comment using Instagram Graph API
-    // Using URL-encoded form data format which is more reliable
-    const params = new URLSearchParams();
-    params.append("message", message.trim());
-    params.append("access_token", token);
+    // According to Meta's documentation, the message should be passed as a query parameter
+    // Format: POST /{ig-comment-id}/replies?message={message}
+    const encodedMessage = encodeURIComponent(message.trim());
+    const url = `https://graph.facebook.com/v21.0/${commentId}/replies?message=${encodedMessage}&access_token=${token}`;
 
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${commentId}/replies`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      }
-    );
+    console.log(`📤 Enviando para URL: ${commentId}/replies?message=...`);
+
+    const response = await fetch(url, {
+      method: "POST",
+    });
 
     const data = await response.json();
 
