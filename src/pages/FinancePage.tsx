@@ -191,7 +191,12 @@ export default function FinancePage() {
       if (connections.length > 0 && !syncing && !autoSyncing) {
         setAutoSyncing(true);
         try {
-          await syncTransactions({ start: startDate, end: endDate });
+          // Sync all historical data (last 24 months) on first load
+          const historicalStart = subMonths(new Date(), 24);
+          const historicalEnd = endOfMonth(new Date());
+          await syncTransactions({ start: historicalStart, end: historicalEnd });
+          // Refresh the view with current filter
+          await fetchTransactions({ start: startDate, end: endDate });
           setLastSyncTime(new Date());
           toast.success('Transações atualizadas automaticamente');
         } catch (err) {
@@ -286,10 +291,16 @@ export default function FinancePage() {
   }, [createConnectToken, saveConnection, syncTransactions, startDate, endDate]);
 
   const handleSync = useCallback(async () => {
-    await syncTransactions({ start: startDate, end: endDate });
+    // Sync all historical data, not just the current filter period
+    // Fetch last 24 months of data to get complete history
+    const historicalStart = subMonths(new Date(), 24);
+    const historicalEnd = endOfMonth(new Date());
+    await syncTransactions({ start: historicalStart, end: historicalEnd });
+    // Refresh the view with current filter
+    await fetchTransactions({ start: startDate, end: endDate });
     setLastSyncTime(new Date());
     toast.success('Transações sincronizadas!');
-  }, [syncTransactions, startDate, endDate]);
+  }, [syncTransactions, fetchTransactions, startDate, endDate]);
 
   const handleDeleteConnection = useCallback(async (itemId: string) => {
     if (confirm('Tem certeza que deseja desconectar esta conta?')) {
