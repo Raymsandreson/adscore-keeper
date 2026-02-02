@@ -118,7 +118,6 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
       card_last_digits: selectedCard,
       card_name: cardName || null,
       contact_id: selectedContact || null,
-      contact_name: contact?.full_name || contact?.instagram_username || null,
       lead_name: contact?.full_name || contact?.instagram_username || null,
       cost_account_id: costAccountValue,
     });
@@ -136,9 +135,6 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     await updateCardAssignment(editingAssignment.id, {
       card_name: cardName || null,
       contact_id: selectedContact || null,
-      contact_name: contact 
-        ? (contact.full_name || contact.instagram_username || null)
-        : null,
       lead_name: contact 
         ? (contact.full_name || contact.instagram_username || null)
         : null,
