@@ -31,7 +31,8 @@ import {
   AlertCircle,
   TableIcon,
   X,
-  Tag
+  Tag,
+  Wallet
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -42,6 +43,7 @@ import { useCardPermissions } from "@/hooks/useCardPermissions";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useExpenseCategories } from "@/hooks/useExpenseCategories";
 import { useCategoryApiMappings } from "@/hooks/useCategoryApiMappings";
+import { useCostAccounts } from "@/hooks/useCostAccounts";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
@@ -99,6 +101,7 @@ export default function FinancePage() {
 
   const { categories, cardAssignments, getCardAssignment, overrides, getTransactionOverride } = useExpenseCategories();
   const { mappings, findLocalCategoryByApiName } = useCategoryApiMappings();
+  const { accounts: costAccounts } = useCostAccounts();
 
   // Unified filters
   const [startDate, setStartDate] = useState(startOfMonth(new Date()));
@@ -106,6 +109,7 @@ export default function FinancePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCards, setFilterCards] = useState<string[]>(["all"]);
   const [filterCategories, setFilterCategories] = useState<string[]>(["all"]);
+  const [filterAccounts, setFilterAccounts] = useState<string[]>(["all"]);
   const [filterSubcategory, setFilterSubcategory] = useState<string>("all");
   const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
@@ -334,6 +338,20 @@ export default function FinancePage() {
       
       const matchesCard = filterCards.includes("all") || filterCards.includes(t.card_last_digits || '');
       
+      // Filter by cost accounts (multi-select)
+      const isAllAccounts = filterAccounts.includes("all");
+      let matchesAccount = isAllAccounts;
+      if (!matchesAccount) {
+        const override = getTransactionOverride(t.id);
+        const costAccountId = override?.cost_account_id || null;
+        if (filterAccounts.includes("no-account")) {
+          matchesAccount = !costAccountId;
+        }
+        if (costAccountId && filterAccounts.includes(costAccountId)) {
+          matchesAccount = true;
+        }
+      }
+      
       // Filter by local categories (multi-select)
       const isAllCategories = filterCategories.includes("all");
       let matchesCategory = isAllCategories;
@@ -354,9 +372,9 @@ export default function FinancePage() {
         matchesSubcategory = localCategoryId === filterSubcategory;
       }
       
-      return matchesDate && matchesSearch && matchesCard && matchesCategory && matchesSubcategory;
+      return matchesDate && matchesSearch && matchesCard && matchesAccount && matchesCategory && matchesSubcategory;
     });
-  }, [permittedTransactions, searchTerm, filterCards, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction]);
+  }, [permittedTransactions, searchTerm, filterCards, filterAccounts, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction, getTransactionOverride]);
 
   // Calculate totals for PREVIEW in dropdown (without category filter applied)
   // This shows totals for each category based on date, search, and card filters only
@@ -495,10 +513,11 @@ export default function FinancePage() {
     return startDate.getTime() === range.start.getTime() && endDate.getTime() === range.end.getTime();
   };
 
-  const hasActiveFilters = !filterCards.includes('all') || !filterCategories.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
+  const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
 
   const clearAllFilters = () => {
     setFilterCards(['all']);
+    setFilterAccounts(['all']);
     setFilterCategories(['all']);
     setFilterSubcategory('all');
     setSearchTerm('');
@@ -718,7 +737,7 @@ export default function FinancePage() {
                 </div>
 
                 {/* Row 2: Search + Filters */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                   {/* Search Bar */}
                   <div className="relative lg:col-span-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -747,7 +766,25 @@ export default function FinancePage() {
                     })}
                     selectedValues={filterCards}
                     onSelectionChange={setFilterCards}
-                    className="lg:col-span-1"
+                  />
+                  
+                  {/* Cost Account Filter - Multi Select */}
+                  <MultiSelectFilter
+                    icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
+                    placeholder="Conta"
+                    allLabel="Todas as contas"
+                    options={[
+                      {
+                        value: 'no-account',
+                        label: 'Sem conta vinculada',
+                      },
+                      ...costAccounts.filter(a => a.is_active).map(account => ({
+                        value: account.id,
+                        label: account.name,
+                      }))
+                    ]}
+                    selectedValues={filterAccounts}
+                    onSelectionChange={setFilterAccounts}
                   />
                   
                   {/* Category Filter - Multi Select with Preview Totals */}
@@ -773,7 +810,6 @@ export default function FinancePage() {
                       setFilterSubcategory('all');
                     }}
                     formatCurrency={formatCurrency}
-                    className="lg:col-span-1"
                   />
                   
                   {/* Subcategory Filter */}
