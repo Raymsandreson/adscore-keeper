@@ -66,7 +66,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
     getTransactionOverride,
     getCategoryById,
     cardAssignments,
-    getCardAssignment
+    getCardAssignment,
+    getParentCategories,
+    getSubcategories
   } = useExpenseCategories();
   
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
@@ -77,6 +79,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [expandedParent, setExpandedParent] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
   const [linkType, setLinkType] = useState<'lead' | 'contact'>('lead');
@@ -106,6 +109,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   useEffect(() => {
     if (currentTransaction) {
       setSelectedCategory(null);
+      setExpandedParent(null);
       setSelectedLead(null);
       setSelectedContact(null);
       setNotes('');
@@ -487,22 +491,63 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
             {/* Category Selection */}
             <div>
               <label className="text-sm font-medium mb-2 block">Categoria</label>
-              <ScrollArea className="h-24 border rounded-lg p-2">
+              <div className="border rounded-lg p-2">
                 <div className="flex flex-wrap gap-2">
-                  {categories.filter(c => !c.parent_id).map(cat => (
-                    <Button
-                      key={cat.id}
-                      variant={selectedCategory === cat.id ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className="gap-1 rounded-full"
-                    >
-                      <div className={`w-3 h-3 rounded-full ${cat.color}`} />
-                      {cat.name}
-                    </Button>
-                  ))}
+                  {getParentCategories().map(cat => {
+                    const subcategories = getSubcategories(cat.id);
+                    const hasSubcategories = subcategories.length > 0;
+                    const isExpanded = expandedParent === cat.id;
+                    const isSubcategorySelected = subcategories.some(sub => sub.id === selectedCategory);
+                    const isDirectlySelected = selectedCategory === cat.id && !hasSubcategories;
+                    
+                    return (
+                      <Button
+                        key={cat.id}
+                        variant={isDirectlySelected || isSubcategorySelected ? 'default' : isExpanded ? 'secondary' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          if (hasSubcategories) {
+                            setExpandedParent(isExpanded ? null : cat.id);
+                          } else {
+                            setSelectedCategory(cat.id);
+                            setExpandedParent(null);
+                          }
+                        }}
+                        className="gap-1 rounded-full"
+                      >
+                        <div className={`w-3 h-3 rounded-full ${cat.color}`} />
+                        {cat.name}
+                        {hasSubcategories && (
+                          <span className="text-xs ml-1">{isExpanded ? '▼' : '▶'}</span>
+                        )}
+                      </Button>
+                    );
+                  })}
                 </div>
-              </ScrollArea>
+                
+                {/* Subcategories Panel */}
+                {expandedParent && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Selecione a subcategoria:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {getSubcategories(expandedParent).map(sub => (
+                        <Button
+                          key={sub.id}
+                          variant={selectedCategory === sub.id ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setSelectedCategory(sub.id)}
+                          className="gap-1 rounded-full"
+                        >
+                          <div className={`w-3 h-3 rounded-full ${sub.color}`} />
+                          {sub.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Lead/Contact Selection */}
