@@ -64,7 +64,9 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     setTransactionOverride, 
     getTransactionOverride,
     getCategoryById,
-    checkLimitViolation 
+    checkLimitViolation,
+    getParentCategories,
+    getSubcategories
   } = useExpenseCategories();
   const { contacts } = useContacts();
   const { leads } = useLeads();
@@ -76,6 +78,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   const [contactSearchTerm, setContactSearchTerm] = useState('');
   const [leadSearchTerm, setLeadSearchTerm] = useState('');
   const [notes, setNotes] = useState('');
+  const [expandedParent, setExpandedParent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'lead' | 'contact'>('lead');
   const [manualCity, setManualCity] = useState('');
   const [manualState, setManualState] = useState('');
@@ -241,35 +244,98 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
           <div>
             <Label>Categoria</Label>
             <div className="grid grid-cols-2 gap-2 mt-2">
-              {categories.map((category) => {
+              {getParentCategories().map((category) => {
                 const Icon = iconMap[category.icon] || Tag;
-                const isSelected = selectedCategory === category.id;
+                const subcategories = getSubcategories(category.id);
+                const hasSubcategories = subcategories.length > 0;
+                const isExpanded = expandedParent === category.id;
+                const isSubcategorySelected = subcategories.some(sub => sub.id === selectedCategory);
+                const isDirectlySelected = selectedCategory === category.id && !hasSubcategories;
+                
                 return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    onClick={() => setSelectedCategory(category.id)}
-                    className={`flex items-center gap-2 p-3 rounded-lg border transition-all text-left ${
-                      isSelected 
-                        ? 'border-primary bg-primary/10' 
-                        : 'hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className={`p-1.5 rounded ${category.color} text-white`}>
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{category.name}</p>
-                      {category.max_limit_per_unit && (
-                        <p className="text-xs text-muted-foreground">
-                          Limite: {formatCurrency(category.max_limit_per_unit)}
-                        </p>
+                  <div key={category.id} className="contents">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (hasSubcategories) {
+                          setExpandedParent(isExpanded ? null : category.id);
+                        } else {
+                          setSelectedCategory(category.id);
+                          setExpandedParent(null);
+                        }
+                      }}
+                      className={`flex items-center gap-2 p-3 rounded-lg border transition-all text-left ${
+                        isDirectlySelected || isSubcategorySelected
+                          ? 'border-primary bg-primary/10' 
+                          : isExpanded
+                            ? 'border-primary/50 bg-muted/50'
+                            : 'hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className={`p-1.5 rounded ${category.color} text-white`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{category.name}</p>
+                        {hasSubcategories ? (
+                          <p className="text-xs text-muted-foreground">
+                            {subcategories.length} subcategoria{subcategories.length > 1 ? 's' : ''}
+                          </p>
+                        ) : category.max_limit_per_unit ? (
+                          <p className="text-xs text-muted-foreground">
+                            Limite: {formatCurrency(category.max_limit_per_unit)}
+                          </p>
+                        ) : null}
+                      </div>
+                      {hasSubcategories && (
+                        <span className="text-xs text-muted-foreground">
+                          {isExpanded ? '▼' : '▶'}
+                        </span>
                       )}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
+            
+            {/* Subcategories Panel */}
+            {expandedParent && (
+              <div className="mt-3 p-3 rounded-lg bg-muted/30 border">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Selecione a subcategoria:
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {getSubcategories(expandedParent).map((subcategory) => {
+                    const SubIcon = iconMap[subcategory.icon] || Tag;
+                    const isSelected = selectedCategory === subcategory.id;
+                    return (
+                      <button
+                        key={subcategory.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(subcategory.id)}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left ${
+                          isSelected 
+                            ? 'border-primary bg-primary/10' 
+                            : 'hover:bg-muted/50 bg-background'
+                        }`}
+                      >
+                        <div className={`p-1 rounded ${subcategory.color} text-white`}>
+                          <SubIcon className="h-3 w-3" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{subcategory.name}</p>
+                          {subcategory.max_limit_per_unit && (
+                            <p className="text-xs text-muted-foreground">
+                              Limite: {formatCurrency(subcategory.max_limit_per_unit)}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Limit Warning */}
