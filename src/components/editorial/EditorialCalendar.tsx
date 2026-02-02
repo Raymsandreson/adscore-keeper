@@ -98,8 +98,10 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
 
   // Função para determinar a cor do card baseado no status do checklist
   const getPostColorByChecklist = useCallback((post: Post) => {
+    // Se não tem checklist, usa cor "pending" (amarelo) como padrão
     if (!post.checklist || post.checklist.length === 0) {
-      return "bg-muted/80 text-foreground"; // Cor neutra se não tem checklist
+      const pendingConfig = checklistStatusConfig["pending"];
+      return cn(pendingConfig?.color, "text-white");
     }
     
     // Prioridade: delayed > pending > awaiting_validation > edited > completed
@@ -112,7 +114,9 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
       }
     }
     
-    return "bg-muted/80 text-foreground";
+    // Fallback para pending se nenhum status encontrado
+    const pendingConfig = checklistStatusConfig["pending"];
+    return cn(pendingConfig?.color, "text-white");
   }, [checklistStatusConfig]);
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
