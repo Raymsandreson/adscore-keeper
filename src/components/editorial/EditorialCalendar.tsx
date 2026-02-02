@@ -79,11 +79,13 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
       if (platformFilter !== "all" && post.platform !== platformFilter) return false;
       if (statusFilter !== "all" && post.status !== statusFilter) return false;
       
-      // Filtro por status do checklist
+      // Filtro por status do checklist - só filtra se o post TEM checklist items
       if (checklistStatusFilter !== "all") {
-        if (!post.checklist || post.checklist.length === 0) return false;
-        const hasMatchingItem = post.checklist.some(item => item.status === checklistStatusFilter);
-        if (!hasMatchingItem) return false;
+        // Se não tem checklist, ainda mostra o post (não oculta)
+        if (post.checklist && post.checklist.length > 0) {
+          const hasMatchingItem = post.checklist.some(item => item.status === checklistStatusFilter);
+          if (!hasMatchingItem) return false;
+        }
       }
       
       return true;

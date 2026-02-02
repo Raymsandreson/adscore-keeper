@@ -93,7 +93,7 @@ export function useEditorialPosts() {
       title: postData.title || "",
       description: postData.description,
       platform: postData.platform || "instagram",
-      status: "draft",
+      status: postData.status || "draft",
       scheduled_date: postData.scheduled_date || new Date(),
       scheduled_time: postData.scheduled_time || "10:00",
       content_type: postData.content_type || "image",
@@ -102,6 +102,7 @@ export function useEditorialPosts() {
       notes: postData.notes,
       links: postData.links,
       tags: postData.tags,
+      checklist: postData.checklist,
     };
     setPosts(prev => [...prev, newPost]);
     return newPost;
