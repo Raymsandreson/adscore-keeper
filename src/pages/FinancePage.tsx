@@ -749,26 +749,7 @@ export default function FinancePage() {
                     />
                   </div>
                   
-                  {/* Card Filter - Multi Select */}
-                  <MultiSelectFilter
-                    icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
-                    placeholder="Cartão"
-                    allLabel="Todos os cartões"
-                    options={availableCards.map(card => {
-                      const assignment = getCardAssignment(card);
-                      return {
-                        value: card,
-                        label: assignment?.card_name 
-                          ? `${assignment.card_name} (**** ${card})`
-                          : `**** ${card}`,
-                        sublabel: assignment?.lead_name || undefined
-                      };
-                    })}
-                    selectedValues={filterCards}
-                    onSelectionChange={setFilterCards}
-                  />
-                  
-                  {/* Cost Account Filter - Multi Select */}
+                  {/* Cost Account Filter - Multi Select (BEFORE Cards) */}
                   <MultiSelectFilter
                     icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
                     placeholder="Conta"
@@ -784,7 +765,48 @@ export default function FinancePage() {
                       }))
                     ]}
                     selectedValues={filterAccounts}
-                    onSelectionChange={setFilterAccounts}
+                    onSelectionChange={(values) => {
+                      setFilterAccounts(values);
+                      // Reset card filter when account changes
+                      setFilterCards(['all']);
+                    }}
+                  />
+                  
+                  {/* Card Filter - Multi Select (filtered by selected accounts) */}
+                  <MultiSelectFilter
+                    icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
+                    placeholder="Cartão"
+                    allLabel="Todos os cartões"
+                    options={availableCards
+                      .filter(card => {
+                        // Filter cards by selected account(s)
+                        const isAllAccounts = filterAccounts.includes("all");
+                        if (isAllAccounts) return true;
+                        
+                        const assignment = getCardAssignment(card);
+                        const cardAccountId = assignment?.cost_account_id || null;
+                        
+                        // Check if card matches selected accounts
+                        if (filterAccounts.includes("no-account") && !cardAccountId) {
+                          return true;
+                        }
+                        if (cardAccountId && filterAccounts.includes(cardAccountId)) {
+                          return true;
+                        }
+                        return false;
+                      })
+                      .map(card => {
+                        const assignment = getCardAssignment(card);
+                        return {
+                          value: card,
+                          label: assignment?.card_name 
+                            ? `${assignment.card_name} (**** ${card})`
+                            : `**** ${card}`,
+                          sublabel: assignment?.lead_name || undefined
+                        };
+                      })}
+                    selectedValues={filterCards}
+                    onSelectionChange={setFilterCards}
                   />
                   
                   {/* Category Filter - Multi Select with Preview Totals */}
