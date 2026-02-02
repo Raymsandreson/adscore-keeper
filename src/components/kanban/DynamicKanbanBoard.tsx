@@ -32,6 +32,8 @@ import {
   AlertTriangle,
   Eye,
   Briefcase,
+  Search,
+  X,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -75,6 +77,7 @@ export function DynamicKanbanBoard({
   const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
+  const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
 
   // Fetch contacts for all leads (using contact_leads junction + legacy lead_id)
   useEffect(() => {
@@ -326,7 +329,14 @@ export function DynamicKanbanBoard({
 
         <div className="flex gap-4 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
-            const stageLeads = leadsByStage[stage.id] || [];
+            const stageFilter = stageFilters[stage.id] || '';
+            const allStageLeads = leadsByStage[stage.id] || [];
+            // Filter leads by search query within the column
+            const stageLeads = stageFilter
+              ? allStageLeads.filter(lead =>
+                  lead.lead_name?.toLowerCase().includes(stageFilter.toLowerCase())
+                )
+              : allStageLeads;
             const isDropTarget = dragOverStage === stage.id;
 
             return (
@@ -341,7 +351,7 @@ export function DynamicKanbanBoard({
               >
                 {/* Column Header */}
                 <div 
-                  className="p-3 rounded-t-lg border-b"
+                  className="p-3 rounded-t-lg border-b space-y-2"
                   style={{ 
                     backgroundColor: `${stage.color}15`,
                     borderColor: `${stage.color}30`,
@@ -357,23 +367,45 @@ export function DynamicKanbanBoard({
                         {stage.name}
                       </h3>
                       <Badge variant="secondary" className="text-xs">
-                        {stageLeads.length}
+                        {stageFilter && stageLeads.length !== allStageLeads.length
+                          ? `${stageLeads.length}/${allStageLeads.length}`
+                          : allStageLeads.length}
                       </Badge>
                     </div>
+                  </div>
+                  {/* Search input per column */}
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar lead..."
+                      value={stageFilter}
+                      onChange={(e) => setStageFilters(prev => ({ ...prev, [stage.id]: e.target.value }))}
+                      className="h-7 pl-7 pr-7 text-xs"
+                    />
+                    {stageFilter && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-1/2 transform -translate-y-1/2 h-7 w-7"
+                        onClick={() => setStageFilters(prev => ({ ...prev, [stage.id]: '' }))}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 
                 {/* Column Content */}
-                <ScrollArea className="h-[calc(100vh-400px)] min-h-[300px]">
+                <ScrollArea className="h-[calc(100vh-450px)] min-h-[250px]">
                   <div className="p-2 space-y-2">
                     {stageLeads.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <Users className="h-8 w-8 text-muted-foreground/40 mb-2" />
                         <p className="text-xs text-muted-foreground">
-                          Nenhum lead neste estágio
+                          {stageFilter ? 'Nenhum lead encontrado' : 'Nenhum lead neste estágio'}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Arraste leads para cá
+                          {stageFilter ? 'Tente outro termo' : 'Arraste leads para cá'}
                         </p>
                       </div>
                     ) : (
