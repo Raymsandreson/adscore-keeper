@@ -324,12 +324,12 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                   <div className="p-2 space-y-1">
                     <button
                       type="button"
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        !selectedLead ? 'bg-muted' : 'hover:bg-muted'
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors text-muted-foreground italic ${
+                        !selectedLead ? 'bg-muted font-medium' : 'hover:bg-muted'
                       }`}
                       onClick={() => setSelectedLead('')}
                     >
-                      Nenhum
+                      Nenhum Lead Vinculado
                     </button>
                     {filteredLeads.map((lead) => (
                       <button
@@ -382,12 +382,12 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                   <div className="p-2 space-y-1">
                     <button
                       type="button"
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        !selectedContact ? 'bg-muted' : 'hover:bg-muted'
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors text-muted-foreground italic ${
+                        !selectedContact ? 'bg-muted font-medium' : 'hover:bg-muted'
                       }`}
                       onClick={() => setSelectedContact('')}
                     >
-                      Nenhum
+                      Nenhum Contato Vinculado
                     </button>
                     {filteredContacts.map((contact) => (
                       <button
