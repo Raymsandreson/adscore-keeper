@@ -329,6 +329,32 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                             <PlatformIcon platform={post.platform} className="h-3 w-3" />
                             <span className="truncate flex-1">{post.title}</span>
                           </div>
+                          {/* Checklist items preview */}
+                          {post.checklist && post.checklist.length > 0 && (
+                            <div className="mt-1 ml-4 space-y-0.5">
+                              {post.checklist.slice(0, 3).map(item => (
+                                <div key={item.id} className="flex items-center gap-1 text-[10px]">
+                                  <span 
+                                    className={cn(
+                                      "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                                      checklistStatusConfig[item.status]?.color
+                                    )} 
+                                  />
+                                  <span className={cn(
+                                    "truncate",
+                                    item.status === "completed" && "line-through opacity-60"
+                                  )}>
+                                    {item.label}
+                                  </span>
+                                </div>
+                              ))}
+                              {post.checklist.length > 3 && (
+                                <span className="text-[10px] text-muted-foreground ml-2.5">
+                                  +{post.checklist.length - 3} mais
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {post.tags && post.tags.length > 0 && (
                             <div className="flex gap-0.5 mt-0.5 ml-4">
                               {post.tags.slice(0, 2).map(tag => (
