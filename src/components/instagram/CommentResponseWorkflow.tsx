@@ -125,7 +125,7 @@ export const CommentResponseWorkflow = ({
   const [repliedComments, setRepliedComments] = useState<Set<string>>(new Set());
   const [showCardSettings, setShowCardSettings] = useState(false);
   const [parentComment, setParentComment] = useState<ParentComment | null>(null);
-  const [showPostPreview, setShowPostPreview] = useState(false);
+  
   const [showDMDialog, setShowDMDialog] = useState(false);
   // Store the comment that was just replied to, so we don't lose it when unrepliedComments recalculates
   const [justRepliedComment, setJustRepliedComment] = useState<Comment | null>(null);
@@ -706,7 +706,6 @@ export const CommentResponseWorkflow = ({
     setDmSuggestion(null);
     setEditedDmSuggestion("");
     setShowDMDialog(false);
-    setShowPostPreview(false); // Reset post preview to collapsed state
     setJustRepliedComment(null); // Clear the just replied comment
     
     // Since we already added the current comment to repliedComments, unrepliedComments has shrunk
@@ -730,7 +729,7 @@ export const CommentResponseWorkflow = ({
     }
     
     setJustRepliedComment(null);
-    setShowPostPreview(false); // Reset post preview to collapsed state
+    
     if (currentIndex < unrepliedComments.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setWorkflowStep('idle');
@@ -1040,45 +1039,20 @@ export const CommentResponseWorkflow = ({
                 <div className="space-y-3">
                   {/* Post Preview */}
                   {currentComment.post_url && (
-                    <div className="rounded-lg border bg-card overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setShowPostPreview(!showPostPreview)}
-                        className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2 text-sm">
-                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">Postagem Original</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={currentComment.post_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-primary hover:underline flex items-center gap-1"
-                          >
-                            Abrir <ExternalLink className="h-3 w-3" />
-                          </a>
-                          <Badge variant="outline" className="text-xs">
-                            {showPostPreview ? 'Ocultar' : 'Preview'}
-                          </Badge>
-                        </div>
-                      </button>
-                      {showPostPreview && (
-                        <div className="border-t p-2 bg-muted/30">
-                          <div className="aspect-square max-h-48 overflow-hidden rounded-md bg-black/5 flex items-center justify-center">
-                            <iframe 
-                              src={`${currentComment.post_url}embed`}
-                              className="w-full h-full border-0"
-                              title="Instagram Post Preview"
-                              loading="lazy"
-                              allowFullScreen
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <a
+                      href={currentComment.post_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg border bg-card overflow-hidden flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 text-sm">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">Postagem Original</span>
+                      </div>
+                      <span className="text-xs text-primary flex items-center gap-1">
+                        Abrir <ExternalLink className="h-3 w-3" />
+                      </span>
+                    </a>
                   )}
                   
                   {/* Parent Comment (if replying to a comment) */}
