@@ -686,6 +686,7 @@ export default function FinancePage() {
                           mode="single"
                           selected={startDate}
                           onSelect={(date) => date && setStartDate(date)}
+                          defaultMonth={startDate}
                           locale={ptBR}
                           className="pointer-events-auto"
                         />
@@ -707,6 +708,7 @@ export default function FinancePage() {
                           mode="single"
                           selected={endDate}
                           onSelect={(date) => date && setEndDate(date)}
+                          defaultMonth={endDate}
                           locale={ptBR}
                           className="pointer-events-auto"
                         />
