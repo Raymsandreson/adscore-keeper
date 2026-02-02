@@ -111,6 +111,8 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     if (!selectedCard) return;
 
     const contact = selectedContact ? contacts.find(c => c.id === selectedContact) : null;
+    // Convert 'none' value back to null for database
+    const costAccountValue = selectedCostAccount && selectedCostAccount !== 'none' ? selectedCostAccount : null;
     
     await assignCard({
       card_last_digits: selectedCard,
@@ -118,7 +120,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
       contact_id: selectedContact || null,
       contact_name: contact?.full_name || contact?.instagram_username || null,
       lead_name: contact?.full_name || contact?.instagram_username || null,
-      cost_account_id: selectedCostAccount || null,
+      cost_account_id: costAccountValue,
     });
 
     closeDialog();
@@ -128,6 +130,8 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     if (!editingAssignment) return;
 
     const contact = selectedContact ? contacts.find(c => c.id === selectedContact) : null;
+    // Convert 'none' value back to null for database
+    const costAccountValue = selectedCostAccount && selectedCostAccount !== 'none' ? selectedCostAccount : null;
     
     await updateCardAssignment(editingAssignment.id, {
       card_name: cardName || null,
@@ -138,7 +142,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
       lead_name: contact 
         ? (contact.full_name || contact.instagram_username || null)
         : null,
-      cost_account_id: selectedCostAccount || null,
+      cost_account_id: costAccountValue,
     });
 
     closeDialog();
