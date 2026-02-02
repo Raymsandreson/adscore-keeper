@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ChevronDown, 
   ChevronRight, 
@@ -25,7 +26,9 @@ import {
   DollarSign,
   Hash,
   Receipt,
-  ShoppingCart
+  ShoppingCart,
+  BarChart3,
+  List
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -36,6 +39,7 @@ import { useContacts } from '@/hooks/useContacts';
 import { TransactionCategorizer } from './TransactionCategorizer';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { AggregationType } from './TransactionAggregationSelector';
+import { TransactionsBarChart } from './TransactionsBarChart';
 
 interface Transaction {
   id: string;
@@ -338,9 +342,29 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
     setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
   };
 
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('list');
+
   return (
     <>
       <div className="space-y-4">
+        {/* View Mode Toggle */}
+        <div className="flex items-center justify-between">
+          <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as typeof viewMode)} size="sm">
+            <ToggleGroupItem value="list" aria-label="Visualização em lista">
+              <List className="h-4 w-4 mr-1" />
+              Lista
+            </ToggleGroupItem>
+            <ToggleGroupItem value="chart" aria-label="Visualização em gráfico">
+              <BarChart3 className="h-4 w-4 mr-1" />
+              Gráfico
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
+        {viewMode === 'chart' ? (
+          <TransactionsBarChart transactions={transactions} />
+        ) : (
+          <>
         {/* Controls */}
         <div className="flex flex-col gap-3">
           {/* Value Mode Toggle */}
@@ -537,6 +561,8 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
               Nenhuma transação encontrada para o período selecionado.
             </CardContent>
           </Card>
+        )}
+          </>
         )}
       </div>
 
