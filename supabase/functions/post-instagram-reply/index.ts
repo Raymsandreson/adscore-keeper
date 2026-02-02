@@ -13,7 +13,11 @@ serve(async (req) => {
   try {
     const { commentId, message, accessToken } = await req.json();
     
-    const token = accessToken || Deno.env.get("META_ACCESS_TOKEN");
+    // If accessToken is not provided or is a placeholder, use the global token
+    let token = accessToken;
+    if (!token || token === "USE_GLOBAL_TOKEN" || token.length < 50) {
+      token = Deno.env.get("META_ACCESS_TOKEN");
+    }
     
     if (!token) {
       throw new Error("Access token não configurado");
