@@ -82,6 +82,7 @@ export function PendingTransactionsList({
   
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   
+  const NONE_SELECTED = 'NONE';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<{
     categoryId: string | null;
@@ -161,20 +162,26 @@ export function PendingTransactionsList({
       return;
     }
     
+    // Validate that user selected something (even "NONE" is valid)
     if (!editData.linkId) {
-      toast.error(`Selecione um ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`);
+      toast.error(`Selecione um ${editData.linkType === 'lead' ? 'Lead' : 'Contato'} ou "Nenhum Vinculado"`);
       return;
     }
 
     try {
+      // Check if user explicitly chose "no link"
+      const isNoneSelected = editData.linkId === NONE_SELECTED;
+      const linkAcknowledged = isNoneSelected;
+      
       await setTransactionOverride(
         transactionId,
         editData.categoryId,
-        editData.linkType === 'contact' ? editData.linkId : undefined,
-        editData.linkType === 'lead' ? editData.linkId : undefined,
+        !isNoneSelected && editData.linkType === 'contact' ? editData.linkId : undefined,
+        !isNoneSelected && editData.linkType === 'lead' ? editData.linkId : undefined,
         editData.notes || undefined,
         editData.manualCity || undefined,
-        editData.manualState || undefined
+        editData.manualState || undefined,
+        linkAcknowledged
       );
       
       setEditingId(null);
@@ -183,7 +190,9 @@ export function PendingTransactionsList({
       // Check if all done
       const remainingPending = transactions.filter(t => {
         const ov = getTransactionOverride(t.id);
-        return !ov || (!ov.lead_id && !ov.contact_id);
+        if (!ov) return true;
+        if (ov.link_acknowledged) return false;
+        return !ov.lead_id && !ov.contact_id;
       });
       
       if (remainingPending.length <= 1) {
@@ -373,6 +382,13 @@ export function PendingTransactionsList({
                               <SelectValue placeholder="Selecione..." />
                             </SelectTrigger>
                             <SelectContent>
+                              {/* None option with distinct styling */}
+                              <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
+                                <div className="flex items-center gap-2">
+                                  <X className="h-3 w-3" />
+                                  Nenhum {editData.linkType === 'lead' ? 'Lead' : 'Contato'} Vinculado
+                                </div>
+                              </SelectItem>
                               {editData.linkType === 'lead' 
                                 ? leads.map(lead => (
                                     <SelectItem key={lead.id} value={lead.id}>
