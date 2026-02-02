@@ -74,13 +74,8 @@ export function PostDetailSheet({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
-          {/* Status, Type and Platform */}
+          {/* Type and Platform */}
           <div className="flex items-center gap-2 flex-wrap">
-            {statusConfig[post.status] && (
-              <Badge variant="outline" className={statusConfig[post.status].className}>
-                {statusConfig[post.status].label}
-              </Badge>
-            )}
             <Badge variant="secondary">
               {contentTypeConfig[post.content_type] || post.content_type}
             </Badge>
