@@ -344,62 +344,6 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
               })}
             </div>
 
-            {/* Legend - Post Status */}
-            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30 flex-wrap">
-              <span className="text-sm text-muted-foreground">Status:</span>
-              {Object.entries(statusConfig).map(([key, config]) => (
-                <Badge 
-                  key={key} 
-                  variant="outline" 
-                  className={cn(
-                    config?.className,
-                    "cursor-pointer transition-all hover:scale-105"
-                  )}
-                  onClick={() => setStatusFilter(statusFilter === key ? "all" : key)}
-                >
-                  {config?.label}
-                </Badge>
-              ))}
-              {statusFilter !== "all" && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setStatusFilter("all")}
-                  className="h-6 px-2 text-xs"
-                >
-                  Limpar
-                </Button>
-              )}
-            </div>
-
-            {/* Legend - Status (previously Checklist) */}
-            <div className="flex items-center gap-4 mt-3 flex-wrap">
-              <span className="text-sm text-muted-foreground">Status:</span>
-              {Object.entries(checklistStatusConfig).map(([status, config]) => (
-                <Badge 
-                  key={status}
-                  variant="outline" 
-                  className={cn(
-                    "gap-1 text-xs cursor-pointer transition-all hover:scale-105", 
-                    config.color, 
-                    "text-white border-0"
-                  )}
-                  onClick={() => setChecklistStatusFilter(checklistStatusFilter === status ? "all" : status as ChecklistItemStatus)}
-                >
-                  {config.label}
-                </Badge>
-              ))}
-              {checklistStatusFilter !== "all" && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setChecklistStatusFilter("all")}
-                  className="h-6 px-2 text-xs"
-                >
-                  Limpar
-                </Button>
-              )}
-            </div>
           </CardContent>
         </Card>
       </Tabs>
