@@ -207,20 +207,6 @@ export function PostChecklist({ checklist, onChange, checklistStatusConfig, read
         </div>
       )}
 
-      {/* Status Legend */}
-      <div className="flex flex-wrap gap-2 pt-2 border-t">
-        <span className="text-xs text-muted-foreground self-center">Legenda:</span>
-        {Object.entries(checklistStatusConfig).map(([status, config]) => (
-          <Badge 
-            key={status}
-            variant="outline" 
-            className={cn("gap-1 text-xs", config.color, "text-white border-0")}
-          >
-            {statusIcons[status as ChecklistItemStatus]}
-            {config.label}
-          </Badge>
-        ))}
-      </div>
     </div>
   );
 }
