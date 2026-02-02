@@ -240,15 +240,20 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
             </div>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[130px]">
+              <Select value={checklistStatusFilter} onValueChange={(v) => setChecklistStatusFilter(v as ChecklistItemStatus | "all")}>
+                <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="draft">Rascunho</SelectItem>
-                  <SelectItem value="scheduled">Agendado</SelectItem>
-                  <SelectItem value="published">Publicado</SelectItem>
+                  {Object.entries(checklistStatusConfig).map(([status, config]) => (
+                    <SelectItem key={status} value={status}>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("w-2 h-2 rounded-full", config.color)} />
+                        {config.label}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button onClick={() => handleNewPost()} className="gap-2">
