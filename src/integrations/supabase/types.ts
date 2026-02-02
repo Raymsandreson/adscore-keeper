@@ -88,6 +88,7 @@ export type Database = {
           card_last_digits: string
           card_name: string | null
           contact_id: string | null
+          cost_account_id: string | null
           created_at: string
           id: string
           lead_id: string | null
@@ -100,6 +101,7 @@ export type Database = {
           card_last_digits: string
           card_name?: string | null
           contact_id?: string | null
+          cost_account_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -112,6 +114,7 @@ export type Database = {
           card_last_digits?: string
           card_name?: string | null
           contact_id?: string | null
+          cost_account_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -126,6 +129,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_assignments_cost_account_id_fkey"
+            columns: ["cost_account_id"]
+            isOneToOne: false
+            referencedRelation: "cost_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -422,6 +432,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      cost_accounts: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       credit_card_transactions: {
         Row: {
@@ -1781,6 +1827,7 @@ export type Database = {
         Row: {
           category_id: string
           contact_id: string | null
+          cost_account_id: string | null
           created_at: string
           id: string
           lead_id: string | null
@@ -1793,6 +1840,7 @@ export type Database = {
         Insert: {
           category_id: string
           contact_id?: string | null
+          cost_account_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -1805,6 +1853,7 @@ export type Database = {
         Update: {
           category_id?: string
           contact_id?: string | null
+          cost_account_id?: string | null
           created_at?: string
           id?: string
           lead_id?: string | null
@@ -1827,6 +1876,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_cost_account_id_fkey"
+            columns: ["cost_account_id"]
+            isOneToOne: false
+            referencedRelation: "cost_accounts"
             referencedColumns: ["id"]
           },
           {

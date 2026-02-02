@@ -23,9 +23,10 @@ export interface CardAssignment {
   lead_id: string | null;
   lead_name: string | null;
   contact_id: string | null;
-  contact_name: string | null;
+  contact_name?: string | null;
   pluggy_account_id: string | null;
   notes: string | null;
+  cost_account_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,7 @@ export interface TransactionOverride {
   manual_city: string | null;
   manual_state: string | null;
   link_acknowledged: boolean;
+  cost_account_id: string | null;
   created_at: string;
 }
 
@@ -256,12 +258,13 @@ export function useExpenseCategories() {
           contact_id: assignment.contact_id || null,
           pluggy_account_id: assignment.pluggy_account_id || null,
           notes: assignment.notes || null,
+          cost_account_id: assignment.cost_account_id || null,
         }], { onConflict: 'card_last_digits,pluggy_account_id' })
         .select()
         .single();
 
       if (error) throw error;
-      toast.success('Cartão vinculado ao acolhedor');
+      toast.success('Cartão vinculado');
       await fetchCardAssignments();
       return data as CardAssignment;
     } catch (err: any) {
@@ -313,7 +316,8 @@ export function useExpenseCategories() {
     notes?: string,
     manualCity?: string,
     manualState?: string,
-    linkAcknowledged: boolean = false
+    linkAcknowledged: boolean = false,
+    costAccountId?: string
   ) => {
     try {
       const { error } = await supabase
@@ -327,6 +331,7 @@ export function useExpenseCategories() {
           manual_city: manualCity || null,
           manual_state: manualState || null,
           link_acknowledged: linkAcknowledged,
+          cost_account_id: costAccountId || null,
         }], { onConflict: 'transaction_id' });
 
       if (error) throw error;

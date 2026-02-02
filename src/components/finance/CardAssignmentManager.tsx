@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { CreditCard, UserCheck, Trash2, Link2, Search, Pencil, Users, Filter } from 'lucide-react';
+import { CreditCard, UserCheck, Trash2, Link2, Search, Pencil, Users, Filter, Wallet } from 'lucide-react';
 import { CardAssignment, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { useCostAccounts } from '@/hooks/useCostAccounts';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Contact {
@@ -27,12 +28,14 @@ interface CardAssignmentManagerProps {
 
 export function CardAssignmentManager({ availableCards }: CardAssignmentManagerProps) {
   const { cardAssignments, assignCard, updateCardAssignment, removeCardAssignment } = useExpenseCategories();
+  const { accounts: costAccounts } = useCostAccounts();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<CardAssignment | null>(null);
   const [selectedCard, setSelectedCard] = useState('');
   const [cardName, setCardName] = useState('');
   const [selectedContact, setSelectedContact] = useState('');
+  const [selectedCostAccount, setSelectedCostAccount] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClassification, setSelectedClassification] = useState<string>('all');
   const [loadingContacts, setLoadingContacts] = useState(false);
@@ -105,16 +108,17 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
   });
 
   const handleAssign = async () => {
-    if (!selectedCard || !selectedContact) return;
+    if (!selectedCard) return;
 
-    const contact = contacts.find(c => c.id === selectedContact);
+    const contact = selectedContact ? contacts.find(c => c.id === selectedContact) : null;
     
     await assignCard({
       card_last_digits: selectedCard,
       card_name: cardName || null,
-      contact_id: selectedContact,
+      contact_id: selectedContact || null,
       contact_name: contact?.full_name || contact?.instagram_username || null,
-      lead_name: contact?.full_name || contact?.instagram_username || 'Contato',
+      lead_name: contact?.full_name || contact?.instagram_username || null,
+      cost_account_id: selectedCostAccount || null,
     });
 
     closeDialog();
@@ -127,13 +131,14 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     
     await updateCardAssignment(editingAssignment.id, {
       card_name: cardName || null,
-      contact_id: selectedContact || editingAssignment.contact_id,
+      contact_id: selectedContact || null,
       contact_name: contact 
         ? (contact.full_name || contact.instagram_username || null)
-        : editingAssignment.contact_name,
+        : null,
       lead_name: contact 
-        ? (contact.full_name || contact.instagram_username || 'Contato')
-        : editingAssignment.lead_name,
+        ? (contact.full_name || contact.instagram_username || null)
+        : null,
+      cost_account_id: selectedCostAccount || null,
     });
 
     closeDialog();
@@ -144,6 +149,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     setSelectedCard(assignment.card_last_digits);
     setCardName(assignment.card_name || '');
     setSelectedContact(assignment.contact_id || '');
+    setSelectedCostAccount(assignment.cost_account_id || '');
     setIsOpen(true);
   };
 
@@ -153,6 +159,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
     setSelectedCard('');
     setCardName('');
     setSelectedContact('');
+    setSelectedCostAccount('');
     setSearchTerm('');
     setSelectedClassification('all');
   };
@@ -317,6 +324,43 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                   </ScrollArea>
                 </div>
 
+                {/* Cost Account Selector */}
+                <div>
+                  <Label className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    Conta Padrão
+                  </Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Despesas deste cartão serão atribuídas a esta conta automaticamente
+                  </p>
+                  <Select 
+                    value={selectedCostAccount} 
+                    onValueChange={setSelectedCostAccount}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma conta..." />
+                    </SelectTrigger>
+                    <SelectContent className="z-[100] bg-popover">
+                      <SelectItem value="">
+                        <span className="text-muted-foreground italic">Nenhuma conta</span>
+                      </SelectItem>
+                      {costAccounts.filter(a => a.is_active).map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full ${account.color}`} />
+                            {account.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {costAccounts.length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      💡 Crie contas na aba "Contas" para organizar despesas
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={closeDialog}>
                     Cancelar
@@ -326,7 +370,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                       Salvar
                     </Button>
                   ) : (
-                    <Button onClick={handleAssign} disabled={!selectedCard || !selectedContact}>
+                    <Button onClick={handleAssign} disabled={!selectedCard}>
                       Vincular
                     </Button>
                   )}
@@ -343,49 +387,63 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
           </p>
         ) : (
           <div className="space-y-2">
-            {cardAssignments.map((assignment) => (
-              <div
-                key={assignment.id}
-                className="flex items-center justify-between p-3 rounded-lg border bg-card"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-muted">
-                    <CreditCard className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium">
-                      {assignment.card_name || `**** ${assignment.card_last_digits}`}
-                    </p>
-                    {assignment.card_name && (
-                      <p className="text-xs text-muted-foreground font-mono">
-                        **** {assignment.card_last_digits}
+            {cardAssignments.map((assignment) => {
+              const account = assignment.cost_account_id 
+                ? costAccounts.find(a => a.id === assignment.cost_account_id)
+                : null;
+              
+              return (
+                <div
+                  key={assignment.id}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted">
+                      <CreditCard className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">
+                        {assignment.card_name || `**** ${assignment.card_last_digits}`}
                       </p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="secondary" className="text-xs">
-                        {assignment.lead_name || 'Acolhedor'}
-                      </Badge>
+                      {assignment.card_name && (
+                        <p className="text-xs text-muted-foreground font-mono">
+                          **** {assignment.card_last_digits}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {assignment.lead_name && (
+                          <Badge variant="secondary" className="text-xs">
+                            {assignment.lead_name}
+                          </Badge>
+                        )}
+                        {account && (
+                          <Badge className={`text-xs text-white ${account.color}`}>
+                            <Wallet className="h-3 w-3 mr-1" />
+                            {account.name}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(assignment)}
+                    >
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCardAssignment(assignment.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openEditDialog(assignment)}
-                  >
-                    <Pencil className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeCardAssignment(assignment.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
