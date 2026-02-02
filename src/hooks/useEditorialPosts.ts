@@ -15,6 +15,10 @@ const initialMockPosts: Post[] = [
     assigned_to: "Maria Silva",
     hashtags: ["novacoleção", "verão2026", "sustentável"],
     tags: [{ id: "1", label: "Post", color: "bg-blue-500" }],
+    checklist: [
+      { id: "c1", label: "Criar arte", status: "completed" },
+      { id: "c2", label: "Revisar texto", status: "completed" },
+    ],
     engagement_likes: 1250,
     engagement_comments: 89,
     engagement_shares: 45,
@@ -32,6 +36,10 @@ const initialMockPosts: Post[] = [
     assigned_to: "João Costa",
     hashtags: ["styling", "moda", "dicas"],
     tags: [{ id: "3", label: "Reels", color: "bg-pink-500" }],
+    checklist: [
+      { id: "c3", label: "Gravar vídeo", status: "pending" },
+      { id: "c4", label: "Editar", status: "pending" },
+    ],
   },
   {
     id: "3",
@@ -43,6 +51,9 @@ const initialMockPosts: Post[] = [
     scheduled_time: "14:00",
     content_type: "story",
     assigned_to: "Ana Oliveira",
+    checklist: [
+      { id: "c5", label: "Planejar roteiro", status: "awaiting_validation" },
+    ],
   },
   {
     id: "4",
@@ -55,6 +66,9 @@ const initialMockPosts: Post[] = [
     content_type: "image",
     assigned_to: "Maria Silva",
     tags: [{ id: "4", label: "Campanha", color: "bg-orange-500" }],
+    checklist: [
+      { id: "c6", label: "Criar banner", status: "delayed" },
+    ],
     engagement_likes: 890,
     engagement_comments: 120,
     engagement_shares: 234,
@@ -70,6 +84,10 @@ const initialMockPosts: Post[] = [
     scheduled_time: "20:00",
     content_type: "live",
     assigned_to: "João Costa",
+    checklist: [
+      { id: "c7", label: "Confirmar parceira", status: "edited" },
+      { id: "c8", label: "Preparar pauta", status: "pending" },
+    ],
   },
   {
     id: "6",
@@ -81,6 +99,10 @@ const initialMockPosts: Post[] = [
     scheduled_time: "11:00",
     content_type: "video",
     assigned_to: "Ana Oliveira",
+    checklist: [
+      { id: "c9", label: "Coletar depoimento", status: "delayed" },
+      { id: "c10", label: "Editar vídeo", status: "pending" },
+    ],
   },
 ];
 
