@@ -52,6 +52,7 @@ import { LimitAnalysisPanel } from "@/components/finance/LimitAnalysisPanel";
 import { AcolhedorLogisticsDashboard } from "@/components/finance/AcolhedorLogisticsDashboard";
 import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransactionsWorkflow";
 import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelectFilter";
+import { CostAccountsManager } from "@/components/finance/CostAccountsManager";
 import { translateCategory } from "@/utils/categoryTranslations";
 
 // Pluggy Connect type definition
@@ -1080,6 +1081,9 @@ export default function FinancePage() {
                   <ExpenseCategoryManager />
                   <CardAssignmentManager availableCards={availableCards} />
                 </div>
+                
+                {/* Cost Accounts Manager */}
+                <CostAccountsManager />
               </TabsContent>
             </Tabs>
           </>

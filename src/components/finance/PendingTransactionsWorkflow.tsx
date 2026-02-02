@@ -19,7 +19,8 @@ import {
   Filter,
   X,
   List,
-  LayoutGrid
+  LayoutGrid,
+  Wallet
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -29,6 +30,7 @@ import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
 import { useLeads } from '@/hooks/useLeads';
 import { useContacts } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useCostAccounts } from '@/hooks/useCostAccounts';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -75,6 +77,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const { leads, fetchLeads } = useLeads();
   const { contacts, fetchContacts } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { accounts: costAccounts } = useCostAccounts();
   
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -86,6 +89,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const NONE_SELECTED = 'NONE';
   const [linkType, setLinkType] = useState<'lead' | 'contact'>('lead');
   const [notes, setNotes] = useState('');
+  const [selectedCostAccount, setSelectedCostAccount] = useState<string>('');
   const [isLookingUpLocation, setIsLookingUpLocation] = useState(false);
   const [enrichedLocation, setEnrichedLocation] = useState<{city: string; state: string} | null>(null);
   const [manualCity, setManualCity] = useState('');
@@ -122,6 +126,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
       setSelectedLead(null);
       setSelectedContact(null);
       setNotes('');
+      setSelectedCostAccount('');
       setEnrichedLocation(null);
       setManualCity('');
       setManualState('');
@@ -140,7 +145,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         }
       }
       
-      // Pre-select lead/contact from card assignment
+      // Pre-select lead/contact and cost account from card assignment
       const cardAssignment = getCardAssignment(currentTransaction.card_last_digits || '');
       if (cardAssignment) {
         if (cardAssignment.lead_id) {
@@ -149,6 +154,10 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         } else if (cardAssignment.contact_id) {
           setSelectedContact(cardAssignment.contact_id);
           setLinkType('contact');
+        }
+        // Pre-select cost account from card assignment
+        if (cardAssignment.cost_account_id) {
+          setSelectedCostAccount(cardAssignment.cost_account_id);
         }
       }
     }
@@ -241,7 +250,8 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
         notes || undefined,
         manualCity || displayLocation?.city || undefined,
         manualState || displayLocation?.state || undefined,
-        linkAcknowledged
+        linkAcknowledged,
+        selectedCostAccount || undefined
       );
       
       // Move to next transaction
@@ -585,6 +595,37 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
               onLeadsChange={fetchLeads}
               onContactsChange={fetchContacts}
             />
+
+            {/* Cost Account Selector */}
+            {costAccounts.length > 0 && (
+              <div>
+                <label className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Wallet className="h-4 w-4" />
+                  Conta
+                </label>
+                <Select 
+                  value={selectedCostAccount} 
+                  onValueChange={setSelectedCostAccount}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Selecione uma conta..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">
+                      <span className="text-muted-foreground italic">Nenhuma conta</span>
+                    </SelectItem>
+                    {costAccounts.filter(a => a.is_active).map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${account.color}`} />
+                          {account.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Notes */}
             <div>
