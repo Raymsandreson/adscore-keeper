@@ -1352,14 +1352,37 @@ export const CommentResponseWorkflow = ({
         {totalComments > 0 && currentComment && workflowStep !== 'generating' && workflowStep !== 'suggesting_actions' && (
           <div className="pt-3 border-t mt-3">
             {workflowStep === 'idle' && (
-              <div className="flex gap-2">
-                <Button onClick={generateReply} className="flex-1 gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  Gerar Resposta com IA
-                </Button>
-                <Button variant="outline" onClick={skipComment}>
-                  <SkipForward className="h-4 w-4" />
-                </Button>
+              <div className="space-y-3">
+                {/* Quick Emoji Replies */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Rápida:</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {['❤️', '🙏', '👏', '🔥', '💪', '😊', '👍', '✨'].map((emoji) => (
+                      <Button
+                        key={emoji}
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-base hover:scale-110 transition-transform"
+                        onClick={() => {
+                          setEditedReply(emoji);
+                          setWorkflowStep('ready_to_reply');
+                        }}
+                      >
+                        {emoji}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Button onClick={generateReply} className="flex-1 gap-2">
+                    <Sparkles className="h-4 w-4" />
+                    Gerar Resposta com IA
+                  </Button>
+                  <Button variant="outline" onClick={skipComment}>
+                    <SkipForward className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
             

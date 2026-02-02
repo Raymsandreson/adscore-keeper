@@ -1055,14 +1055,37 @@ export const WorkflowFullscreen = ({
           <div className="border-t p-4 bg-background">
             <div className="max-w-3xl mx-auto">
               {workflowStep === 'idle' && (
-                <div className="flex gap-2">
-                  <Button onClick={generateReply} className="flex-1 gap-2" size="lg">
-                    <Sparkles className="h-4 w-4" />
-                    Gerar Resposta com IA
-                  </Button>
-                  <Button variant="outline" onClick={skipComment} size="lg">
-                    <SkipForward className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-3">
+                  {/* Quick Emoji Replies */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">Resposta rápida:</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {['❤️', '🙏', '👏', '🔥', '💪', '😊', '👍', '✨'].map((emoji) => (
+                        <Button
+                          key={emoji}
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-9 p-0 text-lg hover:scale-110 transition-transform"
+                          onClick={() => {
+                            setEditedReply(emoji);
+                            setWorkflowStep('ready_to_reply');
+                          }}
+                        >
+                          {emoji}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button onClick={generateReply} className="flex-1 gap-2" size="lg">
+                      <Sparkles className="h-4 w-4" />
+                      Gerar Resposta com IA
+                    </Button>
+                    <Button variant="outline" onClick={skipComment} size="lg">
+                      <SkipForward className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               )}
               
