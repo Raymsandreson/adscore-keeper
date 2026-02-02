@@ -104,8 +104,15 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
       return cn(pendingConfig?.color, "text-white");
     }
     
-    // Prioridade: delayed > pending > awaiting_validation > edited > completed
-    const statusPriority: ChecklistItemStatus[] = ["delayed", "pending", "awaiting_validation", "edited", "completed"];
+    // Se TODOS os itens estão concluídos, mostra verde
+    const allCompleted = post.checklist.every(item => item.status === "completed");
+    if (allCompleted) {
+      const completedConfig = checklistStatusConfig["completed"];
+      return cn(completedConfig?.color, "text-white");
+    }
+    
+    // Prioridade para itens NÃO concluídos: delayed > pending > awaiting_validation > edited
+    const statusPriority: ChecklistItemStatus[] = ["delayed", "pending", "awaiting_validation", "edited"];
     
     for (const status of statusPriority) {
       if (post.checklist.some(item => item.status === status)) {
