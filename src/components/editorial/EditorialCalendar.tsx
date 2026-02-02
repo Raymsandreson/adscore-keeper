@@ -353,8 +353,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                   variant="outline" 
                   className={cn(
                     config?.className,
-                    "cursor-pointer transition-all hover:scale-105",
-                    statusFilter === key && "ring-2 ring-primary ring-offset-2"
+                    "cursor-pointer transition-all hover:scale-105"
                   )}
                   onClick={() => setStatusFilter(statusFilter === key ? "all" : key)}
                 >
@@ -373,9 +372,9 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
               )}
             </div>
 
-            {/* Legend - Checklist Status */}
+            {/* Legend - Status (previously Checklist) */}
             <div className="flex items-center gap-4 mt-3 flex-wrap">
-              <span className="text-sm text-muted-foreground">Checklist:</span>
+              <span className="text-sm text-muted-foreground">Status:</span>
               {Object.entries(checklistStatusConfig).map(([status, config]) => (
                 <Badge 
                   key={status}
@@ -383,8 +382,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                   className={cn(
                     "gap-1 text-xs cursor-pointer transition-all hover:scale-105", 
                     config.color, 
-                    "text-white border-0",
-                    checklistStatusFilter === status && "ring-2 ring-primary ring-offset-2"
+                    "text-white border-0"
                   )}
                   onClick={() => setChecklistStatusFilter(checklistStatusFilter === status ? "all" : status as ChecklistItemStatus)}
                 >
