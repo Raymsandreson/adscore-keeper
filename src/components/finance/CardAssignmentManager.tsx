@@ -260,7 +260,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                       </SelectTrigger>
                       <SelectContent className="z-[100] bg-popover">
                         <SelectItem value="all">Todos</SelectItem>
-                        {classificationsList.map((c) => (
+                        {classificationsList.filter(c => c.name && c.name.trim() !== '').map((c) => (
                           <SelectItem key={c.id} value={c.name}>
                             <div className="flex items-center gap-2">
                               <div className={`w-2 h-2 rounded-full ${c.color}`} />
@@ -344,7 +344,7 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                       <SelectItem value="none">
                         <span className="text-muted-foreground italic">Nenhuma conta</span>
                       </SelectItem>
-                      {costAccounts.filter(a => a.is_active).map((account) => (
+                      {costAccounts.filter(a => a.is_active && a.id && a.id.trim() !== '').map((account) => (
                         <SelectItem key={account.id} value={account.id}>
                           <div className="flex items-center gap-2">
                             <div className={`w-3 h-3 rounded-full ${account.color}`} />
