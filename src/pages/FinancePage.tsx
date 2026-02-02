@@ -926,6 +926,10 @@ export default function FinancePage() {
                   <TransactionsAggregatedView 
                     transactions={filteredTransactions} 
                     aggregationType={aggregationType}
+                    onPeriodSelect={(start, end) => {
+                      setStartDate(start);
+                      setEndDate(end);
+                    }}
                   />
                 )}
               </TabsContent>

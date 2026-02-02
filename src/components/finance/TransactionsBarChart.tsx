@@ -1,11 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   BarChart, 
   Bar, 
@@ -14,15 +9,13 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  Cell,
-  Legend
+  Cell
 } from 'recharts';
-import { format, startOfWeek, startOfMonth, startOfYear, parseISO, getWeek, getYear } from 'date-fns';
+import { format, startOfWeek, startOfMonth, endOfMonth, parseISO, getWeek, getYear, startOfYear, endOfYear, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, Calendar, CalendarRange, Clock, CreditCard, ChevronDown, X, Wallet } from 'lucide-react';
+import { CalendarDays, Calendar, CalendarRange, Clock } from 'lucide-react';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
-import { useCostAccounts } from '@/hooks/useCostAccounts';
 import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
@@ -51,134 +44,20 @@ type Periodicity = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 interface TransactionsBarChartProps {
   transactions: Transaction[];
+  onPeriodSelect?: (startDate: Date, endDate: Date) => void;
 }
 
-export function TransactionsBarChart({ transactions }: TransactionsBarChartProps) {
+export function TransactionsBarChart({ transactions, onPeriodSelect }: TransactionsBarChartProps) {
   const [periodicity, setPeriodicity] = useState<Periodicity>('monthly');
   const [valueMode, setValueMode] = useState<'installment' | 'total'>('installment');
-  const [selectedCards, setSelectedCards] = useState<string[]>([]);
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
-  const [cardFilterOpen, setCardFilterOpen] = useState(false);
-  const [accountFilterOpen, setAccountFilterOpen] = useState(false);
+  const [selectedBar, setSelectedBar] = useState<string | null>(null);
   
   const { 
     getCategoryById, 
     getTransactionOverride,
-    cardAssignments,
-    overrides,
   } = useExpenseCategories();
   
-  const { accounts } = useCostAccounts();
-  
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
-
-  // Get unique cards from transactions
-  const availableCards = useMemo(() => {
-    const cardsMap: Record<string, { digits: string; name: string; total: number }> = {};
-    
-    transactions.forEach((t) => {
-      if (t.card_last_digits && t.amount > 0) {
-        if (!cardsMap[t.card_last_digits]) {
-          const assignment = cardAssignments.find(a => a.card_last_digits === t.card_last_digits);
-          cardsMap[t.card_last_digits] = {
-            digits: t.card_last_digits,
-            name: assignment?.card_name || `**** ${t.card_last_digits}`,
-            total: 0,
-          };
-        }
-        cardsMap[t.card_last_digits].total += t.amount;
-      }
-    });
-    
-    return Object.values(cardsMap).sort((a, b) => b.total - a.total);
-  }, [transactions, cardAssignments]);
-
-  // Get unique cost accounts from transaction overrides
-  const availableAccounts = useMemo(() => {
-    const accountsMap: Record<string, { id: string; name: string; total: number }> = {};
-    
-    // Add "Sem conta" option
-    accountsMap['sem-conta'] = { id: 'sem-conta', name: 'Sem Conta Vinculada', total: 0 };
-    
-    transactions.forEach((t) => {
-      if (t.amount <= 0) return;
-      
-      const override = overrides.find(o => o.transaction_id === t.id);
-      const costAccountId = override?.cost_account_id;
-      
-      if (costAccountId) {
-        const account = accounts.find(a => a.id === costAccountId);
-        if (account) {
-          if (!accountsMap[costAccountId]) {
-            accountsMap[costAccountId] = { id: costAccountId, name: account.name, total: 0 };
-          }
-          accountsMap[costAccountId].total += t.amount;
-        }
-      } else {
-        accountsMap['sem-conta'].total += t.amount;
-      }
-    });
-    
-    // Remove "sem-conta" if no transactions without account
-    if (accountsMap['sem-conta'].total === 0) {
-      delete accountsMap['sem-conta'];
-    }
-    
-    return Object.values(accountsMap).sort((a, b) => b.total - a.total);
-  }, [transactions, overrides, accounts]);
-
-  // Filter transactions by selected cards and accounts
-  const filteredTransactions = useMemo(() => {
-    let result = transactions;
-    
-    // Filter by cards
-    if (selectedCards.length > 0) {
-      result = result.filter(t => t.card_last_digits && selectedCards.includes(t.card_last_digits));
-    }
-    
-    // Filter by accounts
-    if (selectedAccounts.length > 0) {
-      result = result.filter(t => {
-        const override = overrides.find(o => o.transaction_id === t.id);
-        const costAccountId = override?.cost_account_id || 'sem-conta';
-        return selectedAccounts.includes(costAccountId);
-      });
-    }
-    
-    return result;
-  }, [transactions, selectedCards, selectedAccounts, overrides]);
-
-  const toggleCard = (cardDigits: string) => {
-    setSelectedCards(prev => 
-      prev.includes(cardDigits) 
-        ? prev.filter(c => c !== cardDigits)
-        : [...prev, cardDigits]
-    );
-  };
-
-  const toggleAccount = (accountId: string) => {
-    setSelectedAccounts(prev => 
-      prev.includes(accountId) 
-        ? prev.filter(a => a !== accountId)
-        : [...prev, accountId]
-    );
-  };
-
-  const clearCardFilter = () => {
-    setSelectedCards([]);
-  };
-
-  const clearAccountFilter = () => {
-    setSelectedAccounts([]);
-  };
-
-  const selectAllCards = () => {
-    setSelectedCards(availableCards.map(c => c.digits));
-  };
-
-  const selectAllAccounts = () => {
-    setSelectedAccounts(availableAccounts.map(a => a.id));
-  };
 
   const getTransactionCategory = (transaction: Transaction): ExpenseCategory | null => {
     const override = getTransactionOverride(transaction.id);
@@ -209,37 +88,56 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
   };
 
   const chartData = useMemo(() => {
-    const groups: Record<string, { label: string; installmentTotal: number; purchaseTotal: number; count: number; sortKey: string }> = {};
+    const groups: Record<string, { 
+      label: string; 
+      installmentTotal: number; 
+      purchaseTotal: number; 
+      count: number; 
+      sortKey: string;
+      startDate: Date;
+      endDate: Date;
+    }> = {};
 
-    filteredTransactions.forEach((t) => {
+    transactions.forEach((t) => {
       if (t.amount <= 0) return; // Only expenses
       
       const date = parseISO(t.transaction_date);
       let groupKey: string;
       let label: string;
       let sortKey: string;
+      let startDate: Date;
+      let endDate: Date;
 
       switch (periodicity) {
         case 'daily':
           groupKey = t.transaction_date;
           label = format(date, "dd/MM", { locale: ptBR });
           sortKey = t.transaction_date;
+          startDate = startOfDay(date);
+          endDate = endOfDay(date);
           break;
         case 'weekly':
           const weekStart = startOfWeek(date, { weekStartsOn: 0 });
           groupKey = format(weekStart, 'yyyy-ww');
           label = `Sem ${getWeek(date)}/${getYear(date)}`;
           sortKey = format(weekStart, 'yyyy-MM-dd');
+          startDate = weekStart;
+          endDate = new Date(weekStart);
+          endDate.setDate(endDate.getDate() + 6);
           break;
         case 'monthly':
           groupKey = format(date, 'yyyy-MM');
           label = format(date, "MMM/yy", { locale: ptBR });
           sortKey = groupKey;
+          startDate = startOfMonth(date);
+          endDate = endOfMonth(date);
           break;
         case 'yearly':
           groupKey = format(date, 'yyyy');
           label = format(date, 'yyyy');
           sortKey = groupKey;
+          startDate = startOfYear(date);
+          endDate = endOfYear(date);
           break;
       }
 
@@ -250,6 +148,8 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
           purchaseTotal: 0,
           count: 0,
           sortKey,
+          startDate,
+          endDate,
         };
       }
 
@@ -267,13 +167,26 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
     return Object.entries(groups)
       .sort((a, b) => a[1].sortKey.localeCompare(b[1].sortKey))
       .map(([key, data]) => ({
+        key,
         name: data.label,
         valor: valueMode === 'installment' ? data.installmentTotal : data.purchaseTotal,
         installmentTotal: data.installmentTotal,
         purchaseTotal: data.purchaseTotal,
         count: data.count,
+        startDate: data.startDate,
+        endDate: data.endDate,
       }));
-  }, [filteredTransactions, periodicity, valueMode]);
+  }, [transactions, periodicity, valueMode]);
+
+  const handleBarClick = (data: any) => {
+    if (data && data.activePayload && data.activePayload[0]) {
+      const payload = data.activePayload[0].payload;
+      setSelectedBar(payload.key);
+      if (onPeriodSelect) {
+        onPeriodSelect(payload.startDate, payload.endDate);
+      }
+    }
+  };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -295,13 +208,17 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
               <span className="font-medium">{data.count}</span>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">Clique para selecionar este período</p>
         </div>
       );
     }
     return null;
   };
 
-  const getBarColor = () => {
+  const getBarColor = (key: string) => {
+    if (selectedBar === key) {
+      return 'hsl(var(--primary))';
+    }
     return valueMode === 'installment' ? 'hsl(var(--destructive))' : 'hsl(var(--chart-2))';
   };
 
@@ -362,163 +279,17 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
               </ToggleGroup>
             </div>
           </div>
-          
-          {/* Filters */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Card Filter */}
-            <Popover open={cardFilterOpen} onOpenChange={setCardFilterOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  {selectedCards.length === 0 
-                    ? 'Todos os cartões' 
-                    : selectedCards.length === 1 
-                      ? availableCards.find(c => c.digits === selectedCards[0])?.name || `**** ${selectedCards[0]}`
-                      : `${selectedCards.length} cartões`
-                  }
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0" align="start">
-                <div className="p-3 border-b">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Filtrar por Cartão</span>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={selectAllCards} className="h-7 text-xs">
-                        Todos
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={clearCardFilter} className="h-7 text-xs">
-                        Limpar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <ScrollArea className="max-h-64">
-                  <div className="p-2 space-y-1">
-                    {availableCards.map((card) => (
-                      <div 
-                        key={card.digits}
-                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
-                        onClick={() => toggleCard(card.digits)}
-                      >
-                        <Checkbox 
-                          checked={selectedCards.includes(card.digits)}
-                          onCheckedChange={() => toggleCard(card.digits)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{card.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrencyShort(card.total)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
-            
-            {/* Account Filter */}
-            <Popover open={accountFilterOpen} onOpenChange={setAccountFilterOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2">
-                  <Wallet className="h-4 w-4" />
-                  {selectedAccounts.length === 0 
-                    ? 'Todas as contas' 
-                    : selectedAccounts.length === 1 
-                      ? availableAccounts.find(a => a.id === selectedAccounts[0])?.name || 'Conta'
-                      : `${selectedAccounts.length} contas`
-                  }
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-72 p-0" align="start">
-                <div className="p-3 border-b">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Filtrar por Conta</span>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={selectAllAccounts} className="h-7 text-xs">
-                        Todos
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={clearAccountFilter} className="h-7 text-xs">
-                        Limpar
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <ScrollArea className="max-h-64">
-                  <div className="p-2 space-y-1">
-                    {availableAccounts.map((account) => (
-                      <div 
-                        key={account.id}
-                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
-                        onClick={() => toggleAccount(account.id)}
-                      >
-                        <Checkbox 
-                          checked={selectedAccounts.includes(account.id)}
-                          onCheckedChange={() => toggleAccount(account.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{account.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatCurrencyShort(account.total)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
-            
-            {/* Selected cards badges */}
-            {selectedCards.length > 0 && (
-              <div className="flex items-center gap-1 flex-wrap">
-                {selectedCards.slice(0, 2).map(digits => {
-                  const card = availableCards.find(c => c.digits === digits);
-                  return (
-                    <Badge key={digits} variant="secondary" className="gap-1">
-                      {card?.name || `**** ${digits}`}
-                      <X 
-                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
-                        onClick={() => toggleCard(digits)}
-                      />
-                    </Badge>
-                  );
-                })}
-                {selectedCards.length > 2 && (
-                  <Badge variant="outline">+{selectedCards.length - 2}</Badge>
-                )}
-              </div>
-            )}
-            
-            {/* Selected accounts badges */}
-            {selectedAccounts.length > 0 && (
-              <div className="flex items-center gap-1 flex-wrap">
-                {selectedAccounts.slice(0, 2).map(accountId => {
-                  const account = availableAccounts.find(a => a.id === accountId);
-                  return (
-                    <Badge key={accountId} variant="secondary" className="gap-1">
-                      {account?.name || 'Conta'}
-                      <X 
-                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
-                        onClick={() => toggleAccount(accountId)}
-                      />
-                    </Badge>
-                  );
-                })}
-                {selectedAccounts.length > 2 && (
-                  <Badge variant="outline">+{selectedAccounts.length - 2}</Badge>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+            <BarChart 
+              data={chartData} 
+              margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+              onClick={handleBarClick}
+              style={{ cursor: 'pointer' }}
+            >
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
               <XAxis 
                 dataKey="name" 
@@ -544,7 +315,11 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
                 maxBarSize={50}
               >
                 {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={getBarColor()} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={getBarColor(entry.key)} 
+                    className="cursor-pointer hover:opacity-80 transition-opacity"
+                  />
                 ))}
               </Bar>
             </BarChart>
