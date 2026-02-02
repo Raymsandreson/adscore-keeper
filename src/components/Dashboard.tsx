@@ -174,6 +174,28 @@ const Dashboard = () => {
   
   const refreshMetrics = useAggregated ? refreshAggregatedData : refreshSingleMetrics;
 
+  // Auto-connect on mount if there's a saved account
+  useEffect(() => {
+    if (isConnected) return; // Already connected
+    
+    const saved = localStorage.getItem('meta_saved_accounts');
+    if (saved) {
+      try {
+        const accounts = JSON.parse(saved);
+        if (accounts.length > 0) {
+          const firstAccount = accounts[0];
+          console.log('🔄 [Dashboard] Auto-connecting with saved account:', firstAccount.name);
+          connectToMeta({
+            accessToken: firstAccount.accessToken,
+            accountId: firstAccount.accountId
+          });
+        }
+      } catch (e) {
+        console.error('Error auto-connecting:', e);
+      }
+    }
+  }, []); // Run only on mount
+
   // Debug log para verificar se token está sendo passado para OrganicMetrics
   useEffect(() => {
     console.log('🔧 [Dashboard Debug] Meta config status:', {
