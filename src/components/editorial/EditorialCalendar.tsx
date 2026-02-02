@@ -396,23 +396,6 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
               })}
             </div>
 
-            {/* Legend - Checklist Status */}
-            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30 flex-wrap">
-              <span className="text-sm text-muted-foreground">Legenda:</span>
-              {Object.entries(checklistStatusConfig).map(([status, config]) => (
-                <Badge 
-                  key={status}
-                  variant="outline" 
-                  className={cn(
-                    "gap-1 text-xs", 
-                    config.color, 
-                    "text-white border-0"
-                  )}
-                >
-                  {config.label}
-                </Badge>
-              ))}
-            </div>
           </CardContent>
         </Card>
       </Tabs>
