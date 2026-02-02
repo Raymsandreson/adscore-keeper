@@ -334,14 +334,14 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                     Despesas deste cartão serão atribuídas a esta conta automaticamente
                   </p>
                   <Select 
-                    value={selectedCostAccount} 
-                    onValueChange={setSelectedCostAccount}
+                    value={selectedCostAccount || 'none'} 
+                    onValueChange={(value) => setSelectedCostAccount(value === 'none' ? '' : value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione uma conta..." />
                     </SelectTrigger>
                     <SelectContent className="z-[100] bg-popover">
-                      <SelectItem value="">
+                      <SelectItem value="none">
                         <span className="text-muted-foreground italic">Nenhuma conta</span>
                       </SelectItem>
                       {costAccounts.filter(a => a.is_active).map((account) => (
