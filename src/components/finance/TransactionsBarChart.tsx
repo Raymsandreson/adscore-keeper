@@ -19,9 +19,10 @@ import {
 } from 'recharts';
 import { format, startOfWeek, startOfMonth, startOfYear, parseISO, getWeek, getYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, Calendar, CalendarRange, Clock, CreditCard, ChevronDown, X } from 'lucide-react';
+import { CalendarDays, Calendar, CalendarRange, Clock, CreditCard, ChevronDown, X, Wallet } from 'lucide-react';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
+import { useCostAccounts } from '@/hooks/useCostAccounts';
 import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
@@ -56,13 +57,18 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
   const [periodicity, setPeriodicity] = useState<Periodicity>('monthly');
   const [valueMode, setValueMode] = useState<'installment' | 'total'>('installment');
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [cardFilterOpen, setCardFilterOpen] = useState(false);
+  const [accountFilterOpen, setAccountFilterOpen] = useState(false);
   
   const { 
     getCategoryById, 
     getTransactionOverride,
     cardAssignments,
+    overrides,
   } = useExpenseCategories();
+  
+  const { accounts } = useCostAccounts();
   
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
 
@@ -87,11 +93,60 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
     return Object.values(cardsMap).sort((a, b) => b.total - a.total);
   }, [transactions, cardAssignments]);
 
-  // Filter transactions by selected cards
+  // Get unique cost accounts from transaction overrides
+  const availableAccounts = useMemo(() => {
+    const accountsMap: Record<string, { id: string; name: string; total: number }> = {};
+    
+    // Add "Sem conta" option
+    accountsMap['sem-conta'] = { id: 'sem-conta', name: 'Sem Conta Vinculada', total: 0 };
+    
+    transactions.forEach((t) => {
+      if (t.amount <= 0) return;
+      
+      const override = overrides.find(o => o.transaction_id === t.id);
+      const costAccountId = override?.cost_account_id;
+      
+      if (costAccountId) {
+        const account = accounts.find(a => a.id === costAccountId);
+        if (account) {
+          if (!accountsMap[costAccountId]) {
+            accountsMap[costAccountId] = { id: costAccountId, name: account.name, total: 0 };
+          }
+          accountsMap[costAccountId].total += t.amount;
+        }
+      } else {
+        accountsMap['sem-conta'].total += t.amount;
+      }
+    });
+    
+    // Remove "sem-conta" if no transactions without account
+    if (accountsMap['sem-conta'].total === 0) {
+      delete accountsMap['sem-conta'];
+    }
+    
+    return Object.values(accountsMap).sort((a, b) => b.total - a.total);
+  }, [transactions, overrides, accounts]);
+
+  // Filter transactions by selected cards and accounts
   const filteredTransactions = useMemo(() => {
-    if (selectedCards.length === 0) return transactions;
-    return transactions.filter(t => t.card_last_digits && selectedCards.includes(t.card_last_digits));
-  }, [transactions, selectedCards]);
+    let result = transactions;
+    
+    // Filter by cards
+    if (selectedCards.length > 0) {
+      result = result.filter(t => t.card_last_digits && selectedCards.includes(t.card_last_digits));
+    }
+    
+    // Filter by accounts
+    if (selectedAccounts.length > 0) {
+      result = result.filter(t => {
+        const override = overrides.find(o => o.transaction_id === t.id);
+        const costAccountId = override?.cost_account_id || 'sem-conta';
+        return selectedAccounts.includes(costAccountId);
+      });
+    }
+    
+    return result;
+  }, [transactions, selectedCards, selectedAccounts, overrides]);
 
   const toggleCard = (cardDigits: string) => {
     setSelectedCards(prev => 
@@ -101,12 +156,28 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
     );
   };
 
+  const toggleAccount = (accountId: string) => {
+    setSelectedAccounts(prev => 
+      prev.includes(accountId) 
+        ? prev.filter(a => a !== accountId)
+        : [...prev, accountId]
+    );
+  };
+
   const clearCardFilter = () => {
     setSelectedCards([]);
   };
 
+  const clearAccountFilter = () => {
+    setSelectedAccounts([]);
+  };
+
   const selectAllCards = () => {
     setSelectedCards(availableCards.map(c => c.digits));
+  };
+
+  const selectAllAccounts = () => {
+    setSelectedAccounts(availableAccounts.map(a => a.id));
   };
 
   const getTransactionCategory = (transaction: Transaction): ExpenseCategory | null => {
@@ -292,8 +363,9 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
             </div>
           </div>
           
-          {/* Card Filter */}
+          {/* Filters */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Card Filter */}
             <Popover open={cardFilterOpen} onOpenChange={setCardFilterOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
@@ -346,10 +418,63 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
               </PopoverContent>
             </Popover>
             
+            {/* Account Filter */}
+            <Popover open={accountFilterOpen} onOpenChange={setAccountFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Wallet className="h-4 w-4" />
+                  {selectedAccounts.length === 0 
+                    ? 'Todas as contas' 
+                    : selectedAccounts.length === 1 
+                      ? availableAccounts.find(a => a.id === selectedAccounts[0])?.name || 'Conta'
+                      : `${selectedAccounts.length} contas`
+                  }
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0" align="start">
+                <div className="p-3 border-b">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Filtrar por Conta</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={selectAllAccounts} className="h-7 text-xs">
+                        Todos
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={clearAccountFilter} className="h-7 text-xs">
+                        Limpar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <ScrollArea className="max-h-64">
+                  <div className="p-2 space-y-1">
+                    {availableAccounts.map((account) => (
+                      <div 
+                        key={account.id}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => toggleAccount(account.id)}
+                      >
+                        <Checkbox 
+                          checked={selectedAccounts.includes(account.id)}
+                          onCheckedChange={() => toggleAccount(account.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{account.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrencyShort(account.total)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+            
             {/* Selected cards badges */}
             {selectedCards.length > 0 && (
               <div className="flex items-center gap-1 flex-wrap">
-                {selectedCards.slice(0, 3).map(digits => {
+                {selectedCards.slice(0, 2).map(digits => {
                   const card = availableCards.find(c => c.digits === digits);
                   return (
                     <Badge key={digits} variant="secondary" className="gap-1">
@@ -361,8 +486,29 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
                     </Badge>
                   );
                 })}
-                {selectedCards.length > 3 && (
-                  <Badge variant="outline">+{selectedCards.length - 3}</Badge>
+                {selectedCards.length > 2 && (
+                  <Badge variant="outline">+{selectedCards.length - 2}</Badge>
+                )}
+              </div>
+            )}
+            
+            {/* Selected accounts badges */}
+            {selectedAccounts.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {selectedAccounts.slice(0, 2).map(accountId => {
+                  const account = availableAccounts.find(a => a.id === accountId);
+                  return (
+                    <Badge key={accountId} variant="secondary" className="gap-1">
+                      {account?.name || 'Conta'}
+                      <X 
+                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
+                        onClick={() => toggleAccount(accountId)}
+                      />
+                    </Badge>
+                  );
+                })}
+                {selectedAccounts.length > 2 && (
+                  <Badge variant="outline">+{selectedAccounts.length - 2}</Badge>
                 )}
               </div>
             )}
