@@ -75,6 +75,7 @@ interface GroupData {
 interface TransactionsAggregatedViewProps {
   transactions: Transaction[];
   aggregationType: AggregationType;
+  onPeriodSelect?: (startDate: Date, endDate: Date) => void;
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -89,7 +90,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   calendar: Calendar,
 };
 
-export function TransactionsAggregatedView({ transactions, aggregationType }: TransactionsAggregatedViewProps) {
+export function TransactionsAggregatedView({ transactions, aggregationType, onPeriodSelect }: TransactionsAggregatedViewProps) {
   const { 
     categories, 
     cardAssignments, 
@@ -362,7 +363,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType }: Tr
         </div>
 
         {viewMode === 'chart' ? (
-          <TransactionsBarChart transactions={transactions} />
+          <TransactionsBarChart transactions={transactions} onPeriodSelect={onPeriodSelect} />
         ) : (
           <>
         {/* Controls */}
