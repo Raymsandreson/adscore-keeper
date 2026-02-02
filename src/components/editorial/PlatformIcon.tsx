@@ -1,4 +1,4 @@
-import { Instagram, Facebook, Youtube, Share2 } from "lucide-react";
+import { Instagram, Facebook, Youtube, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Platform } from "@/types/editorial";
 import { platformConfig } from "@/types/editorial";
@@ -46,7 +46,7 @@ export function PlatformIcon({ platform, className }: PlatformIconProps) {
 
   switch (platform) {
     case "all":
-      return <Share2 className={baseClassName} />;
+      return <Globe className={baseClassName} />;
     case "instagram":
       return <Instagram className={baseClassName} />;
     case "facebook":
