@@ -38,8 +38,8 @@ import { PlatformIcon } from "./PlatformIcon";
 import { SettingsDialog } from "./SettingsDialog";
 import { useEditorialSettings } from "@/hooks/useEditorialSettings";
 
-import type { Post, Platform, PostStatus, PostTag } from "@/types/editorial";
-import { platformConfig } from "@/types/editorial";
+import type { Post, Platform, PostStatus, PostTag, ChecklistItemStatus } from "@/types/editorial";
+import { platformConfig, defaultChecklistStatusConfig } from "@/types/editorial";
 
 // Re-export Post type for backward compatibility
 export type { Post } from "@/types/editorial";
@@ -62,6 +62,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
   const [activePlatformTab, setActivePlatformTab] = useState<string>("all");
   const [draggedPost, setDraggedPost] = useState<Post | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [checklistStatusFilter, setChecklistStatusFilter] = useState<ChecklistItemStatus | "all">("all");
   
   const { statusConfig, tags, checklistStatusConfig, updateStatusLabel, updateChecklistStatusLabel, addTag, updateTag, deleteTag } = useEditorialSettings();
 
@@ -77,9 +78,17 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
       if (activePlatformTab !== "all" && post.platform !== activePlatformTab) return false;
       if (platformFilter !== "all" && post.platform !== platformFilter) return false;
       if (statusFilter !== "all" && post.status !== statusFilter) return false;
+      
+      // Filtro por status do checklist
+      if (checklistStatusFilter !== "all") {
+        if (!post.checklist || post.checklist.length === 0) return false;
+        const hasMatchingItem = post.checklist.some(item => item.status === checklistStatusFilter);
+        if (!hasMatchingItem) return false;
+      }
+      
       return true;
     });
-  }, [posts, platformFilter, statusFilter, activePlatformTab]);
+  }, [posts, platformFilter, statusFilter, activePlatformTab, checklistStatusFilter]);
 
   const getPostsForDay = useCallback((day: Date) => {
     return filteredPosts.filter(post => isSameDay(post.scheduled_date, day));
@@ -335,14 +344,63 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
               })}
             </div>
 
-            {/* Legend */}
+            {/* Legend - Post Status */}
             <div className="flex items-center gap-4 mt-4 pt-4 border-t border-border/30 flex-wrap">
-              <span className="text-sm text-muted-foreground">Legenda:</span>
+              <span className="text-sm text-muted-foreground">Status:</span>
               {Object.entries(statusConfig).map(([key, config]) => (
-                <Badge key={key} variant="outline" className={config?.className}>
+                <Badge 
+                  key={key} 
+                  variant="outline" 
+                  className={cn(
+                    config?.className,
+                    "cursor-pointer transition-all hover:scale-105",
+                    statusFilter === key && "ring-2 ring-primary ring-offset-2"
+                  )}
+                  onClick={() => setStatusFilter(statusFilter === key ? "all" : key)}
+                >
                   {config?.label}
                 </Badge>
               ))}
+              {statusFilter !== "all" && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setStatusFilter("all")}
+                  className="h-6 px-2 text-xs"
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+
+            {/* Legend - Checklist Status */}
+            <div className="flex items-center gap-4 mt-3 flex-wrap">
+              <span className="text-sm text-muted-foreground">Checklist:</span>
+              {Object.entries(checklistStatusConfig).map(([status, config]) => (
+                <Badge 
+                  key={status}
+                  variant="outline" 
+                  className={cn(
+                    "gap-1 text-xs cursor-pointer transition-all hover:scale-105", 
+                    config.color, 
+                    "text-white border-0",
+                    checklistStatusFilter === status && "ring-2 ring-primary ring-offset-2"
+                  )}
+                  onClick={() => setChecklistStatusFilter(checklistStatusFilter === status ? "all" : status as ChecklistItemStatus)}
+                >
+                  {config.label}
+                </Badge>
+              ))}
+              {checklistStatusFilter !== "all" && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setChecklistStatusFilter("all")}
+                  className="h-6 px-2 text-xs"
+                >
+                  Limpar
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
