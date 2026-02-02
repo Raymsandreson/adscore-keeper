@@ -604,17 +604,17 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                   Conta
                 </label>
                 <Select 
-                  value={selectedCostAccount} 
-                  onValueChange={setSelectedCostAccount}
+                  value={selectedCostAccount || 'none'} 
+                  onValueChange={(val) => setSelectedCostAccount(val === 'none' ? '' : val)}
                 >
                   <SelectTrigger className="rounded-xl">
                     <SelectValue placeholder="Selecione uma conta..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">
+                    <SelectItem value="none">
                       <span className="text-muted-foreground italic">Nenhuma conta</span>
                     </SelectItem>
-                    {costAccounts.filter(a => a.is_active).map((account) => (
+                    {costAccounts.filter(a => a.is_active && a.id && a.id.trim() !== '').map((account) => (
                       <SelectItem key={account.id} value={account.id}>
                         <div className="flex items-center gap-2">
                           <div className={`w-3 h-3 rounded-full ${account.color}`} />
