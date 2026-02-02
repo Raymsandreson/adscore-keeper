@@ -159,21 +159,48 @@ async function getTransactions(
   from?: string,
   to?: string
 ): Promise<PluggyTransaction[]> {
-  let url = `${PLUGGY_API_URL}/transactions?accountId=${accountId}&pageSize=500`;
-  if (from) url += `&from=${from}`;
-  if (to) url += `&to=${to}`;
+  const allTransactions: PluggyTransaction[] = [];
+  let page = 1;
+  let hasMore = true;
+  const pageSize = 500;
 
-  const response = await fetch(url, {
-    headers: { 'X-API-KEY': apiKey },
-  });
+  while (hasMore) {
+    let url = `${PLUGGY_API_URL}/transactions?accountId=${accountId}&pageSize=${pageSize}&page=${page}`;
+    if (from) url += `&from=${from}`;
+    if (to) url += `&to=${to}`;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to get transactions: ${error}`);
+    console.log(`Fetching transactions page ${page} for account ${accountId}...`);
+
+    const response = await fetch(url, {
+      headers: { 'X-API-KEY': apiKey },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get transactions: ${error}`);
+    }
+
+    const data = await response.json();
+    const results = data.results || [];
+    allTransactions.push(...results);
+
+    console.log(`Page ${page}: fetched ${results.length} transactions (total: ${allTransactions.length})`);
+
+    // Check if there are more pages
+    // Pluggy returns total and totalPages in the response
+    const totalPages = data.totalPages || 1;
+    hasMore = page < totalPages;
+    page++;
+
+    // Safety limit to prevent infinite loops
+    if (page > 100) {
+      console.warn('Reached page limit (100), stopping pagination');
+      break;
+    }
   }
 
-  const data = await response.json();
-  return data.results || [];
+  console.log(`Total transactions fetched for account ${accountId}: ${allTransactions.length}`);
+  return allTransactions;
 }
 
 async function getItem(apiKey: string, itemId: string) {
