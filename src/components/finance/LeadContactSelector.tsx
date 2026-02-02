@@ -501,6 +501,22 @@ export function LeadContactSelector({
           
           <ScrollArea className="h-40 border rounded-lg">
             <div className="p-2 space-y-1">
+              {/* Option for no lead linked */}
+              <div
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                  selectedLead === null 
+                    ? 'bg-muted font-medium' 
+                    : 'hover:bg-muted/50'
+                }`}
+                onClick={() => onSelectLead(null)}
+              >
+                <div className="font-medium flex items-center gap-2 text-muted-foreground italic">
+                  <X className="h-4 w-4" />
+                  Nenhum Lead Vinculado
+                  {selectedLead === null && <Check className="h-4 w-4" />}
+                </div>
+              </div>
+              
               {filteredLeads.map(lead => (
                 <div
                   key={lead.id}
@@ -607,6 +623,22 @@ export function LeadContactSelector({
 
           <ScrollArea className="h-40 border rounded-lg">
             <div className="p-2 space-y-1">
+              {/* Option for no contact linked */}
+              <div
+                className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                  selectedContact === null 
+                    ? 'bg-muted font-medium' 
+                    : 'hover:bg-muted/50'
+                }`}
+                onClick={() => onSelectContact(null)}
+              >
+                <div className="font-medium flex items-center gap-2 text-muted-foreground italic">
+                  <X className="h-4 w-4" />
+                  Nenhum Contato Vinculado
+                  {selectedContact === null && <Check className="h-4 w-4" />}
+                </div>
+              </div>
+              
               {filteredContacts.map(contact => (
                 <div
                   key={contact.id}
