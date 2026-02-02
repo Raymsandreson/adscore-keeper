@@ -96,6 +96,25 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
     return filteredPosts.filter(post => isSameDay(post.scheduled_date, day));
   }, [filteredPosts]);
 
+  // Função para determinar a cor do card baseado no status do checklist
+  const getPostColorByChecklist = useCallback((post: Post) => {
+    if (!post.checklist || post.checklist.length === 0) {
+      return "bg-muted/80 text-foreground"; // Cor neutra se não tem checklist
+    }
+    
+    // Prioridade: delayed > pending > awaiting_validation > edited > completed
+    const statusPriority: ChecklistItemStatus[] = ["delayed", "pending", "awaiting_validation", "edited", "completed"];
+    
+    for (const status of statusPriority) {
+      if (post.checklist.some(item => item.status === status)) {
+        const config = checklistStatusConfig[status];
+        return cn(config?.color, "text-white");
+      }
+    }
+    
+    return "bg-muted/80 text-foreground";
+  }, [checklistStatusConfig]);
+
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
@@ -328,7 +347,7 @@ export function EditorialCalendar({ posts, onAddPost, onUpdatePost, onDeletePost
                           onClick={(e) => handlePostClick(post, e)}
                           className={cn(
                             "text-xs p-1.5 rounded cursor-grab active:cursor-grabbing transition-all hover:scale-[1.02] group/post",
-                            statusConfig[post.status]?.className
+                            getPostColorByChecklist(post)
                           )}
                         >
                           <div className="flex items-center gap-1">
