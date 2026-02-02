@@ -185,13 +185,13 @@ export function CardAssignmentManager({ availableCards }: CardAssignmentManagerP
                 Vincular Cartão
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
               <DialogHeader>
                 <DialogTitle>
                   {editingAssignment ? 'Editar Vínculo' : 'Vincular Cartão a Contato'}
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-y-auto flex-1 pr-2">
                 {!editingAssignment && (
                   <div>
                     <Label>Cartão</Label>
