@@ -1,4 +1,4 @@
-export type Platform = "instagram" | "tiktok" | "facebook" | "kwai" | "youtube";
+export type Platform = "instagram" | "tiktok" | "facebook" | "kwai" | "youtube" | "all";
 export type PostStatus = "draft" | "scheduled" | "published" | "failed";
 export type ContentType = "image" | "video" | "carousel" | "reels" | "story" | "shorts" | "live";
 export type ChecklistItemStatus = "completed" | "pending" | "delayed" | "edited" | "awaiting_validation";
@@ -59,6 +59,7 @@ export const defaultChecklistStatusConfig: Record<ChecklistItemStatus, Checklist
 };
 
 export const platformConfig: Record<Platform, { label: string; color: string; bgColor: string }> = {
+  all: { label: "Todas as Redes", color: "text-primary", bgColor: "bg-primary/20" },
   instagram: { label: "Instagram", color: "text-pink-500", bgColor: "bg-pink-500/20" },
   tiktok: { label: "TikTok", color: "text-slate-900 dark:text-white", bgColor: "bg-slate-900/20 dark:bg-white/20" },
   facebook: { label: "Facebook", color: "text-blue-600", bgColor: "bg-blue-600/20" },
