@@ -1241,17 +1241,39 @@ export const CommentResponseWorkflow = ({
 
               {(workflowStep === 'ready_to_reply' || workflowStep === 'replying') && (
                 <div className="space-y-3">
+                  {/* AI Reply Section Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Bot className="h-4 w-4 text-primary" />
+                      <span>Resposta {generatedReply ? 'gerada pela IA' : 'para enviar'}</span>
+                    </div>
+                    {generatedReply && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => {
+                          setEditedReply(generatedReply);
+                        }}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Restaurar original
+                      </Button>
+                    )}
+                  </div>
+                  
                   <Textarea
                     value={editedReply}
                     onChange={(e) => setEditedReply(e.target.value)}
-                    rows={3}
-                    className="resize-none"
-                    placeholder="Edite a resposta se necessário..."
+                    rows={4}
+                    className="resize-none text-sm"
+                    placeholder="Digite ou edite sua resposta aqui..."
+                    autoFocus
                   />
                   
                   {alternatives.length > 0 && (
                     <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground">Alternativas:</label>
+                      <label className="text-xs text-muted-foreground">Alternativas sugeridas:</label>
                       <div className="flex flex-wrap gap-2">
                         {alternatives.map((alt, index) => (
                           <button
