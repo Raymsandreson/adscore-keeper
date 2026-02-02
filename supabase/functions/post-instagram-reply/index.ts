@@ -34,17 +34,19 @@ serve(async (req) => {
     console.log(`📤 Postando resposta para comentário ${commentId}...`);
 
     // Post reply to the comment using Instagram Graph API
+    // Using URL-encoded form data format which is more reliable
+    const params = new URLSearchParams();
+    params.append("message", message.trim());
+    params.append("access_token", token);
+
     const response = await fetch(
       `https://graph.facebook.com/v21.0/${commentId}/replies`,
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: JSON.stringify({
-          message: message.trim(),
-          access_token: token,
-        }),
+        body: params.toString(),
       }
     );
 
@@ -63,8 +65,11 @@ serve(async (req) => {
       if (data.error.code === 368) {
         throw new Error("Ação bloqueada temporariamente pelo Instagram. Tente novamente mais tarde.");
       }
+      if (data.error.code === 20 && data.error.error_subcode === 1772107) {
+        throw new Error("Não foi possível adicionar o comentário. O post pode estar arquivado ou com comentários desativados.");
+      }
       
-      throw new Error(data.error.message || "Erro ao postar resposta");
+      throw new Error(data.error.error_user_msg || data.error.message || "Erro ao postar resposta");
     }
 
     console.log(`✅ Resposta postada com sucesso! ID: ${data.id}`);
