@@ -1,4 +1,4 @@
-import { Instagram, Facebook, Youtube } from "lucide-react";
+import { Instagram, Facebook, Youtube, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Platform } from "@/types/editorial";
 import { platformConfig } from "@/types/editorial";
@@ -45,6 +45,8 @@ export function PlatformIcon({ platform, className }: PlatformIconProps) {
   const baseClassName = cn(config.color, className);
 
   switch (platform) {
+    case "all":
+      return <Globe className={baseClassName} />;
     case "instagram":
       return <Instagram className={baseClassName} />;
     case "facebook":

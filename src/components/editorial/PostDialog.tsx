@@ -221,7 +221,7 @@ export function PostDialog({
     onSave(formData);
   };
 
-  const platforms: Platform[] = ["instagram", "tiktok", "facebook", "kwai", "youtube"];
+  const platforms: Platform[] = ["all", "instagram", "tiktok", "facebook", "kwai", "youtube"];
   const contentTypes: ContentType[] = ["image", "video", "carousel", "reels", "story", "shorts", "live"];
 
   return (
