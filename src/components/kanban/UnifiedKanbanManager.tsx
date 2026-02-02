@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Search,
   Instagram,
+  FileText,
 } from 'lucide-react';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
@@ -40,6 +41,7 @@ import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
 import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
+import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -49,6 +51,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   
   // New lead form state
@@ -261,6 +264,13 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
+
+          {selectedBoard && (
+            <Button variant="outline" onClick={() => setShowReport(true)}>
+              <FileText className="h-4 w-4 mr-2" />
+              Relatório
+            </Button>
+          )}
           
           <Button variant="outline" onClick={() => setShowImportInstagram(true)}>
             <Instagram className="h-4 w-4 mr-2" />
@@ -469,6 +479,17 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         adAccountId={adAccountId}
         boards={boards}
       />
+
+      {/* Kanban Report Dialog */}
+      {selectedBoard && (
+        <KanbanReportDialog
+          open={showReport}
+          onOpenChange={setShowReport}
+          board={selectedBoard}
+          leads={boardLeads}
+          leadsPerStage={leadsPerStage}
+        />
+      )}
     </div>
   );
 }
