@@ -1357,7 +1357,7 @@ export const CommentResponseWorkflow = ({
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">Rápida:</span>
                   <div className="flex gap-1 flex-wrap">
-                    {['❤️', '🙏', '👏', '🔥', '💪', '😊', '👍', '✨'].map((emoji) => (
+                    {['❤️', '💙', '🙏', '👏', '🔥', '💪', '😊', '👍', '✨'].map((emoji) => (
                       <Button
                         key={emoji}
                         variant="outline"
