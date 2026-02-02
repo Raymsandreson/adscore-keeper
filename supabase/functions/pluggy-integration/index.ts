@@ -321,23 +321,12 @@ serve(async (req) => {
           for (const account of creditAccounts) {
             const transactions = await getTransactions(apiKey, account.id, from, to);
             
-            // Process transactions with CNPJ lookup for missing location data
-            const formattedTransactions = [];
-            for (const t of transactions) {
-              let city = t.merchant?.city || null;
-              let state = t.merchant?.state || null;
+            // Process transactions WITHOUT CNPJ lookup (too slow, causes timeout)
+            // Location enrichment can be done separately via enrich-transactions-location function
+            const formattedTransactions = transactions.map(t => {
+              const city = t.merchant?.city || null;
+              const state = t.merchant?.state || null;
               const cnpj = t.merchant?.cnpj || null;
-              
-              // If we have CNPJ but missing city/state, lookup via BrasilAPI
-              if (cnpj && (!city || !state)) {
-                console.log(`Looking up CNPJ ${cnpj} for location data...`);
-                const location = await lookupCNPJLocation(cnpj);
-                if (location.city) city = location.city;
-                if (location.state) state = location.state;
-                
-                // Add small delay to respect rate limits
-                await new Promise(resolve => setTimeout(resolve, 100));
-              }
               
               // Extract installment info from creditCardMetadata
               const installmentNumber = t.creditCardMetadata?.installmentNumber || null;
@@ -346,7 +335,7 @@ serve(async (req) => {
                 ? t.creditCardMetadata.purchaseDate.split('T')[0] 
                 : null;
               
-              formattedTransactions.push({
+              return {
                 user_id: user.id,
                 pluggy_account_id: account.id,
                 pluggy_transaction_id: t.id,
@@ -364,8 +353,10 @@ serve(async (req) => {
                 installment_number: installmentNumber,
                 total_installments: totalInstallments,
                 original_purchase_date: originalPurchaseDate,
-              });
-            }
+              };
+            });
+            
+            console.log(`Account ${account.id}: ${formattedTransactions.length} transactions to save`);
 
             if (formattedTransactions.length > 0) {
               const { error: upsertError } = await supabase
