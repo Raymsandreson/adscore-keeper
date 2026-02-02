@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   BarChart, 
   Bar, 
@@ -14,7 +19,7 @@ import {
 } from 'recharts';
 import { format, startOfWeek, startOfMonth, startOfYear, parseISO, getWeek, getYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, Calendar, CalendarRange, Clock } from 'lucide-react';
+import { CalendarDays, Calendar, CalendarRange, Clock, CreditCard, ChevronDown, X } from 'lucide-react';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
 import { translateCategory } from '@/utils/categoryTranslations';
@@ -50,13 +55,59 @@ interface TransactionsBarChartProps {
 export function TransactionsBarChart({ transactions }: TransactionsBarChartProps) {
   const [periodicity, setPeriodicity] = useState<Periodicity>('monthly');
   const [valueMode, setValueMode] = useState<'installment' | 'total'>('installment');
+  const [selectedCards, setSelectedCards] = useState<string[]>([]);
+  const [cardFilterOpen, setCardFilterOpen] = useState(false);
   
   const { 
     getCategoryById, 
     getTransactionOverride,
+    cardAssignments,
   } = useExpenseCategories();
   
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
+
+  // Get unique cards from transactions
+  const availableCards = useMemo(() => {
+    const cardsMap: Record<string, { digits: string; name: string; total: number }> = {};
+    
+    transactions.forEach((t) => {
+      if (t.card_last_digits && t.amount > 0) {
+        if (!cardsMap[t.card_last_digits]) {
+          const assignment = cardAssignments.find(a => a.card_last_digits === t.card_last_digits);
+          cardsMap[t.card_last_digits] = {
+            digits: t.card_last_digits,
+            name: assignment?.card_name || `**** ${t.card_last_digits}`,
+            total: 0,
+          };
+        }
+        cardsMap[t.card_last_digits].total += t.amount;
+      }
+    });
+    
+    return Object.values(cardsMap).sort((a, b) => b.total - a.total);
+  }, [transactions, cardAssignments]);
+
+  // Filter transactions by selected cards
+  const filteredTransactions = useMemo(() => {
+    if (selectedCards.length === 0) return transactions;
+    return transactions.filter(t => t.card_last_digits && selectedCards.includes(t.card_last_digits));
+  }, [transactions, selectedCards]);
+
+  const toggleCard = (cardDigits: string) => {
+    setSelectedCards(prev => 
+      prev.includes(cardDigits) 
+        ? prev.filter(c => c !== cardDigits)
+        : [...prev, cardDigits]
+    );
+  };
+
+  const clearCardFilter = () => {
+    setSelectedCards([]);
+  };
+
+  const selectAllCards = () => {
+    setSelectedCards(availableCards.map(c => c.digits));
+  };
 
   const getTransactionCategory = (transaction: Transaction): ExpenseCategory | null => {
     const override = getTransactionOverride(transaction.id);
@@ -89,7 +140,7 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
   const chartData = useMemo(() => {
     const groups: Record<string, { label: string; installmentTotal: number; purchaseTotal: number; count: number; sortKey: string }> = {};
 
-    transactions.forEach((t) => {
+    filteredTransactions.forEach((t) => {
       if (t.amount <= 0) return; // Only expenses
       
       const date = parseISO(t.transaction_date);
@@ -151,7 +202,7 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
         purchaseTotal: data.purchaseTotal,
         count: data.count,
       }));
-  }, [transactions, periodicity, valueMode]);
+  }, [filteredTransactions, periodicity, valueMode]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -193,41 +244,128 @@ export function TransactionsBarChart({ transactions }: TransactionsBarChartProps
     );
   }
 
+  const formatCurrencyShort = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
   return (
     <Card>
       <CardHeader className="pb-2">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <CardTitle className="text-lg">Gastos por Período</CardTitle>
-          <div className="flex flex-col sm:flex-row gap-2">
-            {/* Value Mode */}
-            <ToggleGroup type="single" value={valueMode} onValueChange={(v) => v && setValueMode(v as typeof valueMode)} size="sm">
-              <ToggleGroupItem value="installment" aria-label="Valor da parcela">
-                Parcelas
-              </ToggleGroupItem>
-              <ToggleGroupItem value="total" aria-label="Valor total da compra">
-                Compras
-              </ToggleGroupItem>
-            </ToggleGroup>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle className="text-lg">Gastos por Período</CardTitle>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {/* Value Mode */}
+              <ToggleGroup type="single" value={valueMode} onValueChange={(v) => v && setValueMode(v as typeof valueMode)} size="sm">
+                <ToggleGroupItem value="installment" aria-label="Valor da parcela">
+                  Parcelas
+                </ToggleGroupItem>
+                <ToggleGroupItem value="total" aria-label="Valor total da compra">
+                  Compras
+                </ToggleGroupItem>
+              </ToggleGroup>
+              
+              {/* Periodicity */}
+              <ToggleGroup type="single" value={periodicity} onValueChange={(v) => v && setPeriodicity(v as Periodicity)} size="sm">
+                <ToggleGroupItem value="daily" aria-label="Diário">
+                  <Clock className="h-4 w-4 mr-1" />
+                  Dia
+                </ToggleGroupItem>
+                <ToggleGroupItem value="weekly" aria-label="Semanal">
+                  <CalendarDays className="h-4 w-4 mr-1" />
+                  Semana
+                </ToggleGroupItem>
+                <ToggleGroupItem value="monthly" aria-label="Mensal">
+                  <Calendar className="h-4 w-4 mr-1" />
+                  Mês
+                </ToggleGroupItem>
+                <ToggleGroupItem value="yearly" aria-label="Anual">
+                  <CalendarRange className="h-4 w-4 mr-1" />
+                  Ano
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
+          
+          {/* Card Filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Popover open={cardFilterOpen} onOpenChange={setCardFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  {selectedCards.length === 0 
+                    ? 'Todos os cartões' 
+                    : selectedCards.length === 1 
+                      ? availableCards.find(c => c.digits === selectedCards[0])?.name || `**** ${selectedCards[0]}`
+                      : `${selectedCards.length} cartões`
+                  }
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0" align="start">
+                <div className="p-3 border-b">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Filtrar por Cartão</span>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={selectAllCards} className="h-7 text-xs">
+                        Todos
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={clearCardFilter} className="h-7 text-xs">
+                        Limpar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <ScrollArea className="max-h-64">
+                  <div className="p-2 space-y-1">
+                    {availableCards.map((card) => (
+                      <div 
+                        key={card.digits}
+                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => toggleCard(card.digits)}
+                      >
+                        <Checkbox 
+                          checked={selectedCards.includes(card.digits)}
+                          onCheckedChange={() => toggleCard(card.digits)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{card.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatCurrencyShort(card.total)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
             
-            {/* Periodicity */}
-            <ToggleGroup type="single" value={periodicity} onValueChange={(v) => v && setPeriodicity(v as Periodicity)} size="sm">
-              <ToggleGroupItem value="daily" aria-label="Diário">
-                <Clock className="h-4 w-4 mr-1" />
-                Dia
-              </ToggleGroupItem>
-              <ToggleGroupItem value="weekly" aria-label="Semanal">
-                <CalendarDays className="h-4 w-4 mr-1" />
-                Semana
-              </ToggleGroupItem>
-              <ToggleGroupItem value="monthly" aria-label="Mensal">
-                <Calendar className="h-4 w-4 mr-1" />
-                Mês
-              </ToggleGroupItem>
-              <ToggleGroupItem value="yearly" aria-label="Anual">
-                <CalendarRange className="h-4 w-4 mr-1" />
-                Ano
-              </ToggleGroupItem>
-            </ToggleGroup>
+            {/* Selected cards badges */}
+            {selectedCards.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {selectedCards.slice(0, 3).map(digits => {
+                  const card = availableCards.find(c => c.digits === digits);
+                  return (
+                    <Badge key={digits} variant="secondary" className="gap-1">
+                      {card?.name || `**** ${digits}`}
+                      <X 
+                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
+                        onClick={() => toggleCard(digits)}
+                      />
+                    </Badge>
+                  );
+                })}
+                {selectedCards.length > 3 && (
+                  <Badge variant="outline">+{selectedCards.length - 3}</Badge>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
