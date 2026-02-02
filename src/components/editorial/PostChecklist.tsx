@@ -189,8 +189,7 @@ export function PostChecklist({ checklist, onChange, checklistStatusConfig, read
                   "gap-1 text-xs cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-primary/50", 
                   config.color, 
                   "text-white border-0",
-                  selectedStatus === status && "ring-2 ring-primary ring-offset-1",
-                  !newItemLabel.trim() && "opacity-50 cursor-not-allowed"
+                  selectedStatus === status && "ring-2 ring-primary ring-offset-1"
                 )}
                 onClick={() => {
                   if (newItemLabel.trim()) {
