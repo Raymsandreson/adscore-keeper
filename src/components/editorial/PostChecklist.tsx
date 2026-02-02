@@ -31,16 +31,18 @@ const statusIcons: Record<ChecklistItemStatus, React.ReactNode> = {
 
 export function PostChecklist({ checklist, onChange, checklistStatusConfig, readOnly = false }: PostChecklistProps) {
   const [newItemLabel, setNewItemLabel] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<ChecklistItemStatus>("pending");
 
-  const handleAddItem = () => {
+  const handleAddItem = (status?: ChecklistItemStatus) => {
     if (!newItemLabel.trim()) return;
     const newItem: ChecklistItem = {
       id: String(Date.now()),
       label: newItemLabel.trim(),
-      status: "pending",
+      status: status || selectedStatus,
     };
     onChange([...checklist, newItem]);
     setNewItemLabel("");
+    setSelectedStatus("pending"); // Reset to default
   };
 
   const handleRemoveItem = (id: string) => {
@@ -158,26 +160,57 @@ export function PostChecklist({ checklist, onChange, checklistStatusConfig, read
 
       {/* Add New Item */}
       {!readOnly && (
-        <div className="flex gap-2">
-          <Input
-            placeholder="Nova atividade..."
-            value={newItemLabel}
-            onChange={(e) => setNewItemLabel(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddItem()}
-            className="flex-1"
-          />
-          <Button 
-            onClick={handleAddItem}
-            size="sm"
-            disabled={!newItemLabel.trim()}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Nova atividade..."
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddItem()}
+              className="flex-1"
+            />
+            <Button 
+              onClick={() => handleAddItem()}
+              size="sm"
+              disabled={!newItemLabel.trim()}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          {/* Clickable status badges to add with specific status */}
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs text-muted-foreground self-center">Adicionar como:</span>
+            {Object.entries(checklistStatusConfig).map(([status, config]) => (
+              <Badge 
+                key={status}
+                variant="outline" 
+                className={cn(
+                  "gap-1 text-xs cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-primary/50", 
+                  config.color, 
+                  "text-white border-0",
+                  selectedStatus === status && "ring-2 ring-primary ring-offset-1",
+                  !newItemLabel.trim() && "opacity-50 cursor-not-allowed"
+                )}
+                onClick={() => {
+                  if (newItemLabel.trim()) {
+                    handleAddItem(status as ChecklistItemStatus);
+                  } else {
+                    setSelectedStatus(status as ChecklistItemStatus);
+                  }
+                }}
+              >
+                {statusIcons[status as ChecklistItemStatus]}
+                {config.label}
+              </Badge>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Status Legend */}
       <div className="flex flex-wrap gap-2 pt-2 border-t">
+        <span className="text-xs text-muted-foreground self-center">Legenda:</span>
         {Object.entries(checklistStatusConfig).map(([status, config]) => (
           <Badge 
             key={status}
