@@ -64,6 +64,8 @@ import { useContactClassifications } from "@/hooks/useContactClassifications";
 import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
+import { OutboundCommentDialog } from "./OutboundCommentDialog";
+import { MessageSquarePlus } from "lucide-react";
 
 interface Comment {
   id: string;
@@ -996,6 +998,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     }).length;
   }, [comments, dateFrom, dateTo]);
 
+  const outboundCount = useMemo(() => {
+    return comments.filter(c => {
+      if (c.comment_type !== 'outbound_manual') return false;
+      
+      if (dateFrom || dateTo) {
+        const commentDate = new Date(c.created_at);
+        if (dateFrom && commentDate < startOfDay(dateFrom)) return false;
+        if (dateTo && commentDate > endOfDay(dateTo)) return false;
+      }
+      
+      return true;
+    }).length;
+  }, [comments, dateFrom, dateTo]);
+
   // Workflow Performance Stats
   const workflowStats = useMemo(() => {
     const receivedComments = comments.filter(c => c.comment_type === 'received');
@@ -1315,6 +1331,16 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                   Converter Todos em Leads
                 </Button>
               )}
+              
+              {/* Outbound Comment Registration Button */}
+              <OutboundCommentDialog
+                accounts={selectedAccounts}
+                onSuccess={() => {
+                  fetchComments();
+                  fetchStats();
+                }}
+              />
+              
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm">
@@ -1780,8 +1806,8 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
             </div>
           </div>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'received' | 'sent')}>
-            <TabsList className="grid w-full grid-cols-2 max-w-xs">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'received' | 'sent' | 'outbound_manual')}>
+            <TabsList className="grid w-full grid-cols-3 max-w-md">
               <TabsTrigger value="received" className="gap-2">
                 <Inbox className="h-4 w-4" />
                 Recebidos
@@ -1794,6 +1820,13 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 Enviados
                 <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
                   {sentCount}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="outbound_manual" className="gap-2">
+                <MessageSquarePlus className="h-4 w-4" />
+                Outbound
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                  {outboundCount}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -1809,7 +1842,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                   <p className="text-muted-foreground">
                     {hasActiveFilters 
                       ? 'Nenhum comentário encontrado com os filtros aplicados'
-                      : `Nenhum comentário ${activeTab === 'received' ? 'recebido' : 'enviado'} registrado`
+                      : `Nenhum comentário ${activeTab === 'received' ? 'recebido' : activeTab === 'sent' ? 'enviado' : 'outbound'} registrado`
                     }
                   </p>
                   {hasActiveFilters && (
