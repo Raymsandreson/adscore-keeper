@@ -29,6 +29,8 @@ import {
   Instagram,
   FileText,
 } from 'lucide-react';
+import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
@@ -53,13 +55,35 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [showImportInstagram, setShowImportInstagram] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [showExtractor, setShowExtractor] = useState(false);
   
-  // New lead form state
-  const [newLeadName, setNewLeadName] = useState('');
-  const [newLeadPhone, setNewLeadPhone] = useState('');
-  const [newLeadEmail, setNewLeadEmail] = useState('');
-  const [newLeadNotes, setNewLeadNotes] = useState('');
-  const [newLeadSource, setNewLeadSource] = useState('manual');
+  // New lead form state - expanded for accident cases
+  const [newLeadFormData, setNewLeadFormData] = useState<AccidentLeadFormData>({
+    lead_name: '',
+    lead_phone: '',
+    lead_email: '',
+    source: 'manual',
+    notes: '',
+    acolhedor: '',
+    case_type: '',
+    group_link: '',
+    visit_city: '',
+    visit_state: '',
+    visit_region: '',
+    visit_address: '',
+    accident_date: '',
+    damage_description: '',
+    victim_name: '',
+    victim_age: '',
+    accident_address: '',
+    contractor_company: '',
+    main_company: '',
+    sector: '',
+    news_link: '',
+    company_size_justification: '',
+    liability_type: '',
+    legal_viability: '',
+  });
 
   // Kanban boards hook
   const {
@@ -206,7 +230,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   };
 
   const handleAddLead = async () => {
-    if (!newLeadName.trim()) {
+    if (!newLeadFormData.lead_name.trim()) {
       toast.error('Nome é obrigatório');
       return;
     }
@@ -214,22 +238,85 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     const firstStage = selectedBoard?.stages[0]?.id || 'new';
     
     await addLead({
-      lead_name: newLeadName,
-      lead_phone: newLeadPhone || null,
-      lead_email: newLeadEmail || null,
-      notes: newLeadNotes || null,
-      source: newLeadSource,
+      lead_name: newLeadFormData.lead_name,
+      lead_phone: newLeadFormData.lead_phone || null,
+      lead_email: newLeadFormData.lead_email || null,
+      notes: newLeadFormData.notes || null,
+      source: newLeadFormData.source,
       status: firstStage as LeadStatus,
       board_id: selectedBoardId,
+      // Accident-specific fields
+      acolhedor: newLeadFormData.acolhedor || null,
+      case_type: newLeadFormData.case_type || null,
+      group_link: newLeadFormData.group_link || null,
+      visit_city: newLeadFormData.visit_city || null,
+      visit_state: newLeadFormData.visit_state || null,
+      visit_region: newLeadFormData.visit_region || null,
+      visit_address: newLeadFormData.visit_address || null,
+      accident_date: newLeadFormData.accident_date || null,
+      damage_description: newLeadFormData.damage_description || null,
+      victim_name: newLeadFormData.victim_name || null,
+      victim_age: newLeadFormData.victim_age ? parseInt(newLeadFormData.victim_age) : null,
+      accident_address: newLeadFormData.accident_address || null,
+      contractor_company: newLeadFormData.contractor_company || null,
+      main_company: newLeadFormData.main_company || null,
+      sector: newLeadFormData.sector || null,
+      news_link: newLeadFormData.news_link || null,
+      company_size_justification: newLeadFormData.company_size_justification || null,
+      liability_type: newLeadFormData.liability_type || null,
+      legal_viability: newLeadFormData.legal_viability || null,
     } as Partial<Lead>);
 
     // Reset form
-    setNewLeadName('');
-    setNewLeadPhone('');
-    setNewLeadEmail('');
-    setNewLeadNotes('');
-    setNewLeadSource('manual');
+    setNewLeadFormData({
+      lead_name: '',
+      lead_phone: '',
+      lead_email: '',
+      source: 'manual',
+      notes: '',
+      acolhedor: '',
+      case_type: '',
+      group_link: '',
+      visit_city: '',
+      visit_state: '',
+      visit_region: '',
+      visit_address: '',
+      accident_date: '',
+      damage_description: '',
+      victim_name: '',
+      victim_age: '',
+      accident_address: '',
+      contractor_company: '',
+      main_company: '',
+      sector: '',
+      news_link: '',
+      company_size_justification: '',
+      liability_type: '',
+      legal_viability: '',
+    });
     setShowAddLeadDialog(false);
+  };
+
+  const handleExtractedData = (data: ExtractedAccidentData) => {
+    setNewLeadFormData(prev => ({
+      ...prev,
+      victim_name: data.victim_name || prev.victim_name,
+      victim_age: data.victim_age?.toString() || prev.victim_age,
+      accident_date: data.accident_date || prev.accident_date,
+      accident_address: data.accident_address || prev.accident_address,
+      damage_description: data.damage_description || prev.damage_description,
+      contractor_company: data.contractor_company || prev.contractor_company,
+      main_company: data.main_company || prev.main_company,
+      sector: data.sector || prev.sector,
+      case_type: data.case_type || prev.case_type,
+      liability_type: data.liability_type || prev.liability_type,
+      legal_viability: data.legal_viability || prev.legal_viability,
+      visit_city: data.visit_city || prev.visit_city,
+      visit_state: data.visit_state || prev.visit_state,
+      news_link: (data as any).news_link || prev.news_link,
+      // Use victim_name as lead_name if not set
+      lead_name: prev.lead_name || data.victim_name || '',
+    }));
   };
 
   const loading = boardsLoading || leadsLoading;
@@ -386,66 +473,16 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
       {/* Add Lead Dialog */}
       <Dialog open={showAddLeadDialog} onOpenChange={setShowAddLeadDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Adicionar Lead</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div>
-              <Label>Nome *</Label>
-              <Input
-                value={newLeadName}
-                onChange={(e) => setNewLeadName(e.target.value)}
-                placeholder="Nome do lead"
-              />
-            </div>
-
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={newLeadPhone}
-                onChange={(e) => setNewLeadPhone(e.target.value)}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={newLeadEmail}
-                onChange={(e) => setNewLeadEmail(e.target.value)}
-                placeholder="email@exemplo.com"
-              />
-            </div>
-
-            <div>
-              <Label>Origem</Label>
-              <Select value={newLeadSource} onValueChange={setNewLeadSource}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">Manual</SelectItem>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="form">Formulário</SelectItem>
-                  <SelectItem value="referral">Indicação</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Observações</Label>
-              <Textarea
-                value={newLeadNotes}
-                onChange={(e) => setNewLeadNotes(e.target.value)}
-                placeholder="Notas sobre o lead..."
-                rows={3}
-              />
-            </div>
-          </div>
+          <AccidentLeadForm
+            formData={newLeadFormData}
+            onChange={(data) => setNewLeadFormData(prev => ({ ...prev, ...data }))}
+            onOpenExtractor={() => setShowExtractor(true)}
+          />
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddLeadDialog(false)}>
@@ -457,6 +494,13 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Data Extractor */}
+      <AccidentDataExtractor
+        open={showExtractor}
+        onOpenChange={setShowExtractor}
+        onDataExtracted={handleExtractedData}
+      />
 
       {/* Import Instagram Prospects Sheet */}
       <ImportInstagramProspects

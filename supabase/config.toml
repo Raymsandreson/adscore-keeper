@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.extract-location]
 verify_jwt = false
+
+[functions.extract-accident-data]
+verify_jwt = false
