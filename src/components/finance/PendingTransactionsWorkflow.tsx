@@ -523,7 +523,9 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                 {currentTransaction.merchant_cnpj && (
                   <span className="flex items-center gap-1 font-mono">
                     <Building2 className="h-4 w-4" />
-                    {currentTransaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                    {currentTransaction.merchant_cnpj.length === 14 
+                      ? currentTransaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+                      : currentTransaction.merchant_cnpj}
                   </span>
                 )}
                 {currentTransaction.category && (
