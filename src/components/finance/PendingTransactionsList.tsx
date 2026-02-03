@@ -16,7 +16,8 @@ import {
   ChevronDown,
   ChevronUp,
   User,
-  Users
+  Users,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,6 +35,7 @@ interface Transaction {
   amount: number;
   currency_code: string | null;
   transaction_date: string;
+  transaction_time: string | null;
   category: string | null;
   payment_data: Record<string, any>;
   card_last_digits: string | null;
@@ -251,10 +253,16 @@ export function PendingTransactionsList({
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
                 
-                {/* Date */}
-                <span className="text-xs text-muted-foreground w-16 shrink-0">
-                  {format(new Date(transaction.transaction_date), "dd/MM", { locale: ptBR })}
-                </span>
+                {/* Date & Time */}
+                <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                  <span className="w-12">{format(new Date(transaction.transaction_date), "dd/MM", { locale: ptBR })}</span>
+                  {transaction.transaction_time && (
+                    <span className="flex items-center gap-0.5 text-muted-foreground/70">
+                      <Clock className="h-3 w-3" />
+                      {transaction.transaction_time.slice(0, 5)}
+                    </span>
+                  )}
+                </div>
                 
                 {/* Description */}
                 <div className="flex-1 min-w-0">

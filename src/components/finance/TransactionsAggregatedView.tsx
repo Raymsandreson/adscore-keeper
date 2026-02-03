@@ -28,7 +28,8 @@ import {
   Receipt,
   ShoppingCart,
   BarChart3,
-  List
+  List,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -500,10 +501,16 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
                                     <p className="text-sm font-medium truncate">
                                       {t.description || t.merchant_name || 'Transação'}
                                     </p>
-                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                       <span className="text-xs text-muted-foreground">
                                         {format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM/yyyy')}
                                       </span>
+                                      {t.transaction_time && (
+                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          {t.transaction_time.slice(0, 5)}
+                                        </span>
+                                      )}
                                       {t.merchant_cnpj && (
                                         <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
                                           <Building2 className="h-3 w-3" />
