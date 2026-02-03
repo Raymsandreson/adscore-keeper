@@ -472,7 +472,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
 
                 <CollapsibleContent>
                   <CardContent className="pt-0">
-                    <ScrollArea className="max-h-96">
+                    <ScrollArea className="max-h-[500px]">
                       <div className="space-y-1">
                         {data.transactions
                           .sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime())
@@ -480,6 +480,8 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
                             const category = getTransactionCategory(t);
                             const override = getTransactionOverride(t.id);
                             const violation = category ? checkLimitViolation(category, t.amount) : null;
+                            const isRefund = t.amount < 0;
+                            const hasInstallments = t.total_installments && t.total_installments > 1;
 
                             return (
                               <div
@@ -501,7 +503,7 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
                                     <p className="text-sm font-medium truncate">
                                       {t.description || t.merchant_name || 'Transação'}
                                     </p>
-                                      <div className="flex items-center gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <span className="text-xs text-muted-foreground">
                                         {format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM/yyyy')}
                                       </span>
@@ -511,11 +513,15 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
                                           {t.transaction_time.slice(0, 5)}
                                         </span>
                                       )}
-                                      {t.merchant_cnpj && (
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
-                                          <Building2 className="h-3 w-3" />
-                                          {t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
-                                        </span>
+                                      {hasInstallments && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          Parcela {t.installment_number || '?'}/{t.total_installments}
+                                        </Badge>
+                                      )}
+                                      {isRefund && (
+                                        <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">
+                                          Estorno
+                                        </Badge>
                                       )}
                                       {category && (
                                         <Badge variant="outline" className="text-xs">
@@ -537,20 +543,14 @@ export function TransactionsAggregatedView({ transactions, aggregationType, onPe
                                   </div>
                                 </div>
                                 <div className="text-right shrink-0 ml-2">
-                                  <p className={`font-medium ${t.amount < 0 ? 'text-green-600' : 'text-destructive'}`}>
-                                    {formatCurrency(t.amount > 0 ? -t.amount : t.amount)}
+                                  <p className={`font-semibold tabular-nums ${isRefund ? 'text-green-600' : 'text-destructive'}`}>
+                                    {isRefund ? '+' : ''}{formatCurrency(Math.abs(t.amount))}
                                   </p>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-xs"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedTransaction(t);
-                                    }}
-                                  >
-                                    Categorizar
-                                  </Button>
+                                  {hasInstallments && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Total: {formatCurrency(Math.abs(t.amount) * (t.total_installments || 1))}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             );
