@@ -96,6 +96,7 @@ import { MultiClassificationSelect } from '@/components/contacts/MultiClassifica
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { ProfessionFilter } from '@/components/instagram/ProfessionFilter';
+import { ProfessionSelector } from '@/components/contacts/ProfessionSelector';
 import { ProfessionStatsCard } from '@/components/contacts/ProfessionStatsCard';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
@@ -442,6 +443,7 @@ export const ContactsManager: React.FC = () => {
     notes: '',
     follower_status: 'none' as FollowerStatus,
     profession: '',
+    profession_cbo_code: '',
   });
   
   // Cities for new contact dialog
@@ -581,6 +583,7 @@ export const ContactsManager: React.FC = () => {
       notes: newContact.notes || null,
       follower_status: newContact.follower_status !== 'none' ? newContact.follower_status : null,
       profession: newContact.profession || null,
+      profession_cbo_code: newContact.profession_cbo_code || null,
     });
 
     setNewContact({
@@ -597,6 +600,7 @@ export const ContactsManager: React.FC = () => {
       notes: '',
       follower_status: 'none',
       profession: '',
+      profession_cbo_code: '',
     });
     setNewContactCities([]);
     setIsAddDialogOpen(false);
@@ -1467,11 +1471,20 @@ export const ContactsManager: React.FC = () => {
                       </div>
                       <div>
                         <Label>Profissão</Label>
-                        <Input
+                        <ProfessionSelector
                           value={newContact.profession}
-                          onChange={(e) => setNewContact({ ...newContact, profession: e.target.value })}
-                          placeholder="Ex: Médico, Advogado..."
-                          list="professions-list"
+                          cboCode={newContact.profession_cbo_code}
+                          onSelect={(profession, cboCode) => setNewContact({ 
+                            ...newContact, 
+                            profession, 
+                            profession_cbo_code: cboCode 
+                          })}
+                          onClear={() => setNewContact({ 
+                            ...newContact, 
+                            profession: '', 
+                            profession_cbo_code: '' 
+                          })}
+                          placeholder="Selecione a profissão..."
                         />
                       </div>
                     </div>
