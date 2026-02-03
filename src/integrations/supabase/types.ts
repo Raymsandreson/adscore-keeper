@@ -1438,6 +1438,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          accident_address: string | null
+          accident_date: string | null
+          acolhedor: string | null
           ad_account_id: string | null
           ad_name: string | null
           ad_spend_at_conversion: number | null
@@ -1448,19 +1451,24 @@ export type Database = {
           board_id: string | null
           campaign_id: string | null
           campaign_name: string | null
+          case_type: string | null
           city: string | null
           classification_date: string | null
           client_classification: string | null
+          company_size_justification: string | null
+          contractor_company: string | null
           conversion_value: number | null
           converted_at: string | null
           created_at: string
           created_by: string | null
           creative_id: string | null
           creative_name: string | null
+          damage_description: string | null
           facebook_lead_id: string | null
           first_meeting_at: string | null
           first_visit_at: string | null
           followup_count: number | null
+          group_link: string | null
           id: string
           instagram_comment_id: string | null
           instagram_username: string | null
@@ -1470,16 +1478,30 @@ export type Database = {
           lead_email: string | null
           lead_name: string | null
           lead_phone: string | null
+          legal_viability: string | null
+          liability_type: string | null
+          main_company: string | null
           neighborhood: string | null
+          news_link: string | null
           notes: string | null
           qualified_at: string | null
+          sector: string | null
           source: string | null
           state: string | null
           status: string | null
           sync_status: string | null
           updated_at: string
+          victim_age: number | null
+          victim_name: string | null
+          visit_address: string | null
+          visit_city: string | null
+          visit_region: string | null
+          visit_state: string | null
         }
         Insert: {
+          accident_address?: string | null
+          accident_date?: string | null
+          acolhedor?: string | null
           ad_account_id?: string | null
           ad_name?: string | null
           ad_spend_at_conversion?: number | null
@@ -1490,19 +1512,24 @@ export type Database = {
           board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          case_type?: string | null
           city?: string | null
           classification_date?: string | null
           client_classification?: string | null
+          company_size_justification?: string | null
+          contractor_company?: string | null
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string
           created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
+          damage_description?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
           first_visit_at?: string | null
           followup_count?: number | null
+          group_link?: string | null
           id?: string
           instagram_comment_id?: string | null
           instagram_username?: string | null
@@ -1512,16 +1539,30 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          legal_viability?: string | null
+          liability_type?: string | null
+          main_company?: string | null
           neighborhood?: string | null
+          news_link?: string | null
           notes?: string | null
           qualified_at?: string | null
+          sector?: string | null
           source?: string | null
           state?: string | null
           status?: string | null
           sync_status?: string | null
           updated_at?: string
+          victim_age?: number | null
+          victim_name?: string | null
+          visit_address?: string | null
+          visit_city?: string | null
+          visit_region?: string | null
+          visit_state?: string | null
         }
         Update: {
+          accident_address?: string | null
+          accident_date?: string | null
+          acolhedor?: string | null
           ad_account_id?: string | null
           ad_name?: string | null
           ad_spend_at_conversion?: number | null
@@ -1532,19 +1573,24 @@ export type Database = {
           board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          case_type?: string | null
           city?: string | null
           classification_date?: string | null
           client_classification?: string | null
+          company_size_justification?: string | null
+          contractor_company?: string | null
           conversion_value?: number | null
           converted_at?: string | null
           created_at?: string
           created_by?: string | null
           creative_id?: string | null
           creative_name?: string | null
+          damage_description?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
           first_visit_at?: string | null
           followup_count?: number | null
+          group_link?: string | null
           id?: string
           instagram_comment_id?: string | null
           instagram_username?: string | null
@@ -1554,14 +1600,25 @@ export type Database = {
           lead_email?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          legal_viability?: string | null
+          liability_type?: string | null
+          main_company?: string | null
           neighborhood?: string | null
+          news_link?: string | null
           notes?: string | null
           qualified_at?: string | null
+          sector?: string | null
           source?: string | null
           state?: string | null
           status?: string | null
           sync_status?: string | null
           updated_at?: string
+          victim_age?: number | null
+          victim_name?: string | null
+          visit_address?: string | null
+          visit_city?: string | null
+          visit_region?: string | null
+          visit_state?: string | null
         }
         Relationships: [
           {
