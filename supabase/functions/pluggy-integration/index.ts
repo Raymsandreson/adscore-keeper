@@ -339,6 +339,15 @@ serve(async (req) => {
                   ? t.creditCardMetadata.purchaseDate.split('T')[0] 
                   : null;
                 
+                // Extract time from ISO date string (e.g., "2025-01-15T14:30:00.000Z" -> "14:30:00")
+                let transactionTime = null;
+                if (t.date && t.date.includes('T')) {
+                  const timePart = t.date.split('T')[1];
+                  if (timePart) {
+                    transactionTime = timePart.split('.')[0]; // Remove milliseconds and timezone
+                  }
+                }
+                
                 return {
                   user_id: user.id,
                   pluggy_account_id: account.id,
@@ -347,6 +356,7 @@ serve(async (req) => {
                   amount: t.amount,
                   currency_code: 'BRL',
                   transaction_date: t.date.split('T')[0],
+                  transaction_time: transactionTime,
                   category: t.category || 'Outros',
                   payment_data: t.paymentData || {},
                   card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),

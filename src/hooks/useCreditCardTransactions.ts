@@ -11,6 +11,7 @@ interface Transaction {
   amount: number;
   currency_code: string;
   transaction_date: string;
+  transaction_time: string | null;
   category: string | null;
   payment_data: Record<string, any>;
   card_last_digits: string | null;
