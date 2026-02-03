@@ -36,16 +36,19 @@ export const UserscriptInstaller = () => {
   const accountsList = accounts.map(a => `        '${a.account_name.replace("@", "")}'`).join(",\n");
 
   const generateScript = () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://gliigkupoebmlbwyvijp.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsaWlna3Vwb2VibWxid3l2aWpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDAxNDcsImV4cCI6MjA4MTU3NjE0N30.HnhqYYFjW9DjFUsUkrZDuCShCOU2P73o_DqvkVyVr38';
+    
     return `// ==UserScript==
 // @name         AdScore Keeper - Instagram Comment Tracker
 // @namespace    https://adscore-keeper.lovable.app
-// @version      1.0.0
+// @version      1.1.0
 // @description  Rastreia automaticamente comentários feitos no Instagram
 // @author       AdScore Keeper
 // @match        https://www.instagram.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
-// @connect      webhooks.prudenciosolucoes.com.br
+// @connect      gliigkupoebmlbwyvijp.supabase.co
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -56,43 +59,60 @@ export const UserscriptInstaller = () => {
     const MONITORED_ACCOUNTS = [
 ${accountsList}
     ];
-    const WEBHOOK_URL = 'https://webhooks.prudenciosolucoes.com.br/webhook/outbound-comment';
+    const SUPABASE_URL = '${supabaseUrl}';
+    const SUPABASE_ANON_KEY = '${supabaseAnonKey}';
     // ========================
 
     let currentUsername = null;
     let lastCommentText = '';
     let isProcessing = false;
 
-    console.log('[AdScore] Tracker iniciado. Contas:', MONITORED_ACCOUNTS);
+    console.log('[AdScore] Tracker v1.1 iniciado. Contas:', MONITORED_ACCOUNTS);
 
     function detectCurrentUser() {
-        const profileLinks = document.querySelectorAll('a[href^=\\"/\\"]');
+        // Try to find logged-in user from navigation or profile elements
+        const profileLinks = document.querySelectorAll('a[href^="/"]');
         for (const link of profileLinks) {
-            const img = link.querySelector('img[alt*=\\"foto do perfil\\"], img[alt*=\\"profile picture\\"]');
+            const img = link.querySelector('img[alt*="foto do perfil"], img[alt*="profile picture"]');
             if (img && img.alt) {
                 const match = img.alt.match(/foto do perfil de (.+)/i) || img.alt.match(/(.+)'s profile picture/i);
                 if (match) return match[1].toLowerCase();
             }
         }
+        // Fallback: check for profile menu
+        const profileMenu = document.querySelector('[aria-label="Perfil"], [aria-label="Profile"]');
+        if (profileMenu) {
+            const href = profileMenu.closest('a')?.getAttribute('href');
+            if (href) return href.replace(/\\//g, '');
+        }
         return null;
     }
 
     function getPostOwner() {
-        const header = document.querySelector('article header a[href^=\\"/\\"], div[role=\\"dialog\\"] article header a[href^=\\"/\\"]');
-        if (header) {
-            const match = header.getAttribute('href').match(/^\\\\/([^/]+)\\\\\/?$/);
-            if (match) return match[1];
+        // Try multiple selectors for post owner
+        const selectors = [
+            'article header a[href^="/"]:not([href*="/explore"])',
+            'div[role="dialog"] article header a[href^="/"]',
+            'main article header a[href^="/"]'
+        ];
+        for (const sel of selectors) {
+            const header = document.querySelector(sel);
+            if (header) {
+                const href = header.getAttribute('href');
+                const match = href?.match(/^\\/([^/]+)\\/?$/);
+                if (match) return match[1];
+            }
         }
         return null;
     }
 
     function getPostUrl() {
         if (window.location.pathname.includes('/p/') || window.location.pathname.includes('/reel/')) {
-            return window.location.href;
+            return window.location.href.split('?')[0];
         }
-        const timeLink = document.querySelector('div[role=\\"dialog\\"] a[href*=\\"/p/\\"], div[role=\\"dialog\\"] a[href*=\\"/reel/\\"]');
-        if (timeLink) return 'https://www.instagram.com' + timeLink.getAttribute('href');
-        return window.location.href;
+        const timeLink = document.querySelector('div[role="dialog"] a[href*="/p/"], div[role="dialog"] a[href*="/reel/"], article a[href*="/p/"], article a[href*="/reel/"]');
+        if (timeLink) return 'https://www.instagram.com' + timeLink.getAttribute('href').split('?')[0];
+        return window.location.href.split('?')[0];
     }
 
     function isMonitoredAccount(username) {
@@ -100,36 +120,131 @@ ${accountsList}
         return MONITORED_ACCOUNTS.some(acc => acc.toLowerCase() === username.toLowerCase());
     }
 
-    function sendToWebhook(data) {
+    function findInstagramAccountId(username) {
+        // Find matching account ID from our accounts list
+        const accountsMap = {
+${accounts.map(a => `            '${a.account_name.replace("@", "").toLowerCase()}': '${a.instagram_id}'`).join(",\n")}
+        };
+        return accountsMap[username?.toLowerCase()] || null;
+    }
+
+    function sendToSupabase(data) {
+        console.log('[AdScore] Enviando para Supabase:', data);
+        
         GM_xmlhttpRequest({
             method: 'POST',
-            url: WEBHOOK_URL,
-            headers: { 'Content-Type': 'application/json' },
-            data: JSON.stringify(data),
-            onload: () => showNotification('✅ Comentário registrado!', data.comment_text.substring(0, 40) + '...')
+            url: SUPABASE_URL + '/functions/v1/n8n-comment-webhook',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                'apikey': SUPABASE_ANON_KEY
+            },
+            data: JSON.stringify({
+                action: 'register_outbound',
+                account_id: data.account_id,
+                account_name: data.account_name,
+                target_username: data.target_username,
+                comment_text: data.comment_text,
+                post_url: data.post_url
+            }),
+            onload: function(response) {
+                console.log('[AdScore] Resposta:', response.status, response.responseText);
+                if (response.status >= 200 && response.status < 300) {
+                    showNotification('✅ Comentário registrado!', data.comment_text.substring(0, 40) + '...');
+                } else {
+                    showNotification('❌ Erro ao registrar', 'Status: ' + response.status);
+                }
+            },
+            onerror: function(error) {
+                console.error('[AdScore] Erro:', error);
+                showNotification('❌ Erro de conexão', 'Verifique o console');
+            }
         });
     }
 
     function showNotification(title, message) {
         const n = document.createElement('div');
         n.style.cssText = 'position:fixed;bottom:20px;right:20px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:16px 20px;border-radius:12px;z-index:999999;font-family:system-ui;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:slideIn .3s ease;max-width:300px';
-        n.innerHTML = '<style>@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}</style><div style=\\"font-weight:600;margin-bottom:4px\\">' + title + '</div><div style=\\"font-size:13px;opacity:0.9\\">' + message + '</div>';
+        n.innerHTML = '<style>@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}</style><div style="font-weight:600;margin-bottom:4px">' + title + '</div><div style="font-size:13px;opacity:0.9">' + message + '</div>';
         document.body.appendChild(n);
         setTimeout(() => n.remove(), 3500);
     }
 
     function setupMonitoring() {
-        document.querySelectorAll('textarea, [contenteditable=\\"true\\"]').forEach(el => {
-            if (el.dataset.tracked) return;
-            el.dataset.tracked = 'true';
-            el.addEventListener('input', e => { lastCommentText = e.target.value || e.target.textContent || ''; });
+        document.querySelectorAll('textarea, [contenteditable="true"], form textarea').forEach(el => {
+            if (el.dataset.adscoreTracked) return;
+            el.dataset.adscoreTracked = 'true';
+            el.addEventListener('input', e => { 
+                lastCommentText = e.target.value || e.target.textContent || ''; 
+            });
+            el.addEventListener('keydown', e => {
+                if (e.key === 'Enter' && !e.shiftKey && lastCommentText.trim()) {
+                    // Capture text before it gets cleared
+                    console.log('[AdScore] Enter detectado, texto:', lastCommentText);
+                }
+            });
         });
     }
 
+    // Intercept fetch requests to detect comment submissions
     const origFetch = window.fetch;
     window.fetch = async function(...args) {
         const [url, opts] = args;
-        if (url?.includes?.('/api/v1/web/comments/') && opts?.method === 'POST' && !isProcessing) {
+        const urlStr = typeof url === 'string' ? url : url?.url || '';
+        
+        // Detect comment POST requests
+        if (urlStr.includes('/api/v1/web/comments/') && opts?.method === 'POST' && !isProcessing) {
+            isProcessing = true;
+            
+            // Small delay to ensure DOM has updated
+            setTimeout(() => {
+                isProcessing = false;
+                currentUsername = detectCurrentUser();
+                console.log('[AdScore] Comentário detectado! User:', currentUsername);
+                
+                if (!isMonitoredAccount(currentUsername)) {
+                    console.log('[AdScore] Conta não monitorada:', currentUsername);
+                    return;
+                }
+                
+                const postOwner = getPostOwner();
+                console.log('[AdScore] Dono do post:', postOwner);
+                
+                // Skip if commenting on own post
+                if (currentUsername?.toLowerCase() === postOwner?.toLowerCase()) {
+                    console.log('[AdScore] Comentário no próprio post, ignorando');
+                    return;
+                }
+                
+                if (lastCommentText?.trim()) {
+                    sendToSupabase({
+                        account_id: findInstagramAccountId(currentUsername),
+                        account_name: currentUsername,
+                        target_username: postOwner || 'unknown',
+                        comment_text: lastCommentText.trim(),
+                        post_url: getPostUrl()
+                    });
+                } else {
+                    console.log('[AdScore] Texto do comentário vazio');
+                }
+                lastCommentText = '';
+            }, 500);
+        }
+        return origFetch.apply(this, args);
+    };
+
+    // Also intercept XMLHttpRequest for older Instagram code paths
+    const origXHROpen = XMLHttpRequest.prototype.open;
+    const origXHRSend = XMLHttpRequest.prototype.send;
+    
+    XMLHttpRequest.prototype.open = function(method, url) {
+        this._adscoreUrl = url;
+        this._adscoreMethod = method;
+        return origXHROpen.apply(this, arguments);
+    };
+    
+    XMLHttpRequest.prototype.send = function(body) {
+        if (this._adscoreUrl?.includes('/api/v1/web/comments/') && this._adscoreMethod === 'POST' && !isProcessing) {
             isProcessing = true;
             setTimeout(() => {
                 isProcessing = false;
@@ -138,27 +253,31 @@ ${accountsList}
                 const postOwner = getPostOwner();
                 if (currentUsername?.toLowerCase() === postOwner?.toLowerCase()) return;
                 if (lastCommentText?.trim()) {
-                    sendToWebhook({
+                    sendToSupabase({
+                        account_id: findInstagramAccountId(currentUsername),
                         account_name: currentUsername,
                         target_username: postOwner || 'unknown',
                         comment_text: lastCommentText.trim(),
-                        post_url: getPostUrl(),
-                        timestamp: new Date().toISOString(),
-                        source: 'userscript'
+                        post_url: getPostUrl()
                     });
                 }
                 lastCommentText = '';
             }, 500);
         }
-        return origFetch.apply(this, args);
+        return origXHRSend.apply(this, arguments);
     };
 
+    // Watch for new textareas/inputs
     new MutationObserver(setupMonitoring).observe(document.body, { childList: true, subtree: true });
 
+    // Initial setup
     setTimeout(() => {
         currentUsername = detectCurrentUser();
+        console.log('[AdScore] Usuário detectado:', currentUsername);
         if (isMonitoredAccount(currentUsername)) {
             showNotification('📊 AdScore Ativo', 'Monitorando @' + currentUsername);
+        } else {
+            console.log('[AdScore] Esperando conta monitorada. Contas:', MONITORED_ACCOUNTS);
         }
         setupMonitoring();
     }, 2000);
