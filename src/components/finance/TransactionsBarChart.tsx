@@ -49,7 +49,7 @@ interface TransactionsBarChartProps {
 
 export function TransactionsBarChart({ transactions, onPeriodSelect }: TransactionsBarChartProps) {
   const [periodicity, setPeriodicity] = useState<Periodicity>('monthly');
-  const [valueMode, setValueMode] = useState<'installment' | 'total'>('installment');
+  const [valueMode, setValueMode] = useState<'installment' | 'total'>('total');
   const [selectedBar, setSelectedBar] = useState<string | null>(null);
   
   const { 
