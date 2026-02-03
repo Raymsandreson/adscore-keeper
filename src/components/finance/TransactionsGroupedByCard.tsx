@@ -318,9 +318,9 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                         </div>
                                       </div>
                                     </div>
-                                    <div className="text-right">
-                                      <p className={`font-medium ${t.amount > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                                        {formatCurrency(t.amount)}
+                                    <div className="text-right flex flex-col items-end">
+                                      <p className={`font-semibold tabular-nums ${t.amount > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                                        {t.amount > 0 ? '' : '+'}{formatCurrency(Math.abs(t.amount))}
                                       </p>
                                       <Button
                                         variant="ghost"
