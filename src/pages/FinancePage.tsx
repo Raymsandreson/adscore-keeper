@@ -988,7 +988,8 @@ export default function FinancePage() {
                   </Card>
                 ) : (
                   <TransactionsAggregatedView 
-                    transactions={filteredTransactions} 
+                    transactions={filteredTransactions}
+                    allTransactions={permittedTransactions}
                     aggregationType={aggregationType}
                     onPeriodSelect={(start, end) => {
                       setStartDate(start);

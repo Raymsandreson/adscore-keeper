@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   BarChart, 
   Bar, 
@@ -11,11 +12,12 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { format, startOfWeek, startOfMonth, endOfMonth, parseISO, getWeek, getYear, startOfYear, endOfYear, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfWeek, startOfMonth, endOfMonth, parseISO, getWeek, getYear, startOfYear, endOfYear, startOfDay, endOfDay, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, Calendar, CalendarRange, Clock } from 'lucide-react';
+import { CalendarDays, Calendar, CalendarRange, Clock, TrendingUp } from 'lucide-react';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings } from '@/hooks/useCategoryApiMappings';
+import { useLeads } from '@/hooks/useLeads';
 import { translateCategory } from '@/utils/categoryTranslations';
 
 interface Transaction {
@@ -41,15 +43,27 @@ interface Transaction {
 }
 
 type Periodicity = 'daily' | 'weekly' | 'monthly' | 'yearly';
+type MetricType = 'spending' | 'purchases' | 'days_traveled' | 'leads_with_expense' | 'cost_per_lead' | 'cost_per_closed_lead' | 'cac';
 
 interface TransactionsBarChartProps {
   transactions: Transaction[];
+  allTransactions?: Transaction[]; // All transactions without date filter for historical view
   onPeriodSelect?: (startDate: Date, endDate: Date) => void;
 }
 
-export function TransactionsBarChart({ transactions, onPeriodSelect }: TransactionsBarChartProps) {
+const metricOptions: { value: MetricType; label: string; description: string }[] = [
+  { value: 'spending', label: 'Gastos (Parcelas)', description: 'Valor total das parcelas no período' },
+  { value: 'purchases', label: 'Compras (Total)', description: 'Valor total das compras realizadas' },
+  { value: 'days_traveled', label: 'Dias Viajados', description: 'Quantidade de dias com gastos' },
+  { value: 'leads_with_expense', label: 'Leads c/ Despesa', description: 'Número de leads vinculados a despesas' },
+  { value: 'cost_per_lead', label: 'Custo por Lead', description: 'Gasto total ÷ número de leads com despesa' },
+  { value: 'cost_per_closed_lead', label: 'Custo por Lead Fechado', description: 'Gasto total ÷ leads fechados (clientes)' },
+  { value: 'cac', label: 'CAC', description: 'Custo de Aquisição de Cliente' },
+];
+
+export function TransactionsBarChart({ transactions, allTransactions, onPeriodSelect }: TransactionsBarChartProps) {
   const [periodicity, setPeriodicity] = useState<Periodicity>('monthly');
-  const [valueMode, setValueMode] = useState<'installment' | 'total'>('total');
+  const [metricType, setMetricType] = useState<MetricType>('purchases');
   const [selectedBar, setSelectedBar] = useState<string | null>(null);
   
   const { 
@@ -58,33 +72,55 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
   } = useExpenseCategories();
   
   const { findLocalCategoryByApiName } = useCategoryApiMappings();
+  const { leads } = useLeads();
 
-  const getTransactionCategory = (transaction: Transaction): ExpenseCategory | null => {
-    const override = getTransactionOverride(transaction.id);
-    if (override) {
-      return getCategoryById(override.category_id) || null;
-    }
-    
-    if (transaction.category) {
-      const translatedCategory = translateCategory(transaction.category);
-      const categoryId = findLocalCategoryByApiName(translatedCategory);
-      if (categoryId) {
-        return getCategoryById(categoryId) || null;
+  // Use allTransactions for historical view if provided, otherwise use transactions
+  const chartTransactions = allTransactions || transactions;
+
+  // Get unique leads linked to transactions via overrides
+  const leadsWithExpenses = useMemo(() => {
+    const leadIds = new Set<string>();
+    chartTransactions.forEach(t => {
+      if (t.amount > 0) {
+        const override = getTransactionOverride(t.id);
+        if (override?.lead_id) {
+          leadIds.add(override.lead_id);
+        }
       }
-      const categoryIdOriginal = findLocalCategoryByApiName(transaction.category);
-      if (categoryIdOriginal) {
-        return getCategoryById(categoryIdOriginal) || null;
-      }
-    }
-    
-    return null;
-  };
+    });
+    return leadIds;
+  }, [chartTransactions, getTransactionOverride]);
+
+  // Get closed leads (became_client_date is set)
+  const closedLeads = useMemo(() => {
+    return leads.filter(l => l.became_client_date && leadsWithExpenses.has(l.id));
+  }, [leads, leadsWithExpenses]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     }).format(value);
+  };
+
+  const formatMetricValue = (value: number, metric: MetricType) => {
+    switch (metric) {
+      case 'spending':
+      case 'purchases':
+      case 'cost_per_lead':
+      case 'cost_per_closed_lead':
+      case 'cac':
+        return formatCurrency(value);
+      case 'days_traveled':
+      case 'leads_with_expense':
+        return value.toLocaleString('pt-BR');
+      default:
+        return value.toLocaleString('pt-BR');
+    }
+  };
+
+  const getMetricLabel = (metric: MetricType) => {
+    return metricOptions.find(m => m.value === metric)?.label || metric;
   };
 
   const chartData = useMemo(() => {
@@ -96,9 +132,12 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
       sortKey: string;
       startDate: Date;
       endDate: Date;
+      uniqueDays: Set<string>;
+      uniqueLeads: Set<string>;
+      closedLeadIds: Set<string>;
     }> = {};
 
-    transactions.forEach((t) => {
+    chartTransactions.forEach((t) => {
       if (t.amount <= 0) return; // Only expenses
       
       const date = parseISO(t.transaction_date);
@@ -150,11 +189,26 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
           sortKey,
           startDate,
           endDate,
+          uniqueDays: new Set<string>(),
+          uniqueLeads: new Set<string>(),
+          closedLeadIds: new Set<string>(),
         };
       }
 
       groups[groupKey].installmentTotal += t.amount;
       groups[groupKey].count += 1;
+      groups[groupKey].uniqueDays.add(t.transaction_date);
+      
+      // Track leads with expenses in this period
+      const override = getTransactionOverride(t.id);
+      if (override?.lead_id) {
+        groups[groupKey].uniqueLeads.add(override.lead_id);
+        // Check if this lead became a client
+        const lead = leads.find(l => l.id === override.lead_id);
+        if (lead?.became_client_date) {
+          groups[groupKey].closedLeadIds.add(override.lead_id);
+        }
+      }
       
       // Calculate original purchase value for installments
       if (t.total_installments && t.total_installments > 1) {
@@ -166,17 +220,53 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
 
     return Object.entries(groups)
       .sort((a, b) => a[1].sortKey.localeCompare(b[1].sortKey))
-      .map(([key, data]) => ({
-        key,
-        name: data.label,
-        valor: valueMode === 'installment' ? data.installmentTotal : data.purchaseTotal,
-        installmentTotal: data.installmentTotal,
-        purchaseTotal: data.purchaseTotal,
-        count: data.count,
-        startDate: data.startDate,
-        endDate: data.endDate,
-      }));
-  }, [transactions, periodicity, valueMode]);
+      .map(([key, data]) => {
+        const leadsCount = data.uniqueLeads.size;
+        const closedLeadsCount = data.closedLeadIds.size;
+        
+        // Calculate the metric value based on selected metric
+        let valor: number;
+        switch (metricType) {
+          case 'spending':
+            valor = data.installmentTotal;
+            break;
+          case 'purchases':
+            valor = data.purchaseTotal;
+            break;
+          case 'days_traveled':
+            valor = data.uniqueDays.size;
+            break;
+          case 'leads_with_expense':
+            valor = leadsCount;
+            break;
+          case 'cost_per_lead':
+            valor = leadsCount > 0 ? data.installmentTotal / leadsCount : 0;
+            break;
+          case 'cost_per_closed_lead':
+          case 'cac':
+            valor = closedLeadsCount > 0 ? data.installmentTotal / closedLeadsCount : 0;
+            break;
+          default:
+            valor = data.installmentTotal;
+        }
+        
+        return {
+          key,
+          name: data.label,
+          valor,
+          installmentTotal: data.installmentTotal,
+          purchaseTotal: data.purchaseTotal,
+          count: data.count,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          daysTraveled: data.uniqueDays.size,
+          leadsWithExpense: leadsCount,
+          closedLeads: closedLeadsCount,
+          costPerLead: leadsCount > 0 ? data.installmentTotal / leadsCount : 0,
+          costPerClosedLead: closedLeadsCount > 0 ? data.installmentTotal / closedLeadsCount : 0,
+        };
+      });
+  }, [chartTransactions, periodicity, metricType, getTransactionOverride, leads]);
 
   const handleBarClick = (data: any) => {
     if (data && data.activePayload && data.activePayload[0]) {
@@ -204,6 +294,26 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
               <span className="font-medium text-orange-600">{formatCurrency(data.purchaseTotal)}</span>
             </div>
             <div className="flex justify-between gap-4 pt-1 border-t">
+              <span className="text-muted-foreground">Dias viajados:</span>
+              <span className="font-medium">{data.daysTraveled}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Leads c/ despesa:</span>
+              <span className="font-medium">{data.leadsWithExpense}</span>
+            </div>
+            {data.leadsWithExpense > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Custo/Lead:</span>
+                <span className="font-medium">{formatCurrency(data.costPerLead)}</span>
+              </div>
+            )}
+            {data.closedLeads > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">CAC (Leads fechados: {data.closedLeads}):</span>
+                <span className="font-medium">{formatCurrency(data.costPerClosedLead)}</span>
+              </div>
+            )}
+            <div className="flex justify-between gap-4 pt-1 border-t">
               <span className="text-muted-foreground">Transações:</span>
               <span className="font-medium">{data.count}</span>
             </div>
@@ -219,7 +329,22 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
     if (selectedBar === key) {
       return 'hsl(var(--primary))';
     }
-    return valueMode === 'installment' ? 'hsl(var(--destructive))' : 'hsl(var(--chart-2))';
+    switch (metricType) {
+      case 'spending':
+        return 'hsl(var(--destructive))';
+      case 'purchases':
+        return 'hsl(var(--chart-2))';
+      case 'days_traveled':
+        return 'hsl(var(--chart-3))';
+      case 'leads_with_expense':
+        return 'hsl(var(--chart-4))';
+      case 'cost_per_lead':
+      case 'cost_per_closed_lead':
+      case 'cac':
+        return 'hsl(var(--chart-5))';
+      default:
+        return 'hsl(var(--chart-2))';
+    }
   };
 
   if (chartData.length === 0) {
@@ -232,14 +357,37 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
     );
   }
 
-  const formatCurrencyShort = (value: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
+  const formatYAxis = (value: number) => {
+    if (metricType === 'days_traveled' || metricType === 'leads_with_expense') {
+      return value.toLocaleString('pt-BR');
+    }
+    return `R$${(value / 1000).toFixed(0)}k`;
   };
+
+  // Calculate totals
+  const totals = useMemo(() => {
+    const totalSpending = chartData.reduce((sum, d) => sum + d.installmentTotal, 0);
+    const totalPurchases = chartData.reduce((sum, d) => sum + d.purchaseTotal, 0);
+    const totalDays = new Set(chartTransactions.filter(t => t.amount > 0).map(t => t.transaction_date)).size;
+    const totalLeads = leadsWithExpenses.size;
+    const totalClosedLeads = closedLeads.length;
+    const avgSpending = chartData.length > 0 ? totalSpending / chartData.length : 0;
+    const costPerLead = totalLeads > 0 ? totalSpending / totalLeads : 0;
+    const cac = totalClosedLeads > 0 ? totalSpending / totalClosedLeads : 0;
+    const transactionCount = chartData.reduce((sum, d) => sum + d.count, 0);
+    
+    return { 
+      totalSpending, 
+      totalPurchases, 
+      totalDays, 
+      totalLeads, 
+      totalClosedLeads,
+      avgSpending, 
+      costPerLead, 
+      cac,
+      transactionCount 
+    };
+  }, [chartData, chartTransactions, leadsWithExpenses, closedLeads]);
 
   return (
     <Card>
@@ -248,15 +396,25 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <CardTitle className="text-lg">Gastos por Período</CardTitle>
             <div className="flex flex-col sm:flex-row gap-2">
-              {/* Value Mode */}
-              <ToggleGroup type="single" value={valueMode} onValueChange={(v) => v && setValueMode(v as typeof valueMode)} size="sm">
-                <ToggleGroupItem value="installment" aria-label="Valor da parcela">
-                  Parcelas
-                </ToggleGroupItem>
-                <ToggleGroupItem value="total" aria-label="Valor total da compra">
-                  Compras
-                </ToggleGroupItem>
-              </ToggleGroup>
+              {/* Metric Selector */}
+              <Select value={metricType} onValueChange={(v) => setMetricType(v as MetricType)}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4" />
+                    <SelectValue placeholder="Métrica..." />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {metricOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex flex-col">
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground">{option.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               
               {/* Periodicity */}
               <ToggleGroup type="single" value={periodicity} onValueChange={(v) => v && setPeriodicity(v as Periodicity)} size="sm">
@@ -302,7 +460,7 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
                 height={chartData.length > 10 ? 60 : 30}
               />
               <YAxis 
-                tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
+                tickFormatter={formatYAxis}
                 tick={{ fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
@@ -331,25 +489,25 @@ export function TransactionsBarChart({ transactions, onPeriodSelect }: Transacti
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Total Parcelas</p>
             <p className="text-lg font-bold text-destructive">
-              {formatCurrency(chartData.reduce((sum, d) => sum + d.installmentTotal, 0))}
+              {formatCurrency(totals.totalSpending)}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-sm text-muted-foreground">Total Compras</p>
-            <p className="text-lg font-bold text-orange-600">
-              {formatCurrency(chartData.reduce((sum, d) => sum + d.purchaseTotal, 0))}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">Média por Período</p>
+            <p className="text-sm text-muted-foreground">Dias Viajados</p>
             <p className="text-lg font-bold">
-              {formatCurrency(chartData.reduce((sum, d) => sum + (valueMode === 'installment' ? d.installmentTotal : d.purchaseTotal), 0) / chartData.length || 0)}
+              {totals.totalDays}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-sm text-muted-foreground">Transações</p>
+            <p className="text-sm text-muted-foreground">Leads c/ Despesa</p>
             <p className="text-lg font-bold">
-              {chartData.reduce((sum, d) => sum + d.count, 0)}
+              {totals.totalLeads}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-muted-foreground">CAC</p>
+            <p className="text-lg font-bold text-primary">
+              {totals.totalClosedLeads > 0 ? formatCurrency(totals.cac) : '-'}
             </p>
           </div>
         </div>
