@@ -287,19 +287,21 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                           <Badge variant="outline" className="text-xs">
                                             {getDisplayCategory(t)}
                                           </Badge>
+                                          {/* Badge de Parcelamento */}
                                           {t.total_installments && t.total_installments > 1 && (
-                                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                                              <Layers className="h-3 w-3 mr-1" />
-                                              Parcela {t.installment_number || '?'}/{t.total_installments}
-                                              <span className="ml-1 opacity-70">
+                                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 flex items-center gap-1">
+                                              <Layers className="h-3 w-3" />
+                                              <span>Parcela {t.installment_number || '?'}/{t.total_installments}</span>
+                                              <span className="opacity-70">
                                                 (Total: {formatCurrency(Math.abs(t.amount) * (t.total_installments || 1))})
                                               </span>
                                             </Badge>
                                           )}
+                                          {/* Badge de Estorno para valores negativos (créditos) */}
                                           {t.amount < 0 && (
-                                            <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300">
-                                              <RotateCcw className="h-3 w-3 mr-1" />
-                                              Estorno
+                                            <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300 flex items-center gap-1">
+                                              <RotateCcw className="h-3 w-3" />
+                                              <span>Estorno</span>
                                             </Badge>
                                           )}
                                           {override?.lead_id && (
