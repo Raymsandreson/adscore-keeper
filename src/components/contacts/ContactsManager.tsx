@@ -100,6 +100,7 @@ import { ProfessionStatsCard } from '@/components/contacts/ProfessionStatsCard';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
+import { useCboProfessions } from '@/hooks/useCboProfessions';
 
 // Inline editable text component
 interface InlineEditableTextProps {
@@ -439,7 +440,38 @@ export const ContactsManager: React.FC = () => {
     street: '',
     cep: '',
     notes: '',
+    follower_status: 'none' as FollowerStatus,
+    profession: '',
   });
+  
+  // Cities for new contact dialog
+  const [newContactCities, setNewContactCities] = useState<{ id: number; nome: string }[]>([]);
+  const [loadingNewContactCities, setLoadingNewContactCities] = useState(false);
+  
+  // Fetch cities when new contact's state changes
+  useEffect(() => {
+    if (newContact.state) {
+      setLoadingNewContactCities(true);
+      const state = states.find(s => s.sigla === newContact.state);
+      if (state) {
+        fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.id}/municipios?orderBy=nome`)
+          .then(res => res.json())
+          .then(data => {
+            setNewContactCities(data);
+            setLoadingNewContactCities(false);
+          })
+          .catch(() => {
+            setNewContactCities([]);
+            setLoadingNewContactCities(false);
+          });
+      } else {
+        setNewContactCities([]);
+        setLoadingNewContactCities(false);
+      }
+    } else {
+      setNewContactCities([]);
+    }
+  }, [newContact.state, states]);
 
   // Fetch cities when editing contact's state changes
   useEffect(() => {
@@ -547,6 +579,8 @@ export const ContactsManager: React.FC = () => {
       city: newContact.city || null,
       state: newContact.state || null,
       notes: newContact.notes || null,
+      follower_status: newContact.follower_status !== 'none' ? newContact.follower_status : null,
+      profession: newContact.profession || null,
     });
 
     setNewContact({
@@ -561,7 +595,10 @@ export const ContactsManager: React.FC = () => {
       street: '',
       cep: '',
       notes: '',
+      follower_status: 'none',
+      profession: '',
     });
+    setNewContactCities([]);
     setIsAddDialogOpen(false);
   };
 
@@ -1341,19 +1378,100 @@ export const ContactsManager: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label>Cidade</Label>
-                        <Input
-                          value={newContact.city}
-                          onChange={(e) => setNewContact({ ...newContact, city: e.target.value })}
-                        />
+                        <Label>Estado</Label>
+                        <Select 
+                          value={newContact.state || 'none'} 
+                          onValueChange={(v) => setNewContact({ 
+                            ...newContact, 
+                            state: v === 'none' ? '' : v,
+                            city: '' // Reset city when state changes
+                          })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Selecione o estado</SelectItem>
+                            {states.map(state => (
+                              <SelectItem key={state.sigla} value={state.sigla}>
+                                {state.sigla} - {state.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
-                        <Label>Estado</Label>
+                        <Label>Cidade</Label>
+                        <Select 
+                          value={newContact.city || 'none'} 
+                          onValueChange={(v) => setNewContact({ ...newContact, city: v === 'none' ? '' : v })}
+                          disabled={!newContact.state || loadingNewContactCities}
+                        >
+                          <SelectTrigger>
+                            {loadingNewContactCities ? (
+                              <span className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Carregando...
+                              </span>
+                            ) : (
+                              <SelectValue placeholder={newContact.state ? "Selecione a cidade" : "Selecione o estado primeiro"} />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Selecione a cidade</SelectItem>
+                            {newContactCities.map(city => (
+                              <SelectItem key={city.id} value={city.nome}>
+                                {city.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Status de Seguidor</Label>
+                        <Select 
+                          value={newContact.follower_status} 
+                          onValueChange={(v) => setNewContact({ ...newContact, follower_status: v as FollowerStatus })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                Não definido
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="follower">
+                              <div className="flex items-center gap-2">
+                                <UserPlus className="h-4 w-4 text-pink-500" />
+                                Seguidor (me segue)
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="following">
+                              <div className="flex items-center gap-2">
+                                <UserMinus className="h-4 w-4 text-indigo-500" />
+                                Seguindo (eu sigo)
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="mutual">
+                              <div className="flex items-center gap-2">
+                                <Users2 className="h-4 w-4 text-emerald-500" />
+                                Mútuo (ambos)
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Profissão</Label>
                         <Input
-                          value={newContact.state}
-                          onChange={(e) => setNewContact({ ...newContact, state: e.target.value })}
-                          placeholder="SP"
-                          maxLength={2}
+                          value={newContact.profession}
+                          onChange={(e) => setNewContact({ ...newContact, profession: e.target.value })}
+                          placeholder="Ex: Médico, Advogado..."
+                          list="professions-list"
                         />
                       </div>
                     </div>
