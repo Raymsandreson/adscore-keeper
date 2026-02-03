@@ -21,7 +21,8 @@ import {
   MapPin,
   Building2,
   Layers,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -289,7 +290,16 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                           {t.total_installments && t.total_installments > 1 && (
                                             <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
                                               <Layers className="h-3 w-3 mr-1" />
-                                              {t.installment_number || '?'}/{t.total_installments}
+                                              Parcela {t.installment_number || '?'}/{t.total_installments}
+                                              <span className="ml-1 opacity-70">
+                                                (Total: {formatCurrency(Math.abs(t.amount) * (t.total_installments || 1))})
+                                              </span>
+                                            </Badge>
+                                          )}
+                                          {t.amount < 0 && (
+                                            <Badge variant="outline" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 border-green-300">
+                                              <RotateCcw className="h-3 w-3 mr-1" />
+                                              Estorno
                                             </Badge>
                                           )}
                                           {override?.lead_id && (
@@ -307,7 +317,7 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                       </div>
                                     </div>
                                     <div className="text-right">
-                                      <p className={`font-medium ${t.amount < 0 ? 'text-destructive' : 'text-green-600'}`}>
+                                      <p className={`font-medium ${t.amount > 0 ? 'text-destructive' : 'text-green-600'}`}>
                                         {formatCurrency(t.amount)}
                                       </p>
                                       <Button
