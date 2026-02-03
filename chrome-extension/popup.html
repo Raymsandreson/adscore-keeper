@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AdScore Keeper - Instagram Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+    }
+    
+    .header {
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+    
+    .content {
+      padding: 20px;
+    }
+    
+    .toggle-section {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .toggle {
+      width: 48px;
+      height: 26px;
+      background: #333;
+      border-radius: 13px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.3s;
+    }
+    
+    .toggle.active {
+      background: #667eea;
+    }
+    
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.3s;
+    }
+    
+    .toggle.active::after {
+      transform: translateX(22px);
+    }
+    
+    .section {
+      margin-bottom: 16px;
+    }
+    
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    
+    .input-group {
+      margin-bottom: 12px;
+    }
+    
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      color: white;
+      font-size: 13px;
+    }
+    
+    .input-group input::placeholder {
+      color: #666;
+    }
+    
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .accounts-list {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 8px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    
+    .account-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+    
+    .account-item:last-child {
+      margin-bottom: 0;
+    }
+    
+    .remove-btn {
+      background: none;
+      border: none;
+      color: #ff6b6b;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0 4px;
+    }
+    
+    .add-account {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .add-account input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      color: white;
+      font-size: 13px;
+    }
+    
+    .add-btn {
+      padding: 10px 16px;
+      background: #667eea;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    
+    .add-btn:hover {
+      background: #5a6fd6;
+    }
+    
+    .status {
+      text-align: center;
+      padding: 12px;
+      background: rgba(102, 126, 234, 0.1);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #667eea;
+    }
+    
+    .status.success {
+      background: rgba(46, 204, 113, 0.1);
+      color: #2ecc71;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 16px;
+      color: #666;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📊 AdScore Keeper</h1>
+    <p>Instagram Comment Tracker</p>
+  </div>
+  
+  <div class="content">
+    <div class="toggle-section">
+      <span class="toggle-label">Rastreamento ativo</span>
+      <div class="toggle" id="toggleEnabled"></div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Contas Monitoradas</div>
+      <div class="accounts-list" id="accountsList">
+        <div class="empty-state">Nenhuma conta adicionada</div>
+      </div>
+      <div class="add-account">
+        <input type="text" id="newAccount" placeholder="@username">
+        <button class="add-btn" id="addAccountBtn">+</button>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-title">Webhook URL</div>
+      <div class="input-group">
+        <input type="text" id="webhookUrl" placeholder="https://...">
+      </div>
+    </div>
+    
+    <div class="status" id="statusMessage">
+      Aguardando configuração...
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

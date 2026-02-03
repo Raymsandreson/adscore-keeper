@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "AdScore Keeper - Instagram Comment Tracker",
+  "version": "1.0.0",
+  "description": "Rastreia automaticamente comentários feitos no Instagram e envia para o AdScore Keeper",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://www.instagram.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "48": "icons/icon48.svg",
+      "128": "icons/icon128.svg"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  }
+}
