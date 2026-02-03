@@ -275,6 +275,41 @@ export type Database = {
           },
         ]
       }
+      contact_professions: {
+        Row: {
+          cbo_code: string
+          contact_id: string
+          created_at: string
+          id: string
+          is_primary: boolean | null
+          profession_title: string
+        }
+        Insert: {
+          cbo_code: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          profession_title: string
+        }
+        Update: {
+          cbo_code?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          profession_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_professions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_relationship_types: {
         Row: {
           created_at: string | null
