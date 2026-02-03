@@ -43,24 +43,47 @@ export const OutboundCommentDialog = ({ accounts, onSuccess }: OutboundCommentDi
     try {
       const selectedAccount = accounts.find(a => a.id === formData.accountId);
       
-      const { error } = await supabase.from("instagram_comments").insert({
-        ad_account_id: selectedAccount?.instagram_id,
-        author_username: selectedAccount?.account_name?.replace("@", ""),
-        comment_text: formData.commentText,
-        comment_type: "outbound_manual",
-        post_url: formData.postUrl || null,
-        prospect_name: formData.targetUsername,
-        platform: "instagram",
-        metadata: {
-          target_username: formData.targetUsername,
-          registered_manually: true,
-          registered_at: new Date().toISOString(),
-        },
-      });
+      // Try n8n webhook first for automated flow
+      const n8nWebhookUrl = "https://webhooks.prudenciosolucoes.com.br/webhook/outbound-comment";
+      
+      try {
+        await fetch(n8nWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "no-cors",
+          body: JSON.stringify({
+            account_id: selectedAccount?.instagram_id,
+            account_name: selectedAccount?.account_name,
+            target_username: formData.targetUsername,
+            comment_text: formData.commentText,
+            post_url: formData.postUrl || "",
+          }),
+        });
+        
+        toast.success("Comentário enviado para automação n8n!");
+      } catch (n8nError) {
+        console.warn("n8n webhook failed, falling back to direct insert:", n8nError);
+        
+        // Fallback to direct database insert
+        const { error } = await supabase.from("instagram_comments").insert({
+          ad_account_id: selectedAccount?.instagram_id,
+          author_username: selectedAccount?.account_name?.replace("@", ""),
+          comment_text: formData.commentText,
+          comment_type: "outbound_manual",
+          post_url: formData.postUrl || null,
+          prospect_name: formData.targetUsername,
+          platform: "instagram",
+          metadata: {
+            target_username: formData.targetUsername,
+            registered_manually: true,
+            registered_at: new Date().toISOString(),
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+        toast.success("Comentário outbound registrado!");
+      }
 
-      toast.success("Comentário outbound registrado!");
       setFormData({ accountId: "", targetUsername: "", postUrl: "", commentText: "" });
       setOpen(false);
       onSuccess?.();
