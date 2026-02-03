@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,6 @@ import {
 import { 
   Loader2, 
   Sparkles, 
-  Link as LinkIcon, 
   FileText,
   CheckCircle2,
   AlertCircle,
@@ -48,17 +46,13 @@ export function AccidentDataExtractor({
   onOpenChange,
   onDataExtracted,
 }: AccidentDataExtractorProps) {
-  const [activeTab, setActiveTab] = useState<'url' | 'text'>('url');
-  const [newsUrl, setNewsUrl] = useState('');
   const [documentText, setDocumentText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedAccidentData | null>(null);
 
   const handleExtract = async () => {
-    const content = activeTab === 'url' ? newsUrl : documentText;
-    
-    if (!content.trim()) {
-      toast.error(activeTab === 'url' ? 'Informe o link da notícia' : 'Cole o texto do documento');
+    if (!documentText.trim()) {
+      toast.error('Cole o texto do documento');
       return;
     }
 
@@ -67,7 +61,7 @@ export function AccidentDataExtractor({
 
     try {
       const { data, error } = await supabase.functions.invoke('extract-accident-data', {
-        body: { content, type: activeTab },
+        body: { content: documentText, type: 'text' },
       });
 
       if (error) {
@@ -94,15 +88,7 @@ export function AccidentDataExtractor({
   const handleConfirm = () => {
     if (extractedData) {
       onDataExtracted(extractedData);
-      // Save URL if used
-      if (activeTab === 'url' && newsUrl) {
-        onDataExtracted({ ...extractedData, news_link: newsUrl } as any);
-      } else {
-        onDataExtracted(extractedData);
-      }
       onOpenChange(false);
-      // Reset state
-      setNewsUrl('');
       setDocumentText('');
       setExtractedData(null);
     }
@@ -110,7 +96,6 @@ export function AccidentDataExtractor({
 
   const handleClose = () => {
     onOpenChange(false);
-    setNewsUrl('');
     setDocumentText('');
     setExtractedData(null);
   };
@@ -135,52 +120,24 @@ export function AccidentDataExtractor({
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'url' | 'text')} className="mt-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="url" className="gap-2">
-              <LinkIcon className="h-4 w-4" />
-              Link da Notícia
-            </TabsTrigger>
-            <TabsTrigger value="text" className="gap-2">
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium mb-2 block flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Texto/PDF
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="url" className="space-y-4 mt-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Cole o link da notícia sobre o acidente
-              </label>
-              <Input
-                placeholder="https://g1.globo.com/noticia-acidente-trabalho..."
-                value={newsUrl}
-                onChange={(e) => setNewsUrl(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                A IA irá acessar o link e extrair automaticamente os dados do acidente
-              </p>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="text" className="space-y-4 mt-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Cole o texto da petição inicial, decisão judicial ou notícia
-              </label>
-              <Textarea
-                placeholder="Cole aqui o conteúdo do documento..."
-                value={documentText}
-                onChange={(e) => setDocumentText(e.target.value)}
-                rows={8}
-                className="resize-none"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Copie e cole o texto do PDF ou documento que contém informações sobre o acidente
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+              Cole o texto da petição inicial, decisão judicial ou notícia
+            </label>
+            <Textarea
+              placeholder="Cole aqui o conteúdo do documento..."
+              value={documentText}
+              onChange={(e) => setDocumentText(e.target.value)}
+              rows={10}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Copie e cole o texto do PDF ou documento que contém informações sobre o acidente
+            </p>
+          </div>
+        </div>
 
         {!extractedData && (
           <Button 
