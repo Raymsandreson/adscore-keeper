@@ -20,7 +20,9 @@ import {
   Package,
   Users,
   Building,
-  MapPin
+  MapPin,
+  Clock,
+  Calendar
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useContacts } from '@/hooks/useContacts';
@@ -38,6 +40,7 @@ interface Transaction {
   merchant_state: string | null;
   card_last_digits: string | null;
   transaction_date: string;
+  transaction_time: string | null;
 }
 
 interface TransactionCategorizerProps {
@@ -193,10 +196,25 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
           <div className="p-3 rounded-lg bg-muted/50">
             <p className="font-medium">{transaction.description || transaction.merchant_name}</p>
             <p className="text-lg font-bold text-destructive">{formatCurrency(transaction.amount)}</p>
-            <p className="text-xs text-muted-foreground">
-              {new Date(transaction.transaction_date).toLocaleDateString('pt-BR')}
-              {transaction.card_last_digits && ` • **** ${transaction.card_last_digits}`}
-            </p>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {new Date(transaction.transaction_date).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric'
+                })}
+              </span>
+              {transaction.transaction_time && (
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {transaction.transaction_time.slice(0, 5)}
+                </span>
+              )}
+              {transaction.card_last_digits && (
+                <span>**** {transaction.card_last_digits}</span>
+              )}
+            </div>
           </div>
 
           {/* Location Section */}
