@@ -35,14 +35,15 @@ export function PostChecklist({ checklist, onChange, checklistStatusConfig, read
 
   const handleAddItem = (status?: ChecklistItemStatus) => {
     if (!newItemLabel.trim()) return;
+    const statusToUse = status || selectedStatus;
     const newItem: ChecklistItem = {
       id: String(Date.now()),
       label: newItemLabel.trim(),
-      status: status || selectedStatus,
+      status: statusToUse,
     };
     onChange([...checklist, newItem]);
     setNewItemLabel("");
-    setSelectedStatus("pending"); // Reset to default
+    // Keep the selected status for next item instead of resetting to pending
   };
 
   const handleRemoveItem = (id: string) => {
