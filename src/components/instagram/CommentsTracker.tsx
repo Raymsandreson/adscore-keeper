@@ -809,9 +809,22 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
 
   // Apply all filters and sorting
   const filteredComments = useMemo(() => {
+    // Get the instagram_ids from selected accounts for filtering
+    const selectedAccountIds = new Set(selectedAccounts.map(a => a.instagram_id));
+    
     const filtered = comments.filter(c => {
       // Filter by tab (received/sent)
       if (c.comment_type !== activeTab) return false;
+      
+      // Filter by selected accounts - only show comments from selected accounts
+      // If ad_account_id is set, it must match one of the selected account's instagram_id
+      // If ad_account_id is null, only show if no accounts are selected (fallback)
+      if (selectedAccountIds.size > 0) {
+        if (c.ad_account_id) {
+          if (!selectedAccountIds.has(c.ad_account_id)) return false;
+        }
+        // Comments without ad_account_id are legacy - show them only when all accounts selected or no filter
+      }
       
       // Filter by search text
       if (searchText) {
@@ -897,7 +910,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     
     // Default: sort by created_at (already sorted from DB)
     return filtered;
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, replyStatusFilter, filterByClassifications, filterByProfessions, getContactData, sortBy]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, replyStatusFilter, filterByClassifications, filterByProfessions, getContactData, sortBy, selectedAccounts]);
 
   const clearFilters = () => {
     setSearchText('');
