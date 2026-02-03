@@ -280,7 +280,9 @@ export function PendingTransactionsList({
                     {transaction.merchant_cnpj && (
                       <span className="flex items-center gap-1 font-mono">
                         <Building2 className="h-3 w-3" />
-                        {transaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                        {transaction.merchant_cnpj.length === 14 
+                          ? transaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+                          : transaction.merchant_cnpj}
                       </span>
                     )}
                     {(transaction.merchant_city || transaction.merchant_state) && (

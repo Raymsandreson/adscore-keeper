@@ -272,7 +272,9 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                           {t.merchant_cnpj && (
                                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
                                               <Building2 className="h-3 w-3" />
-                                              {t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                                              {t.merchant_cnpj.length === 14 
+                                                ? t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+                                                : t.merchant_cnpj}
                                             </span>
                                           )}
                                           {(t.merchant_city || t.merchant_state) && (
