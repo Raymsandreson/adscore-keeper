@@ -21,7 +21,8 @@ import {
   List,
   LayoutGrid,
   Wallet,
-  Clock
+  Clock,
+  Building2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -517,6 +518,12 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                         ? `${assignment.card_name} (**** ${currentTransaction.card_last_digits})`
                         : `**** ${currentTransaction.card_last_digits}`;
                     })()}
+                  </span>
+                )}
+                {currentTransaction.merchant_cnpj && (
+                  <span className="flex items-center gap-1 font-mono">
+                    <Building2 className="h-4 w-4" />
+                    {currentTransaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
                   </span>
                 )}
                 {currentTransaction.category && (

@@ -17,7 +17,8 @@ import {
   ChevronUp,
   User,
   Users,
-  Clock
+  Clock,
+  Building2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -269,11 +270,17 @@ export function PendingTransactionsList({
                   <p className="font-medium truncate text-sm">
                     {transaction.description || transaction.merchant_name || 'Transação'}
                   </p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     {transaction.card_last_digits && (
                       <span className="flex items-center gap-1">
                         <CreditCard className="h-3 w-3" />
                         {cardAssignment?.card_name || `****${transaction.card_last_digits}`}
+                      </span>
+                    )}
+                    {transaction.merchant_cnpj && (
+                      <span className="flex items-center gap-1 font-mono">
+                        <Building2 className="h-3 w-3" />
+                        {transaction.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
                       </span>
                     )}
                     {(transaction.merchant_city || transaction.merchant_state) && (
