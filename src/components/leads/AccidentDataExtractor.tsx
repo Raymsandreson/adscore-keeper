@@ -20,10 +20,6 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export interface ExtractedAccidentData {
   victim_name?: string | null;
@@ -61,6 +57,10 @@ export function AccidentDataExtractor({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const extractTextFromPdf = async (file: File): Promise<string> => {
+    // Dynamic import to avoid top-level await issues
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+    
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
