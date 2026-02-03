@@ -1,9 +1,13 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -301,6 +305,50 @@ serve(async (req) => {
       reply_text: data.reply_text
     }));
 
+    // Save comments to Supabase database
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    let savedCount = 0;
+    let errorCount = 0;
+
+    for (const comment of allData) {
+      try {
+        const { error } = await supabase
+          .from('instagram_comments')
+          .upsert({
+            comment_id: comment.comment_id,
+            comment_text: comment.comment_text,
+            author_username: comment.author_username,
+            author_id: comment.author_id,
+            created_at: comment.created_at,
+            post_id: comment.post_id,
+            post_url: comment.post_url,
+            comment_type: comment.comment_type,
+            parent_comment_id: comment.parent_comment_id || null,
+            ad_account_id: igAccountId,
+            platform: 'instagram',
+            metadata: comment.metadata || null,
+            // Mark as replied if was manually replied
+            replied_at: comment.was_manually_replied ? comment.manual_reply_at : null,
+            replied_by: comment.was_manually_replied ? 'manual' : null,
+          }, {
+            onConflict: 'comment_id',
+            ignoreDuplicates: false
+          });
+
+        if (error) {
+          console.error(`Erro ao salvar comentário ${comment.comment_id}:`, error.message);
+          errorCount++;
+        } else {
+          savedCount++;
+        }
+      } catch (err) {
+        console.error(`Erro inesperado ao salvar comentário:`, err);
+        errorCount++;
+      }
+    }
+
+    console.log(`💾 Comentários salvos: ${savedCount}, Erros: ${errorCount}`);
+
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -310,7 +358,10 @@ serve(async (req) => {
         mentionsCount: mentions.length,
         outboundRepliesCount: outboundReplies.length,
         instagramAccountId: igAccountId,
-        // New: manual replies detection data
+        // Database save stats
+        savedToDatabase: savedCount,
+        saveErrors: errorCount,
+        // Manual replies detection data
         manualReplies: manualRepliesArray,
         manualRepliesCount: manualRepliesArray.length
       }),
