@@ -65,7 +65,8 @@ import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
-import { MessageSquarePlus } from "lucide-react";
+import { BookmarkletGenerator } from "./BookmarkletGenerator";
+import { MessageSquarePlus, Bookmark } from "lucide-react";
 
 interface Comment {
   id: string;
@@ -1332,6 +1333,25 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 </Button>
               )}
               
+              {/* Bookmarklet Dialog */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Bookmark className="h-4 w-4" />
+                    Bookmarklet
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Registro Rápido via Bookmarklet</DialogTitle>
+                    <DialogDescription>
+                      Arraste o botão para sua barra de favoritos para registrar comentários facilmente
+                    </DialogDescription>
+                  </DialogHeader>
+                  <BookmarkletGenerator />
+                </DialogContent>
+              </Dialog>
+              
               {/* Outbound Comment Registration Button */}
               <OutboundCommentDialog
                 accounts={selectedAccounts}
@@ -1849,6 +1869,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                     <Button variant="link" onClick={clearFilters} className="mt-2">
                       Limpar filtros
                     </Button>
+                  )}
+                  {activeTab === 'outbound_manual' && !hasActiveFilters && (
+                    <div className="mt-6 max-w-md mx-auto">
+                      <BookmarkletGenerator />
+                    </div>
                   )}
                 </div>
               ) : (
