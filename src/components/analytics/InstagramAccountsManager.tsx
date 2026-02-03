@@ -193,14 +193,18 @@ export const InstagramAccountsManager = () => {
         return;
       }
 
+      console.log('Token belongs to:', meData);
+
       // Try to get pages with Instagram accounts
       const pagesResponse = await fetch(
-        `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
+        `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
       );
       const pagesData = await pagesResponse.json();
 
+      console.log('Pages data:', pagesData);
+
       // Look for Instagram account in pages
-      if (pagesData.data) {
+      if (pagesData.data && pagesData.data.length > 0) {
         const pageWithIg = pagesData.data.find((p: any) => p.instagram_business_account);
         if (pageWithIg) {
           const ig = pageWithIg.instagram_business_account;
@@ -214,17 +218,29 @@ export const InstagramAccountsManager = () => {
           });
           setValidatingToken(false);
           return;
+        } else {
+          // Pages exist but none have Instagram linked
+          setTokenValidation({ 
+            valid: false, 
+            error: `Encontramos ${pagesData.data.length} página(s), mas nenhuma tem Instagram Business vinculado. Vincule sua conta Instagram à página do Facebook primeiro.` 
+          });
+          setValidatingToken(false);
+          return;
         }
       }
 
-      // If no pages, try direct page lookup (Page token)
-      const directIgResponse = await fetch(
-        `https://graph.facebook.com/v18.0/${meData.id}?fields=instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
+      // If pagesData.data is empty, check if it's a Page Token directly
+      // Try to get page info to see if this is a page token
+      const pageInfoResponse = await fetch(
+        `https://graph.facebook.com/v18.0/${meData.id}?fields=id,name,category,instagram_business_account{id,username,profile_picture_url,followers_count,media_count}&access_token=${token}`
       );
-      const directIgData = await directIgResponse.json();
+      const pageInfoData = await pageInfoResponse.json();
 
-      if (directIgData.instagram_business_account) {
-        const ig = directIgData.instagram_business_account;
+      console.log('Page info data:', pageInfoData);
+
+      // Check if we got the category field (indicates it's a Page, not a User)
+      if (pageInfoData.category && pageInfoData.instagram_business_account) {
+        const ig = pageInfoData.instagram_business_account;
         setTokenValidation({
           valid: true,
           instagramId: ig.id,
@@ -233,13 +249,28 @@ export const InstagramAccountsManager = () => {
           followersCount: ig.followers_count,
           mediaCount: ig.media_count,
         });
-      } else {
+        setValidatingToken(false);
+        return;
+      }
+
+      // If we got here with a category but no Instagram, it's a page without IG
+      if (pageInfoData.category && !pageInfoData.instagram_business_account) {
         setTokenValidation({ 
           valid: false, 
-          error: 'Nenhuma conta Instagram Business encontrada com este token. Certifique-se de que a conta está vinculada a uma Página do Facebook.' 
+          error: `A página "${pageInfoData.name}" não tem Instagram Business vinculado. Vincule sua conta Instagram à página no Facebook Business Suite.` 
         });
+        setValidatingToken(false);
+        return;
       }
+
+      // If no pages returned and no category, this is a User Token without page access
+      // The token needs pages_show_list permission
+      setTokenValidation({ 
+        valid: false, 
+        error: 'O token não tem acesso a nenhuma Página do Facebook. Verifique se você:\n\n1. Selecionou uma Página no Graph API Explorer (não apenas o App)\n2. Adicionou a permissão "pages_show_list"\n3. A conta Instagram está vinculada à Página do Facebook como Business/Creator' 
+      });
     } catch (err: any) {
+      console.error('Token validation error:', err);
       setTokenValidation({ valid: false, error: err.message || 'Erro ao validar token' });
     }
 
