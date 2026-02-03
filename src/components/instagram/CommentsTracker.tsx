@@ -66,7 +66,8 @@ import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
 import { BookmarkletGenerator } from "./BookmarkletGenerator";
-import { MessageSquarePlus, Bookmark } from "lucide-react";
+import { UserscriptInstaller } from "./UserscriptInstaller";
+import { MessageSquarePlus, Bookmark, Zap } from "lucide-react";
 
 interface Comment {
   id: string;
@@ -1333,22 +1334,16 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 </Button>
               )}
               
-              {/* Bookmarklet Dialog */}
+              {/* Automatic Tracking Dialog */}
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <Bookmark className="h-4 w-4" />
-                    Bookmarklet
+                    <Zap className="h-4 w-4 text-yellow-500" />
+                    Rastreio Automático
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>Registro Rápido via Bookmarklet</DialogTitle>
-                    <DialogDescription>
-                      Arraste o botão para sua barra de favoritos para registrar comentários facilmente
-                    </DialogDescription>
-                  </DialogHeader>
-                  <BookmarkletGenerator />
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <UserscriptInstaller />
                 </DialogContent>
               </Dialog>
               
@@ -1871,8 +1866,8 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                     </Button>
                   )}
                   {activeTab === 'outbound_manual' && !hasActiveFilters && (
-                    <div className="mt-6 max-w-md mx-auto">
-                      <BookmarkletGenerator />
+                    <div className="mt-6 max-w-2xl mx-auto text-left">
+                      <UserscriptInstaller />
                     </div>
                   )}
                 </div>
