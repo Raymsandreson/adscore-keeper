@@ -490,6 +490,7 @@ export type Database = {
           purchase_group_id: string | null
           total_installments: number | null
           transaction_date: string
+          transaction_time: string | null
           updated_at: string
           user_id: string
         }
@@ -513,6 +514,7 @@ export type Database = {
           purchase_group_id?: string | null
           total_installments?: number | null
           transaction_date: string
+          transaction_time?: string | null
           updated_at?: string
           user_id: string
         }
@@ -536,6 +538,7 @@ export type Database = {
           purchase_group_id?: string | null
           total_installments?: number | null
           transaction_date?: string
+          transaction_time?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -20,7 +20,8 @@ import {
   Package,
   MapPin,
   Building2,
-  Layers
+  Layers,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -37,6 +38,7 @@ interface Transaction {
   amount: number;
   currency_code: string | null;
   transaction_date: string;
+  transaction_time: string | null;
   category: string | null;
   payment_data: Record<string, any>;
   card_last_digits: string | null;
@@ -255,9 +257,17 @@ export function TransactionsGroupedByCard({ transactions }: TransactionsGroupedB
                                         </div>
                                       )}
                                       <div>
-                                        <p className="text-sm font-medium">
-                                          {t.description || t.merchant_name || 'Transação'}
-                                        </p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-sm font-medium">
+                                            {t.description || t.merchant_name || 'Transação'}
+                                          </p>
+                                          {t.transaction_time && (
+                                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                              <Clock className="h-3 w-3" />
+                                              {t.transaction_time.slice(0, 5)}
+                                            </span>
+                                          )}
+                                        </div>
                                         <div className="flex items-center gap-2 flex-wrap">
                                           {t.merchant_cnpj && (
                                             <span className="text-xs text-muted-foreground flex items-center gap-1 font-mono">
