@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -15,9 +15,15 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  Upload,
+  File,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export interface ExtractedAccidentData {
   victim_name?: string | null;
@@ -46,13 +52,60 @@ export function AccidentDataExtractor({
   onOpenChange,
   onDataExtracted,
 }: AccidentDataExtractorProps) {
+  const [activeTab, setActiveTab] = useState<'text' | 'pdf'>('text');
   const [documentText, setDocumentText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedAccidentData | null>(null);
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const extractTextFromPdf = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      fullText += pageText + '\n\n';
+    }
+    
+    return fullText.trim();
+  };
+
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error('Por favor, selecione um arquivo PDF');
+      return;
+    }
+
+    setIsLoadingPdf(true);
+    setPdfFileName(file.name);
+
+    try {
+      const text = await extractTextFromPdf(file);
+      setDocumentText(text);
+      toast.success('PDF carregado com sucesso!');
+    } catch (err) {
+      console.error('Error extracting PDF:', err);
+      toast.error('Erro ao ler o PDF. Tente copiar e colar o texto manualmente.');
+      setPdfFileName(null);
+    } finally {
+      setIsLoadingPdf(false);
+    }
+  };
 
   const handleExtract = async () => {
     if (!documentText.trim()) {
-      toast.error('Cole o texto do documento');
+      toast.error('Carregue um PDF ou cole o texto do documento');
       return;
     }
 
@@ -89,15 +142,22 @@ export function AccidentDataExtractor({
     if (extractedData) {
       onDataExtracted(extractedData);
       onOpenChange(false);
-      setDocumentText('');
-      setExtractedData(null);
+      resetState();
+    }
+  };
+
+  const resetState = () => {
+    setDocumentText('');
+    setExtractedData(null);
+    setPdfFileName(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
   const handleClose = () => {
     onOpenChange(false);
-    setDocumentText('');
-    setExtractedData(null);
+    resetState();
   };
 
   const renderField = (label: string, value: string | number | null | undefined) => {
@@ -120,29 +180,100 @@ export function AccidentDataExtractor({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'text' | 'pdf')} className="mt-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="text" className="gap-2">
               <FileText className="h-4 w-4" />
-              Cole o texto da petição inicial, decisão judicial ou notícia
-            </label>
-            <Textarea
-              placeholder="Cole aqui o conteúdo do documento..."
-              value={documentText}
-              onChange={(e) => setDocumentText(e.target.value)}
-              rows={10}
-              className="resize-none"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Copie e cole o texto do PDF ou documento que contém informações sobre o acidente
-            </p>
-          </div>
-        </div>
+              Colar Texto
+            </TabsTrigger>
+            <TabsTrigger value="pdf" className="gap-2">
+              <Upload className="h-4 w-4" />
+              Upload PDF
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="text" className="space-y-4 mt-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Cole o texto da petição inicial, decisão judicial ou notícia
+              </label>
+              <Textarea
+                placeholder="Cole aqui o conteúdo do documento..."
+                value={documentText}
+                onChange={(e) => setDocumentText(e.target.value)}
+                rows={10}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Copie e cole o texto do documento que contém informações sobre o acidente
+              </p>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="pdf" className="space-y-4 mt-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Faça upload do arquivo PDF
+              </label>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handlePdfUpload}
+                className="hidden"
+                id="pdf-upload"
+              />
+              
+              <div 
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isLoadingPdf ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <span className="text-sm text-muted-foreground">Carregando PDF...</span>
+                  </div>
+                ) : pdfFileName ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <File className="h-8 w-8 text-primary" />
+                    <span className="text-sm font-medium">{pdfFileName}</span>
+                    <span className="text-xs text-muted-foreground">Clique para trocar o arquivo</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
+                      Clique para selecionar um PDF
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Petição inicial, decisão judicial ou notícia
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {documentText && pdfFileName && (
+                <div className="mt-4">
+                  <label className="text-sm font-medium mb-2 block">
+                    Texto extraído do PDF (você pode editar se necessário)
+                  </label>
+                  <Textarea
+                    value={documentText}
+                    onChange={(e) => setDocumentText(e.target.value)}
+                    rows={6}
+                    className="resize-none text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
 
         {!extractedData && (
           <Button 
             onClick={handleExtract} 
-            disabled={isExtracting}
+            disabled={isExtracting || isLoadingPdf || !documentText.trim()}
             className="w-full mt-4"
           >
             {isExtracting ? (
