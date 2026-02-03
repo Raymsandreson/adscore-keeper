@@ -312,7 +312,8 @@ serve(async (req) => {
           });
         }
 
-        let allTransactions: any[] = [];
+        let totalCount = 0;
+        const BATCH_SIZE = 100; // Process in smaller batches to avoid CPU timeout
 
         for (const connection of connections) {
           const accounts = await getAccounts(apiKey, connection.pluggy_item_id);
@@ -321,54 +322,56 @@ serve(async (req) => {
           for (const account of creditAccounts) {
             const transactions = await getTransactions(apiKey, account.id, from, to);
             
-            // Process transactions WITHOUT CNPJ lookup (too slow, causes timeout)
-            // Location enrichment can be done separately via enrich-transactions-location function
-            const formattedTransactions = transactions.map(t => {
-              const city = t.merchant?.city || null;
-              const state = t.merchant?.state || null;
-              const cnpj = t.merchant?.cnpj || null;
-              
-              // Extract installment info from creditCardMetadata
-              const installmentNumber = t.creditCardMetadata?.installmentNumber || null;
-              const totalInstallments = t.creditCardMetadata?.totalInstallments || null;
-              const originalPurchaseDate = t.creditCardMetadata?.purchaseDate 
-                ? t.creditCardMetadata.purchaseDate.split('T')[0] 
-                : null;
-              
-              return {
-                user_id: user.id,
-                pluggy_account_id: account.id,
-                pluggy_transaction_id: t.id,
-                description: t.description,
-                amount: t.amount,
-                currency_code: 'BRL',
-                transaction_date: t.date.split('T')[0],
-                category: t.category || 'Outros',
-                payment_data: t.paymentData || {},
-                card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),
-                merchant_name: t.merchant?.name || null,
-                merchant_cnpj: cnpj,
-                merchant_city: city,
-                merchant_state: state,
-                installment_number: installmentNumber,
-                total_installments: totalInstallments,
-                original_purchase_date: originalPurchaseDate,
-              };
-            });
-            
-            console.log(`Account ${account.id}: ${formattedTransactions.length} transactions to save`);
+            console.log(`Account ${account.id}: ${transactions.length} transactions to process`);
 
-            if (formattedTransactions.length > 0) {
+            // Process transactions in batches to avoid CPU timeout
+            for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+              const batch = transactions.slice(i, i + BATCH_SIZE);
+              
+              const formattedBatch = batch.map(t => {
+                const city = t.merchant?.city || null;
+                const state = t.merchant?.state || null;
+                const cnpj = t.merchant?.cnpj || null;
+                
+                const installmentNumber = t.creditCardMetadata?.installmentNumber || null;
+                const totalInstallments = t.creditCardMetadata?.totalInstallments || null;
+                const originalPurchaseDate = t.creditCardMetadata?.purchaseDate 
+                  ? t.creditCardMetadata.purchaseDate.split('T')[0] 
+                  : null;
+                
+                return {
+                  user_id: user.id,
+                  pluggy_account_id: account.id,
+                  pluggy_transaction_id: t.id,
+                  description: t.description,
+                  amount: t.amount,
+                  currency_code: 'BRL',
+                  transaction_date: t.date.split('T')[0],
+                  category: t.category || 'Outros',
+                  payment_data: t.paymentData || {},
+                  card_last_digits: t.creditCardMetadata?.cardNumber?.slice(-4) || account.number?.slice(-4),
+                  merchant_name: t.merchant?.name || null,
+                  merchant_cnpj: cnpj,
+                  merchant_city: city,
+                  merchant_state: state,
+                  installment_number: installmentNumber,
+                  total_installments: totalInstallments,
+                  original_purchase_date: originalPurchaseDate,
+                };
+              });
+
               const { error: upsertError } = await supabase
                 .from('credit_card_transactions')
-                .upsert(formattedTransactions, { onConflict: 'pluggy_transaction_id' });
+                .upsert(formattedBatch, { onConflict: 'pluggy_transaction_id' });
 
               if (upsertError) {
-                console.error('Error upserting transactions:', upsertError);
+                console.error(`Error upserting batch ${i / BATCH_SIZE + 1}:`, upsertError);
+              } else {
+                console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: saved ${formattedBatch.length} transactions`);
               }
-            }
 
-            allTransactions = [...allTransactions, ...formattedTransactions];
+              totalCount += formattedBatch.length;
+            }
           }
 
           // Update last sync
@@ -380,7 +383,7 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({ 
           success: true, 
-          count: allTransactions.length 
+          count: totalCount 
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
