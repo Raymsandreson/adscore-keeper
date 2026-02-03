@@ -20,7 +20,8 @@ import {
   X,
   List,
   LayoutGrid,
-  Wallet
+  Wallet,
+  Clock
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -45,6 +46,7 @@ interface Transaction {
   amount: number;
   currency_code: string | null;
   transaction_date: string;
+  transaction_time: string | null;
   category: string | null;
   payment_data: Record<string, any>;
   card_last_digits: string | null;
@@ -500,6 +502,12 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
                   <Calendar className="h-4 w-4" />
                   {format(new Date(currentTransaction.transaction_date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
                 </span>
+                {currentTransaction.transaction_time && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    {currentTransaction.transaction_time.slice(0, 5)}
+                  </span>
+                )}
                 {currentTransaction.card_last_digits && (
                   <span className="flex items-center gap-1">
                     <CreditCard className="h-4 w-4" />
