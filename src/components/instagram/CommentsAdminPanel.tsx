@@ -52,6 +52,7 @@ import { ptBR } from 'date-fns/locale';
 
 interface InstagramComment {
   id: string;
+  ad_account_id: string | null;
   author_username: string | null;
   comment_text: string | null;
   comment_type: string;
@@ -66,11 +67,20 @@ interface InstagramComment {
   metadata: unknown;
 }
 
+interface InstagramAccount {
+  id: string;
+  instagram_id: string;
+  account_name: string;
+  profile_picture_url: string | null;
+}
+
 export function CommentsAdminPanel() {
   const [comments, setComments] = useState<InstagramComment[]>([]);
+  const [accounts, setAccounts] = useState<InstagramAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [accountFilter, setAccountFilter] = useState<string>('all');
   const [selectedComment, setSelectedComment] = useState<InstagramComment | null>(null);
   const [replyDialogOpen, setReplyDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -79,8 +89,27 @@ export function CommentsAdminPanel() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  useEffect(() => {
     fetchComments();
-  }, [typeFilter]);
+  }, [typeFilter, accountFilter]);
+
+  const fetchAccounts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('instagram_accounts')
+        .select('id, instagram_id, account_name, profile_picture_url')
+        .eq('is_active', true)
+        .order('account_name');
+
+      if (error) throw error;
+      setAccounts(data || []);
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
+    }
+  };
 
   const fetchComments = async () => {
     setIsLoading(true);
@@ -89,10 +118,14 @@ export function CommentsAdminPanel() {
         .from('instagram_comments')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(100);
+        .limit(200);
 
       if (typeFilter !== 'all') {
         query = query.eq('comment_type', typeFilter);
+      }
+
+      if (accountFilter !== 'all') {
+        query = query.eq('ad_account_id', accountFilter);
       }
 
       const { data, error } = await query;
@@ -105,6 +138,12 @@ export function CommentsAdminPanel() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getAccountName = (adAccountId: string | null) => {
+    if (!adAccountId) return 'Sem conta';
+    const account = accounts.find(a => a.instagram_id === adAccountId);
+    return account?.account_name || adAccountId;
   };
 
   const handleReply = async () => {
@@ -204,6 +243,40 @@ export function CommentsAdminPanel() {
           </div>
         </CardHeader>
         <CardContent>
+          {/* Account Selector */}
+          {accounts.length > 0 && (
+            <div className="mb-6">
+              <label className="text-sm font-medium mb-2 block">Conta Instagram</label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant={accountFilter === 'all' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAccountFilter('all')}
+                >
+                  Todas as Contas
+                </Button>
+                {accounts.map((account) => (
+                  <Button
+                    key={account.id}
+                    variant={accountFilter === account.instagram_id ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setAccountFilter(account.instagram_id)}
+                    className="gap-2"
+                  >
+                    {account.profile_picture_url && (
+                      <img 
+                        src={account.profile_picture_url} 
+                        alt={account.account_name}
+                        className="h-4 w-4 rounded-full"
+                      />
+                    )}
+                    @{account.account_name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="relative flex-1">
@@ -221,7 +294,7 @@ export function CommentsAdminPanel() {
                 <SelectValue placeholder="Filtrar por tipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">Todos os tipos</SelectItem>
                 <SelectItem value="received">Recebidos</SelectItem>
                 <SelectItem value="sent">Enviados</SelectItem>
                 <SelectItem value="outbound_manual">Outbound Manual</SelectItem>
@@ -285,6 +358,11 @@ export function CommentsAdminPanel() {
                             </span>
                           </div>
                           {getTypeBadge(comment.comment_type)}
+                          {comment.ad_account_id && accountFilter === 'all' && (
+                            <Badge variant="secondary" className="text-xs">
+                              {getAccountName(comment.ad_account_id)}
+                            </Badge>
+                          )}
                           {comment.replied_at && (
                             <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">
                               <CheckCircle className="h-3 w-3 mr-1" />
