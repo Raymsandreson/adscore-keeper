@@ -434,10 +434,51 @@ ${post_url ? `- Post: ${post_url}` : ''}`;
       );
     }
 
+    // Action: register_outbound - Register an outbound comment from n8n
+    if (action === "register_outbound") {
+      const { account_id, account_name, target_username, comment_text, post_url } = body;
+
+      if (!target_username || !comment_text) {
+        return new Response(
+          JSON.stringify({ success: false, error: "target_username and comment_text are required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data, error } = await supabase.from("instagram_comments").insert({
+        ad_account_id: account_id || null,
+        author_username: account_name?.replace("@", "") || null,
+        comment_text,
+        comment_type: "outbound_n8n",
+        post_url: post_url || null,
+        prospect_name: target_username,
+        platform: "instagram",
+        metadata: {
+          target_username,
+          source: "n8n_automation",
+          registered_at: new Date().toISOString(),
+        },
+      }).select().single();
+
+      if (error) throw error;
+
+      // Log the automation
+      await supabase.from("n8n_automation_logs").insert({
+        action_type: "outbound_register",
+        status: "success",
+        metadata: { target_username, comment_id: data?.id },
+      });
+
+      return new Response(
+        JSON.stringify({ success: true, comment: data }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: "Invalid action. Use: fetch_pending_comments, generate_reply, post_reply, scheduled_run, or auto_process" 
+        error: "Invalid action. Use: fetch_pending_comments, generate_reply, post_reply, scheduled_run, auto_process, or register_outbound" 
       }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
