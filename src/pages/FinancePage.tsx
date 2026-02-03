@@ -34,7 +34,7 @@ import {
   Tag,
   Wallet
 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, subMonths, subDays, subWeeks, startOfWeek, endOfWeek, startOfYear, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
@@ -505,18 +505,44 @@ export default function FinancePage() {
   };
 
   const quickDateRanges = [
-    { label: 'Este mês', start: startOfMonth(new Date()), end: endOfMonth(new Date()) },
-    { label: 'Mês passado', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) },
-    { label: '3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
+    { value: 'today', label: 'Hoje', start: new Date(), end: new Date() },
+    { value: 'yesterday', label: 'Ontem', start: subDays(new Date(), 1), end: subDays(new Date(), 1) },
+    { value: 'last_7_days', label: 'Últimos 7 dias', start: subDays(new Date(), 6), end: new Date() },
+    { value: 'last_14_days', label: 'Últimos 14 dias', start: subDays(new Date(), 13), end: new Date() },
+    { value: 'last_30_days', label: 'Últimos 30 dias', start: subDays(new Date(), 29), end: new Date() },
+    { value: 'last_60_days', label: 'Últimos 60 dias', start: subDays(new Date(), 59), end: new Date() },
+    { value: 'last_90_days', label: 'Últimos 90 dias', start: subDays(new Date(), 89), end: new Date() },
+    { value: 'this_week', label: 'Esta semana', start: startOfWeek(new Date(), { weekStartsOn: 0 }), end: endOfWeek(new Date(), { weekStartsOn: 0 }) },
+    { value: 'last_week', label: 'Semana passada', start: startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 0 }), end: endOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 0 }) },
+    { value: 'this_month', label: 'Este mês', start: startOfMonth(new Date()), end: endOfMonth(new Date()) },
+    { value: 'last_month', label: 'Mês passado', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(subMonths(new Date(), 1)) },
+    { value: '2_months', label: '2 meses', start: startOfMonth(subMonths(new Date(), 1)), end: endOfMonth(new Date()) },
+    { value: '3_months', label: '3 meses', start: startOfMonth(subMonths(new Date(), 2)), end: endOfMonth(new Date()) },
+    { value: '6_months', label: '6 meses', start: startOfMonth(subMonths(new Date(), 5)), end: endOfMonth(new Date()) },
+    { value: '12_months', label: '12 meses', start: startOfMonth(subMonths(new Date(), 11)), end: endOfMonth(new Date()) },
+    { value: 'this_year', label: 'Este ano', start: startOfYear(new Date()), end: new Date() },
+    { value: 'last_year', label: 'Ano passado', start: startOfYear(subYears(new Date(), 1)), end: endOfMonth(subMonths(startOfYear(new Date()), 1)) },
+    { value: 'all_time', label: 'Todo o período', start: subYears(new Date(), 5), end: new Date() },
   ];
 
-  const setQuickRange = (range: typeof quickDateRanges[0]) => {
-    setStartDate(range.start);
-    setEndDate(range.end);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('this_month');
+
+  const handlePeriodChange = (value: string) => {
+    setSelectedPeriod(value);
+    const range = quickDateRanges.find(r => r.value === value);
+    if (range) {
+      setStartDate(range.start);
+      setEndDate(range.end);
+    }
   };
 
-  const isQuickRangeActive = (range: typeof quickDateRanges[0]) => {
-    return startDate.getTime() === range.start.getTime() && endDate.getTime() === range.end.getTime();
+  // Find current active period based on dates
+  const getActivePeriodValue = () => {
+    const matchedRange = quickDateRanges.find(range => 
+      format(startDate, 'yyyy-MM-dd') === format(range.start, 'yyyy-MM-dd') &&
+      format(endDate, 'yyyy-MM-dd') === format(range.end, 'yyyy-MM-dd')
+    );
+    return matchedRange?.value || 'custom';
   };
 
   const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
@@ -683,19 +709,25 @@ export default function FinancePage() {
             {/* Unified Global Filters - Inter Style */}
             <Card className="border-0 shadow-card">
               <CardContent className="py-4 space-y-4">
-                {/* Row 1: Quick Pills + Date Range */}
+                {/* Row 1: Period Selector + Date Range */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {quickDateRanges.map((range, i) => (
-                    <Button
-                      key={i}
-                      variant={isQuickRangeActive(range) ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setQuickRange(range)}
-                      className="rounded-full px-4 h-8"
-                    >
-                      {range.label}
-                    </Button>
-                  ))}
+                  {/* Period Dropdown */}
+                  <Select value={getActivePeriodValue()} onValueChange={handlePeriodChange}>
+                    <SelectTrigger className="w-[180px] h-8">
+                      <CalendarIcon className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Selecione o período" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {quickDateRanges.map((range) => (
+                        <SelectItem key={range.value} value={range.value}>
+                          {range.label}
+                        </SelectItem>
+                      ))}
+                      {getActivePeriodValue() === 'custom' && (
+                        <SelectItem value="custom">Personalizado</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                   
                   <div className="flex items-center gap-2 ml-auto">
                     {/* Start Date */}
@@ -710,7 +742,12 @@ export default function FinancePage() {
                         <Calendar
                           mode="single"
                           selected={startDate}
-                          onSelect={(date) => date && setStartDate(date)}
+                          onSelect={(date) => {
+                            if (date) {
+                              setStartDate(date);
+                              setSelectedPeriod('custom');
+                            }
+                          }}
                           defaultMonth={startDate}
                           locale={ptBR}
                           className="pointer-events-auto"
@@ -732,7 +769,12 @@ export default function FinancePage() {
                         <Calendar
                           mode="single"
                           selected={endDate}
-                          onSelect={(date) => date && setEndDate(date)}
+                          onSelect={(date) => {
+                            if (date) {
+                              setEndDate(date);
+                              setSelectedPeriod('custom');
+                            }
+                          }}
                           defaultMonth={endDate}
                           locale={ptBR}
                           className="pointer-events-auto"
