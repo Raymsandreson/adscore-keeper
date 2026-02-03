@@ -8,13 +8,15 @@ import {
   Lightbulb, 
   TrendingUp,
   Instagram,
-  LineChart
+  LineChart,
+  MessageCircle
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
 import { PlatformEngagement } from "@/components/analytics/PlatformEngagement";
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { InstagramMetricsChart } from "@/components/analytics/InstagramMetricsChart";
+import { CommentsAdminPanel } from "@/components/instagram/CommentsAdminPanel";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
@@ -49,10 +51,14 @@ const AnalyticsPage = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs defaultValue="accounts" className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-5">
+          <TabsList className="grid w-full max-w-4xl grid-cols-6">
             <TabsTrigger value="accounts" className="gap-2">
               <Instagram className="h-4 w-4" />
               <span className="hidden sm:inline">Contas</span>
+            </TabsTrigger>
+            <TabsTrigger value="comments" className="gap-2">
+              <MessageCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Comentários</span>
             </TabsTrigger>
             <TabsTrigger value="evolution" className="gap-2">
               <LineChart className="h-4 w-4" />
@@ -75,6 +81,11 @@ const AnalyticsPage = () => {
           {/* Accounts Tab */}
           <TabsContent value="accounts" className="space-y-6">
             <InstagramAccountsManager />
+          </TabsContent>
+
+          {/* Comments Admin Tab */}
+          <TabsContent value="comments" className="space-y-6">
+            <CommentsAdminPanel />
           </TabsContent>
 
           {/* Evolution Tab */}
