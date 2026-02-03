@@ -339,11 +339,17 @@ export default function FinancePage() {
       const matchesCard = filterCards.includes("all") || filterCards.includes(t.card_last_digits || '');
       
       // Filter by cost accounts (multi-select)
+      // Priority: override cost_account_id > card_assignment cost_account_id
       const isAllAccounts = filterAccounts.includes("all");
       let matchesAccount = isAllAccounts;
       if (!matchesAccount) {
         const override = getTransactionOverride(t.id);
-        const costAccountId = override?.cost_account_id || null;
+        // First check override, then fallback to card assignment
+        let costAccountId = override?.cost_account_id || null;
+        if (!costAccountId && t.card_last_digits) {
+          const cardAssignment = getCardAssignment(t.card_last_digits);
+          costAccountId = cardAssignment?.cost_account_id || null;
+        }
         if (filterAccounts.includes("no-account")) {
           matchesAccount = !costAccountId;
         }
