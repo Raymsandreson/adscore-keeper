@@ -377,10 +377,11 @@ export const InstagramAccountsManager = () => {
     }
   };
 
-  const syncAccount = async (id: string) => {
+  const syncAccount = async (id: string, fetchCommentsAfter = true) => {
     setSyncing(id);
     
     try {
+      // First sync metrics
       const response = await supabase.functions.invoke('sync-instagram-metrics', {
         body: { account_id: id }
       });
@@ -398,6 +399,11 @@ export const InstagramAccountsManager = () => {
         toast.success('Métricas sincronizadas!');
       }
       
+      // Then fetch comments if requested
+      if (fetchCommentsAfter) {
+        await fetchAndSaveComments(id);
+      }
+      
       fetchAccounts();
     } catch (error: any) {
       console.log('Sync error:', error);
@@ -405,6 +411,129 @@ export const InstagramAccountsManager = () => {
     }
 
     setSyncing(null);
+  };
+
+  // Fetch and save comments from Instagram
+  const fetchAndSaveComments = async (accountId: string) => {
+    try {
+      // Get account details
+      const { data: account } = await supabase
+        .from('instagram_accounts')
+        .select('access_token, instagram_id, account_name')
+        .eq('id', accountId)
+        .single();
+
+      if (!account) {
+        console.error('Account not found');
+        return;
+      }
+
+      toast.info('Buscando comentários...', { id: 'fetching-comments' });
+
+      const response = await supabase.functions.invoke('fetch-instagram-comments', {
+        body: { 
+          accessToken: account.access_token,
+          instagramAccountId: account.instagram_id
+        }
+      });
+
+      if (response.error) {
+        console.error('Error fetching comments:', response.error);
+        toast.error('Erro ao buscar comentários', { 
+          id: 'fetching-comments',
+          description: response.error.message 
+        });
+        return;
+      }
+
+      if (!response.data?.success) {
+        toast.error('Erro ao buscar comentários', { 
+          id: 'fetching-comments',
+          description: response.data?.error || 'Erro desconhecido' 
+        });
+        return;
+      }
+
+      const comments = response.data.comments || [];
+      const manualReplies = response.data.manualReplies || [];
+
+      if (comments.length === 0) {
+        toast.info('Nenhum comentário encontrado', { id: 'fetching-comments' });
+        return;
+      }
+
+      // Save comments to database
+      let savedCount = 0;
+      let updatedCount = 0;
+
+      for (const comment of comments) {
+        // Check if comment already exists
+        const { data: existing } = await supabase
+          .from('instagram_comments')
+          .select('id, replied_at')
+          .eq('comment_id', comment.comment_id)
+          .maybeSingle();
+
+        if (existing) {
+          // Update if manual reply was detected and not already marked
+          if (comment.was_manually_replied && !existing.replied_at) {
+            await supabase
+              .from('instagram_comments')
+              .update({
+                replied_at: comment.manual_reply_at,
+                metadata: {
+                  manual_reply: true,
+                  manual_reply_text: manualReplies.find((r: any) => r.comment_id === comment.comment_id)?.reply_text
+                }
+              })
+              .eq('id', existing.id);
+            updatedCount++;
+          }
+          continue;
+        }
+
+        // Insert new comment
+        const { error: insertError } = await supabase
+          .from('instagram_comments')
+          .insert({
+            comment_id: comment.comment_id,
+            comment_text: comment.comment_text,
+            author_username: comment.author_username,
+            author_id: comment.author_id,
+            post_id: comment.post_id,
+            post_url: comment.post_url,
+            parent_comment_id: comment.parent_comment_id || null,
+            comment_type: comment.comment_type,
+            platform: 'instagram',
+            created_at: comment.created_at,
+            ad_account_id: account.instagram_id,
+            replied_at: comment.was_manually_replied ? comment.manual_reply_at : null,
+            metadata: {
+              account_name: account.account_name,
+              ...(comment.metadata || {}),
+              ...(comment.was_manually_replied ? {
+                manual_reply: true,
+                manual_reply_text: manualReplies.find((r: any) => r.comment_id === comment.comment_id)?.reply_text
+              } : {})
+            }
+          });
+
+        if (!insertError) {
+          savedCount++;
+        }
+      }
+
+      toast.success(`${savedCount} comentários importados${updatedCount > 0 ? `, ${updatedCount} atualizados` : ''}`, { 
+        id: 'fetching-comments' 
+      });
+
+    } catch (err: any) {
+      console.error('Error fetching comments:', err);
+      toast.error('Erro ao buscar comentários', { 
+        id: 'fetching-comments',
+        description: err.message 
+      });
+    }
   };
 
   const syncAllAccounts = async () => {
