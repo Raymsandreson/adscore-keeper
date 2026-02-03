@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,6 +98,7 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { ProfessionFilter } from '@/components/instagram/ProfessionFilter';
 import { ProfessionSelector } from '@/components/contacts/ProfessionSelector';
+import { MultiProfessionSelector } from '@/components/contacts/MultiProfessionSelector';
 import { ProfessionStatsCard } from '@/components/contacts/ProfessionStatsCard';
 import { useContactRelationshipCounts, useRelationshipTypes, useContactsByRelationshipType } from '@/hooks/useContactRelationships';
 import { useContactLeadCounts } from '@/hooks/useContactLeads';
@@ -442,8 +444,7 @@ export const ContactsManager: React.FC = () => {
     cep: '',
     notes: '',
     follower_status: 'none' as FollowerStatus,
-    profession: '',
-    profession_cbo_code: '',
+    professions: [] as { cbo_code: string; title: string; is_primary: boolean }[],
   });
   
   // Cities for new contact dialog
@@ -572,7 +573,10 @@ export const ContactsManager: React.FC = () => {
       return;
     }
 
-    await addContact({
+    // Get primary profession for backwards compatibility
+    const primaryProfession = newContact.professions.find(p => p.is_primary);
+    
+    const result = await addContact({
       full_name: newContact.full_name,
       phone: newContact.phone || null,
       email: newContact.email || null,
@@ -582,9 +586,23 @@ export const ContactsManager: React.FC = () => {
       state: newContact.state || null,
       notes: newContact.notes || null,
       follower_status: newContact.follower_status !== 'none' ? newContact.follower_status : null,
-      profession: newContact.profession || null,
-      profession_cbo_code: newContact.profession_cbo_code || null,
+      profession: primaryProfession?.title || null,
+      profession_cbo_code: primaryProfession?.cbo_code || null,
     });
+
+    // Add professions to the junction table if contact was created
+    if (result && newContact.professions.length > 0) {
+      for (const prof of newContact.professions) {
+        await (supabase as any)
+          .from('contact_professions')
+          .insert({
+            contact_id: result.id,
+            cbo_code: prof.cbo_code,
+            profession_title: prof.title,
+            is_primary: prof.is_primary
+          });
+      }
+    }
 
     setNewContact({
       full_name: '',
@@ -599,8 +617,7 @@ export const ContactsManager: React.FC = () => {
       cep: '',
       notes: '',
       follower_status: 'none',
-      profession: '',
-      profession_cbo_code: '',
+      professions: [],
     });
     setNewContactCities([]);
     setIsAddDialogOpen(false);
@@ -1469,22 +1486,15 @@ export const ContactsManager: React.FC = () => {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
-                        <Label>Profissão</Label>
-                        <ProfessionSelector
-                          value={newContact.profession}
-                          cboCode={newContact.profession_cbo_code}
-                          onSelect={(profession, cboCode) => setNewContact({ 
+                      <div className="col-span-2">
+                        <Label>Profissões</Label>
+                        <MultiProfessionSelector
+                          value={newContact.professions}
+                          onChange={(professions) => setNewContact({ 
                             ...newContact, 
-                            profession, 
-                            profession_cbo_code: cboCode 
+                            professions 
                           })}
-                          onClear={() => setNewContact({ 
-                            ...newContact, 
-                            profession: '', 
-                            profession_cbo_code: '' 
-                          })}
-                          placeholder="Selecione a profissão..."
+                          placeholder="Selecione profissões..."
                         />
                       </div>
                     </div>
