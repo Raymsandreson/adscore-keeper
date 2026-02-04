@@ -162,6 +162,11 @@ export const CommentResponseWorkflow = ({
   const [customPrompt, setCustomPrompt] = useState("");
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   
+  // Filters for post type and relationships
+  const [postTypeFilter, setPostTypeFilter] = useState<'all' | 'own' | 'third_party'>('all');
+  const [relationshipFilter, setRelationshipFilter] = useState<string[]>([]);
+  const [contactsWithRelationships, setContactsWithRelationships] = useState<Record<string, string[]>>({});
+  
   // Timer and report tracking
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
   const [workflowEndTime, setWorkflowEndTime] = useState<Date | null>(null);
@@ -231,14 +236,64 @@ export const CommentResponseWorkflow = ({
   
   const { getContactData, refetchUsername } = useCommentContactInfo(commentUsernames);
 
+  // Fetch relationships for all comment usernames
+  useEffect(() => {
+    const fetchRelationships = async () => {
+      if (commentUsernames.length === 0) return;
+      
+      // Get contacts with their relationships
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select(`
+          instagram_username,
+          contact_relationships!contact_relationships_contact_id_fkey(
+            relationship_type
+          )
+        `)
+        .or(commentUsernames.map(u => `instagram_username.ilike.${u.replace('@', '')}`).join(','));
+      
+      if (contacts) {
+        const relationshipMap: Record<string, string[]> = {};
+        contacts.forEach((contact: any) => {
+          const username = contact.instagram_username?.toLowerCase().replace('@', '');
+          if (username && contact.contact_relationships?.length > 0) {
+            relationshipMap[username] = contact.contact_relationships.map((r: any) => r.relationship_type);
+          }
+        });
+        setContactsWithRelationships(relationshipMap);
+      }
+    };
+    
+    fetchRelationships();
+  }, [commentUsernames]);
+
   // Get unreplied comments that have a comment_id (can be replied to via API)
+  // Apply filters for post type and relationships
   const unrepliedComments = useMemo(() => {
-    return comments.filter(c => 
-      c.comment_id && 
-      !c.replied_at && 
-      !repliedComments.has(c.id)
-    );
-  }, [comments, repliedComments]);
+    return comments.filter(c => {
+      // Basic filter: must have comment_id and not be replied
+      if (!c.comment_id || c.replied_at || repliedComments.has(c.id)) {
+        return false;
+      }
+      
+      // Post type filter
+      const isThirdParty = isThirdPartyPost(c);
+      if (postTypeFilter === 'own' && isThirdParty) return false;
+      if (postTypeFilter === 'third_party' && !isThirdParty) return false;
+      
+      // Relationship filter (only applies to third-party posts)
+      if (relationshipFilter.length > 0 && isThirdParty) {
+        const username = c.author_username?.toLowerCase().replace('@', '');
+        if (!username) return false;
+        
+        const userRelationships = contactsWithRelationships[username] || [];
+        const hasMatchingRelationship = relationshipFilter.some(r => userRelationships.includes(r));
+        if (!hasMatchingRelationship) return false;
+      }
+      
+      return true;
+    });
+  }, [comments, repliedComments, postTypeFilter, relationshipFilter, contactsWithRelationships]);
 
   // Use justRepliedComment during suggesting_actions step, otherwise use the current unreplied comment
   const baseComment = workflowStep === 'suggesting_actions' && justRepliedComment 
@@ -1030,6 +1085,87 @@ export const CommentResponseWorkflow = ({
             </div>
           </DialogDescription>
         </DialogHeader>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 items-center pb-2 border-b">
+          <span className="text-xs text-muted-foreground">Filtros:</span>
+          
+          {/* Post Type Filter */}
+          <div className="flex gap-1">
+            <Button
+              variant={postTypeFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setPostTypeFilter('all');
+                setCurrentIndex(0);
+              }}
+            >
+              Todos
+            </Button>
+            <Button
+              variant={postTypeFilter === 'own' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setPostTypeFilter('own');
+                setRelationshipFilter([]);
+                setCurrentIndex(0);
+              }}
+            >
+              🏠 Próprios
+            </Button>
+            <Button
+              variant={postTypeFilter === 'third_party' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                setPostTypeFilter('third_party');
+                setCurrentIndex(0);
+              }}
+            >
+              🌐 Terceiros
+            </Button>
+          </div>
+          
+          {/* Relationship Filter - Only show when third_party filter is active */}
+          {postTypeFilter === 'third_party' && (
+            <div className="flex flex-wrap gap-1 items-center ml-2 pl-2 border-l">
+              <span className="text-xs text-muted-foreground">Vínculos:</span>
+              {['Primo', 'Amigo(a)', 'Irmão(ã)', 'Colega de trabalho', 'Indicação', 'Parceiro'].map(rel => (
+                <Button
+                  key={rel}
+                  variant={relationshipFilter.includes(rel) ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-6 text-xs px-2"
+                  onClick={() => {
+                    setRelationshipFilter(prev => 
+                      prev.includes(rel) 
+                        ? prev.filter(r => r !== rel)
+                        : [...prev, rel]
+                    );
+                    setCurrentIndex(0);
+                  }}
+                >
+                  {rel}
+                </Button>
+              ))}
+              {relationshipFilter.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs px-2 text-muted-foreground"
+                  onClick={() => {
+                    setRelationshipFilter([]);
+                    setCurrentIndex(0);
+                  }}
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Progress Bar */}
         <div className="space-y-2">
