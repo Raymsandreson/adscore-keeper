@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Upload, FileJson, Check, AlertCircle, Filter, ArrowUpFromLine } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-
+import { cn } from '@/lib/utils';
 interface InstagramComment {
   media_list_data?: { uri: string }[];
   string_map_data: {
@@ -54,6 +54,8 @@ export function ImportCommentsFromExport({
   const [stats, setStats] = useState<ImportStats | null>(null);
   const [progress, setProgress] = useState(0);
   const [parsedComments, setParsedComments] = useState<ParsedComment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Normalize username for comparison
   const normalizeUsername = (username: string) => {
@@ -98,9 +100,8 @@ export function ImportCommentsFromExport({
     }
   };
 
-  // Handle file selection
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  // Process files (shared logic for input and drag-drop)
+  const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
 
     setIsProcessing(true);
@@ -109,10 +110,11 @@ export function ImportCommentsFromExport({
     setParsedComments([]);
 
     const allComments: ParsedComment[] = [];
+    const fileArray = Array.from(files);
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
         const text = await file.text();
         const json = JSON.parse(text);
 
@@ -137,7 +139,7 @@ export function ImportCommentsFromExport({
           }
         }
 
-        setProgress(((i + 1) / files.length) * 50);
+        setProgress(((i + 1) / fileArray.length) * 50);
       }
 
       // Filter outbound vs own
@@ -162,6 +164,48 @@ export function ImportCommentsFromExport({
       setProgress(50);
     }
   };
+
+  // Handle file input change
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      await processFiles(files);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    const jsonFiles = Array.from(files).filter(f => f.name.endsWith('.json'));
+    
+    if (jsonFiles.length === 0) {
+      toast.error('Por favor, arraste apenas arquivos .json');
+      return;
+    }
+
+    await processFiles(jsonFiles);
+  }, [processFiles]);
 
   // Import comments to database
   const handleImport = async () => {
@@ -249,23 +293,43 @@ export function ImportCommentsFromExport({
           ))}
         </div>
 
-        {/* File upload */}
+        {/* Drag and Drop Zone */}
         <div className="space-y-2">
-          <Label htmlFor="json-files">Arquivos JSON do Instagram</Label>
-          <div className="flex gap-2">
-            <Input
-              id="json-files"
-              type="file"
-              accept=".json"
-              multiple
-              onChange={handleFileChange}
-              disabled={isProcessing}
-              className="flex-1"
-            />
+          <Label>Arquivos JSON do Instagram</Label>
+          <div
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
+              isDragging 
+                ? "border-primary bg-primary/10" 
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50",
+              isProcessing && "pointer-events-none opacity-50"
+            )}
+          >
+            <Upload className={cn(
+              "h-10 w-10 mx-auto mb-3",
+              isDragging ? "text-primary" : "text-muted-foreground"
+            )} />
+            <p className="text-sm font-medium">
+              {isDragging ? "Solte os arquivos aqui" : "Arraste arquivos JSON ou clique para selecionar"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              post_comments.json, reels_comments.json e similares
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Aceita: post_comments.json, reels_comments.json e similares
-          </p>
+          <Input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            multiple
+            onChange={handleFileChange}
+            disabled={isProcessing}
+            className="hidden"
+          />
         </div>
 
         {/* Progress bar */}
