@@ -64,7 +64,26 @@ interface Comment {
   created_at: string;
   replied_at?: string | null;
   comment_type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: any;
 }
+
+// Helper function to detect if comment is from a third-party post
+const isThirdPartyPost = (comment: Comment | null | undefined): boolean => {
+  if (!comment) return false;
+  
+  // Check by comment_type
+  if (comment.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(comment.comment_type)) {
+    return true;
+  }
+  
+  // Check by metadata.is_outbound (set by Apify import)
+  if (comment.metadata?.is_outbound === true) {
+    return true;
+  }
+  
+  return false;
+};
 
 interface ParentComment {
   id: string;
@@ -1039,7 +1058,7 @@ export const CommentResponseWorkflow = ({
               {currentComment && (
                 <div className="space-y-3">
                   {/* Third-party post warning */}
-                  {currentComment.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) && (
+                  {isThirdPartyPost(currentComment) && (
                     <div className="p-3 rounded-lg border border-amber-500/50 bg-amber-500/10">
                       <div className="flex items-start gap-2">
                         <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
@@ -1077,7 +1096,7 @@ export const CommentResponseWorkflow = ({
                       <div className="flex items-center gap-2 text-sm">
                         <ImageIcon className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">
-                          {currentComment.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) 
+                          {isThirdPartyPost(currentComment) 
                             ? 'Postagem de Terceiro' 
                             : 'Postagem Original (Própria)'}
                         </span>
