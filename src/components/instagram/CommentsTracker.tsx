@@ -66,6 +66,7 @@ import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
 import { ImportCommentsFromExport } from "./ImportCommentsFromExport";
+import { CommentTextWithMentions } from "./CommentTextWithMentions";
 import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
 interface Comment {
   id: string;
@@ -1926,7 +1927,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                                   onDataChanged={() => refetchUsername(comment.author_username)}
                                 />
                               </div>
-                              <p className="text-sm">{comment.comment_text}</p>
+                              <CommentTextWithMentions text={comment.comment_text} className="text-sm" />
                               {comment.post_url && (
                                 <a
                                   href={comment.post_url}

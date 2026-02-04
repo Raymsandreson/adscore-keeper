@@ -175,6 +175,41 @@ serve(async (req) => {
       }
     }
 
+    // Fetch mentions (comments where the account was tagged)
+    console.log("🏷️ Buscando menções...");
+    try {
+      const mentionsResponse = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}/mentioned_comment?fields=id,text,timestamp,from{id,username},media{id,permalink}&access_token=${token}`
+      );
+      const mentionsData = await mentionsResponse.json();
+      
+      if (mentionsData.data && mentionsData.data.length > 0) {
+        console.log(`🏷️ Menções encontradas: ${mentionsData.data.length}`);
+        
+        for (const mention of mentionsData.data) {
+          // Check if we already have this comment
+          const existingComment = allComments.find(c => c.comment_id === mention.id);
+          if (!existingComment) {
+            allComments.push({
+              comment_id: mention.id,
+              comment_text: mention.text,
+              author_username: mention.from?.username || null,
+              author_id: mention.from?.id || null,
+              created_at: mention.timestamp,
+              post_id: mention.media?.id || null,
+              post_url: mention.media?.permalink || null,
+              comment_type: "received", // Mentions are treated as received
+              metadata: { is_mention: true }
+            });
+          }
+        }
+      } else {
+        console.log("🏷️ Nenhuma menção encontrada ou API não disponível");
+      }
+    } catch (mentionError) {
+      console.log("🏷️ Menções não disponíveis (requer permissão instagram_manage_comments):", mentionError);
+    }
+
     console.log(`💬 Total de comentários encontrados: ${allComments.length}`);
     console.log(`🔄 Comentários com resposta manual detectada: ${manuallyRepliedComments.size}`);
 
