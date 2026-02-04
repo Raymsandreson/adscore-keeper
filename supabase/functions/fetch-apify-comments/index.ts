@@ -42,7 +42,8 @@ serve(async (req) => {
     console.log(`🔍 Buscando comentários de ${postUrls.length} posts via Apify...`);
     console.log(`📝 URLs:`, postUrls);
 
-    // Iniciar o Actor da Apify com limite de 2000 comentários
+    // Iniciar o Actor da Apify
+    // Nota: API gratuita tem limite de ~15 comentários por execução
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
       {
@@ -50,9 +51,9 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: postUrls,
-          resultsLimit: 2000,
+          resultsLimit: 15,
           includeReplies: true,
-          commentsPerPost: 2000,
+          commentsPerPost: 15,
         }),
       }
     );
