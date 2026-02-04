@@ -925,6 +925,68 @@ export type Database = {
           },
         ]
       }
+      external_posts: {
+        Row: {
+          author_username: string | null
+          comments_count: number | null
+          created_at: string
+          description: string | null
+          id: string
+          last_fetched_at: string | null
+          lead_id: string | null
+          metadata: Json | null
+          news_links: string[] | null
+          notes: string | null
+          platform: string
+          post_id: string | null
+          title: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          author_username?: string | null
+          comments_count?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_fetched_at?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          news_links?: string[] | null
+          notes?: string | null
+          platform?: string
+          post_id?: string | null
+          title?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          author_username?: string | null
+          comments_count?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          last_fetched_at?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          news_links?: string[] | null
+          notes?: string | null
+          platform?: string
+          post_id?: string | null
+          title?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_posts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goal_history: {
         Row: {
           achieved_value: number

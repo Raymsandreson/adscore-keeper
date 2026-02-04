@@ -50,8 +50,9 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: postUrls,
-          resultsLimit: 200,
+          resultsLimit: 500,
           includeReplies: true,
+          commentsPerPost: 500,
         }),
       }
     );
