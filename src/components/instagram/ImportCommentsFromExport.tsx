@@ -1,14 +1,34 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { Upload, FileJson, Check, AlertCircle, Filter, ArrowUpFromLine } from 'lucide-react';
+import { 
+  Upload, 
+  FileJson, 
+  Check, 
+  AlertCircle, 
+  Filter, 
+  ArrowUpFromLine,
+  Users,
+  ExternalLink,
+  MessageCircle,
+  Reply,
+  UserPlus,
+  Home,
+  Globe
+} from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+
 interface InstagramComment {
   media_list_data?: { uri: string }[];
   string_map_data: {
@@ -31,12 +51,17 @@ interface ParsedComment {
   media_owner: string;
   timestamp: number;
   created_at: string;
+  post_uri: string | null;
+  is_reply: boolean;
+  mentioned_username: string | null;
+  is_own_post: boolean;
 }
 
 interface ImportStats {
   total: number;
   outbound: number;
   own: number;
+  replies: number;
   duplicates: number;
   imported: number;
 }
@@ -55,6 +80,7 @@ export function ImportCommentsFromExport({
   const [progress, setProgress] = useState(0);
   const [parsedComments, setParsedComments] = useState<ParsedComment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [activePreviewTab, setActivePreviewTab] = useState<'outbound' | 'own'>('outbound');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Normalize username for comparison
@@ -71,11 +97,16 @@ export function ImportCommentsFromExport({
   // Decode UTF-8 mojibake common in Instagram exports
   const decodeText = (text: string): string => {
     try {
-      // Fix common UTF-8 encoding issues
       return decodeURIComponent(escape(text));
     } catch {
       return text;
     }
+  };
+
+  // Extract mentioned username from comment (e.g., "@username texto")
+  const extractMention = (text: string): string | null => {
+    const match = text.match(/^@([a-zA-Z0-9._]+)/);
+    return match ? match[1] : null;
   };
 
   // Parse comment from JSON structure
@@ -88,17 +119,49 @@ export function ImportCommentsFromExport({
 
       const timestamp = data.Time.timestamp;
       const createdAt = new Date(timestamp * 1000).toISOString();
+      const commentText = decodeText(data.Comment.value);
+      const mediaOwner = data['Media Owner'].value;
+      const postUri = 'media_list_data' in item && item.media_list_data?.[0]?.uri 
+        ? item.media_list_data[0].uri 
+        : null;
+      
+      const mentionedUsername = extractMention(commentText);
+      const isReply = mentionedUsername !== null;
+      const isOwnPost = isOwnAccount(mediaOwner);
 
       return {
-        comment_text: decodeText(data.Comment.value),
-        media_owner: data['Media Owner'].value,
+        comment_text: commentText,
+        media_owner: mediaOwner,
         timestamp,
         created_at: createdAt,
+        post_uri: postUri,
+        is_reply: isReply,
+        mentioned_username: mentionedUsername,
+        is_own_post: isOwnPost,
       };
     } catch {
       return null;
     }
   };
+
+  // Filtered comments by type
+  const outboundComments = useMemo(() => 
+    parsedComments.filter(c => !c.is_own_post), [parsedComments]);
+  
+  const ownPostComments = useMemo(() => 
+    parsedComments.filter(c => c.is_own_post), [parsedComments]);
+
+  // Group comments by media_owner for preview
+  const groupedOutbound = useMemo(() => {
+    const groups: Record<string, ParsedComment[]> = {};
+    outboundComments.forEach(c => {
+      if (!groups[c.media_owner]) {
+        groups[c.media_owner] = [];
+      }
+      groups[c.media_owner].push(c);
+    });
+    return Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  }, [outboundComments]);
 
   // Process files (shared logic for input and drag-drop)
   const processFiles = async (files: FileList | File[]) => {
@@ -122,13 +185,10 @@ export function ImportCommentsFromExport({
         let items: (InstagramComment | ReelsComment)[] = [];
         
         if (Array.isArray(json)) {
-          // post_comments format
           items = json;
         } else if (json.comments_reels_comments) {
-          // reels_comments format
           items = json.comments_reels_comments;
         } else if (json.comments_media_comments) {
-          // Alternative format
           items = json.comments_media_comments;
         }
 
@@ -142,20 +202,22 @@ export function ImportCommentsFromExport({
         setProgress(((i + 1) / fileArray.length) * 50);
       }
 
-      // Filter outbound vs own
-      const outboundComments = allComments.filter(c => !isOwnAccount(c.media_owner));
-      const ownComments = allComments.filter(c => isOwnAccount(c.media_owner));
+      // Count replies
+      const repliesCount = allComments.filter(c => c.is_reply).length;
+      const outboundCount = allComments.filter(c => !c.is_own_post).length;
+      const ownCount = allComments.filter(c => c.is_own_post).length;
 
-      setParsedComments(outboundComments);
+      setParsedComments(allComments);
       setStats({
         total: allComments.length,
-        outbound: outboundComments.length,
-        own: ownComments.length,
+        outbound: outboundCount,
+        own: ownCount,
+        replies: repliesCount,
         duplicates: 0,
         imported: 0,
       });
 
-      toast.success(`${outboundComments.length} comentários outbound encontrados!`);
+      toast.success(`${allComments.length} comentários processados!`);
     } catch (error) {
       console.error('Error parsing files:', error);
       toast.error('Erro ao processar arquivos JSON');
@@ -205,11 +267,49 @@ export function ImportCommentsFromExport({
     }
 
     await processFiles(jsonFiles);
-  }, [processFiles]);
+  }, []);
+
+  // Create contact from media owner
+  const createContact = async (username: string) => {
+    try {
+      // Check if contact already exists
+      const { data: existing } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('instagram_username', username)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        toast.info(`Contato @${username} já existe`);
+        return;
+      }
+
+      const { error } = await supabase
+        .from('contacts')
+        .insert({
+          full_name: `@${username}`,
+          instagram_username: username,
+          instagram_url: `https://instagram.com/${username}`,
+          notes: 'Criado via importação de comentários outbound'
+        });
+
+      if (error) throw error;
+      toast.success(`Contato @${username} criado!`);
+    } catch (error) {
+      console.error('Error creating contact:', error);
+      toast.error('Erro ao criar contato');
+    }
+  };
 
   // Import comments to database
-  const handleImport = async () => {
-    if (parsedComments.length === 0) {
+  const handleImport = async (importType: 'outbound' | 'own' | 'all') => {
+    const commentsToImport = importType === 'outbound' 
+      ? outboundComments 
+      : importType === 'own' 
+        ? ownPostComments 
+        : parsedComments;
+
+    if (commentsToImport.length === 0) {
       toast.error('Nenhum comentário para importar');
       return;
     }
@@ -219,8 +319,8 @@ export function ImportCommentsFromExport({
     let duplicates = 0;
 
     try {
-      for (let i = 0; i < parsedComments.length; i++) {
-        const comment = parsedComments[i];
+      for (let i = 0; i < commentsToImport.length; i++) {
+        const comment = commentsToImport[i];
 
         // Check for existing comment (by timestamp and text)
         const { data: existing } = await supabase
@@ -234,19 +334,27 @@ export function ImportCommentsFromExport({
         if (existing && existing.length > 0) {
           duplicates++;
         } else {
+          // Determine comment type
+          const commentType = comment.is_own_post 
+            ? (comment.is_reply ? 'sent' : 'received') 
+            : 'outbound_export';
+
           // Insert new comment
           const { error } = await supabase
             .from('instagram_comments')
             .insert({
               comment_text: comment.comment_text,
-              comment_type: 'outbound_export',
+              comment_type: commentType,
               created_at: comment.created_at,
               platform: 'instagram',
               prospect_name: comment.media_owner,
+              post_url: comment.post_uri || null,
               metadata: {
                 source: 'instagram_export',
                 media_owner: comment.media_owner,
                 original_timestamp: comment.timestamp,
+                is_reply: comment.is_reply,
+                mentioned_username: comment.mentioned_username,
               },
             });
 
@@ -255,7 +363,7 @@ export function ImportCommentsFromExport({
           }
         }
 
-        setProgress(50 + ((i + 1) / parsedComments.length) * 50);
+        setProgress(50 + ((i + 1) / commentsToImport.length) * 50);
       }
 
       setStats(prev => prev ? { ...prev, imported, duplicates } : null);
@@ -278,14 +386,14 @@ export function ImportCommentsFromExport({
           Importar Comentários do Instagram
         </CardTitle>
         <CardDescription>
-          Importe seus comentários exportados do Instagram para rastrear interações outbound.
-          Apenas comentários em posts de terceiros serão importados.
+          Importe seus comentários exportados do Instagram para rastrear interações.
+          Separa automaticamente comentários em posts próprios vs terceiros.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Account filter info */}
         <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-muted-foreground">Contas próprias (serão ignoradas):</span>
+          <span className="text-sm text-muted-foreground">Suas contas:</span>
           {ownAccountUsernames.map(username => (
             <Badge key={username} variant="secondary">
               @{username}
@@ -344,21 +452,26 @@ export function ImportCommentsFromExport({
 
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="text-center p-3 rounded-lg bg-muted/50">
               <FileJson className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
               <div className="text-2xl font-bold">{stats.total}</div>
               <div className="text-xs text-muted-foreground">Total</div>
             </div>
             <div className="text-center p-3 rounded-lg bg-blue-500/10">
-              <ArrowUpFromLine className="h-5 w-5 mx-auto mb-1 text-blue-500" />
+              <Globe className="h-5 w-5 mx-auto mb-1 text-blue-500" />
               <div className="text-2xl font-bold text-blue-500">{stats.outbound}</div>
-              <div className="text-xs text-muted-foreground">Outbound</div>
+              <div className="text-xs text-muted-foreground">Terceiros</div>
             </div>
-            <div className="text-center p-3 rounded-lg bg-muted/50">
-              <Filter className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-2xl font-bold">{stats.own}</div>
+            <div className="text-center p-3 rounded-lg bg-purple-500/10">
+              <Home className="h-5 w-5 mx-auto mb-1 text-purple-500" />
+              <div className="text-2xl font-bold text-purple-500">{stats.own}</div>
               <div className="text-xs text-muted-foreground">Posts Próprios</div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-orange-500/10">
+              <Reply className="h-5 w-5 mx-auto mb-1 text-orange-500" />
+              <div className="text-2xl font-bold text-orange-500">{stats.replies}</div>
+              <div className="text-xs text-muted-foreground">Respostas (@)</div>
             </div>
             {stats.imported > 0 && (
               <div className="text-center p-3 rounded-lg bg-green-500/10">
@@ -377,38 +490,168 @@ export function ImportCommentsFromExport({
           </div>
         )}
 
-        {/* Preview */}
+        {/* Preview with Tabs */}
         {parsedComments.length > 0 && stats && stats.imported === 0 && (
           <div className="space-y-3">
-            <h4 className="font-medium">Preview ({Math.min(5, parsedComments.length)} de {parsedComments.length})</h4>
-            <div className="max-h-48 overflow-y-auto space-y-2">
-              {parsedComments.slice(0, 5).map((comment, idx) => (
-                <div key={idx} className="p-2 rounded border bg-muted/30 text-sm">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-xs">
-                      @{comment.media_owner}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(comment.created_at).toLocaleDateString('pt-BR')}
-                    </span>
+            <Tabs value={activePreviewTab} onValueChange={(v) => setActivePreviewTab(v as 'outbound' | 'own')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="outbound" className="gap-2">
+                  <Globe className="h-4 w-4" />
+                  Terceiros ({outboundComments.length})
+                </TabsTrigger>
+                <TabsTrigger value="own" className="gap-2">
+                  <Home className="h-4 w-4" />
+                  Posts Próprios ({ownPostComments.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="outbound" className="space-y-3">
+                {groupedOutbound.length > 0 ? (
+                  <ScrollArea className="h-64">
+                    <div className="space-y-3">
+                      {groupedOutbound.slice(0, 10).map(([owner, ownerComments]) => (
+                        <div key={owner} className="border rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`https://instagram.com/${owner}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-sm font-medium hover:text-primary transition-colors"
+                              >
+                                @{owner}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                              <Badge variant="secondary" className="text-xs">
+                                {ownerComments.length} comentário{ownerComments.length > 1 ? 's' : ''}
+                              </Badge>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => createContact(owner)}
+                              className="h-7 gap-1"
+                            >
+                              <UserPlus className="h-3 w-3" />
+                              Criar Contato
+                            </Button>
+                          </div>
+                          <div className="space-y-1">
+                            {ownerComments.slice(0, 3).map((comment, idx) => (
+                              <div key={idx} className="flex items-start gap-2 text-sm">
+                                {comment.is_reply ? (
+                                  <Reply className="h-3 w-3 mt-1 text-orange-500 flex-shrink-0" />
+                                ) : (
+                                  <MessageCircle className="h-3 w-3 mt-1 text-muted-foreground flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-muted-foreground line-clamp-1">{comment.comment_text}</p>
+                                  <span className="text-xs text-muted-foreground">
+                                    {format(new Date(comment.created_at), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                            {ownerComments.length > 3 && (
+                              <p className="text-xs text-muted-foreground">
+                                +{ownerComments.length - 3} mais...
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {groupedOutbound.length > 10 && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          +{groupedOutbound.length - 10} perfis adicionais
+                        </p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Globe className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum comentário em posts de terceiros</p>
                   </div>
-                  <p className="text-muted-foreground line-clamp-2">{comment.comment_text}</p>
-                </div>
-              ))}
-            </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="own" className="space-y-3">
+                {ownPostComments.length > 0 ? (
+                  <ScrollArea className="h-64">
+                    <div className="space-y-2">
+                      {ownPostComments.slice(0, 10).map((comment, idx) => (
+                        <div key={idx} className="p-2 rounded border bg-muted/30 text-sm">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="text-xs">
+                              @{comment.media_owner}
+                            </Badge>
+                            {comment.is_reply && comment.mentioned_username && (
+                              <Badge variant="secondary" className="text-xs gap-1">
+                                <Reply className="h-3 w-3" />
+                                @{comment.mentioned_username}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {format(new Date(comment.created_at), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
+                            </span>
+                          </div>
+                          <p className="text-muted-foreground line-clamp-2">{comment.comment_text}</p>
+                        </div>
+                      ))}
+                      {ownPostComments.length > 10 && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          +{ownPostComments.length - 10} comentários adicionais
+                        </p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Home className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum comentário em posts próprios</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         )}
 
-        {/* Import button */}
+        {/* Import buttons */}
         {parsedComments.length > 0 && stats && stats.imported === 0 && (
-          <Button 
-            onClick={handleImport} 
-            disabled={isProcessing}
-            className="w-full"
-          >
-            <ArrowUpFromLine className="h-4 w-4 mr-2" />
-            Importar {parsedComments.length} Comentários Outbound
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {outboundComments.length > 0 && (
+              <Button 
+                onClick={() => handleImport('outbound')} 
+                disabled={isProcessing}
+                className="flex-1 min-w-[200px]"
+              >
+                <Globe className="h-4 w-4 mr-2" />
+                Importar {outboundComments.length} Outbound
+              </Button>
+            )}
+            {ownPostComments.length > 0 && (
+              <Button 
+                onClick={() => handleImport('own')} 
+                disabled={isProcessing}
+                variant="outline"
+                className="flex-1 min-w-[200px]"
+              >
+                <Home className="h-4 w-4 mr-2" />
+                Importar {ownPostComments.length} Próprios
+              </Button>
+            )}
+            {outboundComments.length > 0 && ownPostComments.length > 0 && (
+              <Button 
+                onClick={() => handleImport('all')} 
+                disabled={isProcessing}
+                variant="secondary"
+                className="w-full"
+              >
+                <ArrowUpFromLine className="h-4 w-4 mr-2" />
+                Importar Todos ({parsedComments.length})
+              </Button>
+            )}
+          </div>
         )}
 
         {/* Success state */}
@@ -417,7 +660,7 @@ export function ImportCommentsFromExport({
             <Check className="h-12 w-12 mx-auto text-green-500 mb-2" />
             <p className="text-lg font-medium">Importação concluída!</p>
             <p className="text-sm text-muted-foreground">
-              {stats.imported} comentários outbound foram adicionados ao sistema
+              {stats.imported} comentários foram adicionados ao sistema
             </p>
           </div>
         )}
@@ -436,6 +679,11 @@ export function ImportCommentsFromExport({
             <li>Escolha "Comentários" nos dados a incluir</li>
             <li>Faça o download e extraia os arquivos JSON</li>
           </ol>
+          <Separator className="my-3" />
+          <p className="text-xs text-muted-foreground">
+            <strong>Nota:</strong> O link da postagem nem sempre está disponível nos arquivos de exportação.
+            Comentários com @ no início são identificados como respostas.
+          </p>
         </div>
       </CardContent>
     </Card>
