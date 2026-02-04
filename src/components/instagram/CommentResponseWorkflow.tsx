@@ -63,6 +63,7 @@ interface Comment {
   platform: string;
   created_at: string;
   replied_at?: string | null;
+  comment_type?: string;
 }
 
 interface ParentComment {
@@ -1037,6 +1038,34 @@ export const CommentResponseWorkflow = ({
               {/* Current Comment */}
               {currentComment && (
                 <div className="space-y-3">
+                  {/* Third-party post warning */}
+                  {currentComment.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) && (
+                    <div className="p-3 rounded-lg border border-amber-500/50 bg-amber-500/10">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-400 text-xs">
+                              Post de Terceiro
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-amber-700 dark:text-amber-400">
+                            <strong>Atenção:</strong> Este comentário foi feito em uma postagem de outra conta. 
+                            Não é possível responder diretamente via API. 
+                            <a 
+                              href={currentComment.post_url || '#'} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="underline font-medium hover:no-underline ml-1"
+                            >
+                              Acesse a postagem original
+                            </a> para interagir.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Post Preview */}
                   {currentComment.post_url && (
                     <a
@@ -1047,7 +1076,11 @@ export const CommentResponseWorkflow = ({
                     >
                       <div className="flex items-center gap-2 text-sm">
                         <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Postagem Original</span>
+                        <span className="font-medium">
+                          {currentComment.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) 
+                            ? 'Postagem de Terceiro' 
+                            : 'Postagem Original (Própria)'}
+                        </span>
                       </div>
                       <span className="text-xs text-primary flex items-center gap-1">
                         Abrir <ExternalLink className="h-3 w-3" />
@@ -1382,23 +1415,54 @@ export const CommentResponseWorkflow = ({
               </div>
             )}
             
-            {(workflowStep === 'ready_to_reply' || workflowStep === 'replying') && (
-              <div className="flex gap-2">
-                <Button 
-                  onClick={postReply} 
-                  className="flex-1 gap-2"
-                  disabled={workflowStep === 'replying' || !editedReply.trim()}
-                >
-                  {workflowStep === 'replying' ? (
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+{(workflowStep === 'ready_to_reply' || workflowStep === 'replying') && (
+              <div className="space-y-2">
+                {/* Third-party post warning in reply section */}
+                {currentComment?.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) && (
+                  <div className="p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Resposta direta indisponível para posts de terceiros. 
+                      <a 
+                        href={currentComment.post_url || '#'} 
+                        target="_blank"
+                        rel="noopener noreferrer" 
+                        className="underline ml-1 font-medium"
+                      >
+                        Comentar na postagem →
+                      </a>
+                    </span>
+                  </div>
+                )}
+                
+                <div className="flex gap-2">
+                  {currentComment?.comment_type && ['outbound_manual', 'outbound_n8n', 'outbound_export'].includes(currentComment.comment_type) ? (
+                    <Button 
+                      onClick={() => window.open(currentComment.post_url || '#', '_blank')} 
+                      className="flex-1 gap-2"
+                      variant="outline"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Abrir Post para Comentar
+                    </Button>
                   ) : (
-                    <Send className="h-4 w-4" />
+                    <Button 
+                      onClick={postReply} 
+                      className="flex-1 gap-2"
+                      disabled={workflowStep === 'replying' || !editedReply.trim()}
+                    >
+                      {workflowStep === 'replying' ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      Postar no Instagram
+                    </Button>
                   )}
-                  Postar no Instagram
-                </Button>
-                <Button variant="outline" onClick={() => setWorkflowStep('idle')}>
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+                  <Button variant="outline" onClick={() => setWorkflowStep('idle')}>
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </div>
