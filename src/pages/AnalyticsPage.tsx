@@ -10,7 +10,8 @@ import {
   Instagram,
   LineChart,
   MessageCircle,
-  ExternalLink
+  ExternalLink,
+  Search,
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
@@ -19,6 +20,7 @@ import { InstagramAccountsManager } from "@/components/analytics/InstagramAccoun
 import { InstagramMetricsChart } from "@/components/analytics/InstagramMetricsChart";
 import { CommentsAdminPanel } from "@/components/instagram/CommentsAdminPanel";
 import { ExternalPostsManager } from "@/components/instagram/ExternalPostsManager";
+import { CaseSearchEngine } from "@/components/instagram/CaseSearchEngine";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
@@ -53,10 +55,14 @@ const AnalyticsPage = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs defaultValue="accounts" className="space-y-6">
-          <TabsList className="grid w-full max-w-5xl grid-cols-7">
+          <TabsList className="grid w-full max-w-5xl grid-cols-8">
             <TabsTrigger value="accounts" className="gap-2">
               <Instagram className="h-4 w-4" />
               <span className="hidden sm:inline">Contas</span>
+            </TabsTrigger>
+            <TabsTrigger value="search" className="gap-2">
+              <Search className="h-4 w-4" />
+              <span className="hidden sm:inline">Busca</span>
             </TabsTrigger>
             <TabsTrigger value="comments" className="gap-2">
               <MessageCircle className="h-4 w-4" />
@@ -89,7 +95,15 @@ const AnalyticsPage = () => {
             <InstagramAccountsManager />
           </TabsContent>
 
+          {/* Case Search Tab */}
+          <TabsContent value="search" className="space-y-6">
+            <CaseSearchEngine />
+          </TabsContent>
+
           {/* Comments Admin Tab */}
+          <TabsContent value="comments" className="space-y-6">
+            <CommentsAdminPanel />
+          </TabsContent>
           <TabsContent value="comments" className="space-y-6">
             <CommentsAdminPanel />
           </TabsContent>
