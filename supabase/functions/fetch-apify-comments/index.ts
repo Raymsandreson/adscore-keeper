@@ -147,13 +147,22 @@ serve(async (req) => {
 
       allComments.push(commentData);
 
-      // Salvar no banco com ignoreDuplicates para evitar erros
+      // Verificar se comentário já existe antes de inserir
+      const { data: existing } = await supabase
+        .from("instagram_comments")
+        .select("id")
+        .eq("comment_id", comment.id)
+        .maybeSingle();
+
+      if (existing) {
+        // Já existe, pular
+        continue;
+      }
+
+      // Inserir novo comentário
       const { error } = await supabase
         .from("instagram_comments")
-        .upsert(commentData, {
-          onConflict: "comment_id",
-          ignoreDuplicates: true,
-        });
+        .insert(commentData);
 
       if (error) {
         console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
@@ -190,12 +199,20 @@ serve(async (req) => {
 
           allComments.push(replyData);
 
+          // Verificar se resposta já existe
+          const { data: existingReply } = await supabase
+            .from("instagram_comments")
+            .select("id")
+            .eq("comment_id", reply.id)
+            .maybeSingle();
+
+          if (existingReply) {
+            continue;
+          }
+
           const { error: replyError } = await supabase
             .from("instagram_comments")
-            .upsert(replyData, {
-              onConflict: "comment_id",
-              ignoreDuplicates: true,
-            });
+            .insert(replyData);
 
           if (replyError) {
             errorCount++;
