@@ -65,10 +65,8 @@ import { useCommentContactInfo } from "@/hooks/useCommentContactInfo";
 import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
-import { BookmarkletGenerator } from "./BookmarkletGenerator";
-import { UserscriptInstaller } from "./UserscriptInstaller";
-import { MessageSquarePlus, Bookmark, Zap } from "lucide-react";
-
+import { ImportCommentsFromExport } from "./ImportCommentsFromExport";
+import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
 interface Comment {
   id: string;
   platform: string;
@@ -817,8 +815,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     const selectedAccountIds = new Set(selectedAccounts.map(a => a.instagram_id));
     
     const filtered = comments.filter(c => {
-      // Filter by tab (received/sent)
-      if (c.comment_type !== activeTab) return false;
+      // Filter by tab (received/sent/outbound)
+      if (activeTab === 'outbound_manual') {
+        // Show all outbound types
+        if (!['outbound_manual', 'outbound_export', 'outbound_n8n'].includes(c.comment_type)) return false;
+      } else if (c.comment_type !== activeTab) return false;
       
       // Filter by selected accounts - only show comments from selected accounts
       // If ad_account_id is set, it must match one of the selected account's instagram_id
@@ -1002,7 +1003,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
 
   const outboundCount = useMemo(() => {
     return comments.filter(c => {
-      if (c.comment_type !== 'outbound_manual') return false;
+      if (!['outbound_manual', 'outbound_export', 'outbound_n8n'].includes(c.comment_type)) return false;
       
       if (dateFrom || dateTo) {
         const commentDate = new Date(c.created_at);
@@ -1334,16 +1335,22 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                 </Button>
               )}
               
-              {/* Automatic Tracking Dialog */}
+              {/* Import from Export Dialog */}
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <Zap className="h-4 w-4 text-yellow-500" />
-                    Rastreio Automático
+                    <FileJson className="h-4 w-4 text-primary" />
+                    Importar JSON
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <UserscriptInstaller />
+                  <ImportCommentsFromExport 
+                    ownAccountUsernames={selectedAccounts.map(a => a.account_name)}
+                    onImportComplete={() => {
+                      fetchComments();
+                      toast.success('Importação concluída!');
+                    }}
+                  />
                 </DialogContent>
               </Dialog>
               
@@ -1867,7 +1874,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                   )}
                   {activeTab === 'outbound_manual' && !hasActiveFilters && (
                     <div className="mt-6 max-w-2xl mx-auto text-left">
-                      <UserscriptInstaller />
+                      <ImportCommentsFromExport 
+                        ownAccountUsernames={selectedAccounts.map(a => a.account_name)}
+                        onImportComplete={() => {
+                          fetchComments();
+                        }}
+                      />
                     </div>
                   )}
                 </div>
