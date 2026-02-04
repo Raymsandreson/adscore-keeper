@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Calendar } from '@/components/ui/calendar';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -33,12 +39,17 @@ import {
   RefreshCw,
   Filter,
   Hash,
-  Calendar,
+  CalendarIcon,
   AlertTriangle,
+  Save,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
+import { format, subDays, subMonths } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface SearchResult {
   postId: string;
@@ -107,6 +118,13 @@ const RELATIONSHIP_KEYWORDS = [
   'família',
 ];
 
+const STORAGE_KEY = 'case_search_settings';
+
+interface SavedSettings {
+  instagramCookies: string;
+  accountName: string;
+}
+
 export function CaseSearchEngine() {
   const [keywords, setKeywords] = useState('');
   const [minComments, setMinComments] = useState(5);
@@ -114,10 +132,70 @@ export function CaseSearchEngine() {
   const [commentKeywords, setCommentKeywords] = useState<string[]>(['colega', 'cunhado', 'esposo', 'filho']);
   const [customCommentKeyword, setCustomCommentKeyword] = useState('');
   const [instagramCookies, setInstagramCookies] = useState('');
+  const [accountName, setAccountName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
+  
+  // Date range filters
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(subMonths(new Date(), 1));
+  const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
+  const [periodPreset, setPeriodPreset] = useState<string>('30');
+
+  // Load saved settings
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const settings: SavedSettings = JSON.parse(saved);
+        setInstagramCookies(settings.instagramCookies || '');
+        setAccountName(settings.accountName || '');
+      } catch (e) {
+        console.error('Error loading saved settings:', e);
+      }
+    }
+  }, []);
+
+  const saveSettings = () => {
+    const settings: SavedSettings = {
+      instagramCookies,
+      accountName,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    toast.success('Configurações salvas!');
+  };
+
+  const handlePeriodPreset = (value: string) => {
+    setPeriodPreset(value);
+    const now = new Date();
+    
+    switch (value) {
+      case '7':
+        setDateFrom(subDays(now, 7));
+        setDateTo(now);
+        break;
+      case '15':
+        setDateFrom(subDays(now, 15));
+        setDateTo(now);
+        break;
+      case '30':
+        setDateFrom(subMonths(now, 1));
+        setDateTo(now);
+        break;
+      case '90':
+        setDateFrom(subMonths(now, 3));
+        setDateTo(now);
+        break;
+      case '180':
+        setDateFrom(subMonths(now, 6));
+        setDateTo(now);
+        break;
+      case 'custom':
+        // Keep current dates
+        break;
+    }
+  };
 
   const handleSearch = async () => {
     if (!keywords.trim()) {
@@ -248,10 +326,17 @@ export function CaseSearchEngine() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5 text-primary" />
-              Máquina de Busca de Casos
-            </CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5 text-primary" />
+                Máquina de Busca de Casos
+              </CardTitle>
+              {accountName && (
+                <Badge variant="outline" className="text-xs">
+                  Conta: @{accountName}
+                </Badge>
+              )}
+            </div>
             <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -265,6 +350,18 @@ export function CaseSearchEngine() {
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
+                    <Label>Nome da Conta (para identificação)</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Nome da conta secundária que você está usando para scraping
+                    </p>
+                    <Input
+                      placeholder="conta_scraping"
+                      value={accountName}
+                      onChange={(e) => setAccountName(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div>
                     <Label>Cookies do Instagram (JSON)</Label>
                     <p className="text-xs text-muted-foreground mb-2">
                       Exporte os cookies do Instagram usando a extensão EditThisCookie ou Cookie-Editor
@@ -277,6 +374,7 @@ export function CaseSearchEngine() {
                       className="font-mono text-xs"
                     />
                   </div>
+                  
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
                     <div className="flex items-start gap-2">
                       <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
@@ -286,6 +384,18 @@ export function CaseSearchEngine() {
                       </div>
                     </div>
                   </div>
+                  
+                  <Button onClick={saveSettings} className="w-full">
+                    <Save className="h-4 w-4 mr-2" />
+                    Salvar Configurações
+                  </Button>
+                  
+                  {instagramCookies && (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <Check className="h-4 w-4" />
+                      Cookies configurados
+                    </div>
+                  )}
                 </div>
               </DialogContent>
             </Dialog>
@@ -303,6 +413,91 @@ export function CaseSearchEngine() {
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
             />
+          </div>
+
+          {/* Period Filter */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4" />
+              Período de Publicação
+            </Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <Select value={periodPreset} onValueChange={handlePeriodPreset}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="15">Últimos 15 dias</SelectItem>
+                  <SelectItem value="30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="90">Últimos 3 meses</SelectItem>
+                  <SelectItem value="180">Últimos 6 meses</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "justify-start text-left font-normal",
+                      !dateFrom && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateFrom ? format(dateFrom, "dd/MM/yyyy", { locale: ptBR }) : "De"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={(date) => {
+                      setDateFrom(date);
+                      setPeriodPreset('custom');
+                    }}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "justify-start text-left font-normal",
+                      !dateTo && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateTo ? format(dateTo, "dd/MM/yyyy", { locale: ptBR }) : "Até"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={(date) => {
+                      setDateTo(date);
+                      setPeriodPreset('custom');
+                    }}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                </PopoverContent>
+              </Popover>
+              
+              <div className="text-xs text-muted-foreground flex items-center">
+                {dateFrom && dateTo && (
+                  <span>
+                    {Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))} dias
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Filters Row */}
