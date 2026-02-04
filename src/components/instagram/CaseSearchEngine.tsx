@@ -363,9 +363,17 @@ export function CaseSearchEngine() {
                   
                   <div>
                     <Label>Cookies do Instagram (JSON)</Label>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Exporte os cookies do Instagram usando a extensão EditThisCookie ou Cookie-Editor
-                    </p>
+                    <div className="bg-muted/50 rounded-lg p-3 mb-3 text-xs space-y-2">
+                      <p className="font-medium text-foreground">Como exportar os cookies:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                        <li>Instale a extensão <a href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer" className="text-primary underline">Cookie-Editor</a> no Chrome</li>
+                        <li>Faça login no Instagram com a conta secundária</li>
+                        <li>Clique no ícone da extensão Cookie-Editor</li>
+                        <li>Clique em <strong>"Export"</strong> (ícone de download)</li>
+                        <li>Selecione <strong>"Export as JSON"</strong></li>
+                        <li>Cole o JSON copiado no campo abaixo</li>
+                      </ol>
+                    </div>
                     <Textarea
                       placeholder='[{"name":"sessionid","value":"...","domain":".instagram.com",...}]'
                       value={instagramCookies}
