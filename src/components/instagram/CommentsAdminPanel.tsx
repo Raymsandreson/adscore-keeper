@@ -49,6 +49,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ApifyCommentsFetcher } from './ApifyCommentsFetcher';
 
 interface InstagramComment {
   id: string;
@@ -231,15 +232,21 @@ export function CommentsAdminPanel() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5 text-primary" />
               Painel de Comentários Instagram
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={fetchComments} disabled={isLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
+            <div className="flex items-center gap-2">
+              <ApifyCommentsFetcher
+                myUsername={accounts[0]?.account_name}
+                onSuccess={fetchComments}
+              />
+              <Button variant="outline" size="sm" onClick={fetchComments} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
