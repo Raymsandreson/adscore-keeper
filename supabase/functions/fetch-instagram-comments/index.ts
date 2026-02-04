@@ -17,11 +17,11 @@ serve(async (req) => {
   try {
     const { accessToken, pageId, instagramAccountId } = await req.json();
     
-    const token = accessToken || Deno.env.get("META_ACCESS_TOKEN");
-    
-    if (!token) {
-      throw new Error("Access token não configurado");
+    if (!accessToken) {
+      throw new Error("Access token não fornecido. Atualize o token da conta Instagram.");
     }
+    
+    const token = accessToken;
 
     console.log("🔍 Buscando comentários do Instagram...");
 
