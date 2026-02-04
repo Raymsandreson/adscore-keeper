@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.instagram-comment-webhook]
 verify_jwt = false
+
+[functions.fetch-apify-comments]
+verify_jwt = false
