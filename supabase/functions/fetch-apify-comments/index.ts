@@ -42,7 +42,7 @@ serve(async (req) => {
     console.log(`🔍 Buscando comentários de ${postUrls.length} posts via Apify...`);
     console.log(`📝 URLs:`, postUrls);
 
-    // Iniciar o Actor da Apify
+    // Iniciar o Actor da Apify com limite de 2000 comentários
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
       {
@@ -50,9 +50,9 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: postUrls,
-          resultsLimit: 500,
+          resultsLimit: 2000,
           includeReplies: true,
-          commentsPerPost: 500,
+          commentsPerPost: 2000,
         }),
       }
     );
@@ -68,10 +68,10 @@ serve(async (req) => {
     
     console.log(`⏳ Actor iniciado. Run ID: ${runId}`);
 
-    // Aguardar conclusão (poll a cada 5s, timeout 2 min)
+    // Aguardar conclusão (poll a cada 5s, timeout 5 min para suportar 2000+ comentários)
     let status = "RUNNING";
     let attempts = 0;
-    const maxAttempts = 24;
+    const maxAttempts = 60;
 
     while (status === "RUNNING" && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -147,12 +147,12 @@ serve(async (req) => {
 
       allComments.push(commentData);
 
-      // Salvar no banco
+      // Salvar no banco com ignoreDuplicates para evitar erros
       const { error } = await supabase
         .from("instagram_comments")
         .upsert(commentData, {
           onConflict: "comment_id",
-          ignoreDuplicates: false,
+          ignoreDuplicates: true,
         });
 
       if (error) {
@@ -194,7 +194,7 @@ serve(async (req) => {
             .from("instagram_comments")
             .upsert(replyData, {
               onConflict: "comment_id",
-              ignoreDuplicates: false,
+              ignoreDuplicates: true,
             });
 
           if (replyError) {

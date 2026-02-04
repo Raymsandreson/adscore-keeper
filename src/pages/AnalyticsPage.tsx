@@ -9,7 +9,8 @@ import {
   TrendingUp,
   Instagram,
   LineChart,
-  MessageCircle
+  MessageCircle,
+  ExternalLink
 } from "lucide-react";
 import { ContentTypeMetrics } from "@/components/analytics/ContentTypeMetrics";
 import { ContentStrategies } from "@/components/analytics/ContentStrategies";
@@ -17,6 +18,7 @@ import { PlatformEngagement } from "@/components/analytics/PlatformEngagement";
 import { InstagramAccountsManager } from "@/components/analytics/InstagramAccountsManager";
 import { InstagramMetricsChart } from "@/components/analytics/InstagramMetricsChart";
 import { CommentsAdminPanel } from "@/components/instagram/CommentsAdminPanel";
+import { ExternalPostsManager } from "@/components/instagram/ExternalPostsManager";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
@@ -51,7 +53,7 @@ const AnalyticsPage = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs defaultValue="accounts" className="space-y-6">
-          <TabsList className="grid w-full max-w-4xl grid-cols-6">
+          <TabsList className="grid w-full max-w-5xl grid-cols-7">
             <TabsTrigger value="accounts" className="gap-2">
               <Instagram className="h-4 w-4" />
               <span className="hidden sm:inline">Contas</span>
@@ -59,6 +61,10 @@ const AnalyticsPage = () => {
             <TabsTrigger value="comments" className="gap-2">
               <MessageCircle className="h-4 w-4" />
               <span className="hidden sm:inline">Comentários</span>
+            </TabsTrigger>
+            <TabsTrigger value="external" className="gap-2">
+              <ExternalLink className="h-4 w-4" />
+              <span className="hidden sm:inline">Externos</span>
             </TabsTrigger>
             <TabsTrigger value="evolution" className="gap-2">
               <LineChart className="h-4 w-4" />
@@ -86,6 +92,11 @@ const AnalyticsPage = () => {
           {/* Comments Admin Tab */}
           <TabsContent value="comments" className="space-y-6">
             <CommentsAdminPanel />
+          </TabsContent>
+
+          {/* External Posts Tab */}
+          <TabsContent value="external" className="space-y-6">
+            <ExternalPostsManager />
           </TabsContent>
 
           {/* Evolution Tab */}
