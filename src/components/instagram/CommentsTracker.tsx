@@ -67,6 +67,7 @@ import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
 import { ImportCommentsFromExport } from "./ImportCommentsFromExport";
 import { CommentTextWithMentions } from "./CommentTextWithMentions";
+import { ApifyCommentsFetcher } from "./ApifyCommentsFetcher";
 import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
 interface Comment {
   id: string;
@@ -1358,6 +1359,15 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
               {/* Outbound Comment Registration Button */}
               <OutboundCommentDialog
                 accounts={selectedAccounts}
+                onSuccess={() => {
+                  fetchComments();
+                  fetchStats();
+                }}
+              />
+              
+              {/* Apify Fetcher for External Posts */}
+              <ApifyCommentsFetcher
+                myUsername={selectedAccounts[0]?.account_name}
                 onSuccess={() => {
                   fetchComments();
                   fetchStats();
