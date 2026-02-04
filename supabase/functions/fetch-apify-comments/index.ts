@@ -23,13 +23,6 @@ interface ApifyComment {
   replies?: ApifyComment[];
 }
 
-interface ApifyResult {
-  inputUrl: string;
-  postUrl: string;
-  ownerUsername: string;
-  comments: ApifyComment[];
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -47,6 +40,7 @@ serve(async (req) => {
     }
 
     console.log(`🔍 Buscando comentários de ${postUrls.length} posts via Apify...`);
+    console.log(`📝 URLs:`, postUrls);
 
     // Iniciar o Actor da Apify
     const runResponse = await fetch(
@@ -56,7 +50,7 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: postUrls,
-          resultsLimit: 100, // Máximo de comentários por post
+          resultsLimit: 200,
           includeReplies: true,
         }),
       }
@@ -76,7 +70,7 @@ serve(async (req) => {
     // Aguardar conclusão (poll a cada 5s, timeout 2 min)
     let status = "RUNNING";
     let attempts = 0;
-    const maxAttempts = 24; // 2 minutos
+    const maxAttempts = 24;
 
     while (status === "RUNNING" && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -99,9 +93,16 @@ serve(async (req) => {
     const datasetResponse = await fetch(
       `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_API_KEY}`
     );
-    const results: ApifyResult[] = await datasetResponse.json();
+    const results = await datasetResponse.json();
 
-    console.log(`📦 Resultados recebidos: ${results.length} posts`);
+    // Log para debug - ver estrutura real dos dados
+    console.log(`📦 Tipo de resultados: ${typeof results}, isArray: ${Array.isArray(results)}`);
+    console.log(`📦 Quantidade de items: ${Array.isArray(results) ? results.length : 'N/A'}`);
+    
+    if (Array.isArray(results) && results.length > 0) {
+      console.log(`📦 Primeiro item keys:`, Object.keys(results[0]));
+      console.log(`📦 Primeiro item (preview):`, JSON.stringify(results[0], null, 2).slice(0, 1000));
+    }
 
     // Processar e salvar comentários
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -109,90 +110,96 @@ serve(async (req) => {
     let savedCount = 0;
     let errorCount = 0;
 
-    for (const result of results) {
-      const postOwner = result.ownerUsername;
-      const postUrl = result.postUrl || result.inputUrl;
+    // O Actor retorna cada comentário como um item separado no dataset
+    // Cada item tem: id, text, ownerUsername, timestamp, etc.
+    const commentsArray: ApifyComment[] = Array.isArray(results) ? results : [];
+    
+    console.log(`📝 Total de comentários recebidos: ${commentsArray.length}`);
 
-      for (const comment of result.comments || []) {
-        // Detectar se é nosso comentário (outbound sent) ou de outro usuário
-        const isOwnComment = myUsername && 
-          comment.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
+    for (const comment of commentsArray) {
+      // Pular items inválidos
+      if (!comment.id || !comment.text) {
+        console.log(`⚠️ Comentário inválido (sem id ou text):`, comment);
+        continue;
+      }
 
-        const commentData = {
-          comment_id: comment.id,
-          comment_text: comment.text,
-          author_username: comment.ownerUsername,
-          author_id: comment.ownerId,
-          created_at: comment.timestamp,
-          post_id: null, // Apify não retorna o ID do post
-          post_url: postUrl,
-          comment_type: isOwnComment ? "sent" : "received",
-          platform: "instagram",
-          metadata: {
-            source: "apify",
-            post_owner: postOwner,
-            likes_count: comment.likesCount,
-            replies_count: comment.repliesCount,
-            is_outbound: true, // Marcador para posts de terceiros
-          },
-        };
+      const isOwnComment = myUsername && 
+        comment.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
 
-        allComments.push(commentData);
+      const commentData = {
+        comment_id: comment.id,
+        comment_text: comment.text,
+        author_username: comment.ownerUsername || 'unknown',
+        author_id: comment.ownerId,
+        created_at: comment.timestamp || new Date().toISOString(),
+        post_id: null,
+        post_url: postUrls[0], // Usar a URL fornecida
+        comment_type: isOwnComment ? "sent" : "received",
+        platform: "instagram",
+        metadata: {
+          source: "apify",
+          likes_count: comment.likesCount || 0,
+          replies_count: comment.repliesCount || 0,
+          is_outbound: true,
+        },
+      };
 
-        // Salvar no banco
-        const { error } = await supabase
-          .from("instagram_comments")
-          .upsert(commentData, {
-            onConflict: "comment_id",
-            ignoreDuplicates: false,
-          });
+      allComments.push(commentData);
 
-        if (error) {
-          console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
-          errorCount++;
-        } else {
-          savedCount++;
-        }
+      // Salvar no banco
+      const { error } = await supabase
+        .from("instagram_comments")
+        .upsert(commentData, {
+          onConflict: "comment_id",
+          ignoreDuplicates: false,
+        });
 
-        // Processar respostas
-        if (comment.replies) {
-          for (const reply of comment.replies) {
-            const isOwnReply = myUsername && 
-              reply.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
+      if (error) {
+        console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
+        errorCount++;
+      } else {
+        savedCount++;
+      }
 
-            const replyData = {
-              comment_id: reply.id,
-              comment_text: reply.text,
-              author_username: reply.ownerUsername,
-              author_id: reply.ownerId,
-              created_at: reply.timestamp,
-              post_id: null,
-              post_url: postUrl,
-              comment_type: isOwnReply ? "sent" : "received",
-              parent_comment_id: comment.id,
-              platform: "instagram",
-              metadata: {
-                source: "apify",
-                post_owner: postOwner,
-                likes_count: reply.likesCount,
-                is_outbound: true,
-              },
-            };
+      // Processar respostas aninhadas se existirem
+      if (comment.replies && Array.isArray(comment.replies)) {
+        for (const reply of comment.replies) {
+          if (!reply.id || !reply.text) continue;
 
-            allComments.push(replyData);
+          const isOwnReply = myUsername && 
+            reply.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
 
-            const { error: replyError } = await supabase
-              .from("instagram_comments")
-              .upsert(replyData, {
-                onConflict: "comment_id",
-                ignoreDuplicates: false,
-              });
+          const replyData = {
+            comment_id: reply.id,
+            comment_text: reply.text,
+            author_username: reply.ownerUsername || 'unknown',
+            author_id: reply.ownerId,
+            created_at: reply.timestamp || new Date().toISOString(),
+            post_id: null,
+            post_url: postUrls[0],
+            comment_type: isOwnReply ? "sent" : "received",
+            parent_comment_id: comment.id,
+            platform: "instagram",
+            metadata: {
+              source: "apify",
+              likes_count: reply.likesCount || 0,
+              is_outbound: true,
+            },
+          };
 
-            if (replyError) {
-              errorCount++;
-            } else {
-              savedCount++;
-            }
+          allComments.push(replyData);
+
+          const { error: replyError } = await supabase
+            .from("instagram_comments")
+            .upsert(replyData, {
+              onConflict: "comment_id",
+              ignoreDuplicates: false,
+            });
+
+          if (replyError) {
+            errorCount++;
+          } else {
+            savedCount++;
           }
         }
       }
@@ -207,7 +214,7 @@ serve(async (req) => {
         total: allComments.length,
         savedToDatabase: savedCount,
         saveErrors: errorCount,
-        postsProcessed: results.length,
+        postsProcessed: postUrls.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
