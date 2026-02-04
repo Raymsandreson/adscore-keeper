@@ -354,16 +354,38 @@ export function CommentsAdminPanel() {
                     key={comment.id}
                     className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      {/* Post Preview */}
+                      {comment.post_url && (
+                        <a
+                          href={comment.post_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 w-20 h-20 bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity overflow-hidden group"
+                        >
+                          <div className="w-full h-full bg-muted/20 flex items-center justify-center">
+                            <ImageIcon className="h-8 w-8 text-white group-hover:scale-110 transition-transform" />
+                          </div>
+                        </a>
+                      )}
+
                       <div className="flex-1 min-w-0">
-                        {/* Header */}
+                        {/* Header with Author Profile Link */}
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <div className="flex items-center gap-1.5">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">
+                          <a
+                            href={`https://instagram.com/${comment.author_username}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 hover:opacity-80 transition-opacity group"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                              <User className="h-4 w-4 text-white" />
+                            </div>
+                            <span className="font-medium group-hover:underline">
                               @{comment.author_username || 'Desconhecido'}
                             </span>
-                          </div>
+                            <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </a>
                           {getTypeBadge(comment.comment_type)}
                           {comment.ad_account_id && accountFilter === 'all' && (
                             <Badge variant="secondary" className="text-xs">
@@ -399,6 +421,17 @@ export function CommentsAdminPanel() {
                               <ImageIcon className="h-3 w-3" />
                               Ver post
                               <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                          {comment.author_username && (
+                            <a
+                              href={`https://instagram.com/direct/t/${comment.author_username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-blue-500 hover:underline"
+                            >
+                              <Send className="h-3 w-3" />
+                              Enviar DM
                             </a>
                           )}
                           {comment.replied_at && (
