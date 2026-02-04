@@ -18,6 +18,9 @@ interface Comment {
   platform: string;
   created_at: string;
   replied_at?: string | null;
+  comment_type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: any;
 }
 
 const WorkflowPage = () => {
