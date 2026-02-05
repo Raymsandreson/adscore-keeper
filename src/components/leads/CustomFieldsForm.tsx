@@ -35,18 +35,47 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
     onChange(field.id, field.field_type, newValue);
   };
 
+  const getFieldDescription = () => {
+    switch (field.field_type) {
+      case 'text':
+        return 'Campo de texto livre para informações gerais';
+      case 'number':
+        return 'Valor numérico (ex: valores, quantidades)';
+      case 'date':
+        return 'Selecione uma data específica';
+      case 'select':
+        return `Escolha entre: ${field.field_options?.join(', ') || 'opções definidas'}`;
+      case 'checkbox':
+        return 'Marque para confirmar (Sim/Não)';
+      default:
+        return '';
+    }
+  };
+
   return (
-    <div>
-      <Label>
-        {field.field_name}
-        {field.is_required && <span className="text-destructive ml-1">*</span>}
-      </Label>
+    <div className="p-4 rounded-lg border bg-card hover:bg-accent/30 transition-colors space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-medium">
+          {field.field_name}
+          {field.is_required && <span className="text-destructive ml-1">*</span>}
+        </Label>
+        <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted capitalize">
+          {field.field_type === 'text' ? 'Texto' : 
+           field.field_type === 'number' ? 'Número' :
+           field.field_type === 'date' ? 'Data' :
+           field.field_type === 'select' ? 'Seleção' :
+           field.field_type === 'checkbox' ? 'Checkbox' : field.field_type}
+        </span>
+      </div>
+      
+      <p className="text-xs text-muted-foreground">{getFieldDescription()}</p>
       
       {field.field_type === 'text' && (
         <Input
           placeholder={`Digite ${field.field_name.toLowerCase()}`}
           value={(currentValue as string) || ''}
           onChange={(e) => handleChange(e.target.value)}
+          className="mt-1"
         />
       )}
 
@@ -56,6 +85,7 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           placeholder="0"
           value={currentValue !== null ? String(currentValue) : ''}
           onChange={(e) => handleChange(e.target.value ? parseFloat(e.target.value) : null)}
+          className="mt-1"
         />
       )}
 
@@ -64,6 +94,7 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           type="date"
           value={(currentValue as string) || ''}
           onChange={(e) => handleChange(e.target.value || null)}
+          className="mt-1"
         />
       )}
 
@@ -72,8 +103,8 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           value={(currentValue as string) || ''}
           onValueChange={(v) => handleChange(v)}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione..." />
+          <SelectTrigger className="mt-1">
+            <SelectValue placeholder="Selecione uma opção..." />
           </SelectTrigger>
           <SelectContent>
             {field.field_options?.map((option) => (
@@ -86,7 +117,7 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
       )}
 
       {field.field_type === 'checkbox' && (
-        <div className="flex items-center gap-2 mt-2">
+        <div className="flex items-center gap-2 mt-2 p-2 rounded bg-muted/50">
           <Checkbox
             id={`field-${field.id}`}
             checked={(currentValue as boolean) || false}
@@ -94,9 +125,9 @@ export function CustomFieldInput({ field, value, onChange }: CustomFieldInputPro
           />
           <label
             htmlFor={`field-${field.id}`}
-            className="text-sm text-muted-foreground cursor-pointer"
+            className="text-sm cursor-pointer"
           >
-            Sim
+            Sim, confirmo
           </label>
         </div>
       )}
@@ -175,15 +206,24 @@ export function CustomFieldsForm({ customFields, leadId, getFieldValues, onValue
 
   return (
     <div className="space-y-4 border-t pt-4 mt-4">
-      <Label className="text-sm font-medium text-muted-foreground">Campos Personalizados</Label>
-      {customFields.map((field) => (
-        <CustomFieldInput
-          key={field.id}
-          field={field}
-          value={fieldValues[field.id] || null}
-          onChange={handleChange}
-        />
-      ))}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="h-1 w-1 rounded-full bg-primary" />
+        <Label className="text-sm font-semibold">Campos Personalizados</Label>
+        <span className="text-xs text-muted-foreground">({customFields.length} campo{customFields.length !== 1 ? 's' : ''})</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Preencha os campos abaixo conforme necessário. Campos com * são obrigatórios.
+      </p>
+      <div className="space-y-3">
+        {customFields.map((field) => (
+          <CustomFieldInput
+            key={field.id}
+            field={field}
+            value={fieldValues[field.id] || null}
+            onChange={handleChange}
+          />
+        ))}
+      </div>
     </div>
   );
 }
