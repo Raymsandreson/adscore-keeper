@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Json } from '@/integrations/supabase/types';
@@ -20,6 +20,7 @@ interface SearchHistoryItem {
 export function useSearchHistory() {
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [resumingId, setResumingId] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     try {
@@ -104,6 +105,103 @@ export function useSearchHistory() {
     }
   };
 
+  const resumeSearch = useCallback(async (item: SearchHistoryItem): Promise<any[] | null> => {
+    if (!item.apify_run_id) {
+      toast.error('Esta busca não possui ID de execução');
+      return null;
+    }
+
+    setResumingId(item.id);
+
+    try {
+      // Check status first
+      const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+        body: { action: 'status', runId: item.apify_run_id },
+      });
+
+      if (statusError) throw statusError;
+
+      if (statusData?.isFailed) {
+        await updateSearchResults(item.id, [], 'failed');
+        toast.error('A busca falhou no Apify');
+        return null;
+      }
+
+      if (!statusData?.isComplete) {
+        toast.info('A busca ainda está em andamento. Aguarde...');
+        // Start polling
+        return await pollForResults(item.id, item.apify_run_id);
+      }
+
+      // If complete, fetch results
+      const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+        body: { action: 'results', runId: item.apify_run_id },
+      });
+
+      if (resultsError) throw resultsError;
+
+      if (resultsData?.success) {
+        const posts = resultsData.posts || [];
+        await updateSearchResults(item.id, posts, 'completed');
+        toast.success(`Encontrados ${posts.length} posts`);
+        return posts;
+      } else {
+        throw new Error(resultsData?.error || 'Erro ao buscar resultados');
+      }
+    } catch (error) {
+      console.error('Resume search error:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao retomar busca');
+      return null;
+    } finally {
+      setResumingId(null);
+    }
+  }, []);
+
+  const pollForResults = async (searchId: string, runId: string): Promise<any[] | null> => {
+    const maxAttempts = 120; // 10 minutes max
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      try {
+        const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+          body: { action: 'status', runId },
+        });
+
+        if (statusError) throw statusError;
+
+        if (statusData?.isFailed) {
+          await updateSearchResults(searchId, [], 'failed');
+          toast.error('A busca falhou no Apify');
+          return null;
+        }
+
+        if (statusData?.isComplete) {
+          const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+            body: { action: 'results', runId },
+          });
+
+          if (resultsError) throw resultsError;
+
+          if (resultsData?.success) {
+            const posts = resultsData.posts || [];
+            await updateSearchResults(searchId, posts, 'completed');
+            toast.success(`Encontrados ${posts.length} posts`);
+            return posts;
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        throw error;
+      }
+    }
+
+    toast.error('Timeout: a busca demorou mais de 10 minutos');
+    return null;
+  };
+
   const deleteSearchRecord = async (id: string) => {
     try {
       const { error } = await supabase
@@ -124,9 +222,11 @@ export function useSearchHistory() {
   return {
     history,
     isLoading,
+    resumingId,
     fetchHistory,
     createSearchRecord,
     updateSearchResults,
+    resumeSearch,
     deleteSearchRecord,
   };
 }
