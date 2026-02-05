@@ -59,3 +59,9 @@ verify_jwt = false
 
 [functions.fetch-apify-comments]
 verify_jwt = false
+
+[functions.search-instagram-posts]
+verify_jwt = false
+
+[functions.suggest-search-keywords]
+verify_jwt = false
