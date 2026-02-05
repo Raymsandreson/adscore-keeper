@@ -37,6 +37,12 @@ import {
   UserPlus,
   Settings,
   RefreshCw,
+  MapPin,
+  Image,
+  Video,
+  LayoutGrid,
+  MinusCircle,
+  HelpCircle,
   Filter,
   Hash,
   CalendarIcon,
@@ -74,6 +80,8 @@ interface SearchResult {
   comments?: CommentData[];
   matchingComments?: CommentData[];
 }
+
+type MediaTypeFilter = 'all' | 'image' | 'video' | 'carousel';
 
 interface CommentData {
   id: string;
@@ -142,6 +150,13 @@ export function CaseSearchEngine() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(subMonths(new Date(), 1));
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
   const [periodPreset, setPeriodPreset] = useState<string>('30');
+
+  // Advanced filters (post-search)
+  const [excludeTerms, setExcludeTerms] = useState<string[]>([]);
+  const [customExcludeTerm, setCustomExcludeTerm] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   // Load saved settings
   useEffect(() => {
@@ -318,8 +333,59 @@ export function CaseSearchEngine() {
     }
   };
 
-  // Filter results by minimum comments
-  const filteredResults = results.filter(r => r.commentsCount >= minComments);
+  // Helper functions for advanced filters
+  const addExcludeTerm = () => {
+    if (customExcludeTerm.trim() && !excludeTerms.includes(customExcludeTerm.trim())) {
+      setExcludeTerms([...excludeTerms, customExcludeTerm.trim()]);
+      setCustomExcludeTerm('');
+    }
+  };
+
+  const removeExcludeTerm = (term: string) => {
+    setExcludeTerms(excludeTerms.filter(t => t !== term));
+  };
+
+  // Filter results with all criteria
+  const filteredResults = results.filter(r => {
+    // Minimum comments filter
+    if (r.commentsCount < minComments) return false;
+    
+    // Exclude terms filter (check caption and location)
+    if (excludeTerms.length > 0) {
+      const textToCheck = `${r.caption || ''} ${r.location || ''}`.toLowerCase();
+      if (excludeTerms.some(term => textToCheck.includes(term.toLowerCase()))) {
+        return false;
+      }
+    }
+    
+    // Location filter
+    if (locationFilter.trim()) {
+      const location = (r.location || '').toLowerCase();
+      const caption = (r.caption || '').toLowerCase();
+      const filterLower = locationFilter.toLowerCase();
+      if (!location.includes(filterLower) && !caption.includes(filterLower)) {
+        return false;
+      }
+    }
+    
+    // Media type filter
+    if (mediaTypeFilter !== 'all') {
+      const mediaType = (r.mediaType || '').toLowerCase();
+      switch (mediaTypeFilter) {
+        case 'image':
+          if (mediaType !== 'image' && mediaType !== 'photo') return false;
+          break;
+        case 'video':
+          if (mediaType !== 'video' && mediaType !== 'reel') return false;
+          break;
+        case 'carousel':
+          if (mediaType !== 'carousel' && mediaType !== 'album') return false;
+          break;
+      }
+    }
+    
+    return true;
+  });
 
   return (
     <div className="space-y-6">
@@ -559,7 +625,145 @@ export function CaseSearchEngine() {
 
           <Separator />
 
-          {/* Comment Keywords Filter */}
+          {/* Advanced Post Filters */}
+          <div className="space-y-4">
+            <button
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors"
+            >
+              <Filter className="h-4 w-4" />
+              Filtros Avançados (Pós-Busca)
+              <Badge variant="secondary" className="text-xs">
+                {excludeTerms.length + (locationFilter ? 1 : 0) + (mediaTypeFilter !== 'all' ? 1 : 0)} ativos
+              </Badge>
+            </button>
+
+            {showAdvancedFilters && (
+              <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
+                {/* Search tips */}
+                <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-medium text-foreground">
+                    <HelpCircle className="h-4 w-4" />
+                    Dicas de pesquisa
+                  </div>
+                  <p className="text-muted-foreground">
+                    A busca do Instagram não suporta operadores booleanos (E, OU, NÃO). 
+                    Use os filtros abaixo para refinar os resultados após a busca.
+                  </p>
+                </div>
+
+                {/* Exclude Terms */}
+                <div>
+                  <Label className="flex items-center gap-2 mb-2">
+                    <MinusCircle className="h-4 w-4 text-destructive" />
+                    Excluir posts com estes termos
+                  </Label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {excludeTerms.map(term => (
+                      <Badge 
+                        key={term} 
+                        variant="destructive" 
+                        className="cursor-pointer hover:bg-destructive/80"
+                        onClick={() => removeExcludeTerm(term)}
+                      >
+                        {term} ×
+                      </Badge>
+                    ))}
+                    {excludeTerms.length === 0 && (
+                      <span className="text-xs text-muted-foreground italic">Nenhum termo excluído</span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Termo para excluir..."
+                      value={customExcludeTerm}
+                      onChange={(e) => setCustomExcludeTerm(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addExcludeTerm()}
+                      className="flex-1"
+                    />
+                    <Button variant="outline" size="sm" onClick={addExcludeTerm}>
+                      Excluir
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Location Filter */}
+                <div>
+                  <Label className="flex items-center gap-2 mb-2">
+                    <MapPin className="h-4 w-4 text-blue-500" />
+                    Filtrar por localização
+                  </Label>
+                  <Input
+                    placeholder="Ex: São Paulo, Campinas, MG..."
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Busca na localização do post ou na legenda
+                  </p>
+                </div>
+
+                {/* Media Type Filter */}
+                <div>
+                  <Label className="flex items-center gap-2 mb-2">
+                    <LayoutGrid className="h-4 w-4" />
+                    Tipo de Mídia
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant={mediaTypeFilter === 'all' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setMediaTypeFilter('all')}
+                    >
+                      Todos
+                    </Button>
+                    <Button
+                      variant={mediaTypeFilter === 'image' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setMediaTypeFilter('image')}
+                    >
+                      <Image className="h-4 w-4 mr-1" />
+                      Imagens
+                    </Button>
+                    <Button
+                      variant={mediaTypeFilter === 'video' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setMediaTypeFilter('video')}
+                    >
+                      <Video className="h-4 w-4 mr-1" />
+                      Reels/Vídeos
+                    </Button>
+                    <Button
+                      variant={mediaTypeFilter === 'carousel' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setMediaTypeFilter('carousel')}
+                    >
+                      <LayoutGrid className="h-4 w-4 mr-1" />
+                      Carrosseis
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Clear all filters */}
+                {(excludeTerms.length > 0 || locationFilter || mediaTypeFilter !== 'all') && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => {
+                      setExcludeTerms([]);
+                      setLocationFilter('');
+                      setMediaTypeFilter('all');
+                    }}
+                    className="text-muted-foreground"
+                  >
+                    Limpar todos os filtros
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Separator />
           <div>
             <Label className="flex items-center gap-2">
               <Filter className="h-4 w-4" />
@@ -613,10 +817,15 @@ export function CaseSearchEngine() {
       {filteredResults.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+            <CardTitle className="flex items-center justify-between flex-wrap gap-2">
               <span className="flex items-center gap-2">
                 Resultados
                 <Badge variant="secondary">{filteredResults.length} posts</Badge>
+                {results.length !== filteredResults.length && (
+                  <span className="text-xs text-muted-foreground font-normal">
+                    ({results.length - filteredResults.length} filtrados)
+                  </span>
+                )}
               </span>
             </CardTitle>
           </CardHeader>
