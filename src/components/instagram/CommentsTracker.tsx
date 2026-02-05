@@ -825,12 +825,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
       
       // Filter by selected accounts - only show comments from selected accounts
       // If ad_account_id is set, it must match one of the selected account's instagram_id
-      // If ad_account_id is null, only show if no accounts are selected (fallback)
+      // Comments without ad_account_id (imported from third-party posts) should NOT appear
+      // when a specific account is selected - they only appear when no filter is applied
       if (selectedAccountIds.size > 0) {
-        if (c.ad_account_id) {
-          if (!selectedAccountIds.has(c.ad_account_id)) return false;
-        }
-        // Comments without ad_account_id are legacy - show them only when all accounts selected or no filter
+        // Strictly filter: comment must have ad_account_id AND it must match selected accounts
+        if (!c.ad_account_id || !selectedAccountIds.has(c.ad_account_id)) return false;
       }
       
       // Filter by search text
