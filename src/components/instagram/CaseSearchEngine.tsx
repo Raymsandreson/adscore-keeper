@@ -142,7 +142,7 @@ interface SavedSettings {
 
 export function CaseSearchEngine() {
   const [keywords, setKeywords] = useState('');
-  const [minComments, setMinComments] = useState(5);
+  const [minComments, setMinComments] = useState(0);
   const [maxPosts, setMaxPosts] = useState(50);
   const [commentKeywords, setCommentKeywords] = useState<string[]>(['colega', 'cunhado', 'esposo', 'filho']);
   const [customCommentKeyword, setCustomCommentKeyword] = useState('');
@@ -170,6 +170,12 @@ export function CaseSearchEngine() {
   const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
   const [showSearchTips, setShowSearchTips] = useState(false);
+  
+  // Separate search fields for posts and comments
+  const [postSearchQuery, setPostSearchQuery] = useState('');
+  const [commentSearchQuery, setCommentSearchQuery] = useState('');
+  const [searchInPosts, setSearchInPosts] = useState(true);
+  const [searchInComments, setSearchInComments] = useState(true);
   
   // AI keyword suggestions
   const [aiTopic, setAiTopic] = useState('');
@@ -484,9 +490,31 @@ export function CaseSearchEngine() {
   const removeExcludeTerm = (term: string) => {
     setExcludeTerms(excludeTerms.filter(t => t !== term));
   };
+  
+  // Clear all filters function
+  const clearAllFilters = () => {
+    setAdvancedSearchQuery('');
+    setExcludeTerms([]);
+    setLocationFilter('');
+    setMediaTypeFilter('all');
+    setPostSearchQuery('');
+    setCommentSearchQuery('');
+    setMinComments(0);
+  };
+  
+  // Check if any filter is active
+  const hasActiveFilters = advancedSearchQuery || 
+    excludeTerms.length > 0 || 
+    locationFilter || 
+    mediaTypeFilter !== 'all' || 
+    postSearchQuery ||
+    commentSearchQuery ||
+    minComments > 0;
 
   // Create advanced search matcher
   const advancedMatcher = parseAdvancedSearch(advancedSearchQuery);
+  const postMatcher = parseAdvancedSearch(postSearchQuery);
+  const commentMatcher = parseAdvancedSearch(commentSearchQuery);
   
   // Filter results with all criteria
   const filteredResults = results.filter(r => {
@@ -509,7 +537,7 @@ export function CaseSearchEngine() {
     }
     
     // Minimum comments filter
-    if (r.commentsCount < minComments) return false;
+    if (minComments > 0 && r.commentsCount < minComments) return false;
     
     // Advanced search query filter (applies to caption + location + username)
     if (advancedSearchQuery.trim()) {
@@ -517,6 +545,26 @@ export function CaseSearchEngine() {
       if (!advancedMatcher(textToCheck)) {
         return false;
       }
+    }
+    
+    // Post search query (searches in caption, location, username)
+    if (postSearchQuery.trim() && searchInPosts) {
+      const textToCheck = `${r.caption || ''} ${r.location || ''} ${r.username || ''}`;
+      if (!postMatcher(textToCheck)) {
+        return false;
+      }
+    }
+    
+    // Comment search query (searches in loaded comments)
+    if (commentSearchQuery.trim() && searchInComments) {
+      // Only filter if comments are loaded
+      if (r.comments && r.comments.length > 0) {
+        const hasMatchingComment = r.comments.some(c => 
+          commentMatcher(c.text || '')
+        );
+        if (!hasMatchingComment) return false;
+      }
+      // If no comments loaded yet, don't filter by comments
     }
     
     // Exclude terms filter (check caption and location)
@@ -1268,7 +1316,7 @@ export function CaseSearchEngine() {
       </Card>
 
       {/* Results */}
-      {filteredResults.length > 0 && (
+      {results.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between flex-wrap gap-2">
@@ -1277,39 +1325,84 @@ export function CaseSearchEngine() {
                 <Badge variant="secondary">{filteredResults.length} posts</Badge>
                 {results.length !== filteredResults.length && (
                   <span className="text-xs text-muted-foreground font-normal">
-                    ({results.length - filteredResults.length} filtrados)
+                    ({results.length - filteredResults.length} filtrados de {results.length} total)
                   </span>
                 )}
               </span>
+              {hasActiveFilters && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="gap-1"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Limpar Filtros
+                </Button>
+              )}
             </CardTitle>
+            
+            {/* Real-time search filters */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-sm">
+                  <Search className="h-3.5 w-3.5" />
+                  Buscar na legenda/post
+                </Label>
+                <Input
+                  placeholder="Digite para filtrar posts..."
+                  value={postSearchQuery}
+                  onChange={(e) => setPostSearchQuery(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2 text-sm">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Buscar nos comentários
+                </Label>
+                <Input
+                  placeholder="Digite para filtrar por comentários..."
+                  value={commentSearchQuery}
+                  onChange={(e) => setCommentSearchQuery(e.target.value)}
+                  className="h-9"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Funciona apenas em posts com comentários carregados
+                </p>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[600px]">
-              <div className="space-y-4">
-                {filteredResults.map((result) => (
-                  <CaseSearchResultCard
-                    key={result.postId}
-                    result={result}
-                    commentKeywords={commentKeywords}
-                    isLoadingComments={loadingComments === result.postId}
-                    onFetchComments={() => handleFetchComments(result)}
-                  />
-                ))}
+            {filteredResults.length > 0 ? (
+              <ScrollArea className="h-[600px]">
+                <div className="space-y-4">
+                  {filteredResults.map((result) => (
+                    <CaseSearchResultCard
+                      key={result.postId}
+                      result={result}
+                      commentKeywords={commentKeywords}
+                      isLoadingComments={loadingComments === result.postId}
+                      onFetchComments={() => handleFetchComments(result)}
+                    />
+                  ))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="py-12 text-center text-muted-foreground">
+                <Filter className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="mb-2">Nenhum post corresponde aos filtros atuais</p>
+                <p className="text-xs mb-4">
+                  {minComments > 0 && `Mínimo de ${minComments} comentários • `}
+                  {postSearchQuery && `Busca no post: "${postSearchQuery}" • `}
+                  {commentSearchQuery && `Busca em comentários: "${commentSearchQuery}"`}
+                </p>
+                <Button variant="outline" onClick={clearAllFilters}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Limpar todos os filtros
+                </Button>
               </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* No Results */}
-      {!isSearching && results.length > 0 && filteredResults.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>Nenhum post com {minComments}+ comentários encontrado</p>
-            <Button variant="link" onClick={() => setMinComments(0)}>
-              Remover filtro de comentários
-            </Button>
+            )}
           </CardContent>
         </Card>
       )}
