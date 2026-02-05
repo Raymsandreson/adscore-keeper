@@ -500,6 +500,10 @@ export function CaseSearchEngine() {
     setPostSearchQuery('');
     setCommentSearchQuery('');
     setMinComments(0);
+    // Also reset date filters to show all results
+    setDateFrom(undefined);
+    setDateTo(undefined);
+    setPeriodPreset('custom');
   };
   
   // Check if any filter is active
@@ -509,7 +513,9 @@ export function CaseSearchEngine() {
     mediaTypeFilter !== 'all' || 
     postSearchQuery ||
     commentSearchQuery ||
-    minComments > 0;
+    minComments > 0 ||
+    dateFrom !== undefined ||
+    dateTo !== undefined;
 
   // Create advanced search matcher
   const advancedMatcher = parseAdvancedSearch(advancedSearchQuery);
