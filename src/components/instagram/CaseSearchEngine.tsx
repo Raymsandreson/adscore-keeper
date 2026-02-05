@@ -568,23 +568,34 @@ export function CaseSearchEngine() {
                                   </Badge>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                {item.status === 'completed' && item.results_count && item.results_count > 0 && (
+                              <div className="flex items-center gap-2">
+                                {item.status === 'completed' && item.results_count && item.results_count > 0 ? (
                                   <Button
-                                    variant="ghost"
+                                    variant="default"
                                     size="sm"
                                     onClick={() => loadFromHistory(item)}
+                                    className="gap-1"
                                   >
-                                    <RefreshCw className="h-4 w-4 mr-1" />
-                                    Carregar
+                                    <ExternalLink className="h-4 w-4" />
+                                    Abrir Pesquisa
                                   </Button>
+                                ) : item.status === 'running' ? (
+                                  <Button variant="ghost" size="sm" disabled>
+                                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                    Aguardando
+                                  </Button>
+                                ) : (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Sem resultados
+                                  </Badge>
                                 )}
                                 <Button
                                   variant="ghost"
-                                  size="sm"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                   onClick={() => deleteSearchRecord(item.id)}
                                 >
-                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
