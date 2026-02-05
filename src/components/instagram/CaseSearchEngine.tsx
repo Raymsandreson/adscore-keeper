@@ -60,6 +60,7 @@ import { format, subDays, subMonths, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
+import { parseAdvancedSearch, SEARCH_TIPS } from '@/utils/advancedSearchParser';
 
 interface SearchResult {
   postId: string;
@@ -164,6 +165,8 @@ export function CaseSearchEngine() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
+  const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
+  const [showSearchTips, setShowSearchTips] = useState(false);
   
   // Search history hook
   const { history, isLoading: isLoadingHistory, createSearchRecord, updateSearchResults, deleteSearchRecord } = useSearchHistory();
@@ -435,10 +438,21 @@ export function CaseSearchEngine() {
     setExcludeTerms(excludeTerms.filter(t => t !== term));
   };
 
+  // Create advanced search matcher
+  const advancedMatcher = parseAdvancedSearch(advancedSearchQuery);
+  
   // Filter results with all criteria
   const filteredResults = results.filter(r => {
     // Minimum comments filter
     if (r.commentsCount < minComments) return false;
+    
+    // Advanced search query filter (applies to caption + location + username)
+    if (advancedSearchQuery.trim()) {
+      const textToCheck = `${r.caption || ''} ${r.location || ''} ${r.username || ''}`;
+      if (!advancedMatcher(textToCheck)) {
+        return false;
+      }
+    }
     
     // Exclude terms filter (check caption and location)
     if (excludeTerms.length > 0) {
@@ -828,23 +842,61 @@ export function CaseSearchEngine() {
               <Filter className="h-4 w-4" />
               Filtros Avançados (Pós-Busca)
               <Badge variant="secondary" className="text-xs">
-                {excludeTerms.length + (locationFilter ? 1 : 0) + (mediaTypeFilter !== 'all' ? 1 : 0)} ativos
+                {(advancedSearchQuery ? 1 : 0) + excludeTerms.length + (locationFilter ? 1 : 0) + (mediaTypeFilter !== 'all' ? 1 : 0)} ativos
               </Badge>
             </button>
 
             {showAdvancedFilters && (
               <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-                {/* Search tips */}
-                <div className="bg-muted/50 rounded-lg p-3 text-xs space-y-2">
-                  <div className="flex items-center gap-2 font-medium text-foreground">
-                    <HelpCircle className="h-4 w-4" />
-                    Dicas de pesquisa
+                {/* Advanced Search Query */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="flex items-center gap-2">
+                      <Search className="h-4 w-4 text-primary" />
+                      Busca Avançada com Operadores
+                    </Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setShowSearchTips(!showSearchTips)}
+                    >
+                      <HelpCircle className="h-3 w-3 mr-1" />
+                      {showSearchTips ? 'Ocultar dicas' : 'Ver dicas'}
+                    </Button>
                   </div>
-                  <p className="text-muted-foreground">
-                    A busca do Instagram não suporta operadores booleanos (E, OU, NÃO). 
-                    Use os filtros abaixo para refinar os resultados após a busca.
+                  
+                  {showSearchTips && (
+                    <div className="bg-muted/50 rounded-lg p-3 mb-3 text-xs space-y-2">
+                      <p className="font-medium text-foreground mb-2">Operadores disponíveis:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {SEARCH_TIPS.map((tip, index) => (
+                          <div key={index} className="flex items-start gap-2 p-2 bg-background/50 rounded">
+                            <Badge variant="outline" className="font-mono text-xs shrink-0">
+                              {tip.operator}
+                            </Badge>
+                            <div>
+                              <code className="text-primary text-xs">{tip.example}</code>
+                              <p className="text-muted-foreground text-xs">{tip.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <Input
+                    placeholder='Ex: "acidente fatal" E (colega OU cunhado) NÃO leve'
+                    value={advancedSearchQuery}
+                    onChange={(e) => setAdvancedSearchQuery(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use operadores E, OU, NÃO, aspas para texto exato, * para curinga, ()~n para proximidade
                   </p>
                 </div>
+
+                <Separator />
 
                 {/* Exclude Terms */}
                 <div>
