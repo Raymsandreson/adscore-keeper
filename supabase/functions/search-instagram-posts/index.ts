@@ -6,11 +6,14 @@ const corsHeaders = {
 };
 
 interface SearchRequest {
-  keywords: string[];
+  keywords?: string[];
   maxPosts?: number;
   instagramCookies?: string;
   minComments?: number;
   commentKeywords?: string[];
+  // For polling
+  runId?: string;
+  action?: 'start' | 'status' | 'results';
 }
 
 interface ApifySearchResult {
@@ -49,7 +52,82 @@ serve(async (req) => {
     }
 
     const body: SearchRequest = await req.json();
-    const { keywords, maxPosts = 50, instagramCookies, minComments = 0, commentKeywords = [] } = body;
+    const action = body.action || 'start';
+
+    // ACTION: Check status of existing run
+    if (action === 'status' && body.runId) {
+      const statusUrl = `https://api.apify.com/v2/actor-runs/${body.runId}?token=${APIFY_API_KEY}`;
+      const statusResponse = await fetch(statusUrl);
+      const statusData = await statusResponse.json();
+      const status = statusData.data?.status;
+      
+      console.log(`📊 Status check for ${body.runId}: ${status}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          status,
+          isComplete: status === 'SUCCEEDED',
+          isFailed: status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT',
+          datasetId: statusData.data?.defaultDatasetId,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ACTION: Get results from completed run
+    if (action === 'results' && body.runId) {
+      // First get the dataset ID
+      const statusUrl = `https://api.apify.com/v2/actor-runs/${body.runId}?token=${APIFY_API_KEY}`;
+      const statusResponse = await fetch(statusUrl);
+      const statusData = await statusResponse.json();
+      const datasetId = statusData.data?.defaultDatasetId;
+
+      if (!datasetId) {
+        throw new Error('Dataset não encontrado');
+      }
+
+      const datasetUrl = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`;
+      const datasetResponse = await fetch(datasetUrl);
+      const results: ApifySearchResult[] = await datasetResponse.json();
+
+      console.log(`✅ Encontrados ${results.length} posts`);
+
+      // Transform results for frontend
+      const transformedResults = results.map(post => ({
+        postId: post.post_id,
+        postUrl: post.post_url,
+        username: post.username,
+        userUrl: post.user_url,
+        caption: post.caption,
+        postedDate: post.posted_date,
+        location: post.location,
+        mediaType: post.media_type,
+        thumbnailUrl: post.thumbnail_url,
+        mediaUrls: post.media_urls,
+        hashtags: post.hashtags || [],
+        mentions: post.mentions || [],
+        likesCount: post.likes_count || 0,
+        commentsCount: post.comments_count || 0,
+        viewsCount: post.views_count || 0,
+        isAd: post.is_ad,
+        searchKeyword: post.search_keyword,
+        scrapedAt: post.scraped_at,
+      }));
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          posts: transformedResults,
+          total: transformedResults.length,
+          message: `Encontrados ${transformedResults.length} posts`,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ACTION: Start new search
+    const { keywords, maxPosts = 50, instagramCookies } = body;
 
     if (!keywords || keywords.length === 0) {
       throw new Error('Palavras-chave são obrigatórias');
@@ -94,82 +172,13 @@ serve(async (req) => {
 
     console.log(`⏳ Run iniciado: ${runId}`);
 
-    // Wait for run to complete (max 5 minutes)
-    const maxWaitTime = 300000; // 5 minutes
-    const pollInterval = 5000; // 5 seconds
-    const startTime = Date.now();
-    let runStatus = 'RUNNING';
-
-    while (runStatus === 'RUNNING' || runStatus === 'READY') {
-      if (Date.now() - startTime > maxWaitTime) {
-        throw new Error('Timeout: busca demorou muito para completar');
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-      const statusUrl = `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`;
-      const statusResponse = await fetch(statusUrl);
-      const statusData = await statusResponse.json();
-      runStatus = statusData.data?.status;
-
-      console.log(`📊 Status: ${runStatus}`);
-
-      if (runStatus === 'FAILED' || runStatus === 'ABORTED' || runStatus === 'TIMED-OUT') {
-        throw new Error(`Busca falhou: ${runStatus}`);
-      }
-    }
-
-    // Fetch results
-    const datasetId = runData.data?.defaultDatasetId;
-    if (!datasetId) {
-      throw new Error('Dataset não encontrado');
-    }
-
-    const datasetUrl = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${APIFY_API_KEY}`;
-    const datasetResponse = await fetch(datasetUrl);
-    const results: ApifySearchResult[] = await datasetResponse.json();
-
-    console.log(`✅ Encontrados ${results.length} posts`);
-
-    // Filter results
-    let filteredResults = results;
-
-    // Filter by minimum comments
-    if (minComments > 0) {
-      filteredResults = filteredResults.filter(p => (p.comments_count || 0) >= minComments);
-    }
-
-    // Note: Filtering by comment keywords would require fetching comments for each post
-    // This is a limitation - the keyword search doesn't return comment content
-
-    // Transform results for frontend
-    const transformedResults = filteredResults.map(post => ({
-      postId: post.post_id,
-      postUrl: post.post_url,
-      username: post.username,
-      userUrl: post.user_url,
-      caption: post.caption,
-      postedDate: post.posted_date,
-      location: post.location,
-      mediaType: post.media_type,
-      thumbnailUrl: post.thumbnail_url,
-      mediaUrls: post.media_urls,
-      hashtags: post.hashtags,
-      mentions: post.mentions,
-      likesCount: post.likes_count || 0,
-      commentsCount: post.comments_count || 0,
-      viewsCount: post.views_count || 0,
-      isAd: post.is_ad,
-      searchKeyword: post.search_keyword,
-      scrapedAt: post.scraped_at,
-    }));
-
+    // Return immediately with runId for polling
     return new Response(
       JSON.stringify({
         success: true,
-        posts: transformedResults,
-        total: transformedResults.length,
-        message: `Encontrados ${transformedResults.length} posts`,
+        runId,
+        status: 'RUNNING',
+        message: 'Busca iniciada. Use o runId para verificar o status.',
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
