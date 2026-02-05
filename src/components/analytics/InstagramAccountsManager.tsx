@@ -188,7 +188,18 @@ export const InstagramAccountsManager = () => {
       const meData = await meResponse.json();
 
       if (!meResponse.ok || meData.error) {
-        setTokenValidation({ valid: false, error: meData.error?.message || 'Token inválido' });
+        let errorMessage = meData.error?.message || 'Token inválido';
+        
+        // Provide specific guidance for common errors
+        if (errorMessage.includes('API access blocked') || meData.error?.code === 4) {
+          errorMessage = `🚫 Acesso à API bloqueado pela Meta.\n\nIsso geralmente acontece quando:\n\n1. O token expirou - Gere um novo token no Graph API Explorer\n2. O App não está em modo "Live" - Verifique as configurações do seu App no Meta for Developers\n3. A conta ultrapassou limites de uso - Aguarde algumas horas\n4. O App precisa de verificação - Complete a verificação do Business no Meta Business Suite\n\n💡 Solução mais comum: Gere um novo token com as permissões corretas.`;
+        } else if (errorMessage.includes('expired') || meData.error?.code === 190) {
+          errorMessage = `⏰ Token expirado.\n\nTokens de curta duração expiram em ~1 hora. Gere um novo token no Graph API Explorer.`;
+        } else if (errorMessage.includes('Invalid OAuth') || meData.error?.code === 102) {
+          errorMessage = `🔑 Sessão inválida.\n\nO token foi invalidado. Gere um novo token no Graph API Explorer.`;
+        }
+        
+        setTokenValidation({ valid: false, error: errorMessage });
         setValidatingToken(false);
         return;
       }
