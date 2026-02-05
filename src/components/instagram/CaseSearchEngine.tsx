@@ -56,7 +56,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
-import { format, subDays, subMonths, formatDistanceToNow } from 'date-fns';
+import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
@@ -155,7 +155,8 @@ export function CaseSearchEngine() {
   // Date range filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(subDays(new Date(), 30));
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
-  const [periodPreset, setPeriodPreset] = useState<string>('30');
+  const [periodPreset, setPeriodPreset] = useState<string>('last_x_days');
+  const [customDays, setCustomDays] = useState<number>(30);
 
   // Advanced filters (post-search)
   const [excludeTerms, setExcludeTerms] = useState<string[]>([]);
@@ -199,29 +200,48 @@ export function CaseSearchEngine() {
     const now = new Date();
     
     switch (value) {
-      case '7':
-        setDateFrom(subDays(now, 7));
-        setDateTo(now);
+      case 'today':
+        setDateFrom(startOfDay(now));
+        setDateTo(endOfDay(now));
         break;
-      case '15':
-        setDateFrom(subDays(now, 15));
-        setDateTo(now);
+      case 'yesterday':
+        const yesterday = subDays(now, 1);
+        setDateFrom(startOfDay(yesterday));
+        setDateTo(endOfDay(yesterday));
         break;
-      case '30':
-        setDateFrom(subDays(now, 30));
-        setDateTo(now);
+      case 'this_week':
+        setDateFrom(startOfWeek(now, { weekStartsOn: 0 }));
+        setDateTo(endOfDay(now));
         break;
-      case '90':
-        setDateFrom(subDays(now, 90));
-        setDateTo(now);
+      case 'this_month':
+        setDateFrom(startOfMonth(now));
+        setDateTo(endOfDay(now));
         break;
-      case '180':
-        setDateFrom(subDays(now, 180));
+      case 'this_year':
+        setDateFrom(startOfYear(now));
+        setDateTo(endOfDay(now));
+        break;
+      case 'last_year':
+        const lastYear = subYears(now, 1);
+        setDateFrom(startOfYear(lastYear));
+        setDateTo(endOfYear(lastYear));
+        break;
+      case 'last_x_days':
+        setDateFrom(subDays(now, customDays));
         setDateTo(now);
         break;
       case 'custom':
         // Keep current dates
         break;
+    }
+  };
+
+  const handleCustomDaysChange = (days: number) => {
+    setCustomDays(days);
+    if (periodPreset === 'last_x_days') {
+      const now = new Date();
+      setDateFrom(subDays(now, days));
+      setDateTo(now);
     }
   };
 
@@ -755,20 +775,37 @@ export function CaseSearchEngine() {
               <CalendarIcon className="h-4 w-4" />
               Período de Publicação
             </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               <Select value={periodPreset} onValueChange={handlePeriodPreset}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o período" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="7">Últimos 7 dias</SelectItem>
-                  <SelectItem value="15">Últimos 15 dias</SelectItem>
-                  <SelectItem value="30">Últimos 30 dias</SelectItem>
-                  <SelectItem value="90">Últimos 3 meses</SelectItem>
-                  <SelectItem value="180">Últimos 6 meses</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="yesterday">Ontem</SelectItem>
+                  <SelectItem value="this_week">Esta semana</SelectItem>
+                  <SelectItem value="this_month">Este mês</SelectItem>
+                  <SelectItem value="this_year">Este ano</SelectItem>
+                  <SelectItem value="last_year">Ano passado</SelectItem>
+                  <SelectItem value="last_x_days">Últimos X dias</SelectItem>
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
+              
+              {periodPreset === 'last_x_days' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Últimos</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={customDays}
+                    onChange={(e) => handleCustomDaysChange(parseInt(e.target.value) || 30)}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">dias</span>
+                </div>
+              )}
               
               <Popover>
                 <PopoverTrigger asChild>
