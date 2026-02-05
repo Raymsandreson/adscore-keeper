@@ -169,7 +169,7 @@ export function CaseSearchEngine() {
   const [showSearchTips, setShowSearchTips] = useState(false);
   
   // Search history hook
-  const { history, isLoading: isLoadingHistory, createSearchRecord, updateSearchResults, deleteSearchRecord } = useSearchHistory();
+  const { history, isLoading: isLoadingHistory, resumingId, createSearchRecord, updateSearchResults, resumeSearch, deleteSearchRecord } = useSearchHistory();
 
   // Load saved settings
   useEffect(() => {
@@ -345,6 +345,15 @@ export function CaseSearchEngine() {
       setShowHistory(false);
     } else {
       toast.error('Esta busca não possui resultados salvos');
+    }
+  };
+
+  const handleResumeSearch = async (item: typeof history[0]) => {
+    const results = await resumeSearch(item);
+    if (results && results.length > 0) {
+      setResults(results as unknown as SearchResult[]);
+      setKeywords(item.keywords.join(', '));
+      setShowHistory(false);
     }
   };
 
@@ -580,9 +589,24 @@ export function CaseSearchEngine() {
                                     Abrir Pesquisa
                                   </Button>
                                 ) : item.status === 'running' ? (
-                                  <Button variant="ghost" size="sm" disabled>
-                                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                    Aguardando
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => handleResumeSearch(item)}
+                                    disabled={resumingId === item.id}
+                                    className="gap-1"
+                                  >
+                                    {resumingId === item.id ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Retomando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <RefreshCw className="h-4 w-4" />
+                                        Retomar Busca
+                                      </>
+                                    )}
                                   </Button>
                                 ) : (
                                   <Badge variant="destructive" className="text-xs">
@@ -594,6 +618,7 @@ export function CaseSearchEngine() {
                                   size="icon"
                                   className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                   onClick={() => deleteSearchRecord(item.id)}
+                                  disabled={resumingId === item.id}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
