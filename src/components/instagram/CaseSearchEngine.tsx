@@ -142,6 +142,7 @@ export function CaseSearchEngine() {
   const [instagramCookies, setInstagramCookies] = useState('');
   const [accountName, setAccountName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchStatus, setSearchStatus] = useState<string>('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
@@ -212,6 +213,54 @@ export function CaseSearchEngine() {
     }
   };
 
+  const pollForResults = async (runId: string) => {
+    const maxAttempts = 120; // 10 minutes max (5s * 120)
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      setSearchStatus(`Aguardando resultados... (${attempts * 5}s)`);
+
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+
+      try {
+        const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+          body: { action: 'status', runId },
+        });
+
+        if (statusError) throw statusError;
+
+        if (statusData?.isFailed) {
+          throw new Error('A busca falhou no Apify');
+        }
+
+        if (statusData?.isComplete) {
+          setSearchStatus('Carregando resultados...');
+          
+          // Fetch results
+          const { data: resultsData, error: resultsError } = await supabase.functions.invoke('search-instagram-posts', {
+            body: { action: 'results', runId },
+          });
+
+          if (resultsError) throw resultsError;
+
+          if (resultsData?.success) {
+            setResults(resultsData.posts || []);
+            toast.success(`Encontrados ${resultsData.total} posts`);
+            return;
+          } else {
+            throw new Error(resultsData?.error || 'Erro ao buscar resultados');
+          }
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Timeout: a busca demorou mais de 10 minutos');
+  };
+
   const handleSearch = async () => {
     if (!keywords.trim()) {
       toast.error('Digite pelo menos uma palavra-chave');
@@ -226,12 +275,15 @@ export function CaseSearchEngine() {
 
     setIsSearching(true);
     setResults([]);
+    setSearchStatus('Iniciando busca...');
 
     try {
       const keywordList = keywords.split(',').map(k => k.trim()).filter(Boolean);
 
+      // Start the search
       const { data, error } = await supabase.functions.invoke('search-instagram-posts', {
         body: {
+          action: 'start',
           keywords: keywordList,
           maxPosts,
           instagramCookies,
@@ -241,17 +293,18 @@ export function CaseSearchEngine() {
 
       if (error) throw error;
 
-      if (data?.success) {
-        setResults(data.posts || []);
-        toast.success(`Encontrados ${data.total} posts`);
+      if (data?.success && data?.runId) {
+        setSearchStatus('Busca iniciada, aguardando Apify...');
+        await pollForResults(data.runId);
       } else {
-        throw new Error(data?.error || 'Erro na busca');
+        throw new Error(data?.error || 'Erro ao iniciar busca');
       }
     } catch (error) {
       console.error('Search error:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar posts');
     } finally {
       setIsSearching(false);
+      setSearchStatus('');
     }
   };
 
@@ -611,7 +664,7 @@ export function CaseSearchEngine() {
                 {isSearching ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Buscando...
+                    {searchStatus || 'Buscando...'}
                   </>
                 ) : (
                   <>
@@ -622,6 +675,19 @@ export function CaseSearchEngine() {
               </Button>
             </div>
           </div>
+
+          {/* Search Progress Indicator */}
+          {isSearching && searchStatus && (
+            <div className="bg-muted/50 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{searchStatus}</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                A busca pode demorar alguns minutos dependendo da quantidade de posts
+              </p>
+            </div>
+          )}
 
           <Separator />
 
