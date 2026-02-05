@@ -153,7 +153,7 @@ export function CaseSearchEngine() {
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
   
   // Date range filters
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(subMonths(new Date(), 1));
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(subDays(new Date(), 30));
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date());
   const [periodPreset, setPeriodPreset] = useState<string>('30');
 
@@ -208,21 +208,32 @@ export function CaseSearchEngine() {
         setDateTo(now);
         break;
       case '30':
-        setDateFrom(subMonths(now, 1));
+        setDateFrom(subDays(now, 30));
         setDateTo(now);
         break;
       case '90':
-        setDateFrom(subMonths(now, 3));
+        setDateFrom(subDays(now, 90));
         setDateTo(now);
         break;
       case '180':
-        setDateFrom(subMonths(now, 6));
+        setDateFrom(subDays(now, 180));
         setDateTo(now);
         break;
       case 'custom':
         // Keep current dates
         break;
     }
+  };
+
+  // Quando datas são alteradas manualmente, mudar para custom
+  const handleDateFromChange = (date: Date | undefined) => {
+    setDateFrom(date);
+    setPeriodPreset('custom');
+  };
+
+  const handleDateToChange = (date: Date | undefined) => {
+    setDateTo(date);
+    setPeriodPreset('custom');
   };
 
   const pollForResults = async (runId: string) => {
@@ -452,6 +463,24 @@ export function CaseSearchEngine() {
   
   // Filter results with all criteria
   const filteredResults = results.filter(r => {
+    // Date range filter - filter by posted date
+    if (dateFrom || dateTo) {
+      const postedDate = r.postedDate ? new Date(r.postedDate) : null;
+      
+      if (postedDate) {
+        if (dateFrom) {
+          const fromStart = new Date(dateFrom);
+          fromStart.setHours(0, 0, 0, 0);
+          if (postedDate < fromStart) return false;
+        }
+        if (dateTo) {
+          const toEnd = new Date(dateTo);
+          toEnd.setHours(23, 59, 59, 999);
+          if (postedDate > toEnd) return false;
+        }
+      }
+    }
+    
     // Minimum comments filter
     if (r.commentsCount < minComments) return false;
     
