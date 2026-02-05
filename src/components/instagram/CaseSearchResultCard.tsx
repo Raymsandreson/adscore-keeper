@@ -8,11 +8,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
   ExternalLink,
   MessageCircle,
   Heart,
@@ -24,7 +19,6 @@ import {
   Hash,
   Image,
   Video,
-  User,
   Sparkles,
   Tag,
   Link2,
@@ -32,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
+import { CreateLeadFromSearchDialog } from './CreateLeadFromSearchDialog';
 
 interface CommentData {
   id: string;
@@ -68,7 +63,7 @@ interface CaseSearchResultCardProps {
   commentKeywords: string[];
   isLoadingComments: boolean;
   onFetchComments: () => void;
-  onCreateLead: (comment?: CommentData) => void;
+  onCreateLead?: (comment?: CommentData) => void;
 }
 
 // Componente para ações de cada comentário
@@ -93,7 +88,7 @@ function CommentActions({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs justify-start gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50"
+        className="h-7 text-xs justify-start gap-1.5 text-purple-600 border-purple-200 hover:bg-purple-50 dark:text-purple-400 dark:border-purple-800 dark:hover:bg-purple-950"
       >
         <Target className="h-3 w-3" />
         Prospect
@@ -101,7 +96,7 @@ function CommentActions({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs justify-start gap-1.5 text-pink-600 border-pink-200 hover:bg-pink-50"
+        className="h-7 text-xs justify-start gap-1.5 text-pink-600 border-pink-200 hover:bg-pink-50 dark:text-pink-400 dark:border-pink-800 dark:hover:bg-pink-950"
       >
         <Sparkles className="h-3 w-3" />
         Responder IA
@@ -177,7 +172,7 @@ function CommentItem({
             href={`https://instagram.com/${comment.ownerUsername}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+            className="text-xs text-primary hover:underline flex items-center gap-1"
           >
             <ExternalLink className="h-3 w-3" />
             Ver perfil
@@ -196,10 +191,11 @@ export function CaseSearchResultCard({
   commentKeywords,
   isLoadingComments,
   onFetchComments,
-  onCreateLead,
 }: CaseSearchResultCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
+  const [showLeadDialog, setShowLeadDialog] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<CommentData | undefined>();
 
   const MediaIcon = result.mediaType === 'video' ? Video : Image;
   
@@ -209,213 +205,234 @@ export function CaseSearchResultCard({
   const hasComments = allComments.length > 0 || matchingComments.length > 0;
   const displayComments = showAllComments ? allComments : matchingComments;
 
+  const handleCreateLead = (comment?: CommentData) => {
+    setSelectedComment(comment);
+    setShowLeadDialog(true);
+  };
+
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex gap-4">
-          {/* Thumbnail */}
-          <div className="flex-shrink-0">
-            <a href={result.postUrl} target="_blank" rel="noopener noreferrer">
-              <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-muted">
-                {result.thumbnailUrl ? (
-                  <img
-                    src={result.thumbnailUrl}
-                    alt="Post thumbnail"
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <MediaIcon className="h-8 w-8 text-muted-foreground" />
+    <>
+      <Card className="overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex gap-4">
+            {/* Thumbnail */}
+            <div className="flex-shrink-0">
+              <a href={result.postUrl} target="_blank" rel="noopener noreferrer">
+                <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-muted">
+                  {result.thumbnailUrl ? (
+                    <img
+                      src={result.thumbnailUrl}
+                      alt="Post thumbnail"
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <MediaIcon className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="absolute top-1 right-1">
+                    <Badge variant="secondary" className="text-xs px-1">
+                      <MediaIcon className="h-3 w-3" />
+                    </Badge>
                   </div>
-                )}
-                <div className="absolute top-1 right-1">
-                  <Badge variant="secondary" className="text-xs px-1">
-                    <MediaIcon className="h-3 w-3" />
-                  </Badge>
                 </div>
-              </div>
-            </a>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0 space-y-2">
-            {/* Header */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <InstagramProfileHoverCard username={result.username} className="font-medium text-sm hover:text-primary" />
-                <Badge variant="outline" className="text-xs">
-                  <Hash className="h-3 w-3 mr-0.5" />
-                  {result.searchKeyword}
-                </Badge>
-                {result.isAd && (
-                  <Badge variant="destructive" className="text-xs">Anúncio</Badge>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => window.open(result.postUrl, '_blank')}
-              >
-                <ExternalLink className="h-4 w-4" />
-              </Button>
+              </a>
             </div>
 
-            {/* Caption */}
-            <p className="text-sm text-muted-foreground line-clamp-2">
-              {result.caption || 'Sem legenda'}
-            </p>
-
-            {/* Metrics */}
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Heart className="h-3 w-3" />
-                {result.likesCount.toLocaleString()}
-              </span>
-              <span className="flex items-center gap-1">
-                <MessageCircle className="h-3 w-3" />
-                {result.commentsCount.toLocaleString()}
-              </span>
-              {result.viewsCount > 0 && (
-                <span className="flex items-center gap-1">
-                  <Eye className="h-3 w-3" />
-                  {result.viewsCount.toLocaleString()}
-                </span>
-              )}
-              {result.location && (
-                <span className="truncate max-w-[150px]">
-                  📍 {result.location}
-                </span>
-              )}
-            </div>
-
-            {/* Hashtags */}
-            {result.hashtags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {result.hashtags.slice(0, 5).map(tag => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    #{tag}
-                  </Badge>
-                ))}
-                {result.hashtags.length > 5 && (
+            {/* Content */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <InstagramProfileHoverCard username={result.username} className="font-medium text-sm hover:text-primary" />
                   <Badge variant="outline" className="text-xs">
-                    +{result.hashtags.length - 5}
+                    <Hash className="h-3 w-3 mr-0.5" />
+                    {result.searchKeyword}
                   </Badge>
+                  {result.isAd && (
+                    <Badge variant="destructive" className="text-xs">Anúncio</Badge>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.open(result.postUrl, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Caption */}
+              <p className="text-sm text-muted-foreground line-clamp-2">
+                {result.caption || 'Sem legenda'}
+              </p>
+
+              {/* Metrics */}
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Heart className="h-3 w-3" />
+                  {result.likesCount.toLocaleString()}
+                </span>
+                <span className="flex items-center gap-1">
+                  <MessageCircle className="h-3 w-3" />
+                  {result.commentsCount.toLocaleString()}
+                </span>
+                {result.viewsCount > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Eye className="h-3 w-3" />
+                    {result.viewsCount.toLocaleString()}
+                  </span>
+                )}
+                {result.location && (
+                  <span className="truncate max-w-[150px]">
+                    📍 {result.location}
+                  </span>
                 )}
               </div>
-            )}
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onFetchComments}
-                disabled={isLoadingComments || !!result.comments}
-              >
-                {isLoadingComments ? (
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                ) : (
-                  <MessageCircle className="h-4 w-4 mr-1" />
-                )}
-                {result.comments ? 'Comentários carregados' : 'Buscar Comentários'}
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => onCreateLead()}
-              >
-                <UserPlus className="h-4 w-4 mr-1" />
-                Criar Lead
-              </Button>
-            </div>
+              {/* Hashtags */}
+              {result.hashtags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {result.hashtags.slice(0, 5).map(tag => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      #{tag}
+                    </Badge>
+                  ))}
+                  {result.hashtags.length > 5 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{result.hashtags.length - 5}
+                    </Badge>
+                  )}
+                </div>
+              )}
 
-            {/* Expandable Comments Section */}
-            {hasComments && (
-              <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-                <CollapsibleTrigger asChild>
-                  <Button variant="ghost" size="sm" className="w-full justify-between mt-2 bg-muted/50">
-                    <span className="flex items-center gap-2">
-                      <MessageCircle className="h-4 w-4" />
-                      {matchingComments.length > 0 ? (
-                        <>
-                          <Sparkles className="h-4 w-4 text-yellow-500" />
-                          {matchingComments.length} comentários com palavras-chave
-                        </>
-                      ) : (
-                        <>{allComments.length} comentários carregados</>
-                      )}
-                    </span>
-                    {isExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="mt-3 space-y-3">
-                    {/* Toggle para ver todos ou só matches */}
-                    {matchingComments.length > 0 && allComments.length > matchingComments.length && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <Button
-                          variant={!showAllComments ? "default" : "outline"}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setShowAllComments(false)}
-                        >
-                          Com palavras-chave ({matchingComments.length})
-                        </Button>
-                        <Button
-                          variant={showAllComments ? "default" : "outline"}
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setShowAllComments(true)}
-                        >
-                          Todos ({allComments.length})
-                        </Button>
-                      </div>
-                    )}
-                    
-                    <ScrollArea className="max-h-[400px]">
-                      <div className="space-y-3 pr-2">
-                        {displayComments.map(comment => (
-                          <CommentItem
-                            key={comment.id}
-                            comment={comment}
-                            commentKeywords={commentKeywords}
-                            onCreateLead={onCreateLead}
-                          />
-                        ))}
-                        {displayComments.length === 0 && allComments.length > 0 && (
-                          <p className="text-xs text-muted-foreground italic text-center py-4">
-                            Nenhum comentário com as palavras-chave selecionadas.
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="text-xs p-0 h-auto ml-1"
-                              onClick={() => setShowAllComments(true)}
-                            >
-                              Ver todos os {allComments.length} comentários
-                            </Button>
-                          </p>
+              {/* Actions */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onFetchComments}
+                  disabled={isLoadingComments || !!result.comments}
+                >
+                  {isLoadingComments ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <MessageCircle className="h-4 w-4 mr-1" />
+                  )}
+                  {result.comments ? 'Comentários carregados' : 'Buscar Comentários'}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleCreateLead()}
+                >
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Criar Lead
+                </Button>
+              </div>
+
+              {/* Expandable Comments Section */}
+              {hasComments && (
+                <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="w-full justify-between mt-2 bg-muted/50">
+                      <span className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4" />
+                        {matchingComments.length > 0 ? (
+                          <>
+                            <Sparkles className="h-4 w-4 text-yellow-500" />
+                            {matchingComments.length} comentários com palavras-chave
+                          </>
+                        ) : (
+                          <>{allComments.length} comentários carregados</>
                         )}
-                      </div>
-                    </ScrollArea>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
+                      </span>
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-3 space-y-3">
+                      {/* Toggle para ver todos ou só matches */}
+                      {matchingComments.length > 0 && allComments.length > matchingComments.length && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <Button
+                            variant={!showAllComments ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setShowAllComments(false)}
+                          >
+                            Com palavras-chave ({matchingComments.length})
+                          </Button>
+                          <Button
+                            variant={showAllComments ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setShowAllComments(true)}
+                          >
+                            Todos ({allComments.length})
+                          </Button>
+                        </div>
+                      )}
+                      
+                      <ScrollArea className="max-h-[400px]">
+                        <div className="space-y-3 pr-2">
+                          {displayComments.map(comment => (
+                            <CommentItem
+                              key={comment.id}
+                              comment={comment}
+                              commentKeywords={commentKeywords}
+                              onCreateLead={handleCreateLead}
+                            />
+                          ))}
+                          {displayComments.length === 0 && allComments.length > 0 && (
+                            <p className="text-xs text-muted-foreground italic text-center py-4">
+                              Nenhum comentário com as palavras-chave selecionadas.
+                              <Button
+                                variant="link"
+                                size="sm"
+                                className="text-xs p-0 h-auto ml-1"
+                                onClick={() => setShowAllComments(true)}
+                              >
+                                Ver todos os {allComments.length} comentários
+                              </Button>
+                            </p>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
 
-            {/* Status message when no matches */}
-            {result.comments && !hasComments && (
-              <p className="text-xs text-muted-foreground italic">
-                {result.comments.length} comentários carregados, nenhum disponível para exibição
-              </p>
-            )}
+              {/* Status message when no matches */}
+              {result.comments && !hasComments && (
+                <p className="text-xs text-muted-foreground italic">
+                  {result.comments.length} comentários carregados, nenhum disponível para exibição
+                </p>
+              )}
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Lead Creation Dialog */}
+      <CreateLeadFromSearchDialog
+        open={showLeadDialog}
+        onOpenChange={setShowLeadDialog}
+        postData={{
+          postId: result.postId,
+          postUrl: result.postUrl,
+          username: result.username,
+          caption: result.caption,
+          location: result.location,
+        }}
+        comment={selectedComment}
+      />
+    </>
   );
 }
