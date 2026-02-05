@@ -16,6 +16,11 @@ export function InstagramProfileHoverCard({
   className = "",
   showIcon = true
 }: InstagramProfileHoverCardProps) {
+  // Guard against null/undefined username
+  if (!username) {
+    return children ? <>{children}</> : null;
+  }
+  
   // Clean username (remove @ if present)
   const cleanUsername = username.replace(/^@/, '');
   const profileUrl = `https://www.instagram.com/${cleanUsername}/`;
