@@ -1298,6 +1298,48 @@ export type Database = {
           },
         ]
       }
+      instagram_search_history: {
+        Row: {
+          apify_run_id: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          keywords: string[]
+          max_posts: number | null
+          min_comments: number | null
+          results: Json | null
+          results_count: number | null
+          status: string | null
+        }
+        Insert: {
+          apify_run_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          keywords: string[]
+          max_posts?: number | null
+          min_comments?: number | null
+          results?: Json | null
+          results_count?: number | null
+          status?: string | null
+        }
+        Update: {
+          apify_run_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          keywords?: string[]
+          max_posts?: number | null
+          min_comments?: number | null
+          results?: Json | null
+          results_count?: number | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       kanban_boards: {
         Row: {
           ad_account_id: string | null
