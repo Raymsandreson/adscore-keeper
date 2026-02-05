@@ -1085,7 +1085,6 @@ export function CaseSearchEngine() {
                     commentKeywords={commentKeywords}
                     isLoadingComments={loadingComments === result.postId}
                     onFetchComments={() => handleFetchComments(result)}
-                    onCreateLead={(comment) => handleCreateLead(result, comment)}
                   />
                 ))}
               </div>
