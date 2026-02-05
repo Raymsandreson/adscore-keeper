@@ -49,13 +49,17 @@ import {
   AlertTriangle,
   Save,
   Check,
+  History,
+  Trash2,
+  Clock,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
-import { format, subDays, subMonths } from 'date-fns';
+import { format, subDays, subMonths, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { useSearchHistory } from '@/hooks/useSearchHistory';
 
 interface SearchResult {
   postId: string;
@@ -158,6 +162,11 @@ export function CaseSearchEngine() {
   const [locationFilter, setLocationFilter] = useState('');
   const [mediaTypeFilter, setMediaTypeFilter] = useState<MediaTypeFilter>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
+  
+  // Search history hook
+  const { history, isLoading: isLoadingHistory, createSearchRecord, updateSearchResults, deleteSearchRecord } = useSearchHistory();
 
   // Load saved settings
   useEffect(() => {
@@ -245,9 +254,16 @@ export function CaseSearchEngine() {
           if (resultsError) throw resultsError;
 
           if (resultsData?.success) {
-            setResults(resultsData.posts || []);
+            const posts = resultsData.posts || [];
+            setResults(posts);
+            
+            // Save to history
+            if (currentSearchId) {
+              await updateSearchResults(currentSearchId, posts, 'completed');
+            }
+            
             toast.success(`Encontrados ${resultsData.total} posts`);
-            return;
+            return posts;
           } else {
             throw new Error(resultsData?.error || 'Erro ao buscar resultados');
           }
@@ -294,6 +310,10 @@ export function CaseSearchEngine() {
       if (error) throw error;
 
       if (data?.success && data?.runId) {
+        // Create search history record
+        const searchId = await createSearchRecord(keywordList, maxPosts, minComments, data.runId);
+        setCurrentSearchId(searchId);
+        
         setSearchStatus('Busca iniciada, aguardando Apify...');
         await pollForResults(data.runId);
       } else {
@@ -302,9 +322,26 @@ export function CaseSearchEngine() {
     } catch (error) {
       console.error('Search error:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar posts');
+      
+      // Update history record as failed
+      if (currentSearchId) {
+        await updateSearchResults(currentSearchId, [], 'failed');
+      }
     } finally {
       setIsSearching(false);
       setSearchStatus('');
+      setCurrentSearchId(null);
+    }
+  };
+
+  const loadFromHistory = (item: typeof history[0]) => {
+    if (item.results && Array.isArray(item.results)) {
+      setResults(item.results as unknown as SearchResult[]);
+      setKeywords(item.keywords.join(', '));
+      toast.success(`Carregados ${item.results_count} posts do histórico`);
+      setShowHistory(false);
+    } else {
+      toast.error('Esta busca não possui resultados salvos');
     }
   };
 
@@ -456,76 +493,167 @@ export function CaseSearchEngine() {
                 </Badge>
               )}
             </div>
-            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurações
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>Configurações da Busca</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Nome da Conta (para identificação)</Label>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Nome da conta secundária que você está usando para scraping
-                    </p>
-                    <Input
-                      placeholder="conta_scraping"
-                      value={accountName}
-                      onChange={(e) => setAccountName(e.target.value)}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label>Cookies do Instagram (JSON)</Label>
-                    <div className="bg-muted/50 rounded-lg p-3 mb-3 text-xs space-y-2">
-                      <p className="font-medium text-foreground">Como exportar os cookies:</p>
-                      <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                        <li>Instale a extensão <a href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer" className="text-primary underline">Cookie-Editor</a> no Chrome</li>
-                        <li>Faça login no Instagram com a conta secundária</li>
-                        <li>Clique no ícone da extensão Cookie-Editor</li>
-                        <li>Clique em <strong>"Export"</strong> (ícone de download)</li>
-                        <li>Selecione <strong>"Export as JSON"</strong></li>
-                        <li>Cole o JSON copiado no campo abaixo</li>
-                      </ol>
+            <div className="flex items-center gap-2">
+              {/* History Button */}
+              <Dialog open={showHistory} onOpenChange={setShowHistory}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <History className="h-4 w-4 mr-2" />
+                    Histórico
+                    {history.length > 0 && (
+                      <Badge variant="secondary" className="ml-1">
+                        {history.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[80vh]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <History className="h-5 w-5" />
+                      Histórico de Buscas
+                    </DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="h-[500px] pr-4">
+                    {isLoadingHistory ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : history.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p>Nenhuma busca realizada ainda</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {history.map((item) => (
+                          <div
+                            key={item.id}
+                            className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap gap-1 mb-1">
+                                  {item.keywords.map((kw, i) => (
+                                    <Badge key={i} variant="secondary" className="text-xs">
+                                      {kw}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <Clock className="h-3 w-3" />
+                                  {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
+                                  <span>•</span>
+                                  <span>{item.results_count || 0} posts</span>
+                                  <span>•</span>
+                                  <Badge 
+                                    variant={item.status === 'completed' ? 'default' : item.status === 'running' ? 'secondary' : 'destructive'}
+                                    className="text-xs"
+                                  >
+                                    {item.status === 'completed' ? 'Concluída' : item.status === 'running' ? 'Em andamento' : 'Falhou'}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {item.status === 'completed' && item.results_count && item.results_count > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => loadFromHistory(item)}
+                                  >
+                                    <RefreshCw className="h-4 w-4 mr-1" />
+                                    Carregar
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteSearchRecord(item.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+
+              {/* Settings Button */}
+              <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Configurações
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Configurações da Busca</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Nome da Conta (para identificação)</Label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Nome da conta secundária que você está usando para scraping
+                      </p>
+                      <Input
+                        placeholder="conta_scraping"
+                        value={accountName}
+                        onChange={(e) => setAccountName(e.target.value)}
+                      />
                     </div>
-                    <Textarea
-                      placeholder='[{"name":"sessionid","value":"...","domain":".instagram.com",...}]'
-                      value={instagramCookies}
-                      onChange={(e) => setInstagramCookies(e.target.value)}
-                      rows={6}
-                      className="font-mono text-xs"
-                    />
-                  </div>
-                  
-                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
-                      <div className="text-xs text-amber-700 dark:text-amber-400">
-                        <p className="font-medium">Segurança</p>
-                        <p>Use uma conta secundária do Instagram para scraping. Nunca use sua conta pessoal principal.</p>
+                    
+                    <div>
+                      <Label>Cookies do Instagram (JSON)</Label>
+                      <div className="bg-muted/50 rounded-lg p-3 mb-3 text-xs space-y-2">
+                        <p className="font-medium text-foreground">Como exportar os cookies:</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li>Instale a extensão <a href="https://chrome.google.com/webstore/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm" target="_blank" rel="noopener noreferrer" className="text-primary underline">Cookie-Editor</a> no Chrome</li>
+                          <li>Faça login no Instagram com a conta secundária</li>
+                          <li>Clique no ícone da extensão Cookie-Editor</li>
+                          <li>Clique em <strong>"Export"</strong> (ícone de download)</li>
+                          <li>Selecione <strong>"Export as JSON"</strong></li>
+                          <li>Cole o JSON copiado no campo abaixo</li>
+                        </ol>
+                      </div>
+                      <Textarea
+                        placeholder='[{"name":"sessionid","value":"...","domain":".instagram.com",...}]'
+                        value={instagramCookies}
+                        onChange={(e) => setInstagramCookies(e.target.value)}
+                        rows={6}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
+                        <div className="text-xs text-amber-700 dark:text-amber-400">
+                          <p className="font-medium">Segurança</p>
+                          <p>Use uma conta secundária do Instagram para scraping. Nunca use sua conta pessoal principal.</p>
+                        </div>
                       </div>
                     </div>
+                    
+                    <Button onClick={saveSettings} className="w-full">
+                      <Save className="h-4 w-4 mr-2" />
+                      Salvar Configurações
+                    </Button>
+                    
+                    {instagramCookies && (
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <Check className="h-4 w-4" />
+                        Cookies configurados
+                      </div>
+                    )}
                   </div>
-                  
-                  <Button onClick={saveSettings} className="w-full">
-                    <Save className="h-4 w-4 mr-2" />
-                    Salvar Configurações
-                  </Button>
-                  
-                  {instagramCookies && (
-                    <div className="flex items-center gap-2 text-sm text-green-600">
-                      <Check className="h-4 w-4" />
-                      Cookies configurados
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
