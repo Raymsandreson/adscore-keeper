@@ -46,6 +46,8 @@ import {
   Filter,
   Hash,
   CalendarIcon,
+  Sparkles,
+  Lightbulb,
   AlertTriangle,
   Save,
   Check,
@@ -168,6 +170,11 @@ export function CaseSearchEngine() {
   const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
   const [showSearchTips, setShowSearchTips] = useState(false);
+  
+  // AI keyword suggestions
+  const [aiTopic, setAiTopic] = useState('');
+  const [isLoadingAiSuggestions, setIsLoadingAiSuggestions] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   
   // Search history hook
   const { history, isLoading: isLoadingHistory, resumingId, createSearchRecord, updateSearchResults, resumeSearch, deleteSearchRecord } = useSearchHistory();
@@ -756,6 +763,105 @@ export function CaseSearchEngine() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* AI Keyword Suggestions */}
+          <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg p-4 border border-primary/20">
+            <Label className="flex items-center gap-2 text-primary">
+              <Sparkles className="h-4 w-4" />
+              Sugestão de Palavras-chave por IA
+            </Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Digite o assunto que deseja buscar e a IA vai sugerir palavras-chave eficazes
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Ex: acidente de trabalho em construção civil, atropelamento, incêndio..."
+                value={aiTopic}
+                onChange={(e) => setAiTopic(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                variant="default"
+                onClick={async () => {
+                  if (!aiTopic.trim()) {
+                    toast.error('Digite um assunto para buscar sugestões');
+                    return;
+                  }
+                  setIsLoadingAiSuggestions(true);
+                  setAiSuggestions([]);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('suggest-search-keywords', {
+                      body: { topic: aiTopic },
+                    });
+                    if (error) throw error;
+                    if (data?.success && data?.keywords) {
+                      setAiSuggestions(data.keywords);
+                      toast.success(`${data.keywords.length} sugestões geradas!`);
+                    } else {
+                      throw new Error(data?.error || 'Erro ao gerar sugestões');
+                    }
+                  } catch (error) {
+                    console.error('AI suggestion error:', error);
+                    toast.error(error instanceof Error ? error.message : 'Erro ao gerar sugestões');
+                  } finally {
+                    setIsLoadingAiSuggestions(false);
+                  }
+                }}
+                disabled={isLoadingAiSuggestions || !aiTopic.trim()}
+              >
+                {isLoadingAiSuggestions ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Lightbulb className="h-4 w-4 mr-2" />
+                    Sugerir
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            {aiSuggestions.length > 0 && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Clique para adicionar às palavras-chave:
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-6"
+                    onClick={() => {
+                      const allSuggestions = aiSuggestions.join(', ');
+                      setKeywords(prev => prev ? `${prev}, ${allSuggestions}` : allSuggestions);
+                      toast.success('Todas as sugestões adicionadas!');
+                      setAiSuggestions([]);
+                    }}
+                  >
+                    Adicionar todas
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {aiSuggestions.map((suggestion, i) => (
+                    <Badge
+                      key={i}
+                      variant="secondary"
+                      className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => {
+                        setKeywords(prev => prev ? `${prev}, ${suggestion}` : suggestion);
+                        setAiSuggestions(prev => prev.filter((_, idx) => idx !== i));
+                        toast.success(`"${suggestion}" adicionado!`);
+                      }}
+                    >
+                      + {suggestion}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* Search Keywords */}
           <div>
             <Label>Palavras-chave de busca</Label>
