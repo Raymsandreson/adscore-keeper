@@ -264,7 +264,7 @@ export function CaseSearchEngine() {
   };
 
   const pollForResults = async (runId: string) => {
-    const maxAttempts = 120; // 10 minutes max (5s * 120)
+    const maxAttempts = 360; // 30 minutes max (5s * 360) - increased for large multi-keyword searches
     let attempts = 0;
 
     while (attempts < maxAttempts) {
