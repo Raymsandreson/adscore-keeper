@@ -25,6 +25,7 @@ import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { AIDataEnricher } from '@/components/leads/AIDataEnricher';
@@ -49,6 +50,7 @@ import {
   Building,
   Briefcase,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -70,6 +72,15 @@ const brazilianStates = [
 ];
 
 const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+
+// Mapeamento de estado para região
+const stateToRegion: Record<string, string> = {
+  'AC': 'Norte', 'AM': 'Norte', 'AP': 'Norte', 'PA': 'Norte', 'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
+  'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste', 'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
+  'DF': 'Centro-Oeste', 'GO': 'Centro-Oeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste',
+  'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
+  'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
+};
 
 const caseTypes = [
   'Queda de Altura',
@@ -166,6 +177,7 @@ export function LeadEditDialog({
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
@@ -203,10 +215,16 @@ export function LeadEditDialog({
       setDamageDescription(leadAny.damage_description || '');
       
       // Location fields
+      const state = leadAny.visit_state || '';
+      setVisitState(state);
       setVisitCity(leadAny.visit_city || '');
-      setVisitState(leadAny.visit_state || '');
-      setVisitRegion(leadAny.visit_region || '');
+      setVisitRegion(leadAny.visit_region || stateToRegion[state] || '');
       setVisitAddress(leadAny.visit_address || '');
+      
+      // Fetch cities for the state
+      if (state) {
+        fetchCities(state);
+      }
       
       // Companies fields
       setContractorCompany(leadAny.contractor_company || '');
@@ -696,23 +714,51 @@ export function LeadEditDialog({
             <TabsContent value="location" className="space-y-4 mt-0">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Cidade da Visita</Label>
-                  <Input
-                    value={visitCity}
-                    onChange={(e) => setVisitCity(e.target.value)}
-                    placeholder="Cidade"
-                  />
+                  <Label>Estado da Visita</Label>
+                  <Select 
+                    value={visitState} 
+                    onValueChange={(value) => {
+                      setVisitState(value);
+                      setVisitCity(''); // Reset city when state changes
+                      setVisitRegion(stateToRegion[value] || ''); // Auto-fill region
+                      fetchCities(value); // Fetch cities for selected state
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o estado..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {states.map((state) => (
+                        <SelectItem key={state.sigla} value={state.sigla}>
+                          {state.sigla} - {state.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
-                  <Label>Estado da Visita</Label>
-                  <Select value={visitState} onValueChange={setVisitState}>
+                  <Label>Cidade da Visita</Label>
+                  <Select 
+                    value={visitCity} 
+                    onValueChange={setVisitCity}
+                    disabled={!visitState || loadingCities}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecione..." />
+                      {loadingCities ? (
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Carregando...
+                        </span>
+                      ) : (
+                        <SelectValue placeholder={visitState ? "Selecione a cidade..." : "Selecione o estado primeiro"} />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
-                      {brazilianStates.map((state) => (
-                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      {cities.map((city) => (
+                        <SelectItem key={city.id} value={city.nome}>
+                          {city.nome}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
