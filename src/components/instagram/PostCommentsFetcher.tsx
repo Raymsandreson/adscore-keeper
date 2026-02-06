@@ -53,7 +53,7 @@ interface PostInfo {
 export function PostCommentsFetcher() {
   const [postUrl, setPostUrl] = useState('');
   const [postUrls, setPostUrls] = useState<string[]>([]);
-  const [maxComments, setMaxComments] = useState(50);
+  const [maxComments, setMaxComments] = useState(500);
   const [isLoading, setIsLoading] = useState(false);
   const [comments, setComments] = useState<CommentResult[]>([]);
   const [posts, setPosts] = useState<PostInfo[]>([]);
@@ -195,14 +195,18 @@ export function PostCommentsFetcher() {
           <Slider
             value={[maxComments]}
             onValueChange={([value]) => setMaxComments(value)}
-            min={10}
-            max={100}
-            step={10}
+            min={50}
+            max={2000}
+            step={50}
             className="py-2"
           />
-          <p className="text-xs text-muted-foreground">
-            Limite máximo: 100 comentários por post (limitação do actor)
-          </p>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>50</span>
+            <span>500</span>
+            <span>1000</span>
+            <span>1500</span>
+            <span>2000</span>
+          </div>
         </div>
 
         {/* Fetch Button */}
