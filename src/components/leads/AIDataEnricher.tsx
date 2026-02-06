@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import {
   Collapsible,
   CollapsibleContent,
@@ -445,7 +445,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
       </CollapsibleTrigger>
       
       <CollapsibleContent className="px-4 pb-4">
-        <ScrollArea className="h-[55vh] pr-3">
+        <div className="max-h-[55vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-transparent">
           <div className="space-y-4 pb-4">
             <div className="space-y-3">
           <div>
@@ -764,7 +764,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
           </div>
         )}
           </div>
-        </ScrollArea>
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );
