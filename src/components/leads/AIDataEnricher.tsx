@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,9 @@ import {
   ArrowRight,
   Link,
   Download,
+  ImagePlus,
+  X,
+  Camera,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -52,6 +55,7 @@ const FIELD_LABELS: Record<string, string> = {
   legal_viability: 'Viabilidade Jurídica',
   visit_city: 'Cidade',
   visit_state: 'Estado',
+  company_size_justification: 'Análise do Porte da Empresa',
 };
 
 // Map extracted fields to lead fields
@@ -69,6 +73,7 @@ const FIELD_MAP: Record<string, keyof Lead> = {
   legal_viability: 'legal_viability' as keyof Lead,
   visit_city: 'city',
   visit_state: 'state',
+  company_size_justification: 'company_size_justification' as keyof Lead,
 };
 
 export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
@@ -79,6 +84,9 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
   const [isFetchingLink, setIsFetchingLink] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [hasResults, setHasResults] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [screenshotFromNews, setScreenshotFromNews] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFetchLink = async () => {
     if (!newsLink.trim()) {
@@ -106,9 +114,17 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
 
       if (data.content) {
         setDocumentText(prev => prev ? `${prev}\n\n${data.content}` : data.content);
-        toast.success('Conteúdo da notícia carregado! Clique em "Extrair Informações"');
-      } else {
-        toast.warning('Página encontrada mas sem conteúdo de texto');
+        toast.success('Conteúdo da notícia carregado!');
+      }
+      
+      // Capture screenshot from news if available
+      if (data.screenshot) {
+        setScreenshotFromNews(data.screenshot);
+        toast.success('Imagem da notícia capturada!');
+      }
+      
+      if (!data.content && !data.screenshot) {
+        toast.warning('Página encontrada mas sem conteúdo de texto ou imagem');
       }
     } catch (err) {
       console.error('Error:', err);
@@ -117,9 +133,47 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
       setIsFetchingLink(false);
     }
   };
+
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        toast.error('Apenas imagens são permitidas');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        setUploadedImages(prev => [...prev, base64]);
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeScreenshot = () => {
+    setScreenshotFromNews(null);
+  };
+  
   const handleExtract = async () => {
-    if (!documentText.trim()) {
-      toast.error('Cole o texto para análise');
+    // Collect all images
+    const allImages: string[] = [];
+    if (screenshotFromNews) allImages.push(screenshotFromNews);
+    allImages.push(...uploadedImages);
+    
+    if (!documentText.trim() && allImages.length === 0) {
+      toast.error('Cole o texto ou adicione imagens para análise');
       return;
     }
 
@@ -129,7 +183,11 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
 
     try {
       const { data, error } = await supabase.functions.invoke('extract-accident-data', {
-        body: { content: documentText, type: 'text' },
+        body: { 
+          content: documentText || null, 
+          type: 'text',
+          images: allImages.length > 0 ? allImages : undefined,
+        },
       });
 
       if (error) {
@@ -227,6 +285,8 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
     setNewsLink('');
     setExtractedFields([]);
     setHasResults(false);
+    setUploadedImages([]);
+    setScreenshotFromNews(null);
     setIsOpen(false);
     
     toast.success(`${Object.keys(updates).length} campo(s) atualizado(s)!`);
@@ -297,11 +357,88 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
               className="resize-none text-sm"
             />
           </div>
+          
+          {/* Image Upload Section */}
+          <div>
+            <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
+              <Camera className="h-3 w-3" />
+              Imagens do acidente (opcional)
+            </label>
+            <p className="text-xs text-muted-foreground mb-2">
+              A IA analisa imagens para identificar porte da empresa, setor, condições de segurança e logos/marcas
+            </p>
+            
+            {/* Screenshot from news */}
+            {screenshotFromNews && (
+              <div className="mb-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Download className="h-3 w-3" />
+                  Captura da notícia
+                </div>
+                <div className="relative inline-block">
+                  <img 
+                    src={screenshotFromNews} 
+                    alt="Screenshot da notícia" 
+                    className="h-20 w-auto rounded border object-cover"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-5 w-5"
+                    onClick={removeScreenshot}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            
+            {/* Uploaded images preview */}
+            {uploadedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {uploadedImages.map((img, index) => (
+                  <div key={index} className="relative">
+                    <img 
+                      src={img} 
+                      alt={`Imagem ${index + 1}`} 
+                      className="h-16 w-16 rounded border object-cover"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-5 w-5"
+                      onClick={() => removeImage(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              multiple
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full"
+            >
+              <ImagePlus className="h-4 w-4 mr-2" />
+              Adicionar Imagens
+            </Button>
+          </div>
         </div>
 
         <Button 
           onClick={handleExtract} 
-          disabled={isExtracting || !documentText.trim()}
+          disabled={isExtracting || (!documentText.trim() && uploadedImages.length === 0 && !screenshotFromNews)}
           className="w-full"
           size="sm"
         >
