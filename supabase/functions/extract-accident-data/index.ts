@@ -179,16 +179,21 @@ ATENÇÃO - REGRAS CRÍTICAS:
 3. DIFERENCIE CLARAMENTE:
    - LOCAL DO ACIDENTE (accident_address): onde o acidente ACONTECEU
    - LOCAL DA FAMÍLIA/VISITA (visit_city, visit_state): onde a família mora, onde será o velório/sepultamento, ou cidade mencionada como residência
+4. FOQUE APENAS NO CONTEÚDO PRINCIPAL da notícia/texto:
+   - IGNORE completamente: propagandas, anúncios, "Leia também", "Notícias relacionadas", "Veja mais", links para outras matérias
+   - IGNORE seções de comentários, rodapés, barras laterais
+   - EXTRAIA APENAS dados do acidente/caso principal mencionado na notícia
+   - Se o texto contiver múltiplas notícias, foque APENAS na primeira/principal
 ${imageAnalysisInstructions}
 Extraia as seguintes informações do texto e/ou imagens fornecidos:
 
-- victim_name: Nome da vítima (string ou null)
+- victim_name: Nome COMPLETO da vítima (string ou null)
 - victim_age: Idade da vítima (número ou null)  
 - accident_date: Data do acidente no formato YYYY-MM-DD. Se não houver ano explícito, use ${currentYear} (string ou null)
 - accident_address: Local/endereço onde OCORREU o acidente - NÃO confundir com local de velório/família (string ou null)
-- damage_description: Descrição do dano/lesão sofrida (string ou null)
+- damage_description: Descrição curta do dano/lesão (ex: "Óbito", "Amputação de mão", "Fratura de fêmur") (string ou null)
 - contractor_company: Nome da empresa terceirizada (string ou null)
-- main_company: Nome da empresa tomadora/contratante (string ou null)
+- main_company: Nome da empresa tomadora/contratante principal (string ou null)
 - sector: Setor de atuação (construção civil, mineração, agronegócio, etc.) (string ou null)
 - case_type: Tipo de caso (Queda de Altura, Soterramento, Choque Elétrico, Acidente com Máquinas, Intoxicação, etc.) (string ou null)
 - liability_type: Tipo de responsabilidade identificada (solidária, subsidiária, objetiva, subjetiva) (string ou null)
@@ -202,7 +207,8 @@ IMPORTANTE:
 - Se não conseguir identificar uma informação com certeza, coloque null - NÃO INVENTE
 - Para estados, use a sigla (SP, RJ, MG, SE, BA, etc.)
 - Preste atenção em frases como "será sepultado em", "residência da família em", "natural de" para identificar visit_city/visit_state
-- Se houver imagens, analise-as cuidadosamente para insights visuais e extraia TODO TEXTO VISÍVEL`;
+- Se houver imagens, analise-as cuidadosamente para insights visuais e extraia TODO TEXTO VISÍVEL
+- IGNORE completamente conteúdo de outras notícias, propagandas ou links relacionados`;
 
     // Build user message content (can be multimodal with images)
     const userMessageContent: any[] = [];
