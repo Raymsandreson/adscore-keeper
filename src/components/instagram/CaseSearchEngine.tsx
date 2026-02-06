@@ -181,6 +181,11 @@ export function CaseSearchEngine() {
   const [currentSearchId, setCurrentSearchId] = useState<string | null>(null);
   const [advancedSearchQuery, setAdvancedSearchQuery] = useState('');
   const [showSearchTips, setShowSearchTips] = useState(false);
+  const [selectedHistoryComments, setSelectedHistoryComments] = useState<{
+    open: boolean;
+    postUrls: string[];
+    comments: any[];
+  }>({ open: false, postUrls: [], comments: [] });
   
   // Separate search fields for posts and comments
   const [postSearchQuery, setPostSearchQuery] = useState('');
@@ -400,6 +405,19 @@ export function CaseSearchEngine() {
       setShowHistory(false);
     } else {
       toast.error('Esta busca não possui resultados salvos');
+    }
+  };
+
+  const loadCommentsFromHistory = (item: typeof history[0]) => {
+    if (item.results && Array.isArray(item.results) && item.search_type === 'post') {
+      setSelectedHistoryComments({
+        open: true,
+        postUrls: item.post_urls || [],
+        comments: item.results as any[],
+      });
+      setShowHistory(false);
+    } else {
+      toast.error('Esta extração não possui comentários salvos');
     }
   };
 
@@ -917,6 +935,16 @@ export function CaseSearchEngine() {
                                           Retomar
                                         </>
                                       )}
+                                    </Button>
+                                  ) : isPostExtraction && item.status === 'completed' && item.results_count && item.results_count > 0 ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => loadCommentsFromHistory(item)}
+                                      className="gap-1"
+                                    >
+                                      <MessageCircle className="h-4 w-4" />
+                                      Ver Comentários
                                     </Button>
                                   ) : isPostExtraction && item.post_urls?.[0] ? (
                                     <Button
@@ -1757,6 +1785,74 @@ export function CaseSearchEngine() {
           </CardContent>
         </Card>
       )}
+
+      {/* Dialog to view comments from history */}
+      <Dialog 
+        open={selectedHistoryComments.open} 
+        onOpenChange={(open) => setSelectedHistoryComments(prev => ({ ...prev, open }))}
+      >
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5" />
+              Comentários Extraídos ({selectedHistoryComments.comments.length})
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex flex-wrap gap-2 mb-4">
+            {selectedHistoryComments.postUrls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
+              >
+                <Link2 className="h-3 w-3" />
+                Ver Post
+              </a>
+            ))}
+          </div>
+          
+          <ScrollArea className="flex-1 max-h-[60vh]">
+            <div className="space-y-3 pr-4">
+              {selectedHistoryComments.comments.length > 0 ? (
+                selectedHistoryComments.comments.map((comment: any, i) => (
+                  <div key={comment.id || i} className="border rounded-lg p-3 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <a
+                        href={`https://instagram.com/${comment.ownerUsername || 'unknown'}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        @{comment.ownerUsername || 'desconhecido'}
+                      </a>
+                      {comment.timestamp && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true, locale: ptBR })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm">{comment.text}</p>
+                    {comment.likesCount !== undefined && comment.likesCount > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Heart className="h-3 w-3" />
+                        {comment.likesCount}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>Nenhum comentário extraído</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
