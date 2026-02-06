@@ -536,7 +536,7 @@ export function DynamicKanbanBoard({
                                         )}
 
                                         {/* Move to another board */}
-                                        {availableBoards.length > 1 && (
+                                        {availableBoards.length > 0 && (
                                           <>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem disabled className="text-xs text-muted-foreground">
@@ -555,6 +555,11 @@ export function DynamicKanbanBoard({
                                                 </DropdownMenuItem>
                                               ))
                                             }
+                                            {availableBoards.filter(b => b.id !== board.id).length === 0 && (
+                                              <DropdownMenuItem disabled className="pl-6 text-xs text-muted-foreground">
+                                                Nenhum outro quadro disponível
+                                              </DropdownMenuItem>
+                                            )}
                                           </>
                                         )}
                                         
