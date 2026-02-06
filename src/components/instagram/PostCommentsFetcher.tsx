@@ -70,7 +70,7 @@ interface PostInfo {
 export function PostCommentsFetcher() {
   const [postUrl, setPostUrl] = useState('');
   const [postUrls, setPostUrls] = useState<string[]>([]);
-  const [maxComments, setMaxComments] = useState(500);
+  const [maxComments, setMaxComments] = useState(0); // 0 = todos
   const [isLoading, setIsLoading] = useState(false);
   const [comments, setComments] = useState<CommentResult[]>([]);
   const [posts, setPosts] = useState<PostInfo[]>([]);
@@ -223,23 +223,29 @@ export function PostCommentsFetcher() {
           <div className="space-y-2">
             <Label className="flex items-center justify-between">
               <span>Máximo de Comentários por Post</span>
-              <Badge variant="outline">{maxComments}</Badge>
+              <Badge variant={maxComments === 0 ? "default" : "outline"}>
+                {maxComments === 0 ? "TODOS" : maxComments}
+              </Badge>
             </Label>
             <Slider
               value={[maxComments]}
               onValueChange={([value]) => setMaxComments(value)}
-              min={50}
-              max={2000}
-              step={50}
+              min={0}
+              max={5000}
+              step={100}
               className="py-2"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>50</span>
-              <span>500</span>
+              <span>Todos</span>
               <span>1000</span>
-              <span>1500</span>
               <span>2000</span>
+              <span>3000</span>
+              <span>4000</span>
+              <span>5000</span>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Defina 0 para extrair TODOS os comentários incluindo respostas
+            </p>
           </div>
 
           {/* Fetch Button */}

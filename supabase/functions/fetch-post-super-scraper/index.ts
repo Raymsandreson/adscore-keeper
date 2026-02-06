@@ -10,8 +10,9 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
 
-// Instagram Comment Scraper by Apify - supports unlimited comments
-const ACTOR_ID = "apify~instagram-comment-scraper";
+// EasyAPI Instagram Comments Scraper - supports ALL comments with nested replies
+// Documentação: https://apify.com/easyapi/instagram-comments-scraper
+const ACTOR_ID = "easyapi~instagram-comments-scraper";
 
 interface PostCommentsRequest {
   postUrls: string[];
@@ -62,16 +63,18 @@ serve(async (req) => {
     console.log(`📝 URLs:`, normalizedUrls);
     console.log(`💬 Max comentários por post: ${maxComments}`);
 
-    // Iniciar o Actor da Apify - Instagram Comment Scraper
-    // Documentação: https://apify.com/apify/instagram-comment-scraper/input-schema
-    const inputPayload = {
-      directUrls: normalizedUrls,
-      resultsLimit: maxComments,
-      includeNestedComments: true, // Para planos pagos - extrai respostas
-      isNewestComments: true, // Para planos pagos - extrai os mais recentes primeiro
+    // EasyAPI Instagram Comments Scraper - pega TODOS os comentários com respostas
+    // Usa postUrls e maxItems (omitir = todos os comentários)
+    const inputPayload: { postUrls: string[]; maxItems?: number } = {
+      postUrls: normalizedUrls,
     };
     
-    console.log(`📤 Payload enviado para Apify:`, JSON.stringify(inputPayload));
+    // Se maxComments > 0, limita; se 0, omite para pegar todos
+    if (maxComments > 0) {
+      inputPayload.maxItems = maxComments;
+    }
+    
+    console.log(`📤 Payload enviado para Apify (EasyAPI):`, JSON.stringify(inputPayload));
     
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
