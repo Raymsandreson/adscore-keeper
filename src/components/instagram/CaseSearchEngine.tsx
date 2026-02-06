@@ -1817,32 +1817,40 @@ export function CaseSearchEngine() {
           <ScrollArea className="flex-1 max-h-[60vh]">
             <div className="space-y-3 pr-4">
               {selectedHistoryComments.comments.length > 0 ? (
-                selectedHistoryComments.comments.map((comment: any, i) => (
-                  <div key={comment.id || i} className="border rounded-lg p-3 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <a
-                        href={`https://instagram.com/${comment.ownerUsername || 'unknown'}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-medium text-primary hover:underline"
-                      >
-                        @{comment.ownerUsername || 'desconhecido'}
-                      </a>
-                      {comment.timestamp && (
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true, locale: ptBR })}
-                        </span>
+                selectedHistoryComments.comments.map((comment: any, i) => {
+                  // Handle both formats: direct API (ownerUsername/text) and saved DB format (author_username/comment_text)
+                  const username = comment.author_username || comment.ownerUsername;
+                  const commentText = comment.comment_text || comment.text;
+                  const timestamp = comment.created_at || comment.timestamp;
+                  const likes = comment.metadata?.likes_count ?? comment.likesCount ?? 0;
+                  
+                  return (
+                    <div key={comment.comment_id || comment.id || i} className="border rounded-lg p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={`https://instagram.com/${username || 'unknown'}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          @{username || 'desconhecido'}
+                        </a>
+                        {timestamp && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ptBR })}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm">{commentText || '(sem texto)'}</p>
+                      {likes > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Heart className="h-3 w-3" />
+                          {likes}
+                        </div>
                       )}
                     </div>
-                    <p className="text-sm">{comment.text}</p>
-                    {comment.likesCount !== undefined && comment.likesCount > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Heart className="h-3 w-3" />
-                        {comment.likesCount}
-                      </div>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
