@@ -452,9 +452,9 @@ export function CaseSearchEngine() {
     }
   };
 
-  // Batch load comments for all posts
+  // Batch load comments for filtered/visible posts only
   const handleFetchAllComments = async () => {
-    const postsWithoutComments = results.filter(r => !r.comments || r.comments.length === 0);
+    const postsWithoutComments = filteredResults.filter(r => !r.comments || r.comments.length === 0);
     
     if (postsWithoutComments.length === 0) {
       toast.info('Todos os posts já têm comentários carregados');
