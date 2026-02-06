@@ -570,7 +570,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -596,7 +596,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
           onDataExtracted={handleExtractedData}
         />
 
-        <Tabs defaultValue="basic" className="flex-1 overflow-hidden flex flex-col">
+        <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
           <TabsList className="grid w-full grid-cols-6 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
@@ -624,7 +624,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 pr-4 mt-4">
+          <ScrollArea className="h-[calc(90vh-220px)] pr-4 mt-4">
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
               {/* Meta info */}
