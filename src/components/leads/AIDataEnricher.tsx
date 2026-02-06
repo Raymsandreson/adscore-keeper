@@ -439,8 +439,8 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
       </CollapsibleTrigger>
       
       <CollapsibleContent className="px-4 pb-4">
-        <ScrollArea className="max-h-[60vh] pr-3">
-          <div className="space-y-4">
+        <ScrollArea className="h-[55vh] pr-3">
+          <div className="space-y-4 pb-4">
             <div className="space-y-3">
           <div>
             <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
