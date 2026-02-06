@@ -54,6 +54,8 @@ import {
   History,
   Trash2,
   Clock,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -156,6 +158,8 @@ export function CaseSearchEngine() {
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
   const [isLoadingAllComments, setIsLoadingAllComments] = useState(false);
   const [loadingAllProgress, setLoadingAllProgress] = useState({ current: 0, total: 0 });
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   
   // Date range filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(subDays(new Date(), 30));
@@ -452,24 +456,17 @@ export function CaseSearchEngine() {
     }
   };
 
-  // Batch load comments for filtered/visible posts only
-  const handleFetchAllComments = async () => {
-    const postsWithoutComments = filteredResults.filter(r => !r.comments || r.comments.length === 0);
-    
-    if (postsWithoutComments.length === 0) {
-      toast.info('Todos os posts já têm comentários carregados');
-      return;
-    }
-
+  // Shared function to load comments for a list of posts
+  const loadCommentsForPosts = async (posts: SearchResult[]) => {
     setIsLoadingAllComments(true);
-    setLoadingAllProgress({ current: 0, total: postsWithoutComments.length });
+    setLoadingAllProgress({ current: 0, total: posts.length });
 
     let successCount = 0;
     let errorCount = 0;
 
-    for (let i = 0; i < postsWithoutComments.length; i++) {
-      const result = postsWithoutComments[i];
-      setLoadingAllProgress({ current: i + 1, total: postsWithoutComments.length });
+    for (let i = 0; i < posts.length; i++) {
+      const result = posts[i];
+      setLoadingAllProgress({ current: i + 1, total: posts.length });
 
       try {
         const { data, error } = await supabase.functions.invoke('fetch-post-comments', {
@@ -522,6 +519,64 @@ export function CaseSearchEngine() {
     if (errorCount > 0) {
       toast.error(`Falha em ${errorCount} posts`);
     }
+  };
+
+  // Batch load comments for filtered/visible posts only
+  const handleFetchAllComments = async () => {
+    const postsWithoutComments = filteredResults.filter(r => !r.comments || r.comments.length === 0);
+    
+    if (postsWithoutComments.length === 0) {
+      toast.info('Todos os posts já têm comentários carregados');
+      return;
+    }
+
+    await loadCommentsForPosts(postsWithoutComments);
+  };
+
+  // Batch load comments for selected posts only
+  const handleFetchSelectedComments = async () => {
+    const selectedPostsArray = filteredResults.filter(r => 
+      selectedPosts.has(r.postId) && (!r.comments || r.comments.length === 0)
+    );
+    
+    if (selectedPostsArray.length === 0) {
+      toast.info('Nenhum post selecionado ou todos já têm comentários');
+      return;
+    }
+
+    await loadCommentsForPosts(selectedPostsArray);
+    // Clear selection after loading
+    setSelectedPosts(new Set());
+    setSelectionMode(false);
+  };
+
+  // Selection handlers
+  const handleSelectPost = (postId: string, selected: boolean) => {
+    setSelectedPosts(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(postId);
+      } else {
+        next.delete(postId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const postsWithoutComments = filteredResults.filter(r => !r.comments || r.comments.length === 0);
+    setSelectedPosts(new Set(postsWithoutComments.map(p => p.postId)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedPosts(new Set());
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectedPosts(new Set());
+    }
+    setSelectionMode(!selectionMode);
   };
 
   const addCommentKeyword = () => {
@@ -701,6 +756,9 @@ export function CaseSearchEngine() {
     
     return true;
   });
+
+  // Calculate selectable posts count after filteredResults is defined
+  const selectablePostsCount = filteredResults.filter(r => !r.comments || r.comments.length === 0).length;
 
   return (
     <div className="space-y-6">
@@ -1444,27 +1502,93 @@ export function CaseSearchEngine() {
                   </span>
                 )}
               </span>
-              <div className="flex items-center gap-2">
-                {/* Batch load comments button */}
-                <Button 
-                  variant="outline" 
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Selection mode toggle */}
+                <Button
+                  variant={selectionMode ? 'default' : 'outline'}
                   size="sm"
-                  onClick={handleFetchAllComments}
-                  disabled={isLoadingAllComments}
+                  onClick={toggleSelectionMode}
                   className="gap-1"
+                  disabled={selectablePostsCount === 0}
                 >
-                  {isLoadingAllComments ? (
+                  {selectionMode ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {loadingAllProgress.current}/{loadingAllProgress.total}
+                      <CheckSquare className="h-4 w-4" />
+                      Selecionando ({selectedPosts.size})
                     </>
                   ) : (
                     <>
-                      <MessageCircle className="h-4 w-4" />
-                      Carregar Todos Comentários
+                      <Square className="h-4 w-4" />
+                      Selecionar
                     </>
                   )}
                 </Button>
+                
+                {/* Selection actions */}
+                {selectionMode && (
+                  <>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={handleSelectAll}
+                      className="text-xs"
+                    >
+                      Todos ({selectablePostsCount})
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={handleDeselectAll}
+                      className="text-xs"
+                      disabled={selectedPosts.size === 0}
+                    >
+                      Limpar
+                    </Button>
+                    <Button 
+                      variant="default" 
+                      size="sm"
+                      onClick={handleFetchSelectedComments}
+                      disabled={isLoadingAllComments || selectedPosts.size === 0}
+                      className="gap-1"
+                    >
+                      {isLoadingAllComments ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {loadingAllProgress.current}/{loadingAllProgress.total}
+                        </>
+                      ) : (
+                        <>
+                          <MessageCircle className="h-4 w-4" />
+                          Carregar ({selectedPosts.size})
+                        </>
+                      )}
+                    </Button>
+                  </>
+                )}
+                
+                {/* Batch load all comments button */}
+                {!selectionMode && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleFetchAllComments}
+                    disabled={isLoadingAllComments || selectablePostsCount === 0}
+                    className="gap-1"
+                  >
+                    {isLoadingAllComments ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {loadingAllProgress.current}/{loadingAllProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle className="h-4 w-4" />
+                        Carregar Todos ({selectablePostsCount})
+                      </>
+                    )}
+                  </Button>
+                )}
+                
                 {hasActiveFilters && (
                   <Button 
                     variant="outline" 
@@ -1521,6 +1645,9 @@ export function CaseSearchEngine() {
                       commentKeywords={commentKeywords}
                       isLoadingComments={loadingComments === result.postId}
                       onFetchComments={() => handleFetchComments(result)}
+                      showSelection={selectionMode}
+                      isSelected={selectedPosts.has(result.postId)}
+                      onSelectChange={(selected) => handleSelectPost(result.postId, selected)}
                     />
                   ))}
                 </div>

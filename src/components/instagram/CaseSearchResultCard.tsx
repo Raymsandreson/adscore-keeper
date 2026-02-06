@@ -2,6 +2,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Collapsible,
   CollapsibleContent,
@@ -64,6 +65,9 @@ interface CaseSearchResultCardProps {
   isLoadingComments: boolean;
   onFetchComments: () => void;
   onCreateLead?: (comment?: CommentData) => void;
+  isSelected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
+  showSelection?: boolean;
 }
 
 // Componente para ações de cada comentário
@@ -191,6 +195,9 @@ export function CaseSearchResultCard({
   commentKeywords,
   isLoadingComments,
   onFetchComments,
+  isSelected = false,
+  onSelectChange,
+  showSelection = false,
 }: CaseSearchResultCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
@@ -210,11 +217,23 @@ export function CaseSearchResultCard({
     setShowLeadDialog(true);
   };
 
+  const hasCommentsLoaded = result.comments && result.comments.length > 0;
+
   return (
     <>
-      <Card className="overflow-hidden">
+      <Card className={`overflow-hidden transition-colors ${isSelected ? 'ring-2 ring-primary bg-primary/5' : ''}`}>
         <CardContent className="p-4">
           <div className="flex gap-4">
+            {/* Selection Checkbox */}
+            {showSelection && !hasCommentsLoaded && (
+              <div className="flex-shrink-0 flex items-start pt-1">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={(checked) => onSelectChange?.(!!checked)}
+                  aria-label="Selecionar post"
+                />
+              </div>
+            )}
             {/* Thumbnail */}
             <div className="flex-shrink-0">
               <a href={result.postUrl} target="_blank" rel="noopener noreferrer">
