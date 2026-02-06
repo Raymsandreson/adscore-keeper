@@ -63,17 +63,22 @@ serve(async (req) => {
     console.log(`💬 Max comentários por post: ${maxComments}`);
 
     // Iniciar o Actor da Apify - Instagram Comment Scraper
+    // Documentação: https://apify.com/apify/instagram-comment-scraper/input-schema
+    const inputPayload = {
+      directUrls: normalizedUrls,
+      resultsLimit: maxComments,
+      includeNestedComments: true, // Para planos pagos - extrai respostas
+      isNewestComments: true, // Para planos pagos - extrai os mais recentes primeiro
+    };
+    
+    console.log(`📤 Payload enviado para Apify:`, JSON.stringify(inputPayload));
+    
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directUrls: normalizedUrls,
-          resultsLimit: maxComments,
-          commentsPerPost: maxComments,
-          includeReplies: true,
-        }),
+        body: JSON.stringify(inputPayload),
       }
     );
 
