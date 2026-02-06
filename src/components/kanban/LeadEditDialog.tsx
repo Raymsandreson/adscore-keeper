@@ -624,7 +624,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="h-[calc(90vh-220px)] pr-4 mt-4">
+          <div className="flex-1 overflow-y-auto pr-2 mt-4 max-h-[calc(90vh-240px)]">
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
               {/* Meta info */}
@@ -1166,7 +1166,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 </div>
               )}
             </TabsContent>
-          </ScrollArea>
+          </div>
         </Tabs>
 
         <DialogFooter className="mt-4">
