@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line, LabelList } from 'recharts';
 import { TrendingUp, DollarSign, MousePointer, Users, Calendar as CalendarIcon, GitCompare, ArrowUp, ArrowDown, Minus, Loader2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, isWithinInterval, addDays, subDays, subMonths, subWeeks, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -842,21 +842,48 @@ export const MetricsEvolutionChart = ({ data, isLoading, metaConfig }: MetricsEv
                   name="CPC" 
                   fill="#3b82f6"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="cpc" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? `R$${value.toFixed(2)}` : ''}
+                  />
+                </Bar>
                 <Bar 
                   yAxisId="left"
                   dataKey="cpm" 
                   name="CPM" 
                   fill="#8b5cf6"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="cpm" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? `R$${value.toFixed(0)}` : ''}
+                  />
+                </Bar>
                 <Bar 
                   yAxisId="right"
                   dataKey="spend" 
                   name="Gasto" 
                   fill="#10b981"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="spend" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? `R$${value.toFixed(0)}` : ''}
+                  />
+                </Bar>
               </ComposedChart>
             </ResponsiveContainer>
           </TabsContent>
@@ -885,7 +912,16 @@ export const MetricsEvolutionChart = ({ data, isLoading, metaConfig }: MetricsEv
                   name="CTR" 
                   fill="#f59e0b"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="ctr" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? `${value.toFixed(2)}%` : ''}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </TabsContent>
@@ -922,7 +958,16 @@ export const MetricsEvolutionChart = ({ data, isLoading, metaConfig }: MetricsEv
                   name="Conversões" 
                   fill="#10b981"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="conversions" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={10}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? value : ''}
+                  />
+                </Bar>
                 <Line 
                   yAxisId="right"
                   type="monotone" 
@@ -968,14 +1013,32 @@ export const MetricsEvolutionChart = ({ data, isLoading, metaConfig }: MetricsEv
                   name="Impressões" 
                   fill="#6366f1"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="impressions" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={9}
+                    fontWeight="bold"
+                    formatter={(value: number) => value >= 1000 ? `${(value/1000).toFixed(0)}k` : value > 0 ? value : ''}
+                  />
+                </Bar>
                 <Bar 
                   yAxisId="right"
                   dataKey="clicks" 
                   name="Cliques" 
                   fill="#ec4899"
                   radius={[4, 4, 0, 0]}
-                />
+                >
+                  <LabelList 
+                    dataKey="clicks" 
+                    position="inside" 
+                    fill="#fff" 
+                    fontSize={9}
+                    fontWeight="bold"
+                    formatter={(value: number) => value > 0 ? value : ''}
+                  />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </TabsContent>
