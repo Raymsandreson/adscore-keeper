@@ -652,10 +652,12 @@ class MetaAPIService {
       const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
       const { since, until } = this.getDateRange(dateRange);
       
-      // Buscar ad sets diretamente com status e insights juntos
+      // Buscar ad sets com status individual E effective_status para mapeamento correto
+      // O campo 'status' mostra se o ad set está configurado como ativo
+      // O campo 'effective_status' mostra o status de veiculação real (considera campanha pai)
       const adSetsUrl = `${this.baseURL}/${cleanAccountId}/adsets?` +
         `access_token=${config.accessToken}&` +
-        `fields=id,name,effective_status,insights.time_range({"since":"${since}","until":"${until}"}).fields(cpc,ctr,cpm,spend,impressions,clicks,actions)&` +
+        `fields=id,name,status,effective_status,insights.time_range({"since":"${since}","until":"${until}"}).fields(cpc,ctr,cpm,spend,impressions,clicks,actions)&` +
         `limit=100`;
       
       console.log('📊 Buscando ad sets com status e insights...');
@@ -689,11 +691,26 @@ class MetaAPIService {
               .reduce((sum: number, action: any) => sum + parseInt(action.value || '0'), 0);
           }
           
+          // Usar o campo 'status' do ad set (configuração individual), não effective_status
+          // status = ACTIVE significa que o ad set está configurado como ativo no Gerenciador
+          // effective_status pode ser CAMPAIGN_PAUSED mesmo se o ad set está ativo
+          const adSetStatus = adset.status;
           const effectiveStatus = adset.effective_status;
-          // ACTIVE = ativo, qualquer outro (PAUSED, CAMPAIGN_PAUSED, DELETED, etc) = pausado
-          const status = effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED';
           
-          console.log(`AdSet "${adset.name}" (${adset.id}): effective_status=${effectiveStatus} -> ${status}`);
+          // Priorizar o status individual do ad set para refletir o Gerenciador de Anúncios
+          // Se o status individual é ACTIVE, mostrar como ativo
+          // Fallback: se não há status, usar effective_status ou verificar se tem spend
+          let status: 'ACTIVE' | 'PAUSED' = 'PAUSED';
+          if (adSetStatus === 'ACTIVE') {
+            status = 'ACTIVE';
+          } else if (!adSetStatus && effectiveStatus === 'ACTIVE') {
+            status = 'ACTIVE';
+          } else if (spend > 0 && !adSetStatus) {
+            // Fallback: se tem gasto no período, provavelmente está ativo
+            status = 'ACTIVE';
+          }
+          
+          console.log(`AdSet "${adset.name}" (${adset.id}): status=${adSetStatus}, effective_status=${effectiveStatus} -> ${status}`);
           
           results.push({
             id: adset.id,
