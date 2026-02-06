@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ArrowRight,
   Link,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -75,8 +76,47 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
   const [documentText, setDocumentText] = useState('');
   const [newsLink, setNewsLink] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isFetchingLink, setIsFetchingLink] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [hasResults, setHasResults] = useState(false);
+
+  const handleFetchLink = async () => {
+    if (!newsLink.trim()) {
+      toast.error('Cole o link da notícia');
+      return;
+    }
+
+    setIsFetchingLink(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-news', {
+        body: { url: newsLink.trim() },
+      });
+
+      if (error) {
+        console.error('Error fetching link:', error);
+        toast.error('Erro ao buscar página');
+        return;
+      }
+
+      if (!data.success) {
+        toast.error(data.error || 'Não foi possível buscar a página');
+        return;
+      }
+
+      if (data.content) {
+        setDocumentText(prev => prev ? `${prev}\n\n${data.content}` : data.content);
+        toast.success('Conteúdo da notícia carregado! Clique em "Extrair Informações"');
+      } else {
+        toast.warning('Página encontrada mas sem conteúdo de texto');
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      toast.error('Erro ao buscar página');
+    } finally {
+      setIsFetchingLink(false);
+    }
+  };
   const handleExtract = async () => {
     if (!documentText.trim()) {
       toast.error('Cole o texto para análise');
@@ -213,26 +253,47 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
           <div>
             <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
               <Link className="h-3 w-3" />
-              Link da notícia (opcional)
+              Link da notícia
             </label>
-            <Input
-              placeholder="https://..."
-              value={newsLink}
-              onChange={(e) => setNewsLink(e.target.value)}
-              className="text-sm"
-            />
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://..."
+                value={newsLink}
+                onChange={(e) => setNewsLink(e.target.value)}
+                className="text-sm flex-1"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchLink}
+                disabled={isFetchingLink || !newsLink.trim()}
+                className="shrink-0"
+              >
+                {isFetchingLink ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-1" />
+                    Buscar
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Cole o link e clique em "Buscar" para carregar o texto automaticamente
+            </p>
           </div>
           
           <div>
             <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
               <FileText className="h-3 w-3" />
-              Cole o texto da notícia ou documento
+              Texto da notícia ou documento
             </label>
             <Textarea
-              placeholder="Cole aqui o texto para a IA analisar e encontrar informações que faltam no lead..."
+              placeholder="Cole aqui o texto ou use o botão acima para buscar automaticamente do link..."
               value={documentText}
               onChange={(e) => setDocumentText(e.target.value)}
-              rows={4}
+              rows={5}
               className="resize-none text-sm"
             />
           </div>

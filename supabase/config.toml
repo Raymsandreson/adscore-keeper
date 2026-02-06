@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.suggest-search-keywords]
 verify_jwt = false
+
+[functions.scrape-news]
+verify_jwt = false
