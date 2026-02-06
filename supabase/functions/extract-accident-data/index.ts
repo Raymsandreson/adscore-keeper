@@ -5,13 +5,51 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+async function scrapeUrl(url: string): Promise<string | null> {
+  const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
+  if (!FIRECRAWL_API_KEY) {
+    console.log('FIRECRAWL_API_KEY not configured, skipping URL scraping');
+    return null;
+  }
+
+  try {
+    console.log('Scraping URL with Firecrawl:', url);
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: url,
+        formats: ['markdown'],
+        onlyMainContent: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Firecrawl error:', response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    const markdown = data.data?.markdown || data.markdown;
+    console.log('Scraped content length:', markdown?.length || 0);
+    return markdown;
+  } catch (error) {
+    console.error('Error scraping URL:', error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { content, type, images } = await req.json();
+    const { content, type, images, url, mimeType } = await req.json();
     
     if (!content && (!images || images.length === 0)) {
       return new Response(
@@ -27,9 +65,58 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Handle different input types
+    let textContent = '';
+    let imageContent: string[] = [];
+
+    if (type === 'url' || type === 'link') {
+      // Scrape the URL content
+      const urlToScrape = url || content;
+      const scrapedContent = await scrapeUrl(urlToScrape);
+      if (scrapedContent) {
+        textContent = scrapedContent;
+      } else {
+        return new Response(
+          JSON.stringify({ error: 'Não foi possível acessar o link. Verifique se a URL está correta.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else if (type === 'image') {
+      // Image uploaded as base64
+      if (content && mimeType) {
+        imageContent.push(`data:${mimeType};base64,${content}`);
+      }
+    } else if (type === 'document') {
+      // Document uploaded as base64 - try to extract text
+      // For now, we'll pass it to the AI as text if it's a text document
+      // For PDFs/Word, we might need additional processing
+      if (mimeType === 'text/plain') {
+        // Decode base64 text content
+        try {
+          textContent = atob(content);
+        } catch {
+          textContent = content;
+        }
+      } else if (mimeType?.includes('pdf') || mimeType?.includes('word')) {
+        // For PDF/Word, we can't process directly - inform the user
+        return new Response(
+          JSON.stringify({ 
+            error: 'Para documentos PDF/Word, por favor copie e cole o texto diretamente ou use a aba de imagem para prints do documento.' 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        textContent = content;
+      }
+    } else {
+      // Plain text
+      textContent = content;
+    }
     
     // Check if we have images to analyze
-    const hasImages = images && Array.isArray(images) && images.length > 0;
+    const hasImages = (images && Array.isArray(images) && images.length > 0) || imageContent.length > 0;
+    const allImages = [...(images || []), ...imageContent];
 
     const currentYear = new Date().getFullYear();
     
@@ -40,6 +127,7 @@ Além do texto, você receberá imagens do acidente/local. Analise-as para extra
 - Identificar o SETOR pela aparência visual (construção civil, mineração, agronegócio, indústria, etc.)
 - Identificar CONDIÇÕES DE SEGURANÇA visíveis (EPIs, sinalização, condições do local)
 - Identificar MARCAS ou LOGOS visíveis em uniformes, veículos, equipamentos
+- EXTRAIR TEXTO VISÍVEL na imagem (OCR) - nomes, datas, endereços, empresas mencionadas
 - Qualquer outro insight relevante para o caso
 
 O campo company_size_justification deve conter sua análise do porte da empresa baseado nas imagens.
@@ -76,24 +164,24 @@ IMPORTANTE:
 - Se não conseguir identificar uma informação com certeza, coloque null - NÃO INVENTE
 - Para estados, use a sigla (SP, RJ, MG, SE, BA, etc.)
 - Preste atenção em frases como "será sepultado em", "residência da família em", "natural de" para identificar visit_city/visit_state
-- Se houver imagens, analise-as cuidadosamente para insights visuais`;
+- Se houver imagens, analise-as cuidadosamente para insights visuais e extraia TODO TEXTO VISÍVEL`;
 
     // Build user message content (can be multimodal with images)
     const userMessageContent: any[] = [];
     
     // Add text content if available
-    if (content) {
-      const textMessage = type === 'url' 
-        ? `Extraia os dados de acidente de trabalho do seguinte link de notícia. O conteúdo foi obtido da URL: ${content}`
-        : `Extraia os dados de acidente de trabalho do seguinte documento:\n\n${content}`;
+    if (textContent) {
+      const textMessage = type === 'url' || type === 'link'
+        ? `Extraia os dados de acidente de trabalho do seguinte conteúdo da notícia:\n\n${textContent}`
+        : `Extraia os dados de acidente de trabalho do seguinte documento:\n\n${textContent}`;
       userMessageContent.push({ type: 'text', text: textMessage });
-    } else {
-      userMessageContent.push({ type: 'text', text: 'Analise as imagens fornecidas e extraia dados do acidente de trabalho.' });
+    } else if (hasImages) {
+      userMessageContent.push({ type: 'text', text: 'Analise as imagens fornecidas e extraia dados do acidente de trabalho. EXTRAIA TODO O TEXTO VISÍVEL na imagem.' });
     }
     
     // Add images if available
     if (hasImages) {
-      for (const imageUrl of images) {
+      for (const imageUrl of allImages) {
         userMessageContent.push({
           type: 'image_url',
           image_url: { url: imageUrl }
@@ -102,11 +190,11 @@ IMPORTANTE:
       // Add reminder to analyze images
       userMessageContent.push({ 
         type: 'text', 
-        text: '\n\nANALISE AS IMAGENS ACIMA para identificar porte da empresa, setor, condições de segurança, logos/marcas visíveis e outros insights relevantes.' 
+        text: '\n\nANALISE AS IMAGENS ACIMA para identificar porte da empresa, setor, condições de segurança, logos/marcas visíveis, TEXTO VISÍVEL (OCR) e outros insights relevantes.' 
       });
     }
 
-    console.log('Calling Lovable AI for accident data extraction...', hasImages ? `with ${images.length} images` : 'text only');
+    console.log('Calling Lovable AI for accident data extraction...', hasImages ? `with ${allImages.length} images` : 'text only');
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',

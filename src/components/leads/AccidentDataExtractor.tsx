@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +16,10 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  Link as LinkIcon,
+  Upload,
+  Image as ImageIcon,
+  FileUp,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -45,22 +51,115 @@ export function AccidentDataExtractor({
   onOpenChange,
   onDataExtracted,
 }: AccidentDataExtractorProps) {
+  const [activeTab, setActiveTab] = useState('link');
   const [documentText, setDocumentText] = useState('');
+  const [urlInput, setUrlInput] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState<ExtractedAccidentData | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain',
+      ];
+      if (!validTypes.includes(file.type)) {
+        toast.error('Tipo de arquivo não suportado. Use PDF, Word ou TXT.');
+        return;
+      }
+      setUploadedFile(file);
+      toast.success(`Arquivo "${file.name}" carregado`);
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate image type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Por favor, selecione um arquivo de imagem');
+        return;
+      }
+      setUploadedImage(file);
+      toast.success(`Imagem "${file.name}" carregada`);
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix to get just the base64 content
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
 
   const handleExtract = async () => {
-    if (!documentText.trim()) {
-      toast.error('Cole o texto do documento');
-      return;
-    }
-
     setIsExtracting(true);
     setExtractedData(null);
 
     try {
+      let requestBody: { content: string; type: string; url?: string; mimeType?: string };
+
+      switch (activeTab) {
+        case 'link':
+          if (!urlInput.trim()) {
+            toast.error('Cole o link da notícia');
+            return;
+          }
+          requestBody = { content: urlInput.trim(), type: 'url', url: urlInput.trim() };
+          break;
+
+        case 'document':
+          if (uploadedFile) {
+            // Read file and send as base64
+            const base64Content = await fileToBase64(uploadedFile);
+            requestBody = { 
+              content: base64Content, 
+              type: 'document',
+              mimeType: uploadedFile.type,
+            };
+          } else if (documentText.trim()) {
+            requestBody = { content: documentText.trim(), type: 'text' };
+          } else {
+            toast.error('Cole o texto ou faça upload de um arquivo');
+            return;
+          }
+          break;
+
+        case 'image':
+          if (!uploadedImage) {
+            toast.error('Faça upload de uma imagem');
+            return;
+          }
+          const imageBase64 = await fileToBase64(uploadedImage);
+          requestBody = { 
+            content: imageBase64, 
+            type: 'image',
+            mimeType: uploadedImage.type,
+          };
+          break;
+
+        default:
+          toast.error('Selecione uma opção de entrada');
+          return;
+      }
+
       const { data, error } = await supabase.functions.invoke('extract-accident-data', {
-        body: { content: documentText, type: 'text' },
+        body: requestBody,
       });
 
       if (error) {
@@ -94,7 +193,11 @@ export function AccidentDataExtractor({
 
   const resetState = () => {
     setDocumentText('');
+    setUrlInput('');
     setExtractedData(null);
+    setUploadedFile(null);
+    setUploadedImage(null);
+    setActiveTab('link');
   };
 
   const handleClose = () => {
@@ -112,6 +215,19 @@ export function AccidentDataExtractor({
     );
   };
 
+  const canExtract = () => {
+    switch (activeTab) {
+      case 'link':
+        return urlInput.trim().length > 0;
+      case 'document':
+        return documentText.trim().length > 0 || uploadedFile !== null;
+      case 'image':
+        return uploadedImage !== null;
+      default:
+        return false;
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -123,28 +239,159 @@ export function AccidentDataExtractor({
         </DialogHeader>
 
         <div className="space-y-4 mt-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Cole o texto da petição inicial, decisão judicial ou notícia
-            </label>
-            <Textarea
-              placeholder="Cole aqui o conteúdo do documento..."
-              value={documentText}
-              onChange={(e) => setDocumentText(e.target.value)}
-              rows={10}
-              className="resize-none"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Copie e cole o texto do documento que contém informações sobre o acidente
-            </p>
-          </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="link" className="flex items-center gap-2">
+                <LinkIcon className="h-4 w-4" />
+                Link
+              </TabsTrigger>
+              <TabsTrigger value="document" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                PDF / Word
+              </TabsTrigger>
+              <TabsTrigger value="image" className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                Imagem
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Link Tab */}
+            <TabsContent value="link" className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4" />
+                  Cole o link da notícia
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://g1.globo.com/..."
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  A IA irá acessar a página e extrair os dados do acidente
+                </p>
+              </div>
+            </TabsContent>
+
+            {/* Document Tab */}
+            <TabsContent value="document" className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <FileUp className="h-4 w-4" />
+                  Upload de documento (PDF, Word, TXT)
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadedFile ? uploadedFile.name : 'Escolher arquivo'}
+                  </Button>
+                  {uploadedFile && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setUploadedFile(null)}
+                    >
+                      ×
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">ou cole o texto</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Cole o texto da petição, decisão judicial ou notícia
+                </label>
+                <Textarea
+                  placeholder="Cole aqui o conteúdo do documento..."
+                  value={documentText}
+                  onChange={(e) => setDocumentText(e.target.value)}
+                  rows={8}
+                  className="resize-none"
+                />
+              </div>
+            </TabsContent>
+
+            {/* Image Tab */}
+            <TabsContent value="image" className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block flex items-center gap-2">
+                  <ImageIcon className="h-4 w-4" />
+                  Upload de imagem (print de notícia, documento escaneado)
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    type="file"
+                    ref={imageInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="flex-1"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadedImage ? uploadedImage.name : 'Escolher imagem'}
+                  </Button>
+                  {uploadedImage && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setUploadedImage(null)}
+                    >
+                      ×
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  A IA irá analisar a imagem e extrair os dados do acidente (OCR)
+                </p>
+              </div>
+
+              {uploadedImage && (
+                <div className="mt-4 p-4 border rounded-lg">
+                  <img
+                    src={URL.createObjectURL(uploadedImage)}
+                    alt="Preview"
+                    className="max-h-48 mx-auto rounded object-contain"
+                  />
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
 
         {!extractedData && (
           <Button 
             onClick={handleExtract} 
-            disabled={isExtracting || !documentText.trim()}
+            disabled={isExtracting || !canExtract()}
             className="w-full mt-4"
           >
             {isExtracting ? (
