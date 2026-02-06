@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.scrape-news]
 verify_jwt = false
+
+[functions.analyze-legal-viability]
+verify_jwt = false
