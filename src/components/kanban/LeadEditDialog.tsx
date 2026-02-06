@@ -27,6 +27,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
+import { AIDataEnricher } from '@/components/leads/AIDataEnricher';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
@@ -161,6 +162,15 @@ export function LeadEditDialog({
       setNewClassificationName('');
       setNewClassificationColor('bg-blue-500');
     }
+  };
+
+  // Handle AI extracted data - update form fields immediately
+  const handleApplyAIData = (updates: Partial<Lead>) => {
+    if (updates.city) setCity(updates.city);
+    if (updates.state) setState(updates.state);
+    if (updates.neighborhood) setNeighborhood(updates.neighborhood);
+    if (updates.notes) setNotes(prev => prev ? `${prev}\n\n${updates.notes}` : updates.notes || '');
+    // Other fields will be saved when user clicks Save
   };
 
   const handleSave = async () => {
@@ -444,6 +454,9 @@ export function LeadEditDialog({
                   />
                 </div>
               </div>
+
+              {/* AI Data Enricher */}
+              <AIDataEnricher lead={lead} onApplyData={handleApplyAIData} />
             </TabsContent>
 
             <TabsContent value="location" className="space-y-4 mt-0">
