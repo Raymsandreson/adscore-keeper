@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { useProfileNames } from '@/hooks/useProfileNames';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -40,6 +41,8 @@ import {
   History,
   Plus,
   X,
+  UserCheck,
+  Edit3,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -77,6 +80,7 @@ export function LeadEditDialog({
   // Custom fields
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
+  const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
@@ -102,8 +106,12 @@ export function LeadEditDialog({
       
       // Load custom field values
       loadCustomFieldValues(lead.id);
+      
+      // Fetch profile names for created_by and updated_by
+      const leadAny = lead as any;
+      fetchProfileNames([leadAny.created_by, leadAny.updated_by]);
     }
-  }, [lead, open]);
+  }, [lead, open, fetchProfileNames]);
 
   const loadCustomFieldValues = async (leadId: string) => {
     const values = await getFieldValues(leadId);
@@ -234,21 +242,48 @@ export function LeadEditDialog({
           <ScrollArea className="flex-1 pr-4 mt-4">
             <TabsContent value="info" className="space-y-4 mt-0">
               {/* Meta info */}
-              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-4">
-                <Badge variant="outline" className="gap-1">
-                  <Calendar className="h-3 w-3" />
-                  Criado: {format(new Date(lead.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <Clock className="h-3 w-3" />
-                  Atualizado: {format(new Date(lead.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                </Badge>
-                {lead.source && (
-                  <Badge variant="secondary">
-                    Origem: {lead.source}
-                  </Badge>
-                )}
-              </div>
+              {(() => {
+                const leadAny = lead as any;
+                const creatorName = getDisplayName(leadAny.created_by);
+                const editorName = getDisplayName(leadAny.updated_by);
+                const hasEditor = leadAny.updated_by && leadAny.updated_by !== leadAny.created_by;
+                
+                return (
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-4">
+                    <Badge variant="outline" className="gap-1">
+                      <Calendar className="h-3 w-3" />
+                      Criado: {format(new Date(lead.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                      {creatorName && (
+                        <span className="ml-1 flex items-center gap-0.5">
+                          <UserCheck className="h-3 w-3" />
+                          {creatorName}
+                        </span>
+                      )}
+                    </Badge>
+                    <Badge variant="outline" className="gap-1">
+                      <Clock className="h-3 w-3" />
+                      Atualizado: {format(new Date(lead.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      {hasEditor && editorName && (
+                        <span className="ml-1 flex items-center gap-0.5">
+                          <Edit3 className="h-3 w-3" />
+                          {editorName}
+                        </span>
+                      )}
+                    </Badge>
+                    {leadAny.last_edit_summary && (
+                      <Badge variant="secondary" className="gap-1">
+                        <Edit3 className="h-3 w-3" />
+                        {leadAny.last_edit_summary}
+                      </Badge>
+                    )}
+                    {lead.source && (
+                      <Badge variant="secondary">
+                        Origem: {lead.source}
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">

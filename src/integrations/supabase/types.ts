@@ -1577,6 +1577,7 @@ export type Database = {
           instagram_comment_id: string | null
           instagram_username: string | null
           is_follower: boolean | null
+          last_edit_summary: string | null
           last_followup_at: string | null
           last_sync_at: string | null
           lead_email: string | null
@@ -1595,6 +1596,7 @@ export type Database = {
           status: string | null
           sync_status: string | null
           updated_at: string
+          updated_by: string | null
           victim_age: number | null
           victim_name: string | null
           visit_address: string | null
@@ -1638,6 +1640,7 @@ export type Database = {
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
+          last_edit_summary?: string | null
           last_followup_at?: string | null
           last_sync_at?: string | null
           lead_email?: string | null
@@ -1656,6 +1659,7 @@ export type Database = {
           status?: string | null
           sync_status?: string | null
           updated_at?: string
+          updated_by?: string | null
           victim_age?: number | null
           victim_name?: string | null
           visit_address?: string | null
@@ -1699,6 +1703,7 @@ export type Database = {
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
+          last_edit_summary?: string | null
           last_followup_at?: string | null
           last_sync_at?: string | null
           lead_email?: string | null
@@ -1717,6 +1722,7 @@ export type Database = {
           status?: string | null
           sync_status?: string | null
           updated_at?: string
+          updated_by?: string | null
           victim_age?: number | null
           victim_name?: string | null
           visit_address?: string | null
