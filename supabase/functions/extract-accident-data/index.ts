@@ -28,14 +28,23 @@ serve(async (req) => {
       );
     }
 
+    const currentYear = new Date().getFullYear();
+    
     const systemPrompt = `Você é um assistente especializado em extrair informações de casos de acidentes de trabalho a partir de notícias, petições iniciais e decisões judiciais.
 
-Extraia as seguintes informações do texto fornecido e retorne APENAS um objeto JSON válido (sem markdown, sem explicações):
+ATENÇÃO - REGRAS CRÍTICAS:
+1. NUNCA INVENTE informações que não estão explícitas no texto
+2. Para DATAS: Se o texto menciona apenas dia/mês sem ano, use o ano atual (${currentYear}). NÃO invente anos.
+3. DIFERENCIE CLARAMENTE:
+   - LOCAL DO ACIDENTE (accident_address): onde o acidente ACONTECEU
+   - LOCAL DA FAMÍLIA/VISITA (visit_city, visit_state): onde a família mora, onde será o velório/sepultamento, ou cidade mencionada como residência
+
+Extraia as seguintes informações do texto fornecido:
 
 - victim_name: Nome da vítima (string ou null)
-- victim_age: Idade da vítima (número ou null)
-- accident_date: Data do acidente no formato YYYY-MM-DD (string ou null)
-- accident_address: Endereço/local onde ocorreu o acidente (string ou null)
+- victim_age: Idade da vítima (número ou null)  
+- accident_date: Data do acidente no formato YYYY-MM-DD. Se não houver ano explícito, use ${currentYear} (string ou null)
+- accident_address: Local/endereço onde OCORREU o acidente - NÃO confundir com local de velório/família (string ou null)
 - damage_description: Descrição do dano/lesão sofrida (string ou null)
 - contractor_company: Nome da empresa terceirizada (string ou null)
 - main_company: Nome da empresa tomadora/contratante (string ou null)
@@ -43,15 +52,14 @@ Extraia as seguintes informações do texto fornecido e retorne APENAS um objeto
 - case_type: Tipo de caso (Queda de Altura, Soterramento, Choque Elétrico, Acidente com Máquinas, Intoxicação, etc.) (string ou null)
 - liability_type: Tipo de responsabilidade identificada (solidária, subsidiária, objetiva, subjetiva) (string ou null)
 - legal_viability: Breve análise da viabilidade jurídica do caso (string ou null)
-- visit_city: Cidade para visita (string ou null)
-- visit_state: Estado para visita - sigla UF (string ou null)
+- visit_city: Cidade da FAMÍLIA/RESIDÊNCIA da vítima - onde será velório, sepultamento ou onde a família mora (string ou null)
+- visit_state: Estado da FAMÍLIA/RESIDÊNCIA - sigla UF (string ou null)
 
 IMPORTANTE:
 - Retorne APENAS o JSON, sem nenhum texto adicional
-- Se não conseguir identificar uma informação, coloque null
-- Extraia o máximo de informações possíveis do texto
-- Para datas, tente converter para o formato YYYY-MM-DD
-- Para estados, use a sigla (SP, RJ, MG, etc.)`;
+- Se não conseguir identificar uma informação com certeza, coloque null - NÃO INVENTE
+- Para estados, use a sigla (SP, RJ, MG, SE, BA, etc.)
+- Preste atenção em frases como "será sepultado em", "residência da família em", "natural de" para identificar visit_city/visit_state`;
 
     const userMessage = type === 'url' 
       ? `Extraia os dados de acidente de trabalho do seguinte link de notícia. O conteúdo foi obtido da URL: ${content}`
