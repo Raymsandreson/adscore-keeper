@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import {
   Bot,
   Sparkles,
   Tag,
+  Search,
+  DollarSign,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -38,6 +40,7 @@ import { AIReplyDialog } from './AIReplyDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
+import { usePostExtractionHistory } from '@/hooks/usePostExtractionHistory';
 
 interface CommentResult {
   id?: string;
@@ -75,6 +78,8 @@ export function PostCommentsFetcher() {
   const [comments, setComments] = useState<CommentResult[]>([]);
   const [posts, setPosts] = useState<PostInfo[]>([]);
   const [savedCount, setSavedCount] = useState(0);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [lastCostUsd, setLastCostUsd] = useState<number | null>(null);
   
   // Dialog states
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
@@ -82,10 +87,22 @@ export function PostCommentsFetcher() {
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<CommentResult | null>(null);
   
-  // Hooks for contact info and card settings
+  // Hooks for contact info, card settings and history
   const usernames = comments.map(c => c.author_username).filter(Boolean);
   const { getContactData, refetch: refetchContactData, refetchUsername } = useCommentContactInfo(usernames);
   const { config: cardConfig } = useCommentCardSettings();
+  const { createExtractionRecord, updateExtractionResults, USD_TO_BRL_RATE } = usePostExtractionHistory();
+
+  // Filtrar comentários pelo termo de busca
+  const filteredComments = useMemo(() => {
+    if (!searchFilter.trim()) return comments;
+    
+    const search = searchFilter.toLowerCase();
+    return comments.filter(comment =>
+      comment.comment_text?.toLowerCase().includes(search) ||
+      comment.author_username?.toLowerCase().includes(search)
+    );
+  }, [comments, searchFilter]);
 
   const addPostUrl = () => {
     if (!postUrl.trim()) {
@@ -121,6 +138,10 @@ export function PostCommentsFetcher() {
     setComments([]);
     setPosts([]);
     setSavedCount(0);
+    setLastCostUsd(null);
+    setSearchFilter('');
+
+    let historyId: string | null = null;
 
     try {
       const { data, error } = await supabase.functions.invoke('fetch-post-super-scraper', {
@@ -137,9 +158,26 @@ export function PostCommentsFetcher() {
         setComments(data.comments || []);
         setPosts(data.posts || []);
         setSavedCount(data.savedToDatabase || 0);
+        setLastCostUsd(data.costUsd || 0);
+        
+        // Salvar no histórico
+        if (data.runId) {
+          historyId = await createExtractionRecord(postUrls, maxComments, data.runId);
+          if (historyId) {
+            await updateExtractionResults(
+              historyId,
+              data.comments || [],
+              'completed',
+              data.costUsd || 0
+            );
+          }
+        }
         
         if (data.comments?.length > 0) {
-          toast.success(`Encontrados ${data.comments.length} comentários de ${data.postsProcessed} posts`);
+          const costBrl = (data.costUsd || 0) * USD_TO_BRL_RATE;
+          toast.success(
+            `Encontrados ${data.comments.length} comentários | Custo: R$ ${costBrl.toFixed(2)}`
+          );
         } else {
           toast.info('Nenhum comentário encontrado');
         }
@@ -149,6 +187,11 @@ export function PostCommentsFetcher() {
     } catch (error) {
       console.error('Fetch error:', error);
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar comentários');
+      
+      // Marcar como falha no histórico se já criou o registro
+      if (historyId) {
+        await updateExtractionResults(historyId, [], 'failed', 0);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -271,17 +314,38 @@ export function PostCommentsFetcher() {
           {(comments.length > 0 || posts.length > 0) && (
             <div className="space-y-4">
               {/* Stats */}
-              <div className="flex items-center gap-4 text-sm p-3 bg-muted/50 rounded-lg">
+              <div className="flex flex-wrap items-center gap-4 text-sm p-3 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-1 text-muted-foreground">
                   <MessageCircle className="h-4 w-4" />
                   <span className="font-medium">{comments.length}</span> comentários
+                  {searchFilter && (
+                    <span className="text-xs">({filteredComments.length} filtrados)</span>
+                  )}
                 </div>
                 {savedCount > 0 && (
-                  <div className="flex items-center gap-1 text-green-600">
+                  <div className="flex items-center gap-1 text-primary">
                     <CheckCircle2 className="h-4 w-4" />
                     <span>{savedCount} salvos</span>
                   </div>
                 )}
+                {lastCostUsd !== null && lastCostUsd > 0 && (
+                  <div className="flex items-center gap-1 text-muted-foreground ml-auto">
+                    <DollarSign className="h-4 w-4" />
+                    <span>Custo: R$ {(lastCostUsd * USD_TO_BRL_RATE).toFixed(2)}</span>
+                    <span className="text-xs">({lastCostUsd.toFixed(4)} USD)</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Search Filter */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar nos comentários extraídos..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  className="pl-10"
+                />
               </div>
 
               {/* Posts Info */}
@@ -329,10 +393,10 @@ export function PostCommentsFetcher() {
 
               {/* Comments List - Same layout as CommentsTracker */}
               <div className="space-y-2">
-                <Label>Comentários Extraídos</Label>
+                <Label>Comentários Extraídos {searchFilter && `(${filteredComments.length} resultados)`}</Label>
                 <ScrollArea className="h-[500px] pr-4">
                   <div className="space-y-3">
-                    {comments.map((comment, index) => (
+                    {filteredComments.map((comment, index) => (
                       <div
                         key={comment.comment_id || index}
                         className="p-4 rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors"
@@ -343,7 +407,7 @@ export function PostCommentsFetcher() {
                             <div className="flex items-center gap-2 mb-2">
                               <Badge 
                                 variant="secondary" 
-                                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                                className="bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white"
                               >
                                 Instagram
                               </Badge>
@@ -408,14 +472,14 @@ export function PostCommentsFetcher() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 text-xs bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-300 hover:border-purple-400"
+                                className="h-7 text-xs bg-gradient-to-r from-fuchsia-500/10 to-rose-500/10 border-primary/30 hover:border-primary/50"
                                 onClick={() => {
                                   setReplyingToComment(comment);
                                   setShowAIReplyDialog(true);
                                 }}
                               >
-                                <Bot className="h-3 w-3 mr-1 text-purple-500" />
-                                <Sparkles className="h-3 w-3 mr-1 text-pink-500" />
+                                <Bot className="h-3 w-3 mr-1 text-primary" />
+                                <Sparkles className="h-3 w-3 mr-1 text-primary" />
                                 Responder IA
                               </Button>
                             )}

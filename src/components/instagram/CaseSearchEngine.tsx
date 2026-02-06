@@ -63,6 +63,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
 import { PostCommentsFetcher } from './PostCommentsFetcher';
+import { PostExtractionHistory } from './PostExtractionHistory';
 import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -982,8 +983,9 @@ export function CaseSearchEngine() {
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="post" className="mt-0">
+            <TabsContent value="post" className="mt-0 space-y-6">
               <PostCommentsFetcher />
+              <PostExtractionHistory />
             </TabsContent>
             
             <TabsContent value="hashtag" className="mt-0 space-y-4">
