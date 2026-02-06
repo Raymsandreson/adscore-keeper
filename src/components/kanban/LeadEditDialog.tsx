@@ -367,7 +367,7 @@ export function LeadEditDialog({
     // Auto-generate lead name in pattern: City (State) | Victim x Company (Injury) - (Date)
     const city = data.visit_city || '';
     const state = data.visit_state || '';
-    const victim = data.victim_name?.split(' ')[0] || ''; // First name only
+    const victim = data.victim_name || ''; // Full victim name
     const company = data.main_company || data.contractor_company || '';
     const injury = data.damage_description || data.case_type || '';
     const accDate = data.accident_date ? format(new Date(data.accident_date), 'dd/MM/yyyy') : '';
