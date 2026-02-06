@@ -696,11 +696,24 @@ class MetaAPIService {
 
       if (data.data && data.data.length > 0) {
         console.log('✅ Dados de conjuntos obtidos:', data.data.length);
+        console.log('📋 AdSet Status map:', JSON.stringify(statusMap));
         return data.data.map((item: any) => {
           const insight = this.parseInsightData(item, 'adset');
-          const effectiveStatus = statusMap[item.adset_id] || 'PAUSED';
-          // CAMPAIGN_PAUSED também significa pausado
-          insight.status = (effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED') as any;
+          const effectiveStatus = statusMap[item.adset_id];
+          console.log(`AdSet ${item.adset_name} (${item.adset_id}): effective_status = ${effectiveStatus}`);
+          // Considerar ACTIVE se o status for ACTIVE
+          // CAMPAIGN_PAUSED significa que o ad set está ativo mas a campanha está pausada
+          if (effectiveStatus === 'ACTIVE') {
+            insight.status = 'ACTIVE' as any;
+          } else if (!effectiveStatus) {
+            // Se não encontrou no statusMap, pode ser que a busca de status não retornou esse adset
+            // Assumir ativo se tem dados de insights (gastos)
+            insight.status = (insight.spend > 0 ? 'ACTIVE' : 'PAUSED') as any;
+            console.log(`  -> Sem status no map, assumindo ${insight.status} baseado em spend=${insight.spend}`);
+          } else {
+            insight.status = 'PAUSED' as any;
+          }
+          console.log(`  -> Status final: ${insight.status}`);
           return insight;
         });
       }
