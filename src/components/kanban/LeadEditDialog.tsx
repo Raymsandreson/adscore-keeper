@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,8 @@ import {
   Briefcase,
   Sparkles,
   Loader2,
+  Scale,
+  RefreshCw,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -189,6 +192,11 @@ export function LeadEditDialog({
   
   // Show AI enricher
   const [showEnricher, setShowEnricher] = useState(false);
+  
+  // Legal viability analysis
+  const [analyzingViability, setAnalyzingViability] = useState(false);
+  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
+  const [tempNewsLink, setTempNewsLink] = useState('');
 
   // Load lead data when dialog opens
   useEffect(() => {
@@ -327,6 +335,99 @@ export function LeadEditDialog({
     if (u.liability_type) setLiabilityType(u.liability_type);
     if (u.news_link) setNewsLink(u.news_link);
     if (u.legal_viability) setLegalViability(u.legal_viability);
+  };
+
+  // Analyze legal viability via AI
+  const handleAnalyzeViability = async (linkToUse?: string) => {
+    const urlToAnalyze = linkToUse || newsLink;
+    
+    if (!urlToAnalyze) {
+      toast.error('Informe um link da notícia para analisar');
+      return;
+    }
+
+    setAnalyzingViability(true);
+    setShowLinkConfirm(false);
+
+    try {
+      // First, fetch the page content via scrape-news
+      const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('scrape-news', {
+        body: { url: urlToAnalyze },
+      });
+
+      if (scrapeError || !scrapeData?.success) {
+        throw new Error(scrapeData?.error || 'Erro ao buscar conteúdo da notícia');
+      }
+
+      // Build context for viability analysis
+      const caseContext = `
+DADOS DO CASO:
+- Tipo de Caso: ${caseType || 'Não informado'}
+- Data do Acidente: ${accidentDate || 'Não informada'}
+- Descrição do Dano: ${damageDescription || 'Não informado'}
+- Empresa Terceirizada: ${contractorCompany || 'Não informada'}
+- Empresa Tomadora: ${mainCompany || 'Não informada'}
+- Setor: ${sector || 'Não informado'}
+
+CONTEÚDO DA NOTÍCIA:
+${scrapeData.data?.markdown || scrapeData.data?.content || ''}
+      `.trim();
+
+      // Call AI to analyze viability
+      const { data: aiData, error: aiError } = await supabase.functions.invoke('analyze-legal-viability', {
+        body: { 
+          content: caseContext,
+          existingData: {
+            case_type: caseType,
+            damage_description: damageDescription,
+            contractor_company: contractorCompany,
+            main_company: mainCompany,
+            sector: sector,
+          }
+        },
+      });
+
+      if (aiError) {
+        throw new Error('Erro ao analisar viabilidade');
+      }
+
+      if (aiData?.success && aiData?.data) {
+        const result = aiData.data;
+        
+        // Update fields with AI analysis
+        if (result.legal_viability) setLegalViability(result.legal_viability);
+        if (result.liability_type) setLiabilityType(result.liability_type);
+        if (result.company_size_justification) setCompanySizeJustification(result.company_size_justification);
+        if (result.sector && !sector) setSector(result.sector);
+        if (result.case_type && !caseType) setCaseType(result.case_type);
+        
+        // Update news link if changed
+        if (linkToUse && linkToUse !== newsLink) {
+          setNewsLink(linkToUse);
+        }
+
+        toast.success('Análise de viabilidade concluída!');
+      } else {
+        throw new Error(aiData?.error || 'Não foi possível analisar');
+      }
+    } catch (err) {
+      console.error('Error analyzing viability:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao analisar viabilidade');
+    } finally {
+      setAnalyzingViability(false);
+    }
+  };
+
+  const handleStartViabilityAnalysis = () => {
+    if (newsLink) {
+      // Already has a link, ask if want to change
+      setTempNewsLink(newsLink);
+      setShowLinkConfirm(true);
+    } else {
+      // No link, show input
+      setTempNewsLink('');
+      setShowLinkConfirm(true);
+    }
   };
 
   const handleSave = async () => {
@@ -838,6 +939,89 @@ export function LeadEditDialog({
 
             {/* Legal Tab */}
             <TabsContent value="legal" className="space-y-4 mt-0">
+              {/* AI Analysis Button */}
+              <div className="bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium flex items-center gap-2">
+                      <Scale className="h-4 w-4 text-primary" />
+                      Análise de Viabilidade com IA
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Analisa porte da empresa, responsabilidade e potencial do caso
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStartViabilityAnalysis}
+                    disabled={analyzingViability}
+                    className="gap-2"
+                  >
+                    {analyzingViability ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analisando...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4" />
+                        Analisar Caso
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Link confirmation dialog */}
+                {showLinkConfirm && (
+                  <div className="mt-4 pt-4 border-t border-primary/20 space-y-3">
+                    <div>
+                      <Label className="text-sm">Link da notícia para análise</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Input
+                          value={tempNewsLink}
+                          onChange={(e) => setTempNewsLink(e.target.value)}
+                          placeholder="https://..."
+                          className="flex-1"
+                        />
+                      </div>
+                      {newsLink && tempNewsLink !== newsLink && (
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <RefreshCw className="h-3 w-3" />
+                          Link atual será substituído
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleAnalyzeViability(tempNewsLink)}
+                        disabled={!tempNewsLink || analyzingViability}
+                      >
+                        {analyzingViability ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            Analisando...
+                          </>
+                        ) : (
+                          <>
+                            <Scale className="h-4 w-4 mr-1" />
+                            Analisar
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowLinkConfirm(false)}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Responsabilidade</Label>
@@ -868,7 +1052,7 @@ export function LeadEditDialog({
                     value={legalViability}
                     onChange={(e) => setLegalViability(e.target.value)}
                     placeholder="Análise de viabilidade jurídica do caso..."
-                    rows={3}
+                    rows={5}
                   />
                 </div>
               </div>
