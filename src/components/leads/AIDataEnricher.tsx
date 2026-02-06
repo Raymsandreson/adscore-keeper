@@ -386,6 +386,12 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
     );
   };
 
+  const updateFieldValue = (key: string, newValue: string | number) => {
+    setExtractedFields(prev => 
+      prev.map(f => f.key === key ? { ...f, extractedValue: newValue } : f)
+    );
+  };
+
   const handleApply = () => {
     const updates: Partial<Lead> = {};
     
@@ -687,21 +693,20 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
                         onCheckedChange={() => toggleFieldSelection(field.key)}
                         className="mt-1"
                       />
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           {field.label}
                         </span>
-                        <div className="flex items-center gap-2 text-xs mt-0.5 flex-wrap">
-                          <Badge variant="outline" className="bg-background text-xs">
-                            Atual: {String(field.currentValue).substring(0, 30)}
-                            {String(field.currentValue).length > 30 && '...'}
-                          </Badge>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                          <Badge variant="default" className="text-xs">
-                            Novo: {String(field.extractedValue).substring(0, 30)}
-                            {String(field.extractedValue).length > 30 && '...'}
-                          </Badge>
+                        <div className="text-xs text-muted-foreground">
+                          Atual: {String(field.currentValue).substring(0, 50)}
+                          {String(field.currentValue).length > 50 && '...'}
                         </div>
+                        <Input
+                          value={String(field.extractedValue || '')}
+                          onChange={(e) => updateFieldValue(field.key, e.target.value)}
+                          className="h-7 text-xs"
+                          placeholder="Novo valor..."
+                        />
                       </div>
                     </div>
                   ))}
@@ -725,15 +730,18 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
                       <Checkbox
                         checked={field.selected}
                         onCheckedChange={() => toggleFieldSelection(field.key)}
-                        className="mt-0.5"
+                        className="mt-1"
                       />
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           {field.label}
                         </span>
-                        <p className="text-sm truncate">
-                          {String(field.extractedValue)}
-                        </p>
+                        <Input
+                          value={String(field.extractedValue || '')}
+                          onChange={(e) => updateFieldValue(field.key, e.target.value)}
+                          className="h-7 text-xs"
+                          placeholder="Valor..."
+                        />
                       </div>
                     </div>
                   ))}
