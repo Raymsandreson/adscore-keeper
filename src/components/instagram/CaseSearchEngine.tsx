@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -56,10 +57,12 @@ import {
   Clock,
   CheckSquare,
   Square,
+  Link2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
+import { PostCommentsFetcher } from './PostCommentsFetcher';
 import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -967,6 +970,23 @@ export function CaseSearchEngine() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Tabs defaultValue="hashtag" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="hashtag" className="gap-2">
+                <Hash className="h-4 w-4" />
+                Busca por Hashtag
+              </TabsTrigger>
+              <TabsTrigger value="post" className="gap-2">
+                <Link2 className="h-4 w-4" />
+                Busca por Post
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="post" className="mt-0">
+              <PostCommentsFetcher />
+            </TabsContent>
+            
+            <TabsContent value="hashtag" className="mt-0 space-y-4">
           {/* AI Keyword Suggestions */}
           <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg p-4 border border-primary/20">
             <Label className="flex items-center gap-2 text-primary">
@@ -1485,6 +1505,8 @@ export function CaseSearchEngine() {
               ))}
             </div>
           </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
