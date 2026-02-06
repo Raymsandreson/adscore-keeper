@@ -56,10 +56,12 @@ serve(async (req) => {
     console.log(`💬 Max comentários: ${maxComments}`);
 
     // Apify Instagram Comment Scraper
-    // Usa directUrls e resultsLimit (sem limite = valor muito alto)
-    const inputPayload: { directUrls: string[]; resultsLimit: number } = {
+    // Usa directUrls, resultsLimit, includeNestedComments e isNewestComments
+    const inputPayload = {
       directUrls: normalizedUrls,
       resultsLimit: maxComments > 0 ? maxComments : 10000, // Se 0, busca até 10k
+      includeNestedComments: true, // CRUCIAL: Extrai respostas aos comentários
+      isNewestComments: true, // Começa pelos mais recentes
     };
     
     console.log(`📤 Payload enviado para Apify:`, JSON.stringify(inputPayload));
