@@ -6,6 +6,7 @@ import type { Json } from '@/integrations/supabase/types';
 interface SearchHistoryItem {
   id: string;
   keywords: string[];
+  post_urls: string[];
   max_posts: number | null;
   min_comments: number | null;
   apify_run_id: string | null;
@@ -15,6 +16,10 @@ interface SearchHistoryItem {
   created_at: string;
   completed_at: string | null;
   created_by: string | null;
+  cost_usd: number | null;
+  cost_brl: number | null;
+  // Computed: is this a hashtag search or post extraction
+  search_type: 'hashtag' | 'post';
 }
 
 export function useSearchHistory() {
@@ -31,7 +36,17 @@ export function useSearchHistory() {
         .limit(50);
 
       if (error) throw error;
-      setHistory(data || []);
+      
+      // Enrich with search_type
+      const enriched = (data || []).map(item => ({
+        ...item,
+        post_urls: (item as any).post_urls || [],
+        cost_usd: (item as any).cost_usd || null,
+        cost_brl: (item as any).cost_brl || null,
+        search_type: ((item as any).post_urls?.length > 0 ? 'post' : 'hashtag') as 'hashtag' | 'post',
+      }));
+      
+      setHistory(enriched);
     } catch (error) {
       console.error('Error fetching search history:', error);
     } finally {
@@ -67,7 +82,14 @@ export function useSearchHistory() {
 
       if (error) throw error;
       
-      setHistory(prev => [data, ...prev]);
+      const enrichedData: SearchHistoryItem = {
+        ...data,
+        post_urls: [],
+        cost_usd: null,
+        cost_brl: null,
+        search_type: 'hashtag',
+      };
+      setHistory(prev => [enrichedData, ...prev]);
       return data.id;
     } catch (error) {
       console.error('Error creating search record:', error);

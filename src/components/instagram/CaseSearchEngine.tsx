@@ -813,83 +813,146 @@ export function CaseSearchEngine() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {history.map((item) => (
-                          <div
-                            key={item.id}
-                            className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex flex-wrap gap-1 mb-1">
-                                  {item.keywords.map((kw, i) => (
-                                    <Badge key={i} variant="secondary" className="text-xs">
-                                      {kw}
+                        {history.map((item) => {
+                          const isPostExtraction = item.search_type === 'post';
+                          const extractShortcode = (url: string) => {
+                            const match = url.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+                            return match ? match[2] : url.substring(0, 20) + '...';
+                          };
+                          
+                          return (
+                            <div
+                              key={item.id}
+                              className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  {/* Type indicator + content */}
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Badge variant={isPostExtraction ? 'outline' : 'secondary'} className="text-xs gap-1">
+                                      {isPostExtraction ? <Link2 className="h-3 w-3" /> : <Hash className="h-3 w-3" />}
+                                      {isPostExtraction ? 'Post' : 'Hashtag'}
                                     </Badge>
-                                  ))}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <Clock className="h-3 w-3" />
-                                  {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
-                                  <span>•</span>
-                                  <span>{item.results_count || 0} posts</span>
-                                  <span>•</span>
-                                  <Badge 
-                                    variant={item.status === 'completed' ? 'default' : item.status === 'running' ? 'secondary' : 'destructive'}
-                                    className="text-xs"
-                                  >
-                                    {item.status === 'completed' ? 'Concluída' : item.status === 'running' ? 'Em andamento' : 'Falhou'}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {item.status === 'completed' && item.results_count && item.results_count > 0 ? (
-                                  <Button
-                                    variant="default"
-                                    size="sm"
-                                    onClick={() => loadFromHistory(item)}
-                                    className="gap-1"
-                                  >
-                                    <ExternalLink className="h-4 w-4" />
-                                    Abrir Pesquisa
-                                  </Button>
-                                ) : item.status === 'running' ? (
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => handleResumeSearch(item)}
-                                    disabled={resumingId === item.id}
-                                    className="gap-1"
-                                  >
-                                    {resumingId === item.id ? (
-                                      <>
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        Retomando...
-                                      </>
+                                  </div>
+                                  
+                                  <div className="flex flex-wrap gap-1 mb-1">
+                                    {isPostExtraction ? (
+                                      // Show post URLs for post extractions
+                                      item.post_urls?.slice(0, 3).map((url, i) => (
+                                        <a
+                                          key={i}
+                                          href={url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                                        >
+                                          <Link2 className="h-3 w-3" />
+                                          {extractShortcode(url)}
+                                        </a>
+                                      ))
                                     ) : (
+                                      // Show keywords for hashtag searches
+                                      item.keywords?.map((kw, i) => (
+                                        <Badge key={i} variant="secondary" className="text-xs">
+                                          {kw}
+                                        </Badge>
+                                      ))
+                                    )}
+                                    {isPostExtraction && (item.post_urls?.length || 0) > 3 && (
+                                      <Badge variant="outline" className="text-xs">
+                                        +{(item.post_urls?.length || 0) - 3}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                                    <Clock className="h-3 w-3" />
+                                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
+                                    <span>•</span>
+                                    <span>{item.results_count || 0} {isPostExtraction ? 'comentários' : 'posts'}</span>
+                                    {item.cost_brl && item.cost_brl > 0 && (
                                       <>
-                                        <RefreshCw className="h-4 w-4" />
-                                        Retomar Busca
+                                        <span>•</span>
+                                        <span className="text-primary font-medium">
+                                          R$ {item.cost_brl.toFixed(2)}
+                                        </span>
                                       </>
                                     )}
+                                    <span>•</span>
+                                    <Badge 
+                                      variant={item.status === 'completed' ? 'default' : item.status === 'running' ? 'secondary' : 'destructive'}
+                                      className="text-xs"
+                                    >
+                                      {item.status === 'completed' ? 'Concluída' : item.status === 'running' ? 'Em andamento' : 'Falhou'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {!isPostExtraction && item.status === 'completed' && item.results_count && item.results_count > 0 ? (
+                                    <Button
+                                      variant="default"
+                                      size="sm"
+                                      onClick={() => loadFromHistory(item)}
+                                      className="gap-1"
+                                    >
+                                      <ExternalLink className="h-4 w-4" />
+                                      Abrir
+                                    </Button>
+                                  ) : !isPostExtraction && item.status === 'running' ? (
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => handleResumeSearch(item)}
+                                      disabled={resumingId === item.id}
+                                      className="gap-1"
+                                    >
+                                      {resumingId === item.id ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                          Retomando...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-4 w-4" />
+                                          Retomar
+                                        </>
+                                      )}
+                                    </Button>
+                                  ) : isPostExtraction && item.post_urls?.[0] ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      asChild
+                                    >
+                                      <a
+                                        href={item.post_urls[0]}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="gap-1"
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                        Ver Post
+                                      </a>
+                                    </Button>
+                                  ) : !isPostExtraction && (
+                                    <Badge variant="destructive" className="text-xs">
+                                      Sem resultados
+                                    </Badge>
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                    onClick={() => deleteSearchRecord(item.id)}
+                                    disabled={resumingId === item.id}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
                                   </Button>
-                                ) : (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Sem resultados
-                                  </Badge>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                  onClick={() => deleteSearchRecord(item.id)}
-                                  disabled={resumingId === item.id}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </ScrollArea>
