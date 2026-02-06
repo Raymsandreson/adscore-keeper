@@ -33,7 +33,7 @@ serve(async (req) => {
       throw new Error("APIFY_API_KEY não configurada. Adicione o secret nas configurações do projeto.");
     }
 
-    const { postUrls, myUsername } = await req.json();
+    const { postUrls, myUsername, maxComments = 500 } = await req.json();
     
     if (!postUrls || !Array.isArray(postUrls) || postUrls.length === 0) {
       throw new Error("postUrls é obrigatório e deve ser um array de URLs de posts do Instagram");
@@ -51,9 +51,9 @@ serve(async (req) => {
 
     console.log(`🔍 Buscando comentários de ${normalizedUrls.length} posts via Apify...`);
     console.log(`📝 URLs normalizadas:`, normalizedUrls);
+    console.log(`💬 Max comentários: ${maxComments}`);
 
-    // Iniciar o Actor da Apify
-    // Nota: API gratuita tem limite de ~15 comentários por execução
+    // Iniciar o Actor da Apify - Instagram Comment Scraper
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
       {
@@ -61,9 +61,8 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: normalizedUrls,
-          resultsLimit: 15,
+          resultsLimit: maxComments,
           includeReplies: true,
-          commentsPerPost: 15,
         }),
       }
     );
