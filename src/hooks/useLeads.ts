@@ -50,6 +50,8 @@ export interface Lead {
   first_meeting_at: string | null;
   // Kanban board
   board_id: string | null;
+  // News link
+  news_link: string | null;
 }
 
 export interface LeadStats {

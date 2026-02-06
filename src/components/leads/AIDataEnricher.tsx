@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Collapsible,
   CollapsibleContent,
@@ -16,6 +17,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ArrowRight,
+  Link,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -71,10 +73,10 @@ const FIELD_MAP: Record<string, keyof Lead> = {
 export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [documentText, setDocumentText] = useState('');
+  const [newsLink, setNewsLink] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedFields, setExtractedFields] = useState<ExtractedField[]>([]);
   const [hasResults, setHasResults] = useState(false);
-
   const handleExtract = async () => {
     if (!documentText.trim()) {
       toast.error('Cole o texto para análise');
@@ -168,6 +170,11 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
         }
       });
 
+    // Incluir link da notícia se fornecido
+    if (newsLink.trim()) {
+      updates.news_link = newsLink.trim();
+    }
+
     if (Object.keys(updates).length === 0) {
       toast.info('Nenhum campo selecionado para aplicar');
       return;
@@ -177,6 +184,7 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
     
     // Reset state
     setDocumentText('');
+    setNewsLink('');
     setExtractedFields([]);
     setHasResults(false);
     setIsOpen(false);
@@ -201,18 +209,33 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
       </CollapsibleTrigger>
       
       <CollapsibleContent className="px-4 pb-4 space-y-4">
-        <div>
-          <label className="text-sm text-muted-foreground mb-2 block flex items-center gap-2">
-            <FileText className="h-3 w-3" />
-            Cole texto de petições, notícias ou documentos para extrair informações faltantes
-          </label>
-          <Textarea
-            placeholder="Cole aqui o texto para a IA analisar e encontrar informações que faltam no lead..."
-            value={documentText}
-            onChange={(e) => setDocumentText(e.target.value)}
-            rows={4}
-            className="resize-none text-sm"
-          />
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
+              <Link className="h-3 w-3" />
+              Link da notícia (opcional)
+            </label>
+            <Input
+              placeholder="https://..."
+              value={newsLink}
+              onChange={(e) => setNewsLink(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+          
+          <div>
+            <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
+              <FileText className="h-3 w-3" />
+              Cole o texto da notícia ou documento
+            </label>
+            <Textarea
+              placeholder="Cole aqui o texto para a IA analisar e encontrar informações que faltam no lead..."
+              value={documentText}
+              onChange={(e) => setDocumentText(e.target.value)}
+              rows={4}
+              className="resize-none text-sm"
+            />
+          </div>
         </div>
 
         <Button 
