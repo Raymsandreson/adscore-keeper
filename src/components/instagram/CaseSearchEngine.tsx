@@ -64,6 +64,7 @@ import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
 import { PostCommentsFetcher } from './PostCommentsFetcher';
 import { PostExtractionHistory } from './PostExtractionHistory';
+import { HistoryCommentsDialog } from './HistoryCommentsDialog';
 import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -1786,81 +1787,13 @@ export function CaseSearchEngine() {
         </Card>
       )}
 
-      {/* Dialog to view comments from history */}
-      <Dialog 
-        open={selectedHistoryComments.open} 
+      {/* Dialog to view comments from history - uses new component with full workflow UI */}
+      <HistoryCommentsDialog
+        open={selectedHistoryComments.open}
         onOpenChange={(open) => setSelectedHistoryComments(prev => ({ ...prev, open }))}
-      >
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Comentários Extraídos ({selectedHistoryComments.comments.length})
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="flex flex-wrap gap-2 mb-4">
-            {selectedHistoryComments.postUrls.map((url, i) => (
-              <a
-                key={i}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
-              >
-                <Link2 className="h-3 w-3" />
-                Ver Post
-              </a>
-            ))}
-          </div>
-          
-          <ScrollArea className="flex-1 max-h-[60vh]">
-            <div className="space-y-3 pr-4">
-              {selectedHistoryComments.comments.length > 0 ? (
-                selectedHistoryComments.comments.map((comment: any, i) => {
-                  // Handle both formats: direct API (ownerUsername/text) and saved DB format (author_username/comment_text)
-                  const username = comment.author_username || comment.ownerUsername;
-                  const commentText = comment.comment_text || comment.text;
-                  const timestamp = comment.created_at || comment.timestamp;
-                  const likes = comment.metadata?.likes_count ?? comment.likesCount ?? 0;
-                  
-                  return (
-                    <div key={comment.comment_id || comment.id || i} className="border rounded-lg p-3 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <a
-                          href={`https://instagram.com/${username || 'unknown'}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-primary hover:underline"
-                        >
-                          @{username || 'desconhecido'}
-                        </a>
-                        {timestamp && (
-                          <span className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: ptBR })}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm">{commentText || '(sem texto)'}</p>
-                      {likes > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Heart className="h-3 w-3" />
-                          {likes}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Nenhum comentário extraído</p>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+        postUrls={selectedHistoryComments.postUrls}
+        comments={selectedHistoryComments.comments}
+      />
     </div>
   );
 }
