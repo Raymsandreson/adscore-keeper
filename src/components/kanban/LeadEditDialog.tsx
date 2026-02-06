@@ -44,6 +44,8 @@ import {
   X,
   UserCheck,
   Edit3,
+  Link,
+  Users,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -78,6 +80,11 @@ export function LeadEditDialog({
   const [neighborhood, setNeighborhood] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   
+  // Accident-specific fields
+  const [newsLink, setNewsLink] = useState('');
+  const [acolhedor, setAcolhedor] = useState('');
+  const [groupLink, setGroupLink] = useState('');
+  
   // Custom fields
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
@@ -105,11 +112,16 @@ export function LeadEditDialog({
       setNeighborhood(lead.neighborhood || '');
       setClientClassification(lead.client_classification || '');
       
+      // Accident-specific fields
+      setNewsLink(lead.news_link || '');
+      const leadAny = lead as any;
+      setAcolhedor(leadAny.acolhedor || '');
+      setGroupLink(leadAny.group_link || '');
+      
       // Load custom field values
       loadCustomFieldValues(lead.id);
       
       // Fetch profile names for created_by and updated_by
-      const leadAny = lead as any;
       fetchProfileNames([leadAny.created_by, leadAny.updated_by]);
     }
   }, [lead, open, fetchProfileNames]);
@@ -195,7 +207,10 @@ export function LeadEditDialog({
         state: state || null,
         neighborhood: neighborhood || null,
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
-      });
+        news_link: newsLink || null,
+        acolhedor: acolhedor || null,
+        group_link: groupLink || null,
+      } as Partial<Lead>);
 
       // Save custom field values
       if (Object.keys(localFieldValues).length > 0) {
@@ -361,6 +376,42 @@ export function LeadEditDialog({
                       <SelectItem value="google">Google</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div>
+                  <Label className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    Acolhedor
+                  </Label>
+                  <Input
+                    value={acolhedor}
+                    onChange={(e) => setAcolhedor(e.target.value)}
+                    placeholder="Nome do acolhedor"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="flex items-center gap-1">
+                    <Link className="h-3 w-3" />
+                    Link do Grupo
+                  </Label>
+                  <Input
+                    value={groupLink}
+                    onChange={(e) => setGroupLink(e.target.value)}
+                    placeholder="https://chat.whatsapp.com/..."
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <Label className="flex items-center gap-1">
+                    <Link className="h-3 w-3" />
+                    Link da Notícia
+                  </Label>
+                  <Input
+                    value={newsLink}
+                    onChange={(e) => setNewsLink(e.target.value)}
+                    placeholder="https://..."
+                  />
                 </div>
 
                 <div className="space-y-2">

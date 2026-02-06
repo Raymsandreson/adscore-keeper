@@ -22,6 +22,8 @@ import {
   ImagePlus,
   X,
   Camera,
+  Instagram,
+  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -86,6 +88,16 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
   const [hasResults, setHasResults] = useState(false);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [screenshotFromNews, setScreenshotFromNews] = useState<string | null>(null);
+  const [isSearchingInstagram, setIsSearchingInstagram] = useState(false);
+  const [instagramResults, setInstagramResults] = useState<Array<{
+    id: string;
+    ownerUsername: string;
+    caption: string;
+    likesCount: number;
+    commentsCount: number;
+    url: string;
+    timestamp: string;
+  }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFetchLink = async () => {
@@ -164,6 +176,123 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
 
   const removeScreenshot = () => {
     setScreenshotFromNews(null);
+  };
+
+  // Generate search keywords from lead data
+  const generateSearchKeywords = (): string[] => {
+    const keywords: string[] = [];
+    const leadAny = lead as any;
+    
+    if (leadAny.victim_name) keywords.push(leadAny.victim_name);
+    if (leadAny.main_company) keywords.push(leadAny.main_company);
+    if (leadAny.contractor_company) keywords.push(leadAny.contractor_company);
+    if (lead.city && lead.state) keywords.push(`${lead.city} ${lead.state}`);
+    if (leadAny.case_type) keywords.push(leadAny.case_type);
+    if (leadAny.accident_date) {
+      const date = new Date(leadAny.accident_date);
+      keywords.push(date.toLocaleDateString('pt-BR'));
+    }
+    
+    return keywords.filter(k => k && k.trim().length > 2);
+  };
+
+  const handleSearchInstagram = async () => {
+    const keywords = generateSearchKeywords();
+    
+    if (keywords.length === 0) {
+      toast.error('Preencha dados do lead para buscar no Instagram (vítima, empresa, cidade, etc.)');
+      return;
+    }
+
+    setIsSearchingInstagram(true);
+    setInstagramResults([]);
+
+    try {
+      // Use Apify to search Instagram posts
+      const { data, error } = await supabase.functions.invoke('search-instagram-posts', {
+        body: {
+          action: 'start',
+          keywords: keywords.slice(0, 3), // Limit to first 3 keywords
+          maxPosts: 10,
+          period: 30, // Last 30 days
+        },
+      });
+
+      if (error) {
+        console.error('Error searching Instagram:', error);
+        toast.error('Erro ao buscar no Instagram');
+        return;
+      }
+
+      if (!data.success && data.error) {
+        toast.error(data.error);
+        return;
+      }
+
+      // If we got immediate results
+      if (data.results && data.results.length > 0) {
+        setInstagramResults(data.results);
+        toast.success(`${data.results.length} post(s) encontrado(s)!`);
+        return;
+      }
+
+      // If async run started, we need to poll for results
+      if (data.runId) {
+        toast.info('Buscando posts no Instagram... isso pode levar alguns segundos');
+        
+        // Poll for results
+        let attempts = 0;
+        const maxAttempts = 20;
+        
+        const pollResults = async () => {
+          attempts++;
+          
+          const { data: statusData, error: statusError } = await supabase.functions.invoke('search-instagram-posts', {
+            body: { action: 'status', runId: data.runId },
+          });
+          
+          if (statusError || !statusData) {
+            if (attempts < maxAttempts) {
+              setTimeout(pollResults, 3000);
+            } else {
+              toast.error('Tempo esgotado ao buscar posts');
+              setIsSearchingInstagram(false);
+            }
+            return;
+          }
+          
+          if (statusData.status === 'SUCCEEDED') {
+            // Fetch results
+            const { data: resultsData } = await supabase.functions.invoke('search-instagram-posts', {
+              body: { action: 'results', runId: data.runId },
+            });
+            
+            if (resultsData?.results) {
+              setInstagramResults(resultsData.results);
+              toast.success(`${resultsData.results.length} post(s) encontrado(s)!`);
+            }
+            setIsSearchingInstagram(false);
+          } else if (statusData.status === 'FAILED' || statusData.status === 'ABORTED') {
+            toast.error('Busca no Instagram falhou');
+            setIsSearchingInstagram(false);
+          } else if (attempts < maxAttempts) {
+            setTimeout(pollResults, 3000);
+          } else {
+            toast.error('Tempo esgotado ao buscar posts');
+            setIsSearchingInstagram(false);
+          }
+        };
+        
+        setTimeout(pollResults, 3000);
+      } else {
+        toast.info('Nenhum post encontrado com as palavras-chave');
+        setIsSearchingInstagram(false);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+      toast.error('Erro ao buscar no Instagram');
+      setIsSearchingInstagram(false);
+    }
   };
   
   const handleExtract = async () => {
@@ -454,6 +583,86 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
             </>
           )}
         </Button>
+
+        {/* Instagram Search Section */}
+        <div className="pt-3 border-t">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm text-muted-foreground flex items-center gap-2">
+              <Instagram className="h-3 w-3" />
+              Buscar no Instagram
+            </label>
+            {generateSearchKeywords().length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {generateSearchKeywords().slice(0, 2).map((keyword, i) => (
+                  <Badge key={i} variant="outline" className="text-xs">
+                    {keyword.substring(0, 15)}{keyword.length > 15 ? '...' : ''}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">
+            Busca posts relacionados ao acidente usando dados do lead (vítima, empresa, cidade, data)
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSearchInstagram}
+            disabled={isSearchingInstagram || generateSearchKeywords().length === 0}
+            className="w-full"
+          >
+            {isSearchingInstagram ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Buscando...
+              </>
+            ) : (
+              <>
+                <Instagram className="h-4 w-4 mr-2" />
+                Buscar Posts Relacionados
+              </>
+            )}
+          </Button>
+          
+          {/* Instagram Results */}
+          {instagramResults.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2 text-primary">
+                <CheckCircle2 className="h-4 w-4" />
+                <span className="text-sm font-medium">{instagramResults.length} post(s) encontrado(s)</span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {instagramResults.map((post) => (
+                  <div 
+                    key={post.id}
+                    className="flex items-start gap-2 p-2 rounded-md bg-muted/50 border text-xs"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="font-medium">@{post.ownerUsername}</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {post.likesCount} ❤️ • {post.commentsCount} 💬
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground line-clamp-2">
+                        {post.caption?.substring(0, 100)}
+                        {post.caption?.length > 100 && '...'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => window.open(post.url, '_blank')}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {hasResults && extractedFields.length > 0 && (
           <div className="space-y-3 pt-2 border-t">
