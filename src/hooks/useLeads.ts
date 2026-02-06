@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { facebookCAPI } from '@/services/facebookCAPI';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'not_qualified' | 'converted' | 'lost' | 'comment';
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'error';
@@ -69,6 +70,7 @@ export interface LeadStats {
 }
 
 export const useLeads = (adAccountId?: string) => {
+  const { user } = useAuthContext();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<LeadStats>({
@@ -160,6 +162,8 @@ export const useLeads = (adAccountId?: string) => {
         .insert([{
           ...lead,
           ad_account_id: adAccountId || lead.ad_account_id,
+          created_by: user?.id,
+          updated_by: user?.id,
         }])
         .select()
         .single();
@@ -194,15 +198,23 @@ export const useLeads = (adAccountId?: string) => {
     }
   };
 
-  const updateLead = async (id: string, updates: Partial<Lead>) => {
+  const updateLead = async (id: string, updates: Partial<Lead>, editSummary?: string) => {
     try {
       // Auto-set timestamps based on status
-      const timestampUpdates: Partial<Lead> = { ...updates };
+      const timestampUpdates: Record<string, any> = { ...updates };
       if (updates.status === 'qualified' && !updates.qualified_at) {
         timestampUpdates.qualified_at = new Date().toISOString();
       }
       if (updates.status === 'converted' && !updates.converted_at) {
         timestampUpdates.converted_at = new Date().toISOString();
+      }
+      
+      // Track who updated
+      if (user?.id) {
+        timestampUpdates.updated_by = user.id;
+      }
+      if (editSummary) {
+        timestampUpdates.last_edit_summary = editSummary;
       }
 
       const { data, error } = await supabase
