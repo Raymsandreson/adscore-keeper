@@ -1302,12 +1302,15 @@ export type Database = {
         Row: {
           apify_run_id: string | null
           completed_at: string | null
+          cost_brl: number | null
+          cost_usd: number | null
           created_at: string
           created_by: string | null
           id: string
           keywords: string[]
           max_posts: number | null
           min_comments: number | null
+          post_urls: string[] | null
           results: Json | null
           results_count: number | null
           status: string | null
@@ -1315,12 +1318,15 @@ export type Database = {
         Insert: {
           apify_run_id?: string | null
           completed_at?: string | null
+          cost_brl?: number | null
+          cost_usd?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
           keywords: string[]
           max_posts?: number | null
           min_comments?: number | null
+          post_urls?: string[] | null
           results?: Json | null
           results_count?: number | null
           status?: string | null
@@ -1328,12 +1334,15 @@ export type Database = {
         Update: {
           apify_run_id?: string | null
           completed_at?: string | null
+          cost_brl?: number | null
+          cost_usd?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
           keywords?: string[]
           max_posts?: number | null
           min_comments?: number | null
+          post_urls?: string[] | null
           results?: Json | null
           results_count?: number | null
           status?: string | null

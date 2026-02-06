@@ -93,6 +93,7 @@ serve(async (req) => {
     let status = "RUNNING";
     let attempts = 0;
     const maxAttempts = 60;
+    let usageTotalUsd = 0;
 
     while (status === "RUNNING" && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -102,14 +103,24 @@ serve(async (req) => {
       );
       const statusData = await statusResponse.json();
       status = statusData.data.status;
+      usageTotalUsd = statusData.data?.usageTotalUsd || 0;
       attempts++;
       
-      console.log(`📊 Status: ${status} (tentativa ${attempts}/${maxAttempts})`);
+      console.log(`📊 Status: ${status} (tentativa ${attempts}/${maxAttempts}) - Custo: $${usageTotalUsd}`);
     }
 
     if (status !== "SUCCEEDED") {
       throw new Error(`Scraper não concluiu: status = ${status}`);
     }
+
+    // Buscar custo final da execução
+    const finalStatusResponse = await fetch(
+      `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_API_KEY}`
+    );
+    const finalStatusData = await finalStatusResponse.json();
+    usageTotalUsd = finalStatusData.data?.usageTotalUsd || 0;
+    
+    console.log(`💰 Custo total da execução: $${usageTotalUsd} USD`);
 
     // Buscar resultados
     const datasetResponse = await fetch(
@@ -244,7 +255,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`✅ Processamento concluído: ${savedCount} salvos, ${errorCount} erros`);
+    console.log(`✅ Processamento concluído: ${savedCount} salvos, ${errorCount} erros, custo: $${usageTotalUsd}`);
 
     return new Response(
       JSON.stringify({
@@ -254,6 +265,8 @@ serve(async (req) => {
         savedToDatabase: savedCount,
         saveErrors: errorCount,
         postsProcessed: postUrls.length,
+        costUsd: usageTotalUsd,
+        runId: runId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
