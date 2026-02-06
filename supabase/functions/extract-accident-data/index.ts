@@ -5,7 +5,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// URLs that Firecrawl doesn't support
+const UNSUPPORTED_DOMAINS = [
+  'instagram.com',
+  'www.instagram.com',
+  'facebook.com',
+  'www.facebook.com',
+  'twitter.com',
+  'x.com',
+  'tiktok.com',
+  'www.tiktok.com',
+];
+
+function isUnsupportedUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    return UNSUPPORTED_DOMAINS.some(domain => urlObj.hostname.includes(domain));
+  } catch {
+    return false;
+  }
+}
+
 async function scrapeUrl(url: string): Promise<string | null> {
+  // Check if URL is from an unsupported site
+  if (isUnsupportedUrl(url)) {
+    console.log('URL from unsupported site:', url);
+    return null;
+  }
+
   const FIRECRAWL_API_KEY = Deno.env.get('FIRECRAWL_API_KEY');
   if (!FIRECRAWL_API_KEY) {
     console.log('FIRECRAWL_API_KEY not configured, skipping URL scraping');
@@ -73,12 +100,23 @@ serve(async (req) => {
     if (type === 'url' || type === 'link') {
       // Scrape the URL content
       const urlToScrape = url || content;
+      
+      // Check if it's an unsupported URL first (before calling scrapeUrl)
+      if (isUnsupportedUrl(urlToScrape)) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Links do Instagram, Facebook, TikTok e X/Twitter não são suportados para extração automática. Por favor, copie e cole o texto da publicação diretamente ou faça um print da tela e use a opção de imagem.' 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       const scrapedContent = await scrapeUrl(urlToScrape);
       if (scrapedContent) {
         textContent = scrapedContent;
       } else {
         return new Response(
-          JSON.stringify({ error: 'Não foi possível acessar o link. Verifique se a URL está correta.' }),
+          JSON.stringify({ error: 'Não foi possível acessar o link. Verifique se a URL está correta e tente novamente.' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
