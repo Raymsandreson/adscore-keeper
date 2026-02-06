@@ -46,6 +46,9 @@ import {
   Edit3,
   Link,
   Users,
+  Building,
+  Briefcase,
+  Sparkles,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -60,6 +63,61 @@ interface LeadEditDialogProps {
   boards?: KanbanBoard[];
 }
 
+const brazilianStates = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 
+  'SP', 'SE', 'TO'
+];
+
+const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+
+const caseTypes = [
+  'Queda de Altura',
+  'Soterramento',
+  'Choque Elétrico',
+  'Acidente com Máquinas',
+  'Intoxicação',
+  'Explosão',
+  'Incêndio',
+  'Acidente de Trânsito',
+  'Esmagamento',
+  'Corte/Amputação',
+  'Afogamento',
+  'Outro',
+];
+
+const liabilityTypes = [
+  'Solidária',
+  'Subsidiária',
+  'Objetiva',
+  'Subjetiva',
+  'A Definir',
+];
+
+const sectors = [
+  'Construção Civil',
+  'Mineração',
+  'Agronegócio',
+  'Indústria',
+  'Energia',
+  'Logística',
+  'Siderurgia',
+  'Petróleo e Gás',
+  'Alimentício',
+  'Outro',
+];
+
+const sources = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'form', label: 'Formulário' },
+  { value: 'referral', label: 'Indicação' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'noticia', label: 'Notícia' },
+  { value: 'prospecção', label: 'Prospecção Ativa' },
+];
+
 export function LeadEditDialog({
   open,
   onOpenChange,
@@ -68,22 +126,41 @@ export function LeadEditDialog({
   adAccountId,
   boards = [],
 }: LeadEditDialogProps) {
-  // Core fields state
+  // Basic fields state
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [instagramUsername, setInstagramUsername] = useState('');
   const [source, setSource] = useState('manual');
   const [notes, setNotes] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [clientClassification, setClientClassification] = useState<string>('');
-  
-  // Accident-specific fields
-  const [newsLink, setNewsLink] = useState('');
   const [acolhedor, setAcolhedor] = useState('');
   const [groupLink, setGroupLink] = useState('');
+  const [clientClassification, setClientClassification] = useState<string>('');
+  
+  // Accident fields
+  const [victimName, setVictimName] = useState('');
+  const [victimAge, setVictimAge] = useState('');
+  const [accidentDate, setAccidentDate] = useState('');
+  const [caseType, setCaseType] = useState('');
+  const [accidentAddress, setAccidentAddress] = useState('');
+  const [damageDescription, setDamageDescription] = useState('');
+  
+  // Location fields (visit)
+  const [visitCity, setVisitCity] = useState('');
+  const [visitState, setVisitState] = useState('');
+  const [visitRegion, setVisitRegion] = useState('');
+  const [visitAddress, setVisitAddress] = useState('');
+  
+  // Companies fields
+  const [contractorCompany, setContractorCompany] = useState('');
+  const [mainCompany, setMainCompany] = useState('');
+  const [sector, setSector] = useState('');
+  const [companySizeJustification, setCompanySizeJustification] = useState('');
+  
+  // Legal fields
+  const [liabilityType, setLiabilityType] = useState('');
+  const [newsLink, setNewsLink] = useState('');
+  const [legalViability, setLegalViability] = useState('');
   
   // Custom fields
   const { customFields, getFieldValues, saveAllFieldValues, loading: fieldsLoading } = useLeadCustomFields(adAccountId);
@@ -97,26 +174,50 @@ export function LeadEditDialog({
   const [isAddingClassification, setIsAddingClassification] = useState(false);
   const [newClassificationName, setNewClassificationName] = useState('');
   const [newClassificationColor, setNewClassificationColor] = useState('bg-blue-500');
+  
+  // Show AI enricher
+  const [showEnricher, setShowEnricher] = useState(false);
 
   // Load lead data when dialog opens
   useEffect(() => {
     if (lead && open) {
+      const leadAny = lead as any;
+      
+      // Basic fields
       setLeadName(lead.lead_name || '');
       setLeadPhone(lead.lead_phone || '');
       setLeadEmail(lead.lead_email || '');
       setInstagramUsername(lead.instagram_username || '');
       setSource(lead.source || 'manual');
       setNotes(lead.notes || '');
-      setCity(lead.city || '');
-      setState(lead.state || '');
-      setNeighborhood(lead.neighborhood || '');
-      setClientClassification(lead.client_classification || '');
-      
-      // Accident-specific fields
-      setNewsLink(lead.news_link || '');
-      const leadAny = lead as any;
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
+      setClientClassification(lead.client_classification || '');
+      
+      // Accident fields
+      setVictimName(leadAny.victim_name || '');
+      setVictimAge(leadAny.victim_age?.toString() || '');
+      setAccidentDate(leadAny.accident_date || '');
+      setCaseType(leadAny.case_type || '');
+      setAccidentAddress(leadAny.accident_address || '');
+      setDamageDescription(leadAny.damage_description || '');
+      
+      // Location fields
+      setVisitCity(leadAny.visit_city || '');
+      setVisitState(leadAny.visit_state || '');
+      setVisitRegion(leadAny.visit_region || '');
+      setVisitAddress(leadAny.visit_address || '');
+      
+      // Companies fields
+      setContractorCompany(leadAny.contractor_company || '');
+      setMainCompany(leadAny.main_company || '');
+      setSector(leadAny.sector || '');
+      setCompanySizeJustification(leadAny.company_size_justification || '');
+      
+      // Legal fields
+      setLiabilityType(leadAny.liability_type || '');
+      setNewsLink(lead.news_link || '');
+      setLegalViability(leadAny.legal_viability || '');
       
       // Load custom field values
       loadCustomFieldValues(lead.id);
@@ -178,11 +279,36 @@ export function LeadEditDialog({
 
   // Handle AI extracted data - update form fields immediately
   const handleApplyAIData = (updates: Partial<Lead>) => {
-    if (updates.city) setCity(updates.city);
-    if (updates.state) setState(updates.state);
-    if (updates.neighborhood) setNeighborhood(updates.neighborhood);
-    if (updates.notes) setNotes(prev => prev ? `${prev}\n\n${updates.notes}` : updates.notes || '');
-    // Other fields will be saved when user clicks Save
+    const u = updates as any;
+    
+    // Basic
+    if (u.lead_name) setLeadName(u.lead_name);
+    if (u.notes) setNotes(prev => prev ? `${prev}\n\n${u.notes}` : u.notes);
+    
+    // Accident
+    if (u.victim_name) setVictimName(u.victim_name);
+    if (u.victim_age) setVictimAge(u.victim_age.toString());
+    if (u.accident_date) setAccidentDate(u.accident_date);
+    if (u.case_type) setCaseType(u.case_type);
+    if (u.accident_address) setAccidentAddress(u.accident_address);
+    if (u.damage_description) setDamageDescription(u.damage_description);
+    
+    // Location
+    if (u.visit_city) setVisitCity(u.visit_city);
+    if (u.visit_state) setVisitState(u.visit_state);
+    if (u.visit_region) setVisitRegion(u.visit_region);
+    if (u.visit_address) setVisitAddress(u.visit_address);
+    
+    // Companies
+    if (u.contractor_company) setContractorCompany(u.contractor_company);
+    if (u.main_company) setMainCompany(u.main_company);
+    if (u.sector) setSector(u.sector);
+    if (u.company_size_justification) setCompanySizeJustification(u.company_size_justification);
+    
+    // Legal
+    if (u.liability_type) setLiabilityType(u.liability_type);
+    if (u.news_link) setNewsLink(u.news_link);
+    if (u.legal_viability) setLegalViability(u.legal_viability);
   };
 
   const handleSave = async () => {
@@ -195,7 +321,7 @@ export function LeadEditDialog({
 
     setSaving(true);
     try {
-      // Save core fields
+      // Save all fields
       await onSave(lead.id, {
         lead_name: leadName.trim(),
         lead_phone: leadPhone || null,
@@ -203,13 +329,30 @@ export function LeadEditDialog({
         instagram_username: instagramUsername || null,
         source,
         notes: notes || null,
-        city: city || null,
-        state: state || null,
-        neighborhood: neighborhood || null,
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
-        news_link: newsLink || null,
         acolhedor: acolhedor || null,
         group_link: groupLink || null,
+        // Accident fields
+        victim_name: victimName || null,
+        victim_age: victimAge ? parseInt(victimAge) : null,
+        accident_date: accidentDate || null,
+        case_type: caseType || null,
+        accident_address: accidentAddress || null,
+        damage_description: damageDescription || null,
+        // Location fields
+        visit_city: visitCity || null,
+        visit_state: visitState || null,
+        visit_region: visitRegion || null,
+        visit_address: visitAddress || null,
+        // Companies fields
+        contractor_company: contractorCompany || null,
+        main_company: mainCompany || null,
+        sector: sector || null,
+        company_size_justification: companySizeJustification || null,
+        // Legal fields
+        liability_type: liabilityType || null,
+        news_link: newsLink || null,
+        legal_viability: legalViability || null,
       } as Partial<Lead>);
 
       // Save custom field values
@@ -239,33 +382,54 @@ export function LeadEditDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="info" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="info">
-              <User className="h-4 w-4 mr-2" />
-              Informações
+        {/* AI Extraction Button */}
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={() => setShowEnricher(!showEnricher)}
+          className="w-full gap-2 border-dashed border-primary/50 hover:border-primary"
+        >
+          <Sparkles className="h-4 w-4 text-primary" />
+          Extrair dados de notícia ou documento com IA
+        </Button>
+
+        {showEnricher && (
+          <div className="border rounded-lg p-3 bg-muted/30">
+            <AIDataEnricher lead={lead} onApplyData={handleApplyAIData} />
+          </div>
+        )}
+
+        <Tabs defaultValue="basic" className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-6 h-auto">
+            <TabsTrigger value="basic" className="text-xs py-2">
+              <User className="h-3 w-3 mr-1" />
+              Básico
             </TabsTrigger>
-            <TabsTrigger value="location">
-              <MapPin className="h-4 w-4 mr-2" />
-              Localização
+            <TabsTrigger value="accident" className="text-xs py-2">
+              <FileText className="h-3 w-3 mr-1" />
+              Acidente
             </TabsTrigger>
-            <TabsTrigger value="history">
-              <History className="h-4 w-4 mr-2" />
+            <TabsTrigger value="location" className="text-xs py-2">
+              <MapPin className="h-3 w-3 mr-1" />
+              Local
+            </TabsTrigger>
+            <TabsTrigger value="companies" className="text-xs py-2">
+              <Building className="h-3 w-3 mr-1" />
+              Empresas
+            </TabsTrigger>
+            <TabsTrigger value="legal" className="text-xs py-2">
+              <Briefcase className="h-3 w-3 mr-1" />
+              Jurídico
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs py-2">
+              <History className="h-3 w-3 mr-1" />
               Histórico
-            </TabsTrigger>
-            <TabsTrigger value="custom" disabled={customFields.length === 0}>
-              <Settings className="h-4 w-4 mr-2" />
-              Campos
-              {customFields.length > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs">
-                  {customFields.length}
-                </Badge>
-              )}
             </TabsTrigger>
           </TabsList>
 
           <ScrollArea className="flex-1 pr-4 mt-4">
-            <TabsContent value="info" className="space-y-4 mt-0">
+            {/* Basic Info Tab */}
+            <TabsContent value="basic" className="space-y-4 mt-0">
               {/* Meta info */}
               {(() => {
                 const leadAny = lead as any;
@@ -295,27 +459,13 @@ export function LeadEditDialog({
                         </span>
                       )}
                     </Badge>
-                    {leadAny.last_edit_summary && (
-                      <Badge variant="secondary" className="gap-1">
-                        <Edit3 className="h-3 w-3" />
-                        {leadAny.last_edit_summary}
-                      </Badge>
-                    )}
-                    {lead.source && (
-                      <Badge variant="secondary">
-                        Origem: {lead.source}
-                      </Badge>
-                    )}
                   </div>
                 );
               })()}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <Label className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    Nome *
-                  </Label>
+                  <Label>Nome do Lead *</Label>
                   <Input
                     value={leadName}
                     onChange={(e) => setLeadName(e.target.value)}
@@ -324,10 +474,7 @@ export function LeadEditDialog({
                 </div>
 
                 <div>
-                  <Label className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    Telefone
-                  </Label>
+                  <Label>Telefone</Label>
                   <Input
                     value={leadPhone}
                     onChange={(e) => setLeadPhone(e.target.value)}
@@ -336,15 +483,44 @@ export function LeadEditDialog({
                 </div>
 
                 <div>
-                  <Label className="flex items-center gap-1">
-                    <Mail className="h-3 w-3" />
-                    Email
-                  </Label>
+                  <Label>Email</Label>
                   <Input
                     type="email"
                     value={leadEmail}
                     onChange={(e) => setLeadEmail(e.target.value)}
                     placeholder="email@exemplo.com"
+                  />
+                </div>
+
+                <div>
+                  <Label>Origem</Label>
+                  <Select value={source} onValueChange={setSource}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sources.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Acolhedor</Label>
+                  <Input
+                    value={acolhedor}
+                    onChange={(e) => setAcolhedor(e.target.value)}
+                    placeholder="Nome do acolhedor"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <Label>Link do Grupo</Label>
+                  <Input
+                    value={groupLink}
+                    onChange={(e) => setGroupLink(e.target.value)}
+                    placeholder="https://chat.whatsapp.com/..."
                   />
                 </div>
 
@@ -357,60 +533,6 @@ export function LeadEditDialog({
                     value={instagramUsername}
                     onChange={(e) => setInstagramUsername(e.target.value)}
                     placeholder="@usuario"
-                  />
-                </div>
-
-                <div>
-                  <Label>Origem</Label>
-                  <Select value={source} onValueChange={setSource}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Manual</SelectItem>
-                      <SelectItem value="instagram">Instagram</SelectItem>
-                      <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                      <SelectItem value="form">Formulário</SelectItem>
-                      <SelectItem value="referral">Indicação</SelectItem>
-                      <SelectItem value="facebook">Facebook</SelectItem>
-                      <SelectItem value="google">Google</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    Acolhedor
-                  </Label>
-                  <Input
-                    value={acolhedor}
-                    onChange={(e) => setAcolhedor(e.target.value)}
-                    placeholder="Nome do acolhedor"
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <Label className="flex items-center gap-1">
-                    <Link className="h-3 w-3" />
-                    Link do Grupo
-                  </Label>
-                  <Input
-                    value={groupLink}
-                    onChange={(e) => setGroupLink(e.target.value)}
-                    placeholder="https://chat.whatsapp.com/..."
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <Label className="flex items-center gap-1">
-                    <Link className="h-3 w-3" />
-                    Link da Notícia
-                  </Label>
-                  <Input
-                    value={newsLink}
-                    onChange={(e) => setNewsLink(e.target.value)}
-                    placeholder="https://..."
                   />
                 </div>
 
@@ -493,108 +615,246 @@ export function LeadEditDialog({
                 </div>
 
                 <div className="col-span-2">
-                  <Label className="flex items-center gap-1">
-                    <FileText className="h-3 w-3" />
-                    Observações
-                  </Label>
+                  <Label>Observações</Label>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Notas sobre o lead..."
-                    rows={3}
+                    rows={2}
                   />
                 </div>
               </div>
-
-              {/* AI Data Enricher */}
-              <AIDataEnricher lead={lead} onApplyData={handleApplyAIData} />
             </TabsContent>
 
-            <TabsContent value="location" className="space-y-4 mt-0">
+            {/* Accident Details Tab */}
+            <TabsContent value="accident" className="space-y-4 mt-0">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Cidade</Label>
+                  <Label>Nome da Vítima</Label>
                   <Input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Cidade"
+                    value={victimName}
+                    onChange={(e) => setVictimName(e.target.value)}
+                    placeholder="Nome completo da vítima"
                   />
                 </div>
 
                 <div>
-                  <Label>Estado</Label>
-                  <Select value={state} onValueChange={setState}>
+                  <Label>Idade da Vítima</Label>
+                  <Input
+                    type="number"
+                    value={victimAge}
+                    onChange={(e) => setVictimAge(e.target.value)}
+                    placeholder="Idade"
+                  />
+                </div>
+
+                <div>
+                  <Label>Data do Acidente</Label>
+                  <Input
+                    type="date"
+                    value={accidentDate}
+                    onChange={(e) => setAccidentDate(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label>Tipo de Caso</Label>
+                  <Select value={caseType} onValueChange={setCaseType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="AC">Acre</SelectItem>
-                      <SelectItem value="AL">Alagoas</SelectItem>
-                      <SelectItem value="AP">Amapá</SelectItem>
-                      <SelectItem value="AM">Amazonas</SelectItem>
-                      <SelectItem value="BA">Bahia</SelectItem>
-                      <SelectItem value="CE">Ceará</SelectItem>
-                      <SelectItem value="DF">Distrito Federal</SelectItem>
-                      <SelectItem value="ES">Espírito Santo</SelectItem>
-                      <SelectItem value="GO">Goiás</SelectItem>
-                      <SelectItem value="MA">Maranhão</SelectItem>
-                      <SelectItem value="MT">Mato Grosso</SelectItem>
-                      <SelectItem value="MS">Mato Grosso do Sul</SelectItem>
-                      <SelectItem value="MG">Minas Gerais</SelectItem>
-                      <SelectItem value="PA">Pará</SelectItem>
-                      <SelectItem value="PB">Paraíba</SelectItem>
-                      <SelectItem value="PR">Paraná</SelectItem>
-                      <SelectItem value="PE">Pernambuco</SelectItem>
-                      <SelectItem value="PI">Piauí</SelectItem>
-                      <SelectItem value="RJ">Rio de Janeiro</SelectItem>
-                      <SelectItem value="RN">Rio Grande do Norte</SelectItem>
-                      <SelectItem value="RS">Rio Grande do Sul</SelectItem>
-                      <SelectItem value="RO">Rondônia</SelectItem>
-                      <SelectItem value="RR">Roraima</SelectItem>
-                      <SelectItem value="SC">Santa Catarina</SelectItem>
-                      <SelectItem value="SP">São Paulo</SelectItem>
-                      <SelectItem value="SE">Sergipe</SelectItem>
-                      <SelectItem value="TO">Tocantins</SelectItem>
+                      {caseTypes.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Bairro</Label>
+                  <Label>Endereço do Acidente</Label>
                   <Input
-                    value={neighborhood}
-                    onChange={(e) => setNeighborhood(e.target.value)}
-                    placeholder="Bairro"
+                    value={accidentAddress}
+                    onChange={(e) => setAccidentAddress(e.target.value)}
+                    placeholder="Local onde ocorreu o acidente"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <Label>Descrição do Dano</Label>
+                  <Textarea
+                    value={damageDescription}
+                    onChange={(e) => setDamageDescription(e.target.value)}
+                    placeholder="Descreva as lesões ou danos sofridos..."
+                    rows={3}
                   />
                 </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0">
-              <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
+            {/* Location Tab */}
+            <TabsContent value="location" className="space-y-4 mt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Cidade da Visita</Label>
+                  <Input
+                    value={visitCity}
+                    onChange={(e) => setVisitCity(e.target.value)}
+                    placeholder="Cidade"
+                  />
+                </div>
+
+                <div>
+                  <Label>Estado da Visita</Label>
+                  <Select value={visitState} onValueChange={setVisitState}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brazilianStates.map((state) => (
+                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Região da Visita</Label>
+                  <Select value={visitRegion} onValueChange={setVisitRegion}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {regions.map((region) => (
+                        <SelectItem key={region} value={region}>{region}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="col-span-2">
+                  <Label>Endereço da Visita</Label>
+                  <Input
+                    value={visitAddress}
+                    onChange={(e) => setVisitAddress(e.target.value)}
+                    placeholder="Endereço completo para visita"
+                  />
+                </div>
+              </div>
             </TabsContent>
 
-            <TabsContent value="custom" className="space-y-4 mt-0">
-              {fieldsLoading ? (
-                <div className="text-sm text-muted-foreground py-8 text-center">
-                  Carregando campos personalizados...
+            {/* Companies Tab */}
+            <TabsContent value="companies" className="space-y-4 mt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Empresa Terceirizada</Label>
+                  <Input
+                    value={contractorCompany}
+                    onChange={(e) => setContractorCompany(e.target.value)}
+                    placeholder="Nome da empresa terceirizada"
+                  />
                 </div>
-              ) : customFields.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-8 text-center">
-                  <Settings className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                  <p>Nenhum campo personalizado configurado.</p>
-                  <p className="text-xs mt-1">Configure campos em Leads &gt; Configurações</p>
+
+                <div>
+                  <Label>Empresa Tomadora</Label>
+                  <Input
+                    value={mainCompany}
+                    onChange={(e) => setMainCompany(e.target.value)}
+                    placeholder="Nome da empresa tomadora"
+                  />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {customFields.map((field) => (
-                    <CustomFieldInput
-                      key={field.id}
-                      field={field}
-                      value={fieldValues[field.id] || null}
-                      onChange={handleFieldChange}
-                    />
-                  ))}
+
+                <div>
+                  <Label>Setor</Label>
+                  <Select value={sector} onValueChange={setSector}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sectors.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="col-span-2">
+                  <Label>Justificativa do Porte da Empresa</Label>
+                  <Textarea
+                    value={companySizeJustification}
+                    onChange={(e) => setCompanySizeJustification(e.target.value)}
+                    placeholder="Justificativa sobre o porte da empresa..."
+                    rows={2}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Legal Tab */}
+            <TabsContent value="legal" className="space-y-4 mt-0">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Tipo de Responsabilidade</Label>
+                  <Select value={liabilityType} onValueChange={setLiabilityType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {liabilityTypes.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Link da Notícia</Label>
+                  <Input
+                    value={newsLink}
+                    onChange={(e) => setNewsLink(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <Label>Viabilidade Jurídica</Label>
+                  <Textarea
+                    value={legalViability}
+                    onChange={(e) => setLegalViability(e.target.value)}
+                    placeholder="Análise de viabilidade jurídica do caso..."
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* History Tab */}
+            <TabsContent value="history" className="mt-0">
+              <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
+              
+              {/* Custom Fields Section */}
+              {customFields.length > 0 && (
+                <div className="mt-6 pt-4 border-t">
+                  <h4 className="font-medium mb-4 flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Campos Personalizados
+                  </h4>
+                  {fieldsLoading ? (
+                    <div className="text-sm text-muted-foreground py-4 text-center">
+                      Carregando campos personalizados...
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {customFields.map((field) => (
+                        <CustomFieldInput
+                          key={field.id}
+                          field={field}
+                          value={fieldValues[field.id] || null}
+                          onChange={handleFieldChange}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </TabsContent>
