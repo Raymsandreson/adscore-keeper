@@ -364,6 +364,54 @@ export function LeadEditDialog({
     if (data.liability_type) setLiabilityType(data.liability_type);
     if (data.legal_viability) setLegalViability(data.legal_viability);
     
+    // Auto-generate lead name in pattern: City (State) | Victim x Company (Injury) - (Date)
+    const city = data.visit_city || '';
+    const state = data.visit_state || '';
+    const victim = data.victim_name?.split(' ')[0] || ''; // First name only
+    const company = data.main_company || data.contractor_company || '';
+    const injury = data.damage_description || data.case_type || '';
+    const accDate = data.accident_date ? format(new Date(data.accident_date), 'dd/MM/yyyy') : '';
+    
+    // Build lead name parts
+    const parts: string[] = [];
+    
+    // Location part: City (State)
+    if (city && state) {
+      parts.push(`${city} (${state})`);
+    } else if (city) {
+      parts.push(city);
+    } else if (state) {
+      parts.push(`(${state})`);
+    }
+    
+    // Victim x Company part
+    let mainPart = '';
+    if (victim && company) {
+      mainPart = `${victim} x ${company}`;
+    } else if (victim) {
+      mainPart = victim;
+    } else if (company) {
+      mainPart = company;
+    }
+    
+    // Injury and date
+    const details: string[] = [];
+    if (injury) details.push(injury);
+    if (accDate) details.push(accDate);
+    
+    if (mainPart) {
+      if (details.length > 0) {
+        mainPart += ` (${details.join(' - ')})`;
+      }
+      parts.push(mainPart);
+    }
+    
+    // Generate final name
+    if (parts.length > 0) {
+      const generatedName = parts.join(' | ');
+      setLeadName(generatedName);
+    }
+    
     toast.success('Dados extraídos aplicados ao formulário!');
   };
 
