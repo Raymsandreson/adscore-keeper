@@ -1,58 +1,51 @@
 
+# Plano: Correção do Status de Veiculação dos Ad Sets
 
 ## Problema Identificado
 
-O diálogo de edição do lead tem camadas conflitantes de overflow que bloqueiam a barra de rolagem:
+Ao selecionar a aba "Conjuntos", alguns ad sets aparecem como "Pausado" no app mesmo estando ativos no Gerenciador de Anúncios da Meta.
 
+## Análise Técnica
+
+Após investigar os logs da API e o código, identifiquei que:
+
+1. **O campo `effective_status` da API** retorna o status real de veiculação, incluindo:
+   - `ACTIVE` - veiculando normalmente
+   - `PAUSED` - pausado manualmente
+   - `CAMPAIGN_PAUSED` - ad set ativo, mas campanha pai pausada
+   - `ADSET_PAUSED` - ad set pausado
+
+2. **Problema atual**: O código mapeia qualquer status diferente de `ACTIVE` para `PAUSED`, o que pode não refletir o status real do ad set individualmente.
+
+3. **Possível causa**: Se o Gerenciador de Anúncios mostra "Ativo" mas a API retorna outro status, pode haver:
+   - Atraso na sincronização da API (até 15 minutos)
+   - Diferença entre o `status` do ad set vs `effective_status` de veiculação
+
+## Solução Proposta
+
+Buscar também o campo `status` (além do `effective_status`) para diferenciar:
+- **Status configurado**: se o ad set está configurado como ativo/pausado
+- **Status de veiculação**: se está realmente veiculando (considera também a campanha pai)
+
+### Mudanças no Código
+
+**Arquivo: `src/services/metaAPI.ts`**
+
+1. Adicionar o campo `status` na query dos ad sets:
 ```text
-DialogContent (overflow-y-auto)
-  └── Tabs (overflow-hidden)  <-- BLOQUEIA rolagem
-        └── ScrollArea (flex-1)  <-- SEM altura definida
+fields=id,name,status,effective_status,insights...
 ```
 
-## Solução
+2. Ajustar a lógica de mapeamento para usar o `status` do próprio ad set:
+   - Se `status === 'ACTIVE'` → mostrar como "Ativo" (mesmo que campanha esteja pausada)
+   - Se `status === 'PAUSED'` → mostrar como "Pausado"
 
-Reestruturar o layout para que a rolagem funcione corretamente:
+3. Opcionalmente, adicionar um indicador visual quando o ad set está ativo mas a campanha está pausada (ex: "Ativo (campanha pausada)")
 
-### Alterações em `src/components/kanban/LeadEditDialog.tsx`
+---
 
-1. **DialogContent** - Remover `overflow-y-auto` e manter apenas o container fixo
-2. **Tabs** - Remover `overflow-hidden` que está bloqueando
-3. **ScrollArea** - Definir altura fixa calculada (ex: `h-[calc(90vh-200px)]`) para garantir que o scroll funcione
-
-### Estrutura Final
-
-```text
-DialogContent (max-h-[90vh] flex flex-col)
-  └── DialogHeader (fixo no topo)
-  └── Button extrator (fixo)
-  └── Tabs (flex-1 min-h-0)
-        └── TabsList (fixo)
-        └── ScrollArea (h-[calc(90vh-220px)])  <-- altura calculada
-              └── TabsContent (conteúdo rolável)
-  └── DialogFooter (fixo no fundo)
-```
-
-### Código Específico
-
-**Linha 573** - DialogContent:
-```tsx
-<DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-```
-
-**Linha 599** - Tabs:
-```tsx
-<Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-```
-
-**Linha 627** - ScrollArea com altura fixa:
-```tsx
-<ScrollArea className="h-[calc(90vh-220px)] pr-4 mt-4">
-```
-
-Isso garantirá:
-- Header do diálogo fixo no topo
-- Abas fixas abaixo do header  
-- Conteúdo das abas com barra de rolagem visível
-- Footer com botões fixo no fundo
+**Próximos passos após aprovação:**
+1. Atualizar a query da API para incluir o campo `status`
+2. Ajustar a lógica de mapeamento no `getAdSetInsights`
+3. Testar a exibição correta dos status
 
