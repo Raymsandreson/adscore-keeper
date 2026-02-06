@@ -4,12 +4,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { 
+import {
   Loader2, 
   Sparkles, 
   FileText, 
@@ -437,8 +438,10 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
         </Button>
       </CollapsibleTrigger>
       
-      <CollapsibleContent className="px-4 pb-4 space-y-4">
-        <div className="space-y-3">
+      <CollapsibleContent className="px-4 pb-4">
+        <ScrollArea className="max-h-[60vh] pr-3">
+          <div className="space-y-4">
+            <div className="space-y-3">
           <div>
             <label className="text-sm text-muted-foreground mb-1.5 block flex items-center gap-2">
               <Link className="h-3 w-3" />
@@ -752,6 +755,8 @@ export function AIDataEnricher({ lead, onApplyData }: AIDataEnricherProps) {
             </div>
           </div>
         )}
+          </div>
+        </ScrollArea>
       </CollapsibleContent>
     </Collapsible>
   );
