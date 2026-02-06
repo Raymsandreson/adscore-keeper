@@ -652,70 +652,67 @@ class MetaAPIService {
       const cleanAccountId = config.accountId.startsWith('act_') ? config.accountId : `act_${config.accountId}`;
       const { since, until } = this.getDateRange(dateRange);
       
-      // First, get adset statuses
-      const statusUrl = `${this.baseURL}/${cleanAccountId}/adsets?` +
+      // Buscar ad sets diretamente com status e insights juntos
+      const adSetsUrl = `${this.baseURL}/${cleanAccountId}/adsets?` +
         `access_token=${config.accessToken}&` +
-        `fields=id,effective_status&` +
+        `fields=id,name,effective_status,insights.time_range({"since":"${since}","until":"${until}"}).fields(cpc,ctr,cpm,spend,impressions,clicks,actions)&` +
         `limit=100`;
       
-      let statusMap: Record<string, string> = {};
-      try {
-        const statusResponse = await fetch(statusUrl);
-        const statusData = await statusResponse.json();
-        if (statusData.data) {
-          statusData.data.forEach((a: any) => {
-            statusMap[a.id] = a.effective_status;
+      console.log('📊 Buscando ad sets com status e insights...');
+      const adSetsResponse = await fetch(adSetsUrl);
+      const adSetsData = await adSetsResponse.json();
+      
+      if (adSetsData.data && adSetsData.data.length > 0) {
+        console.log('✅ Ad sets obtidos:', adSetsData.data.length);
+        
+        const results: CampaignInsight[] = [];
+        
+        for (const adset of adSetsData.data) {
+          const insightsData = adset.insights?.data?.[0];
+          
+          // Pular ad sets sem insights (sem gastos no período)
+          if (!insightsData) continue;
+          
+          const spend = parseFloat(insightsData.spend || '0');
+          const impressions = parseInt(insightsData.impressions || '0');
+          const clicks = parseInt(insightsData.clicks || '0');
+          
+          let conversions = 0;
+          if (insightsData.actions) {
+            conversions = insightsData.actions
+              .filter((action: any) => 
+                action.action_type === 'purchase' || 
+                action.action_type === 'lead' ||
+                action.action_type === 'complete_registration' ||
+                action.action_type === 'onsite_conversion.messaging_conversation_started_7d'
+              )
+              .reduce((sum: number, action: any) => sum + parseInt(action.value || '0'), 0);
+          }
+          
+          const effectiveStatus = adset.effective_status;
+          // ACTIVE = ativo, qualquer outro (PAUSED, CAMPAIGN_PAUSED, DELETED, etc) = pausado
+          const status = effectiveStatus === 'ACTIVE' ? 'ACTIVE' : 'PAUSED';
+          
+          console.log(`AdSet "${adset.name}" (${adset.id}): effective_status=${effectiveStatus} -> ${status}`);
+          
+          results.push({
+            id: adset.id,
+            name: adset.name,
+            type: 'adset',
+            status: status as any,
+            cpc: parseFloat(insightsData.cpc || '0'),
+            ctr: parseFloat(insightsData.ctr || '0'),
+            cpm: parseFloat(insightsData.cpm || '0'),
+            spend,
+            impressions,
+            clicks,
+            conversions,
+            conversionRate: clicks > 0 ? (conversions / clicks) * 100 : 0
           });
         }
-      } catch (e) {
-        console.warn('⚠️ Não foi possível buscar status dos conjuntos');
-      }
-      
-      const fields = [
-        'adset_name',
-        'adset_id',
-        'cpc',
-        'ctr',
-        'cpm',
-        'spend',
-        'impressions',
-        'clicks',
-        'actions'
-      ].join(',');
-
-      const url = `${this.baseURL}/${cleanAccountId}/insights?` + 
-        `access_token=${config.accessToken}&` +
-        `fields=${fields}&` +
-        `time_range={"since":"${since}","until":"${until}"}&` +
-        `level=adset&` +
-        `limit=30`;
-
-      console.log('📊 Buscando insights por conjunto...');
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.data && data.data.length > 0) {
-        console.log('✅ Dados de conjuntos obtidos:', data.data.length);
-        console.log('📋 AdSet Status map:', JSON.stringify(statusMap));
-        return data.data.map((item: any) => {
-          const insight = this.parseInsightData(item, 'adset');
-          const effectiveStatus = statusMap[item.adset_id];
-          console.log(`AdSet ${item.adset_name} (${item.adset_id}): effective_status = ${effectiveStatus}`);
-          // Considerar ACTIVE se o status for ACTIVE
-          // CAMPAIGN_PAUSED significa que o ad set está ativo mas a campanha está pausada
-          if (effectiveStatus === 'ACTIVE') {
-            insight.status = 'ACTIVE' as any;
-          } else if (!effectiveStatus) {
-            // Se não encontrou no statusMap, pode ser que a busca de status não retornou esse adset
-            // Assumir ativo se tem dados de insights (gastos)
-            insight.status = (insight.spend > 0 ? 'ACTIVE' : 'PAUSED') as any;
-            console.log(`  -> Sem status no map, assumindo ${insight.status} baseado em spend=${insight.spend}`);
-          } else {
-            insight.status = 'PAUSED' as any;
-          }
-          console.log(`  -> Status final: ${insight.status}`);
-          return insight;
-        });
+        
+        console.log(`✅ ${results.length} ad sets com insights processados`);
+        return results;
       }
 
       console.log('⚠️ Sem dados de conjuntos, usando fallback');
