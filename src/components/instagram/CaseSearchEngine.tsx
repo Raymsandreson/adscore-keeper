@@ -154,6 +154,8 @@ export function CaseSearchEngine() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loadingComments, setLoadingComments] = useState<string | null>(null);
+  const [isLoadingAllComments, setIsLoadingAllComments] = useState(false);
+  const [loadingAllProgress, setLoadingAllProgress] = useState({ current: 0, total: 0 });
   
   // Date range filters
   const [dateFrom, setDateFrom] = useState<Date | undefined>(subDays(new Date(), 30));
@@ -447,6 +449,78 @@ export function CaseSearchEngine() {
       toast.error('Erro ao buscar comentários');
     } finally {
       setLoadingComments(null);
+    }
+  };
+
+  // Batch load comments for all posts
+  const handleFetchAllComments = async () => {
+    const postsWithoutComments = results.filter(r => !r.comments || r.comments.length === 0);
+    
+    if (postsWithoutComments.length === 0) {
+      toast.info('Todos os posts já têm comentários carregados');
+      return;
+    }
+
+    setIsLoadingAllComments(true);
+    setLoadingAllProgress({ current: 0, total: postsWithoutComments.length });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < postsWithoutComments.length; i++) {
+      const result = postsWithoutComments[i];
+      setLoadingAllProgress({ current: i + 1, total: postsWithoutComments.length });
+
+      try {
+        const { data, error } = await supabase.functions.invoke('fetch-post-comments', {
+          body: {
+            postUrl: result.postUrl,
+            maxComments: 100,
+          },
+        });
+
+        if (error) throw error;
+
+        if (data?.success) {
+          const comments: CommentData[] = data.comments.map((c: any) => ({
+            id: c.id,
+            text: c.text,
+            ownerUsername: c.ownerUsername,
+            timestamp: c.timestamp,
+          }));
+
+          // Filter comments matching keywords
+          const matchingComments = comments.filter(c => {
+            const text = c.text.toLowerCase();
+            return commentKeywords.some(kw => text.includes(kw.toLowerCase()));
+          });
+
+          // Update result with comments
+          setResults(prev => prev.map(r => 
+            r.postId === result.postId 
+              ? { ...r, comments, matchingComments }
+              : r
+          ));
+
+          successCount++;
+        }
+      } catch (error) {
+        console.error(`Error fetching comments for ${result.postId}:`, error);
+        errorCount++;
+      }
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    setIsLoadingAllComments(false);
+    setLoadingAllProgress({ current: 0, total: 0 });
+
+    if (successCount > 0) {
+      toast.success(`Comentários carregados: ${successCount} posts`);
+    }
+    if (errorCount > 0) {
+      toast.error(`Falha em ${errorCount} posts`);
     }
   };
 
@@ -1370,17 +1444,39 @@ export function CaseSearchEngine() {
                   </span>
                 )}
               </span>
-              {hasActiveFilters && (
+              <div className="flex items-center gap-2">
+                {/* Batch load comments button */}
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={clearAllFilters}
+                  onClick={handleFetchAllComments}
+                  disabled={isLoadingAllComments}
                   className="gap-1"
                 >
-                  <RefreshCw className="h-4 w-4" />
-                  Limpar Filtros
+                  {isLoadingAllComments ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {loadingAllProgress.current}/{loadingAllProgress.total}
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="h-4 w-4" />
+                      Carregar Todos Comentários
+                    </>
+                  )}
                 </Button>
-              )}
+                {hasActiveFilters && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="gap-1"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Limpar Filtros
+                  </Button>
+                )}
+              </div>
             </CardTitle>
             
             {/* Real-time search filters */}
