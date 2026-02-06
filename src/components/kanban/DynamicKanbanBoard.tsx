@@ -14,6 +14,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
 import {
   Phone,
@@ -34,6 +38,8 @@ import {
   Briefcase,
   Search,
   X,
+  LayoutGrid,
+  ChevronRight,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -535,31 +541,82 @@ export function DynamicKanbanBoard({
                                           </DropdownMenuItem>
                                         )}
 
-                                        {/* Move to another board */}
+                                        {/* Move to stage - hierarchical menu with boards and stages */}
                                         {availableBoards.length > 0 && (
                                           <>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                                               <ArrowRightLeft className="h-3 w-3 mr-2" />
-                                              Mover para outro quadro
+                                              Mover para etapa
                                             </DropdownMenuItem>
+                                            
+                                            {/* Current board stages first */}
+                                            <DropdownMenuSub>
+                                              <DropdownMenuSubTrigger className="pl-4">
+                                                <LayoutGrid className="h-3 w-3 mr-2" />
+                                                <span className="flex-1">{board.name}</span>
+                                                <Badge variant="secondary" className="ml-2 text-xs">atual</Badge>
+                                              </DropdownMenuSubTrigger>
+                                              <DropdownMenuPortal>
+                                                <DropdownMenuSubContent className="max-h-[300px] overflow-y-auto">
+                                                  {board.stages.map((stage) => {
+                                                    const isCurrentStage = lead.status === stage.id;
+                                                    return (
+                                                      <DropdownMenuItem
+                                                        key={stage.id}
+                                                        onClick={() => onMoveToStage(lead.id, stage.id)}
+                                                        disabled={isCurrentStage}
+                                                        className="flex items-center gap-2"
+                                                      >
+                                                        <div 
+                                                          className="w-2 h-2 rounded-full flex-shrink-0" 
+                                                          style={{ backgroundColor: stage.color }}
+                                                        />
+                                                        <span className="flex-1">{stage.name}</span>
+                                                        {isCurrentStage && (
+                                                          <Badge variant="outline" className="text-xs ml-2">atual</Badge>
+                                                        )}
+                                                      </DropdownMenuItem>
+                                                    );
+                                                  })}
+                                                </DropdownMenuSubContent>
+                                              </DropdownMenuPortal>
+                                            </DropdownMenuSub>
+
+                                            {/* Other boards with their stages */}
                                             {availableBoards
                                               .filter(b => b.id !== board.id)
-                                              .map(b => (
-                                                <DropdownMenuItem 
-                                                  key={b.id}
-                                                  onClick={() => onMoveToBoard(lead.id, b.id)}
-                                                  className="pl-6"
-                                                >
-                                                  {b.name}
-                                                </DropdownMenuItem>
+                                              .map(otherBoard => (
+                                                <DropdownMenuSub key={otherBoard.id}>
+                                                  <DropdownMenuSubTrigger className="pl-4">
+                                                    <LayoutGrid className="h-3 w-3 mr-2" />
+                                                    <span className="flex-1">{otherBoard.name}</span>
+                                                  </DropdownMenuSubTrigger>
+                                                  <DropdownMenuPortal>
+                                                    <DropdownMenuSubContent className="max-h-[300px] overflow-y-auto">
+                                                      {otherBoard.stages.map((stage) => (
+                                                        <DropdownMenuItem
+                                                          key={stage.id}
+                                                          onClick={() => onMoveToBoard(lead.id, otherBoard.id, stage.id)}
+                                                          className="flex items-center gap-2"
+                                                        >
+                                                          <div 
+                                                            className="w-2 h-2 rounded-full flex-shrink-0" 
+                                                            style={{ backgroundColor: stage.color }}
+                                                          />
+                                                          <span>{stage.name}</span>
+                                                        </DropdownMenuItem>
+                                                      ))}
+                                                      {otherBoard.stages.length === 0 && (
+                                                        <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                                          Nenhuma etapa configurada
+                                                        </DropdownMenuItem>
+                                                      )}
+                                                    </DropdownMenuSubContent>
+                                                  </DropdownMenuPortal>
+                                                </DropdownMenuSub>
                                               ))
                                             }
-                                            {availableBoards.filter(b => b.id !== board.id).length === 0 && (
-                                              <DropdownMenuItem disabled className="pl-6 text-xs text-muted-foreground">
-                                                Nenhum outro quadro disponível
-                                              </DropdownMenuItem>
-                                            )}
                                           </>
                                         )}
                                         
