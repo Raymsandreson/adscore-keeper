@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,11 +8,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ComposedChart, Line } from 'recharts';
-import { TrendingUp, DollarSign, MousePointer, Users, Calendar as CalendarIcon, GitCompare, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { TrendingUp, DollarSign, MousePointer, Users, Calendar as CalendarIcon, GitCompare, ArrowUp, ArrowDown, Minus, Loader2 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, isWithinInterval, addDays, subDays, subMonths, subWeeks, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { DateRange } from 'react-day-picker';
 import { cn } from '@/lib/utils';
+import { metaAPIService, MetaAPIConfig } from '@/services/metaAPI';
 
 export interface DailyMetric {
   date: string;
@@ -29,9 +30,21 @@ export interface DailyMetric {
 interface MetricsEvolutionChartProps {
   data: DailyMetric[];
   isLoading?: boolean;
+  metaConfig?: MetaAPIConfig | null;
 }
 
 type PeriodType = 'day' | 'week' | 'biweekly' | 'month' | 'quarter' | 'semester' | 'custom';
+
+// Mapeia o período de visualização para o range da API necessário
+const periodToApiRange: Record<PeriodType, string> = {
+  day: 'last_30d',
+  week: 'last_90d',
+  biweekly: 'last_90d',
+  month: 'this_year',
+  quarter: 'this_year',
+  semester: 'this_year',
+  custom: 'last_30d',
+};
 
 const periodOptions = [
   { value: 'day', label: 'Por Dia' },
@@ -43,20 +56,75 @@ const periodOptions = [
   { value: 'custom', label: 'Período Personalizado' },
 ];
 
-export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChartProps) => {
+export const MetricsEvolutionChart = ({ data, isLoading, metaConfig }: MetricsEvolutionChartProps) => {
   const [period, setPeriod] = useState<PeriodType>('day');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [compareEnabled, setCompareEnabled] = useState(false);
+  
+  // Estado para dados buscados diretamente da API (para períodos longos)
+  const [fetchedData, setFetchedData] = useState<DailyMetric[]>([]);
+  const [isFetchingData, setIsFetchingData] = useState(false);
+  const [lastFetchedPeriod, setLastFetchedPeriod] = useState<string | null>(null);
+  
+  // Buscar dados da API quando o período requer dados históricos maiores
+  const fetchHistoricalData = useCallback(async (apiRange: string) => {
+    if (!metaConfig?.accessToken || !metaConfig?.accountId) {
+      console.log('📊 [MetricsEvolution] Sem config da Meta, usando dados recebidos via props');
+      return;
+    }
+    
+    // Evita re-buscar o mesmo período
+    if (lastFetchedPeriod === apiRange && fetchedData.length > 0) {
+      console.log('📊 [MetricsEvolution] Dados já buscados para:', apiRange);
+      return;
+    }
+    
+    console.log('📊 [MetricsEvolution] Buscando dados históricos para período:', apiRange);
+    setIsFetchingData(true);
+    
+    try {
+      const dailyInsights = await metaAPIService.getDailyInsights(metaConfig, apiRange);
+      console.log('✅ [MetricsEvolution] Dados obtidos:', dailyInsights.length, 'dias');
+      setFetchedData(dailyInsights);
+      setLastFetchedPeriod(apiRange);
+    } catch (error) {
+      console.error('❌ [MetricsEvolution] Erro ao buscar dados:', error);
+    } finally {
+      setIsFetchingData(false);
+    }
+  }, [metaConfig, lastFetchedPeriod, fetchedData.length]);
+  
+  // Quando o período muda, buscar dados se necessário
+  useEffect(() => {
+    const requiredRange = periodToApiRange[period];
+    
+    // Para períodos que requerem dados maiores (mês, trimestre, semestre)
+    if (['month', 'quarter', 'semester'].includes(period)) {
+      fetchHistoricalData(requiredRange);
+    }
+  }, [period, fetchHistoricalData]);
+  
+  // Decide qual fonte de dados usar
+  const effectiveData = useMemo(() => {
+    // Para períodos longos, usa dados buscados da API se disponíveis
+    if (['month', 'quarter', 'semester'].includes(period) && fetchedData.length > 0) {
+      return fetchedData;
+    }
+    // Caso contrário, usa os dados recebidos via props
+    return data;
+  }, [period, fetchedData, data]);
+  
+  const effectiveLoading = isLoading || isFetchingData;
 
   const aggregatedData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+    if (!effectiveData || effectiveData.length === 0) return [];
 
-    let filteredData = [...data];
+    let filteredData = [...effectiveData];
 
     // Apply custom date range filter
     if (period === 'custom' && dateRange?.from && dateRange?.to) {
-      filteredData = data.filter(d => {
+      filteredData = effectiveData.filter(d => {
         const date = new Date(d.date + 'T12:00:00');
         return isWithinInterval(date, { start: dateRange.from!, end: dateRange.to! });
       });
@@ -227,13 +295,13 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
       default:
         return sortedData;
     }
-  }, [data, period, dateRange]);
+  }, [effectiveData, period, dateRange]);
 
   // Calculate previous period data for comparison
   const comparisonData = useMemo(() => {
-    if (!compareEnabled || !data || data.length === 0) return null;
+    if (!compareEnabled || !effectiveData || effectiveData.length === 0) return null;
 
-    const sortedData = [...data].sort((a, b) => 
+    const sortedData = [...effectiveData].sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
@@ -298,7 +366,7 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
         conversionRate: calcChange(currentTotals.conversionRate, prevTotals.conversionRate),
       },
     };
-  }, [compareEnabled, data, aggregatedData]);
+  }, [compareEnabled, effectiveData, aggregatedData]);
 
   // Create side-by-side comparison chart data
   const sideBySidePerformanceData = useMemo(() => {
@@ -436,7 +504,7 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
     return null;
   };
 
-  if (isLoading) {
+  if (effectiveLoading) {
     return (
       <Card className="bg-card border-border">
         <CardHeader>
@@ -446,13 +514,16 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
           </CardTitle>
         </CardHeader>
         <CardContent className="h-[400px] flex items-center justify-center">
-          <div className="text-muted-foreground">Carregando dados...</div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Carregando dados históricos...
+          </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (!data || data.length === 0) {
+  if (!effectiveData || effectiveData.length === 0) {
     return (
       <Card className="bg-card border-border">
         <CardHeader>
@@ -479,10 +550,15 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
     <Card className="bg-card border-border">
       <CardHeader>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <CardTitle className="text-foreground flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Evolução das Métricas
-          </CardTitle>
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-foreground flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              Evolução das Métricas
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Visualização: {getPeriodLabel()} • {aggregatedData.length} período{aggregatedData.length !== 1 ? 's' : ''}
+            </p>
+          </div>
           
           <div className="flex items-center gap-2">
             <Select value={period} onValueChange={handlePeriodChange}>
@@ -538,17 +614,14 @@ export const MetricsEvolutionChart = ({ data, isLoading }: MetricsEvolutionChart
           </div>
         </div>
         
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2">
-          <p className="text-sm text-muted-foreground">
-            Visualização: {getPeriodLabel()} • {aggregatedData.length} período{aggregatedData.length !== 1 ? 's' : ''}
-          </p>
-          {compareEnabled && comparisonData && (
+        {compareEnabled && comparisonData && (
+          <div className="flex items-center gap-2 mt-2">
             <Badge variant="outline" className="text-xs gap-1 w-fit">
               <GitCompare className="h-3 w-3" />
               vs {format(comparisonData.prevStart, 'dd/MM', { locale: ptBR })} - {format(comparisonData.prevEnd, 'dd/MM', { locale: ptBR })}
             </Badge>
-          )}
-        </div>
+          </div>
+        )}
       </CardHeader>
       
       <CardContent>

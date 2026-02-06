@@ -772,7 +772,7 @@ const Dashboard = () => {
             )}
 
             {/* Metrics Evolution Chart - PRO ONLY */}
-            {proMode && <MetricsEvolutionChart data={dailyData} isLoading={isLoading} />}
+            {proMode && <MetricsEvolutionChart data={dailyData} isLoading={isLoading} metaConfig={metaConfig} />}
 
             {/* Placement Metrics - PRO ONLY */}
             {proMode && <PlacementMetrics placementData={placementData} />}
