@@ -146,6 +146,7 @@ export function CaseSearchEngine() {
   const [maxPosts, setMaxPosts] = useState(50);
   const [commentKeywords, setCommentKeywords] = useState<string[]>(['colega', 'cunhado', 'esposo', 'filho']);
   const [customCommentKeyword, setCustomCommentKeyword] = useState('');
+  const [filterByCommentKeywords, setFilterByCommentKeywords] = useState(false); // Toggle to enable keyword filtering
   const [instagramCookies, setInstagramCookies] = useState('');
   const [accountName, setAccountName] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -504,6 +505,7 @@ export function CaseSearchEngine() {
     setDateFrom(undefined);
     setDateTo(undefined);
     setPeriodPreset('custom');
+    setFilterByCommentKeywords(false);
   };
   
   // Check if any filter is active
@@ -515,7 +517,8 @@ export function CaseSearchEngine() {
     commentSearchQuery ||
     minComments > 0 ||
     dateFrom !== undefined ||
-    dateTo !== undefined;
+    dateTo !== undefined ||
+    filterByCommentKeywords;
 
   // Create advanced search matcher
   const advancedMatcher = parseAdvancedSearch(advancedSearchQuery);
@@ -571,6 +574,21 @@ export function CaseSearchEngine() {
         if (!hasMatchingComment) return false;
       }
       // If no comments loaded yet, don't filter by comments
+    }
+    
+    // Comment keywords filter - filter posts that CONTAIN comments with these keywords
+    if (filterByCommentKeywords && commentKeywords.length > 0) {
+      // Only apply if comments are loaded
+      if (r.comments && r.comments.length > 0) {
+        const hasKeywordMatch = r.comments.some(c => {
+          const text = (c.text || '').toLowerCase();
+          return commentKeywords.some(kw => text.includes(kw.toLowerCase()));
+        });
+        if (!hasKeywordMatch) return false;
+      } else {
+        // If comments not loaded, hide the post when filter is active
+        return false;
+      }
     }
     
     // Exclude terms filter (check caption and location)
@@ -1272,19 +1290,36 @@ export function CaseSearchEngine() {
           </div>
 
           <Separator />
-          <div>
-            <Label className="flex items-center gap-2">
-              <Filter className="h-4 w-4" />
-              Palavras-chave nos Comentários (para filtrar)
-            </Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Após buscar posts, filtre comentários que contenham estas palavras (relacionamentos familiares)
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Palavras-chave nos Comentários (para filtrar)
+              </Label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {filterByCommentKeywords ? 'Filtro ativo' : 'Apenas destaque'}
+                </span>
+                <Button
+                  variant={filterByCommentKeywords ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterByCommentKeywords(!filterByCommentKeywords)}
+                  className="h-7 text-xs"
+                >
+                  {filterByCommentKeywords ? 'Filtrando' : 'Ativar Filtro'}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {filterByCommentKeywords 
+                ? 'Mostrando apenas posts com comentários carregados que contenham estas palavras'
+                : 'As palavras-chave destacam comentários, clique "Ativar Filtro" para filtrar posts'}
             </p>
             <div className="flex flex-wrap gap-2 mb-2">
               {commentKeywords.map(kw => (
                 <Badge 
                   key={kw} 
-                  variant="secondary" 
+                  variant={filterByCommentKeywords ? 'default' : 'secondary'}
                   className="cursor-pointer hover:bg-destructive/20"
                   onClick={() => removeCommentKeyword(kw)}
                 >
