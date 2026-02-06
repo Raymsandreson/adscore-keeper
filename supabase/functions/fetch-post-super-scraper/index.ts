@@ -10,29 +10,14 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APIFY_API_KEY = Deno.env.get("APIFY_API_KEY");
 
-// Instagram Post Super Scraper by Muhammad Noman Riaz
-const ACTOR_ID = "muhammad_noman_riaz/instagram-post-super-scraper";
+// Instagram Comment Scraper by Apify - supports unlimited comments
+const ACTOR_ID = "apify~instagram-comment-scraper";
 
-interface PostSuperScraperRequest {
+interface PostCommentsRequest {
   postUrls: string[];
   maxComments?: number;
   saveToDatabase?: boolean;
   myUsername?: string;
-}
-
-interface ApifyPostResult {
-  id: string;
-  postUrl: string;
-  caption: string;
-  hashtags: string[];
-  mentions: string[];
-  likesCount: number;
-  commentsCount: number;
-  ownerUsername: string;
-  ownerId: string;
-  timestamp: string;
-  mediaUrls: string[];
-  comments?: ApifyComment[];
 }
 
 interface ApifyComment {
@@ -43,6 +28,7 @@ interface ApifyComment {
   timestamp: string;
   likesCount: number;
   repliesCount?: number;
+  replies?: ApifyComment[];
 }
 
 serve(async (req) => {
@@ -55,8 +41,8 @@ serve(async (req) => {
       throw new Error("APIFY_API_KEY não configurada. Adicione o secret nas configurações do projeto.");
     }
 
-    const body: PostSuperScraperRequest = await req.json();
-    const { postUrls, maxComments = 100, saveToDatabase = true, myUsername } = body;
+    const body: PostCommentsRequest = await req.json();
+    const { postUrls, maxComments = 500, saveToDatabase = true, myUsername } = body;
     
     if (!postUrls || !Array.isArray(postUrls) || postUrls.length === 0) {
       throw new Error("postUrls é obrigatório e deve ser um array de URLs de posts do Instagram");
@@ -72,21 +58,21 @@ serve(async (req) => {
       return normalized;
     });
 
-    console.log(`🔍 Buscando dados de ${normalizedUrls.length} posts via Instagram Post Super Scraper...`);
+    console.log(`🔍 Buscando comentários de ${normalizedUrls.length} posts via Instagram Comment Scraper...`);
     console.log(`📝 URLs:`, normalizedUrls);
     console.log(`💬 Max comentários por post: ${maxComments}`);
 
-    // Iniciar o Actor da Apify
+    // Iniciar o Actor da Apify - Instagram Comment Scraper
     const runResponse = await fetch(
       `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: normalizedUrls, // Este actor aceita URLs de posts no campo username
-          resultsLimit: normalizedUrls.length, // Apenas os posts especificados
-          maxComments: Math.min(maxComments, 100), // Limite do actor é 100
-          skipPinnedPosts: false,
+          directUrls: normalizedUrls,
+          resultsLimit: maxComments,
+          commentsPerPost: maxComments,
+          includeReplies: true,
         }),
       }
     );
@@ -102,10 +88,10 @@ serve(async (req) => {
     
     console.log(`⏳ Actor iniciado. Run ID: ${runId}`);
 
-    // Aguardar conclusão (poll a cada 5s, timeout 5 min)
+    // Aguardar conclusão (poll a cada 5s, timeout 10 min para suportar muitos comentários)
     let status = "RUNNING";
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 120; // 10 minutos
 
     while (status === "RUNNING" && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -130,7 +116,7 @@ serve(async (req) => {
     );
     const results = await datasetResponse.json();
 
-    console.log(`📦 Resultados recebidos: ${Array.isArray(results) ? results.length : 0} posts`);
+    console.log(`📦 Resultados recebidos: ${Array.isArray(results) ? results.length : 0} comentários`);
 
     // Processar resultados
     const allComments: any[] = [];
@@ -139,61 +125,102 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    for (const post of results) {
-      console.log(`📝 Processando post: ${post.inputUrl || post.postUrl || post.url}`);
-      
-      const postUrl = post.inputUrl || post.postUrl || post.url || '';
-      const comments = post.comments || [];
-      
-      console.log(`💬 Post tem ${comments.length} comentários`);
+    // O actor retorna cada comentário como um item separado
+    const commentsArray: ApifyComment[] = Array.isArray(results) ? results : [];
 
-      for (const comment of comments) {
-        if (!comment.id || !comment.text) {
-          console.log(`⚠️ Comentário inválido:`, comment);
-          continue;
-        }
+    for (const comment of commentsArray) {
+      if (!comment.id || !comment.text) {
+        continue;
+      }
 
-        const isOwnComment = myUsername && 
-          comment.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
+      const isOwnComment = myUsername && 
+        comment.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
 
-        const commentData = {
-          comment_id: comment.id,
-          comment_text: comment.text,
-          author_username: comment.ownerUsername || 'unknown',
-          author_id: comment.ownerId,
-          created_at: comment.timestamp || new Date().toISOString(),
-          post_id: post.id,
-          post_url: postUrl,
-          comment_type: isOwnComment ? "sent" : "received",
-          platform: "instagram",
-          metadata: {
-            source: "apify_post_super_scraper",
-            likes_count: comment.likesCount || 0,
-            post_owner: post.ownerUsername,
-            post_caption: post.caption?.substring(0, 200),
-          },
-        };
+      const commentData = {
+        comment_id: comment.id,
+        comment_text: comment.text,
+        author_username: comment.ownerUsername || 'unknown',
+        author_id: comment.ownerId,
+        created_at: comment.timestamp || new Date().toISOString(),
+        post_id: null,
+        post_url: normalizedUrls[0], // Usar primeira URL como referência
+        comment_type: isOwnComment ? "sent" : "received",
+        platform: "instagram",
+        metadata: {
+          source: "apify_comment_scraper",
+          likes_count: comment.likesCount || 0,
+          replies_count: comment.repliesCount || 0,
+        },
+      };
 
-        allComments.push(commentData);
+      allComments.push(commentData);
 
-        // Salvar no banco se solicitado
-        if (saveToDatabase) {
-          const { data: existing } = await supabase
+      // Salvar no banco se solicitado
+      if (saveToDatabase) {
+        const { data: existing } = await supabase
+          .from("instagram_comments")
+          .select("id")
+          .eq("comment_id", comment.id)
+          .maybeSingle();
+
+        if (!existing) {
+          const { error } = await supabase
             .from("instagram_comments")
-            .select("id")
-            .eq("comment_id", comment.id)
-            .maybeSingle();
+            .insert(commentData);
 
-          if (!existing) {
-            const { error } = await supabase
+          if (error) {
+            console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
+            errorCount++;
+          } else {
+            savedCount++;
+          }
+        }
+      }
+
+      // Processar respostas aninhadas se existirem
+      if (comment.replies && Array.isArray(comment.replies)) {
+        for (const reply of comment.replies) {
+          if (!reply.id || !reply.text) continue;
+
+          const isOwnReply = myUsername && 
+            reply.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
+
+          const replyData = {
+            comment_id: reply.id,
+            comment_text: reply.text,
+            author_username: reply.ownerUsername || 'unknown',
+            author_id: reply.ownerId,
+            created_at: reply.timestamp || new Date().toISOString(),
+            post_id: null,
+            post_url: normalizedUrls[0],
+            comment_type: isOwnReply ? "sent" : "received",
+            parent_comment_id: comment.id,
+            platform: "instagram",
+            metadata: {
+              source: "apify_comment_scraper",
+              likes_count: reply.likesCount || 0,
+            },
+          };
+
+          allComments.push(replyData);
+
+          if (saveToDatabase) {
+            const { data: existingReply } = await supabase
               .from("instagram_comments")
-              .insert(commentData);
+              .select("id")
+              .eq("comment_id", reply.id)
+              .maybeSingle();
 
-            if (error) {
-              console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
-              errorCount++;
-            } else {
-              savedCount++;
+            if (!existingReply) {
+              const { error: replyError } = await supabase
+                .from("instagram_comments")
+                .insert(replyData);
+
+              if (replyError) {
+                errorCount++;
+              } else {
+                savedCount++;
+              }
             }
           }
         }
@@ -209,16 +236,7 @@ serve(async (req) => {
         total: allComments.length,
         savedToDatabase: savedCount,
         saveErrors: errorCount,
-        postsProcessed: results.length,
-        posts: results.map((p: any) => ({
-          id: p.id,
-          url: p.inputUrl || p.postUrl || p.url,
-          caption: p.caption,
-          ownerUsername: p.ownerUsername,
-          likesCount: p.likesCount,
-          commentsCount: p.commentsCount,
-          timestamp: p.timestamp,
-        })),
+        postsProcessed: normalizedUrls.length,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
