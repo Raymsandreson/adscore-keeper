@@ -39,8 +39,18 @@ serve(async (req) => {
       throw new Error("postUrls é obrigatório e deve ser um array de URLs de posts do Instagram");
     }
 
-    console.log(`🔍 Buscando comentários de ${postUrls.length} posts via Apify...`);
-    console.log(`📝 URLs:`, postUrls);
+    // Normalizar URLs: Apify só aceita /reel/ (singular), não /reels/ (plural)
+    const normalizedUrls = postUrls.map((url: string) => {
+      let normalized = url.trim();
+      // Converter /reels/ para /reel/
+      normalized = normalized.replace(/\/reels\//gi, '/reel/');
+      // Remover trailing slash duplicado ou parâmetros desnecessários
+      normalized = normalized.replace(/\/$/, '');
+      return normalized;
+    });
+
+    console.log(`🔍 Buscando comentários de ${normalizedUrls.length} posts via Apify...`);
+    console.log(`📝 URLs normalizadas:`, normalizedUrls);
 
     // Iniciar o Actor da Apify
     // Nota: API gratuita tem limite de ~15 comentários por execução
@@ -50,7 +60,7 @@ serve(async (req) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          directUrls: postUrls,
+          directUrls: normalizedUrls,
           resultsLimit: 15,
           includeReplies: true,
           commentsPerPost: 15,
