@@ -31,11 +31,15 @@ export const useKanbanBoards = (adAccountId?: string) => {
   const fetchBoards = useCallback(async () => {
     setLoading(true);
     try {
+      // Always fetch ALL boards (with ad_account_id null or matching)
+      // This ensures we get all available boards for "Move to board" functionality
       let query = supabase
         .from('kanban_boards')
         .select('*')
         .order('display_order', { ascending: true });
 
+      // If adAccountId is provided, filter to show only boards for that account OR global boards
+      // If not provided, show all boards (global + any account-specific)
       if (adAccountId) {
         query = query.or(`ad_account_id.eq.${adAccountId},ad_account_id.is.null`);
       }
@@ -49,6 +53,8 @@ export const useKanbanBoards = (adAccountId?: string) => {
         ...board,
         stages: (board.stages as unknown as KanbanStage[]) || [],
       }));
+
+      console.log(`📋 Kanban boards loaded: ${parsedBoards.length}`, parsedBoards.map(b => b.name));
 
       setBoards(parsedBoards);
 
