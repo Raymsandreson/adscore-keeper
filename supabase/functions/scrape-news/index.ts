@@ -45,7 +45,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        formats: ['markdown'],
+        formats: ['markdown', 'screenshot'],
         onlyMainContent: true, // Extrai apenas o conteúdo principal, ignora menus/ads
       }),
     });
@@ -60,18 +60,20 @@ serve(async (req) => {
       );
     }
 
-    // Extract markdown content
+    // Extract markdown content and screenshot
     const markdown = data.data?.markdown || data.markdown || '';
     const title = data.data?.metadata?.title || data.metadata?.title || '';
+    const screenshot = data.data?.screenshot || data.screenshot || null;
 
-    console.log('Scrape successful, content length:', markdown.length);
+    console.log('Scrape successful, content length:', markdown.length, 'has screenshot:', !!screenshot);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         content: markdown,
         title,
-        url: formattedUrl
+        url: formattedUrl,
+        screenshot, // Base64 image of the page
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

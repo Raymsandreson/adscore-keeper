@@ -11,11 +11,11 @@ serve(async (req) => {
   }
 
   try {
-    const { content, type } = await req.json();
+    const { content, type, images } = await req.json();
     
-    if (!content) {
+    if (!content && (!images || images.length === 0)) {
       return new Response(
-        JSON.stringify({ error: 'Conteúdo é obrigatório' }),
+        JSON.stringify({ error: 'Conteúdo ou imagens são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -27,19 +27,34 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    // Check if we have images to analyze
+    const hasImages = images && Array.isArray(images) && images.length > 0;
 
     const currentYear = new Date().getFullYear();
     
-    const systemPrompt = `Você é um assistente especializado em extrair informações de casos de acidentes de trabalho a partir de notícias, petições iniciais e decisões judiciais.
+    const imageAnalysisInstructions = hasImages ? `
+ANÁLISE DE IMAGENS:
+Além do texto, você receberá imagens do acidente/local. Analise-as para extrair:
+- Identificar se a empresa é de GRANDE PORTE (instalações amplas, muitos funcionários, equipamentos industriais, veículos de frota)
+- Identificar o SETOR pela aparência visual (construção civil, mineração, agronegócio, indústria, etc.)
+- Identificar CONDIÇÕES DE SEGURANÇA visíveis (EPIs, sinalização, condições do local)
+- Identificar MARCAS ou LOGOS visíveis em uniformes, veículos, equipamentos
+- Qualquer outro insight relevante para o caso
+
+O campo company_size_justification deve conter sua análise do porte da empresa baseado nas imagens.
+` : '';
+
+    const systemPrompt = `Você é um assistente especializado em extrair informações de casos de acidentes de trabalho a partir de notícias, petições iniciais, decisões judiciais e IMAGENS.
 
 ATENÇÃO - REGRAS CRÍTICAS:
-1. NUNCA INVENTE informações que não estão explícitas no texto
+1. NUNCA INVENTE informações que não estão explícitas no texto ou visíveis nas imagens
 2. Para DATAS: Se o texto menciona apenas dia/mês sem ano, use o ano atual (${currentYear}). NÃO invente anos.
 3. DIFERENCIE CLARAMENTE:
    - LOCAL DO ACIDENTE (accident_address): onde o acidente ACONTECEU
    - LOCAL DA FAMÍLIA/VISITA (visit_city, visit_state): onde a família mora, onde será o velório/sepultamento, ou cidade mencionada como residência
-
-Extraia as seguintes informações do texto fornecido:
+${imageAnalysisInstructions}
+Extraia as seguintes informações do texto e/ou imagens fornecidos:
 
 - victim_name: Nome da vítima (string ou null)
 - victim_age: Idade da vítima (número ou null)  
@@ -54,18 +69,44 @@ Extraia as seguintes informações do texto fornecido:
 - legal_viability: Breve análise da viabilidade jurídica do caso (string ou null)
 - visit_city: Cidade da FAMÍLIA/RESIDÊNCIA da vítima - onde será velório, sepultamento ou onde a família mora (string ou null)
 - visit_state: Estado da FAMÍLIA/RESIDÊNCIA - sigla UF (string ou null)
+- company_size_justification: Análise do porte da empresa baseado nas imagens (string ou null) - APENAS se houver imagens
 
 IMPORTANTE:
 - Retorne APENAS o JSON, sem nenhum texto adicional
 - Se não conseguir identificar uma informação com certeza, coloque null - NÃO INVENTE
 - Para estados, use a sigla (SP, RJ, MG, SE, BA, etc.)
-- Preste atenção em frases como "será sepultado em", "residência da família em", "natural de" para identificar visit_city/visit_state`;
+- Preste atenção em frases como "será sepultado em", "residência da família em", "natural de" para identificar visit_city/visit_state
+- Se houver imagens, analise-as cuidadosamente para insights visuais`;
 
-    const userMessage = type === 'url' 
-      ? `Extraia os dados de acidente de trabalho do seguinte link de notícia. O conteúdo foi obtido da URL: ${content}`
-      : `Extraia os dados de acidente de trabalho do seguinte documento:\n\n${content}`;
+    // Build user message content (can be multimodal with images)
+    const userMessageContent: any[] = [];
+    
+    // Add text content if available
+    if (content) {
+      const textMessage = type === 'url' 
+        ? `Extraia os dados de acidente de trabalho do seguinte link de notícia. O conteúdo foi obtido da URL: ${content}`
+        : `Extraia os dados de acidente de trabalho do seguinte documento:\n\n${content}`;
+      userMessageContent.push({ type: 'text', text: textMessage });
+    } else {
+      userMessageContent.push({ type: 'text', text: 'Analise as imagens fornecidas e extraia dados do acidente de trabalho.' });
+    }
+    
+    // Add images if available
+    if (hasImages) {
+      for (const imageUrl of images) {
+        userMessageContent.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        });
+      }
+      // Add reminder to analyze images
+      userMessageContent.push({ 
+        type: 'text', 
+        text: '\n\nANALISE AS IMAGENS ACIMA para identificar porte da empresa, setor, condições de segurança, logos/marcas visíveis e outros insights relevantes.' 
+      });
+    }
 
-    console.log('Calling Lovable AI for accident data extraction...');
+    console.log('Calling Lovable AI for accident data extraction...', hasImages ? `with ${images.length} images` : 'text only');
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -77,14 +118,14 @@ IMPORTANTE:
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
+          { role: 'user', content: userMessageContent },
         ],
         tools: [
           {
             type: 'function',
             function: {
               name: 'extract_accident_data',
-              description: 'Extrai dados estruturados de um acidente de trabalho',
+              description: 'Extrai dados estruturados de um acidente de trabalho a partir de texto e/ou imagens',
               parameters: {
                 type: 'object',
                 properties: {
@@ -101,6 +142,7 @@ IMPORTANTE:
                   legal_viability: { type: ['string', 'null'] },
                   visit_city: { type: ['string', 'null'] },
                   visit_state: { type: ['string', 'null'] },
+                  company_size_justification: { type: ['string', 'null'], description: 'Análise do porte da empresa baseado nas imagens' },
                 },
                 required: [],
                 additionalProperties: false,
