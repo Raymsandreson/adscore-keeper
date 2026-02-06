@@ -29,7 +29,7 @@ import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
-import { AIDataEnricher } from '@/components/leads/AIDataEnricher';
+import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
@@ -191,7 +191,7 @@ export function LeadEditDialog({
   const [newClassificationColor, setNewClassificationColor] = useState('bg-blue-500');
   
   // Show AI enricher
-  const [showEnricher, setShowEnricher] = useState(false);
+  const [showExtractor, setShowExtractor] = useState(false);
   
   // Legal viability analysis
   const [analyzingViability, setAnalyzingViability] = useState(false);
@@ -337,7 +337,36 @@ export function LeadEditDialog({
     if (u.legal_viability) setLegalViability(u.legal_viability);
   };
 
-  // Analyze legal viability via AI
+  // Handle extracted data from AccidentDataExtractor
+  const handleExtractedData = (data: ExtractedAccidentData) => {
+    // Update state with extracted data, filling in visit_region automatically
+    if (data.victim_name) setVictimName(data.victim_name);
+    if (data.victim_age) setVictimAge(data.victim_age.toString());
+    if (data.accident_date) setAccidentDate(data.accident_date);
+    if (data.case_type) setCaseType(data.case_type);
+    if (data.accident_address) setAccidentAddress(data.accident_address);
+    if (data.damage_description) setDamageDescription(data.damage_description);
+    
+    // Location - also set region based on state
+    if (data.visit_city) setVisitCity(data.visit_city);
+    if (data.visit_state) {
+      setVisitState(data.visit_state);
+      setVisitRegion(stateToRegion[data.visit_state] || '');
+      fetchCities(data.visit_state);
+    }
+    
+    // Companies
+    if (data.contractor_company) setContractorCompany(data.contractor_company);
+    if (data.main_company) setMainCompany(data.main_company);
+    if (data.sector) setSector(data.sector);
+    
+    // Legal
+    if (data.liability_type) setLiabilityType(data.liability_type);
+    if (data.legal_viability) setLegalViability(data.legal_viability);
+    
+    toast.success('Dados extraídos aplicados ao formulário!');
+  };
+
   const handleAnalyzeViability = async (linkToUse?: string) => {
     const urlToAnalyze = linkToUse || newsLink;
     
@@ -501,22 +530,23 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
           </DialogTitle>
         </DialogHeader>
 
-        {/* AI Extraction Button */}
+        {/* AI Extraction Button - opens dialog directly */}
         <Button 
           type="button" 
           variant="outline" 
-          onClick={() => setShowEnricher(!showEnricher)}
+          onClick={() => setShowExtractor(true)}
           className="w-full gap-2 border-dashed border-primary/50 hover:border-primary"
         >
           <Sparkles className="h-4 w-4 text-primary" />
           Extrair dados de notícia ou documento com IA
         </Button>
 
-        {showEnricher && (
-          <div className="border rounded-lg p-3 bg-muted/30">
-            <AIDataEnricher lead={lead} onApplyData={handleApplyAIData} />
-          </div>
-        )}
+        {/* AI Extraction Dialog */}
+        <AccidentDataExtractor
+          open={showExtractor}
+          onOpenChange={setShowExtractor}
+          onDataExtracted={handleExtractedData}
+        />
 
         <Tabs defaultValue="basic" className="flex-1 overflow-hidden flex flex-col">
           <TabsList className="grid w-full grid-cols-6 h-auto">
