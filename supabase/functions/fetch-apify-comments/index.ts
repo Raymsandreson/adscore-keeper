@@ -59,15 +59,18 @@ serve(async (req) => {
     // Usa directUrls, resultsLimit, includeNestedComments e isNewestComments
     const inputPayload = {
       directUrls: normalizedUrls,
-      resultsLimit: maxComments > 0 ? maxComments : 10000, // Se 0, busca até 10k
+      resultsLimit: maxComments > 0 ? maxComments : 1000, // Default 1000 como no console
       includeNestedComments: true, // CRUCIAL: Extrai respostas aos comentários
       isNewestComments: true, // Começa pelos mais recentes
     };
     
     console.log(`📤 Payload enviado para Apify:`, JSON.stringify(inputPayload));
     
+    // Limite de custo: $2 USD por requisição (via query param)
+    const maxCostUsd = 2;
+    
     const runResponse = await fetch(
-      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}`,
+      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_API_KEY}&maxTotalChargeUsd=${maxCostUsd}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
