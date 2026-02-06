@@ -624,7 +624,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto pr-2 mt-4 max-h-[calc(90vh-240px)]">
+          <div 
+            className="overflow-y-scroll pr-3 mt-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-muted/30" 
+            style={{ height: 'calc(90vh - 280px)', minHeight: '300px' }}
+          >
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
               {/* Meta info */}
