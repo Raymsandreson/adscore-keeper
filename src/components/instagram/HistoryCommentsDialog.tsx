@@ -14,11 +14,10 @@ import {
   Link2,
   ExternalLink,
   Clock,
-  Bot,
-  Sparkles,
   Tag,
   Image,
   Search,
+  AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,7 +26,6 @@ import { CommentCardBadges } from './CommentCardBadges';
 import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
 import { CommentClassificationDialog } from './CommentClassificationDialog';
-import { AIReplyDialog } from './AIReplyDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
@@ -69,8 +67,6 @@ export function HistoryCommentsDialog({
   const [searchFilter, setSearchFilter] = useState('');
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [classifyingComment, setClassifyingComment] = useState<HistoryComment | null>(null);
-  const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
-  const [replyingToComment, setReplyingToComment] = useState<HistoryComment | null>(null);
 
   // Normalize comments to consistent format
   const normalizedComments = useMemo(() => {
@@ -226,20 +222,16 @@ export function HistoryCommentsDialog({
                           metadata={comment.metadata as { manual_reply?: boolean; manual_reply_text?: string } | null}
                         />
                         
-                        {/* AI Reply button */}
-                        {comment.comment_id && (
+                        {/* External Post - Open in Instagram to comment manually */}
+                        {comment.post_url && (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-xs bg-gradient-to-r from-fuchsia-500/10 to-rose-500/10 border-primary/30 hover:border-primary/50"
-                            onClick={() => {
-                              setReplyingToComment(comment);
-                              setShowAIReplyDialog(true);
-                            }}
+                            className="h-7 text-xs bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
+                            onClick={() => window.open(comment.post_url, '_blank')}
                           >
-                            <Bot className="h-3 w-3 mr-1 text-primary" />
-                            <Sparkles className="h-3 w-3 mr-1 text-primary" />
-                            Responder IA
+                            <ExternalLink className="h-3 w-3 mr-1 text-amber-600" />
+                            Abrir Post para Comentar
                           </Button>
                         )}
                         
@@ -293,22 +285,6 @@ export function HistoryCommentsDialog({
           refetchContactData();
         }}
         onLeadLinked={refetchContactData}
-      />
-      
-      {/* AI Reply Dialog */}
-      <AIReplyDialog
-        open={showAIReplyDialog}
-        onOpenChange={setShowAIReplyDialog}
-        comment={replyingToComment ? {
-          id: replyingToComment.comment_id || '',
-          comment_id: replyingToComment.comment_id || '',
-          comment_text: replyingToComment.comment_text || '',
-          author_username: replyingToComment.author_username || '',
-          post_url: replyingToComment.post_url || '',
-        } : null}
-        onReplyPosted={() => {
-          toast.success('Resposta enviada!');
-        }}
       />
     </>
   );
