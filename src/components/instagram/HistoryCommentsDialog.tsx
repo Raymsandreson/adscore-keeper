@@ -153,7 +153,7 @@ export function HistoryCommentsDialog({
               </DialogTitle>
             </DialogHeader>
             
-            {/* Post Preview - Always show if we have URLs */}
+            {/* Post Preview - Full view with image and caption */}
             {(derivedPostMetadata || postUrls.length > 0) && (
               <div className="mt-4">
                 {derivedPostMetadata ? (
@@ -164,7 +164,7 @@ export function HistoryCommentsDialog({
                     mediaType={derivedPostMetadata.mediaType}
                     postOwner={derivedPostMetadata.postOwner}
                     commentsCount={derivedPostMetadata.commentsCount}
-                    compact
+                    viewsCount={derivedPostMetadata.viewsCount}
                   />
                 ) : (
                   <div className="flex flex-wrap gap-2">
