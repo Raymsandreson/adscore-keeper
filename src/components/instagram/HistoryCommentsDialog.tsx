@@ -222,25 +222,25 @@ export function HistoryCommentsDialog({
                           metadata={comment.metadata as { manual_reply?: boolean; manual_reply_text?: string } | null}
                         />
                         
-                        {/* Open direct link to comment on Instagram */}
+                        {/* Open post on Instagram + copy username to help find comment */}
                         {comment.post_url && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
                             onClick={() => {
-                              // Build direct comment URL if we have comment_id
-                              let targetUrl = comment.post_url;
-                              if (comment.comment_id) {
-                                // Instagram direct comment URL format: /p/POST_ID/c/COMMENT_ID/
-                                const baseUrl = comment.post_url.replace(/\/$/, ''); // Remove trailing slash
-                                targetUrl = `${baseUrl}/c/${comment.comment_id}/`;
+                              window.open(comment.post_url, '_blank');
+                              
+                              // Copy author username to help find the comment with Ctrl+F
+                              if (comment.author_username) {
+                                const username = comment.author_username.replace('@', '');
+                                navigator.clipboard.writeText(username);
+                                toast.info(`Nome "${username}" copiado! Use Ctrl+F no Instagram para encontrar o comentário.`);
                               }
-                              window.open(targetUrl, '_blank');
                             }}
                           >
                             <ExternalLink className="h-3 w-3 mr-1 text-amber-600" />
-                            {comment.comment_id ? 'Ir para Comentário' : 'Abrir Post'}
+                            Ir para Post
                           </Button>
                         )}
                         
