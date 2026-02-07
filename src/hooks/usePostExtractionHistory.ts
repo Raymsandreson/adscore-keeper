@@ -119,15 +119,32 @@ export function usePostExtractionHistory() {
     id: string,
     results: any[],
     status: 'completed' | 'failed' = 'completed',
-    costUsd: number = 0
+    costUsd: number = 0,
+    postMetadata?: {
+      post_caption?: string;
+      post_owner?: string;
+      post_thumbnail?: string;
+      media_type?: 'image' | 'video';
+    }
   ) => {
     try {
       const costBrl = costUsd * USD_TO_BRL_RATE;
       
+      // Enrich results with post metadata if provided
+      const enrichedResults = postMetadata 
+        ? results.map((result, index) => ({
+            ...result,
+            metadata: {
+              ...result.metadata,
+              ...postMetadata,
+            },
+          }))
+        : results;
+      
       const { error } = await supabase
         .from('instagram_search_history')
         .update({
-          results,
+          results: enrichedResults,
           results_count: results.length,
           status,
           completed_at: new Date().toISOString(),
