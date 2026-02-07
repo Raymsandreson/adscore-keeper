@@ -19,6 +19,8 @@ import {
   History,
   Briefcase,
   Loader2,
+  User,
+  Pencil,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,9 +32,14 @@ import { CommentClassificationDialog } from './CommentClassificationDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { LeadHistorySheet } from './LeadHistorySheet';
 import { PostPreviewCard } from './PostPreviewCard';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
 import { usePostMetadata, PostMetadata as FetchedPostMetadata } from '@/hooks/usePostMetadata';
+import { useLeads, Lead } from '@/hooks/useLeads';
+import { Contact } from '@/hooks/useContacts';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface HistoryComment {
@@ -92,7 +99,16 @@ export function HistoryCommentsDialog({
   const [fetchedMetadata, setFetchedMetadata] = useState<FetchedPostMetadata | null>(null);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   
+  // Edit states
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+  const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [showContactEdit, setShowContactEdit] = useState(false);
+  const [fullContact, setFullContact] = useState<Contact | null>(null);
+  const [fullLead, setFullLead] = useState<Lead | null>(null);
+  
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
+  const { updateLead, leads } = useLeads();
   
   // Fetch metadata from Instagram when dialog opens if not already available
   useEffect(() => {
@@ -196,6 +212,44 @@ export function HistoryCommentsDialog({
     setClassifyingComment(comment);
     setShowClassificationDialog(true);
   };
+  
+  // Fetch full contact when editing
+  useEffect(() => {
+    if (!editingContactId || !showContactEdit) return;
+    
+    const fetchContact = async () => {
+      const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', editingContactId)
+        .single();
+      
+      if (data) {
+        setFullContact(data as Contact);
+      }
+    };
+    
+    fetchContact();
+  }, [editingContactId, showContactEdit]);
+  
+  // Fetch full lead when editing by ID
+  useEffect(() => {
+    if (!editingLeadId || !showLeadEdit || fullLead) return;
+    
+    const fetchLead = async () => {
+      const { data } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', editingLeadId)
+        .single();
+      
+      if (data) {
+        setFullLead(data as Lead);
+      }
+    };
+    
+    fetchLead();
+  }, [editingLeadId, showLeadEdit, fullLead]);
 
   return (
     <>
@@ -292,12 +346,12 @@ export function HistoryCommentsDialog({
                             onDataChanged={() => refetchUsername(comment.author_username)}
                           />
                           
-                          {/* Show linked leads with history button */}
-                          {getContactData(comment.author_username).linkedLeads.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {getContactData(comment.author_username).linkedLeads.map((lead) => (
+                        {/* Show linked leads with edit button */}
+                        {getContactData(comment.author_username).linkedLeads.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {getContactData(comment.author_username).linkedLeads.map((lead) => (
+                              <div key={lead.id} className="flex items-center gap-0.5">
                                 <Button
-                                  key={lead.id}
                                   variant="outline"
                                   size="sm"
                                   className="h-6 text-xs gap-1 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-700"
@@ -307,14 +361,57 @@ export function HistoryCommentsDialog({
                                   }}
                                 >
                                   <Briefcase className="h-3 w-3" />
-                                  <span className="max-w-[150px] truncate">
+                                  <span className="max-w-[100px] truncate">
                                     {lead.lead_name || 'Lead'}
                                   </span>
                                   <History className="h-3 w-3" />
                                 </Button>
-                              ))}
-                            </div>
-                          )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-emerald-600 hover:bg-emerald-500/20"
+                                  onClick={() => {
+                                    const fullLeadData = leads?.find(l => l.id === lead.id);
+                                    if (fullLeadData) {
+                                      setFullLead(fullLeadData);
+                                      setShowLeadEdit(true);
+                                    } else {
+                                      setEditingLeadId(lead.id);
+                                      setShowLeadEdit(true);
+                                    }
+                                  }}
+                                  title="Editar Lead"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Show contact with edit button */}
+                        {getContactData(comment.author_username).contact && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-xs gap-1 bg-blue-500/10 border-blue-500/30 hover:bg-blue-500/20 text-blue-700"
+                              onClick={() => {
+                                const contactInfo = getContactData(comment.author_username).contact;
+                                if (contactInfo) {
+                                  setEditingContactId(contactInfo.id);
+                                  setShowContactEdit(true);
+                                }
+                              }}
+                            >
+                              <User className="h-3 w-3" />
+                              <span className="max-w-[120px] truncate">
+                                {getContactData(comment.author_username).contact?.full_name || comment.author_username}
+                              </span>
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
                         </div>
                         
                         {/* Comment text */}
@@ -440,6 +537,37 @@ export function HistoryCommentsDialog({
         open={showLeadHistory}
         onOpenChange={setShowLeadHistory}
         lead={selectedLead}
+      />
+      
+      {/* Lead Edit Dialog */}
+      <LeadEditDialog
+        open={showLeadEdit}
+        onOpenChange={(open) => {
+          setShowLeadEdit(open);
+          if (!open) {
+            setFullLead(null);
+            setEditingLeadId(null);
+          }
+        }}
+        lead={fullLead}
+        onSave={async (leadId, updates) => {
+          await updateLead(leadId, updates);
+          refetchContactData();
+        }}
+      />
+      
+      {/* Contact Edit Sheet */}
+      <ContactDetailSheet
+        open={showContactEdit}
+        onOpenChange={(open) => {
+          setShowContactEdit(open);
+          if (!open) {
+            setFullContact(null);
+            setEditingContactId(null);
+          }
+        }}
+        contact={fullContact}
+        onContactUpdated={refetchContactData}
       />
     </>
   );
