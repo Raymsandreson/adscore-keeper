@@ -54,6 +54,7 @@ export function HistoryItemCard({
     ownerUsername?: string;
   } | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
+  const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
 
   // Fetch metadata for post extractions
   useEffect(() => {
@@ -141,9 +142,19 @@ export function HistoryItemCard({
 
           {/* Caption preview for post extractions */}
           {postMeta?.caption && (
-            <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
-              {postMeta.caption}
-            </p>
+            <div 
+              className="cursor-pointer group"
+              onClick={() => setIsCaptionExpanded(!isCaptionExpanded)}
+            >
+              <p className={`text-xs text-muted-foreground ${isCaptionExpanded ? '' : 'line-clamp-2'}`}>
+                {postMeta.caption}
+              </p>
+              {postMeta.caption.length > 100 && (
+                <button className="text-xs text-primary hover:underline mt-0.5 inline-flex items-center gap-0.5">
+                  {isCaptionExpanded ? 'Ver menos' : 'Ver mais...'}
+                </button>
+              )}
+            </div>
           )}
 
           <div className="flex flex-wrap gap-1 mb-1">
