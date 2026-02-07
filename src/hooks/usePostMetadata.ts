@@ -16,6 +16,23 @@ interface PostMetadataCache {
 // Global cache to avoid repeated fetches
 const metadataCache: PostMetadataCache = {};
 
+// Helper to decode HTML entities in the browser
+function decodeHtmlEntities(text: string): string {
+  if (!text || typeof document === 'undefined') return text;
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = text;
+  return textarea.value;
+}
+
+// Clean up Instagram caption format - remove likes/comments prefix
+function cleanCaption(caption: string): string {
+  if (!caption) return '';
+  // Remove pattern like "5,107 likes, 256 comments - username on Date: "
+  const cleaned = caption.replace(/^[\d,]+\s+likes?,?\s*[\d,]+\s+comments?\s*-\s*[a-zA-Z0-9_.]+\s+on\s+[^:]+:\s*"?/i, '');
+  // Remove trailing quote and period
+  return cleaned.replace(/"\.\s*$/, '').trim();
+}
+
 export function usePostMetadata() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,9 +57,13 @@ export function usePostMetadata() {
       if (fnError) throw fnError;
       
       if (data?.success && data?.metadata) {
+        // Decode HTML entities in the browser
+        const rawCaption = decodeHtmlEntities(data.metadata.caption || '');
+        const cleanedCaption = cleanCaption(rawCaption);
+        
         const metadata: PostMetadata = {
-          caption: data.metadata.caption || '',
-          thumbnailUrl: data.metadata.thumbnailUrl || null,
+          caption: cleanedCaption,
+          thumbnailUrl: decodeHtmlEntities(data.metadata.thumbnailUrl || '') || null,
           ownerUsername: data.metadata.ownerUsername || '',
           mediaType: data.metadata.mediaType || 'image',
           html: data.metadata.html,
