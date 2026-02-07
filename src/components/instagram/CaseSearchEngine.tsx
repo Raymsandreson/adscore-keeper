@@ -186,6 +186,14 @@ export function CaseSearchEngine() {
     open: boolean;
     postUrls: string[];
     comments: any[];
+    postMetadata?: {
+      postUrl: string;
+      caption?: string;
+      thumbnailUrl?: string;
+      mediaType?: 'image' | 'video';
+      postOwner?: string;
+      commentsCount?: number;
+    };
   }>({ open: false, postUrls: [], comments: [] });
   
   // Separate search fields for posts and comments
@@ -411,10 +419,25 @@ export function CaseSearchEngine() {
 
   const loadCommentsFromHistory = (item: typeof history[0]) => {
     if (item.results && Array.isArray(item.results) && item.search_type === 'post') {
+      // Extract post metadata from the first comment or results
+      const firstResult = item.results[0] as any;
+      const postMetadata = firstResult?.metadata ? {
+        postUrl: item.post_urls?.[0] || '',
+        caption: firstResult.metadata.post_caption,
+        thumbnailUrl: firstResult.metadata.post_thumbnail || firstResult.metadata.thumbnail_url,
+        mediaType: firstResult.metadata.media_type as 'image' | 'video' | undefined,
+        postOwner: firstResult.metadata.post_owner,
+        commentsCount: item.results_count || item.results.length,
+      } : item.post_urls?.[0] ? {
+        postUrl: item.post_urls[0],
+        commentsCount: item.results_count || item.results.length,
+      } : undefined;
+
       setSelectedHistoryComments({
         open: true,
         postUrls: item.post_urls || [],
         comments: item.results as any[],
+        postMetadata,
       });
       setShowHistory(false);
     } else {
@@ -1793,6 +1816,7 @@ export function CaseSearchEngine() {
         onOpenChange={(open) => setSelectedHistoryComments(prev => ({ ...prev, open }))}
         postUrls={selectedHistoryComments.postUrls}
         comments={selectedHistoryComments.comments}
+        postMetadata={selectedHistoryComments.postMetadata}
       />
     </div>
   );

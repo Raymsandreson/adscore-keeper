@@ -160,7 +160,16 @@ export function PostCommentsFetcher() {
         setSavedCount(data.savedToDatabase || 0);
         setLastCostUsd(data.costUsd || 0);
         
-        // Salvar no histórico
+        // Extract post metadata from first post for history
+        const firstPost = data.posts?.[0];
+        const postMetadata = firstPost ? {
+          post_caption: firstPost.caption,
+          post_owner: firstPost.ownerUsername,
+          post_thumbnail: firstPost.thumbnailUrl || firstPost.displayUrl,
+          media_type: firstPost.type === 'Video' ? 'video' : 'image' as 'image' | 'video',
+        } : undefined;
+        
+        // Salvar no histórico com metadados do post
         if (data.runId) {
           historyId = await createExtractionRecord(postUrls, maxComments, data.runId);
           if (historyId) {
@@ -168,7 +177,8 @@ export function PostCommentsFetcher() {
               historyId,
               data.comments || [],
               'completed',
-              data.costUsd || 0
+              data.costUsd || 0,
+              postMetadata
             );
           }
         }
