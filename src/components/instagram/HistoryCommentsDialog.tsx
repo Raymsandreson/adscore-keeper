@@ -17,7 +17,8 @@ import {
   Tag,
   Image,
   Search,
-  AlertTriangle,
+  History,
+  Briefcase,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +28,7 @@ import { InstagramProfileHoverCard } from './InstagramProfileHoverCard';
 import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
 import { CommentClassificationDialog } from './CommentClassificationDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
+import { LeadHistorySheet } from './LeadHistorySheet';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
 import { toast } from 'sonner';
@@ -67,6 +69,8 @@ export function HistoryCommentsDialog({
   const [searchFilter, setSearchFilter] = useState('');
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [classifyingComment, setClassifyingComment] = useState<HistoryComment | null>(null);
+  const [showLeadHistory, setShowLeadHistory] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<{ id: string; lead_name: string | null; status: string | null; board_id: string | null } | null>(null);
 
   // Normalize comments to consistent format
   const normalizedComments = useMemo(() => {
@@ -183,6 +187,30 @@ export function HistoryCommentsDialog({
                             commentText={comment.comment_text}
                             onDataChanged={() => refetchUsername(comment.author_username)}
                           />
+                          
+                          {/* Show linked leads with history button */}
+                          {getContactData(comment.author_username).linkedLeads.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {getContactData(comment.author_username).linkedLeads.map((lead) => (
+                                <Button
+                                  key={lead.id}
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 text-xs gap-1 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20 text-emerald-700"
+                                  onClick={() => {
+                                    setSelectedLead(lead);
+                                    setShowLeadHistory(true);
+                                  }}
+                                >
+                                  <Briefcase className="h-3 w-3" />
+                                  <span className="max-w-[150px] truncate">
+                                    {lead.lead_name || 'Lead'}
+                                  </span>
+                                  <History className="h-3 w-3" />
+                                </Button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Comment text */}
@@ -301,6 +329,13 @@ export function HistoryCommentsDialog({
           refetchContactData();
         }}
         onLeadLinked={refetchContactData}
+      />
+      
+      {/* Lead History Sheet */}
+      <LeadHistorySheet
+        open={showLeadHistory}
+        onOpenChange={setShowLeadHistory}
+        lead={selectedLead}
       />
     </>
   );
