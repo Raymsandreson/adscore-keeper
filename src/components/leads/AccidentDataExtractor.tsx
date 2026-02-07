@@ -16,15 +16,38 @@ import {
   FileText,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Link as LinkIcon,
   Upload,
   Image as ImageIcon,
   FileUp,
+  Plus,
+  ArrowRight,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 
 export interface ExtractedAccidentData {
+  victim_name?: string | null;
+  victim_age?: number | null;
+  accident_date?: string | null;
+  accident_address?: string | null;
+  damage_description?: string | null;
+  contractor_company?: string | null;
+  main_company?: string | null;
+  sector?: string | null;
+  case_type?: string | null;
+  liability_type?: string | null;
+  legal_viability?: string | null;
+  visit_city?: string | null;
+  visit_state?: string | null;
+}
+
+// Current lead data for comparison
+export interface CurrentLeadData {
   victim_name?: string | null;
   victim_age?: number | null;
   accident_date?: string | null;
@@ -44,12 +67,25 @@ interface AccidentDataExtractorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDataExtracted: (data: ExtractedAccidentData) => void;
+  currentData?: CurrentLeadData;
+}
+
+type FieldStatus = 'new' | 'conflict' | 'same' | 'empty';
+
+interface FieldComparisonResult {
+  key: keyof ExtractedAccidentData;
+  label: string;
+  extractedValue: string | number | null | undefined;
+  currentValue: string | number | null | undefined;
+  status: FieldStatus;
+  selected: boolean;
 }
 
 export function AccidentDataExtractor({
   open,
   onOpenChange,
   onDataExtracted,
+  currentData,
 }: AccidentDataExtractorProps) {
   const [activeTab, setActiveTab] = useState('link');
   const [documentText, setDocumentText] = useState('');
@@ -58,8 +94,91 @@ export function AccidentDataExtractor({
   const [extractedData, setExtractedData] = useState<ExtractedAccidentData | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [fieldSelections, setFieldSelections] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const fieldLabels: Record<keyof ExtractedAccidentData, string> = {
+    victim_name: 'Nome da Vítima',
+    victim_age: 'Idade',
+    accident_date: 'Data do Acidente',
+    accident_address: 'Local do Acidente',
+    damage_description: 'Dano / Lesão',
+    contractor_company: 'Empresa Terceirizada',
+    main_company: 'Empresa Tomadora',
+    sector: 'Setor',
+    case_type: 'Tipo de Caso',
+    liability_type: 'Tipo de Responsabilidade',
+    legal_viability: 'Viabilidade Jurídica',
+    visit_city: 'Cidade',
+    visit_state: 'Estado',
+  };
+
+  const compareFields = (): FieldComparisonResult[] => {
+    if (!extractedData) return [];
+
+    const fields: (keyof ExtractedAccidentData)[] = [
+      'victim_name', 'victim_age', 'accident_date', 'accident_address',
+      'damage_description', 'contractor_company', 'main_company', 'sector',
+      'case_type', 'liability_type', 'visit_city', 'visit_state', 'legal_viability'
+    ];
+
+    return fields.map(key => {
+      const extractedValue = extractedData[key];
+      const currentValue = currentData?.[key];
+      
+      let status: FieldStatus;
+      if (extractedValue === null || extractedValue === undefined || extractedValue === '') {
+        status = 'empty';
+      } else if (currentValue === null || currentValue === undefined || currentValue === '') {
+        status = 'new';
+      } else if (String(extractedValue).toLowerCase().trim() !== String(currentValue).toLowerCase().trim()) {
+        status = 'conflict';
+      } else {
+        status = 'same';
+      }
+
+      // Default selection: new fields are selected, conflicts are selected, same/empty are not
+      const defaultSelected = status === 'new' || status === 'conflict';
+      const selected = fieldSelections[key] ?? defaultSelected;
+
+      return {
+        key,
+        label: fieldLabels[key],
+        extractedValue,
+        currentValue,
+        status,
+        selected,
+      };
+    }).filter(f => f.status !== 'empty'); // Only show fields that have extracted values
+  };
+
+  const toggleFieldSelection = (key: string) => {
+    setFieldSelections(prev => ({
+      ...prev,
+      [key]: !(prev[key] ?? true),
+    }));
+  };
+
+  const selectAllFields = (status?: FieldStatus) => {
+    const comparisons = compareFields();
+    const newSelections: Record<string, boolean> = { ...fieldSelections };
+    comparisons.forEach(f => {
+      if (!status || f.status === status) {
+        newSelections[f.key] = true;
+      }
+    });
+    setFieldSelections(newSelections);
+  };
+
+  const deselectAllFields = () => {
+    const comparisons = compareFields();
+    const newSelections: Record<string, boolean> = {};
+    comparisons.forEach(f => {
+      newSelections[f.key] = false;
+    });
+    setFieldSelections(newSelections);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -185,7 +304,17 @@ export function AccidentDataExtractor({
 
   const handleConfirm = () => {
     if (extractedData) {
-      onDataExtracted(extractedData);
+      // Build data with only selected fields
+      const comparisons = compareFields();
+      const selectedData: ExtractedAccidentData = {};
+      
+      comparisons.forEach(field => {
+        if (field.selected && field.extractedValue !== null && field.extractedValue !== undefined) {
+          (selectedData as any)[field.key] = field.extractedValue;
+        }
+      });
+
+      onDataExtracted(selectedData);
       onOpenChange(false);
       resetState();
     }
@@ -198,6 +327,7 @@ export function AccidentDataExtractor({
     setUploadedFile(null);
     setUploadedImage(null);
     setActiveTab('link');
+    setFieldSelections({});
   };
 
   const handleClose = () => {
@@ -205,12 +335,83 @@ export function AccidentDataExtractor({
     resetState();
   };
 
-  const renderField = (label: string, value: string | number | null | undefined) => {
-    if (value === null || value === undefined) return null;
+  const getStatusBadge = (status: FieldStatus) => {
+    switch (status) {
+      case 'new':
+        return (
+          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+            <Plus className="h-3 w-3 mr-1" />
+            Novo
+          </Badge>
+        );
+      case 'conflict':
+        return (
+          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Conflito
+          </Badge>
+        );
+      case 'same':
+        return (
+          <Badge variant="outline" className="bg-muted text-muted-foreground text-xs">
+            Igual
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderComparisonField = (field: FieldComparisonResult) => {
     return (
-      <div className="flex justify-between py-1 border-b border-muted last:border-0">
-        <span className="text-muted-foreground text-sm">{label}</span>
-        <span className="text-sm font-medium max-w-[60%] text-right">{value}</span>
+      <div 
+        key={field.key} 
+        className={cn(
+          "p-3 rounded-lg border transition-colors",
+          field.selected ? "bg-primary/5 border-primary/30" : "bg-muted/30 border-muted"
+        )}
+      >
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id={`field-${field.key}`}
+            checked={field.selected}
+            onCheckedChange={() => toggleFieldSelection(field.key)}
+            className="mt-1"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label 
+                htmlFor={`field-${field.key}`}
+                className="text-sm font-medium cursor-pointer"
+              >
+                {field.label}
+              </label>
+              {getStatusBadge(field.status)}
+            </div>
+            
+            {field.status === 'conflict' ? (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground min-w-[50px]">Atual:</span>
+                  <span className="text-muted-foreground line-through truncate">
+                    {String(field.currentValue)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-emerald-600 min-w-[50px]">Novo:</span>
+                  <ArrowRight className="h-3 w-3 text-emerald-600" />
+                  <span className="text-foreground font-medium truncate">
+                    {String(field.extractedValue)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground truncate">
+                {String(field.extractedValue)}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -410,46 +611,84 @@ export function AccidentDataExtractor({
 
         {extractedData && (
           <div className="mt-4 space-y-4">
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="h-5 w-5" />
-              <span className="font-medium">Dados extraídos com sucesso!</span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-emerald-600">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">Dados extraídos com sucesso!</span>
+              </div>
+              
+              {/* Legend */}
+              <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-muted-foreground">Novo</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-muted-foreground">Conflito</span>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-4 space-y-1">
-              <h4 className="font-medium text-sm mb-3">Dados Identificados:</h4>
-              {renderField('Nome da Vítima', extractedData.victim_name)}
-              {renderField('Idade', extractedData.victim_age)}
-              {renderField('Data do Acidente', extractedData.accident_date)}
-              {renderField('Local do Acidente', extractedData.accident_address)}
-              {renderField('Dano', extractedData.damage_description)}
-              {renderField('Empresa Terceirizada', extractedData.contractor_company)}
-              {renderField('Empresa Tomadora', extractedData.main_company)}
-              {renderField('Setor', extractedData.sector)}
-              {renderField('Tipo de Caso', extractedData.case_type)}
-              {renderField('Tipo de Responsabilidade', extractedData.liability_type)}
-              {renderField('Cidade', extractedData.visit_city)}
-              {renderField('Estado', extractedData.visit_state)}
-              {extractedData.legal_viability && (
-                <div className="pt-2 mt-2 border-t">
-                  <span className="text-muted-foreground text-sm">Viabilidade Jurídica:</span>
-                  <p className="text-sm mt-1">{extractedData.legal_viability}</p>
-                </div>
-              )}
+            {/* Quick actions */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => selectAllFields()}
+                className="text-xs"
+              >
+                Selecionar Todos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => selectAllFields('new')}
+                className="text-xs"
+              >
+                Só Novos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => deselectAllFields()}
+                className="text-xs"
+              >
+                Limpar Seleção
+              </Button>
+            </div>
+
+            {/* Fields comparison */}
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+              {compareFields().map(field => renderComparisonField(field))}
               
-              {!extractedData.victim_name && !extractedData.accident_date && !extractedData.damage_description && (
-                <div className="flex items-center gap-2 text-yellow-600 py-2">
+              {compareFields().length === 0 && (
+                <div className="flex items-center gap-2 text-amber-600 py-4 justify-center">
                   <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm">Poucos dados identificados. Verifique se o conteúdo está completo.</span>
+                  <span className="text-sm">Nenhum dado identificado. Verifique se o conteúdo está completo.</span>
                 </div>
               )}
             </div>
+
+            {/* Summary */}
+            {compareFields().length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {compareFields().filter(f => f.selected).length} de {compareFields().length} campos selecionados
+              </div>
+            )}
 
             <DialogFooter>
               <Button variant="outline" onClick={() => setExtractedData(null)}>
                 Tentar Novamente
               </Button>
-              <Button onClick={handleConfirm}>
-                Usar Dados Extraídos
+              <Button 
+                onClick={handleConfirm}
+                disabled={compareFields().filter(f => f.selected).length === 0}
+              >
+                Usar Dados Selecionados
               </Button>
             </DialogFooter>
           </div>
