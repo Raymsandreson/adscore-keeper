@@ -884,22 +884,28 @@ export function CaseSearchEngine() {
                               <div className="flex items-start gap-3">
                                 {/* Thumbnail preview for post extractions */}
                                 {isPostExtraction && (
-                                  <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted">
-                                    {postMeta?.thumbnailUrl ? (
-                                      <img
-                                        src={postMeta.thumbnailUrl}
-                                        alt="Post"
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = 'none';
-                                        }}
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center">
-                                        <Link2 className="h-6 w-6 text-muted-foreground" />
-                                      </div>
-                                    )}
-                                  </div>
+                                  <a 
+                                    href={item.post_urls?.[0]} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="flex-shrink-0"
+                                  >
+                                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-fuchsia-500/20 to-rose-500/20 flex items-center justify-center">
+                                      {postMeta?.thumbnailUrl ? (
+                                        <img
+                                          src={postMeta.thumbnailUrl}
+                                          alt="Post"
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                            e.currentTarget.parentElement!.innerHTML = '<svg class="h-6 w-6 text-fuchsia-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>';
+                                          }}
+                                        />
+                                      ) : (
+                                        <Link2 className="h-6 w-6 text-fuchsia-500" />
+                                      )}
+                                    </div>
+                                  </a>
                                 )}
                                 
                                 <div className="flex-1 min-w-0">
