@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Input } from '@/components/ui/input';
 import {
   MessageCircle,
@@ -143,62 +143,68 @@ export function HistoryCommentsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Comentários Extraídos ({comments.length})
-            </DialogTitle>
-          </DialogHeader>
-          
-          {/* Post Preview */}
-          {derivedPostMetadata && (
-            <PostPreviewCard
-              postUrl={derivedPostMetadata.postUrl}
-              caption={derivedPostMetadata.caption}
-              thumbnailUrl={derivedPostMetadata.thumbnailUrl}
-              mediaType={derivedPostMetadata.mediaType}
-              postOwner={derivedPostMetadata.postOwner}
-              commentsCount={derivedPostMetadata.commentsCount}
-            />
-          )}
-          
-          {/* Fallback: Simple post links if no metadata */}
-          {!derivedPostMetadata && postUrls.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-2">
-              {postUrls.map((url, i) => (
-                <a
-                  key={i}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Ver Post {postUrls.length > 1 ? i + 1 : ''}
-                </a>
-              ))}
-            </div>
-          )}
-
-          {/* Search Filter */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar nos comentários..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              className="pl-10"
-            />
-            {searchFilter && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                {filteredComments.length} encontrados
-              </span>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+          {/* Fixed Header */}
+          <div className="p-6 pb-4 border-b flex-shrink-0">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                Comentários Extraídos ({comments.length})
+              </DialogTitle>
+            </DialogHeader>
+            
+            {/* Post Preview - Always show if we have URLs */}
+            {(derivedPostMetadata || postUrls.length > 0) && (
+              <div className="mt-4">
+                {derivedPostMetadata ? (
+                  <PostPreviewCard
+                    postUrl={derivedPostMetadata.postUrl}
+                    caption={derivedPostMetadata.caption}
+                    thumbnailUrl={derivedPostMetadata.thumbnailUrl}
+                    mediaType={derivedPostMetadata.mediaType}
+                    postOwner={derivedPostMetadata.postOwner}
+                    commentsCount={derivedPostMetadata.commentsCount}
+                    compact
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {postUrls.map((url, i) => (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Ver Post {postUrls.length > 1 ? i + 1 : ''}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
+
+            {/* Search Filter */}
+            <div className="relative mt-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar nos comentários..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="pl-10"
+              />
+              {searchFilter && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                  {filteredComments.length} encontrados
+                </span>
+              )}
+            </div>
           </div>
           
-          <ScrollArea className="flex-1 max-h-[60vh]">
-            <div className="space-y-3 pr-4">
+          {/* Scrollable Content - using native scroll */}
+          <div className="flex-1 overflow-y-auto p-6 pt-4">
+            <div className="space-y-3">
               {filteredComments.length > 0 ? (
                 filteredComments.map((comment, index) => (
                   <div
@@ -357,7 +363,7 @@ export function HistoryCommentsDialog({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
       
