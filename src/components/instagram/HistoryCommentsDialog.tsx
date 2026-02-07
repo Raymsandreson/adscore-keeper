@@ -222,16 +222,25 @@ export function HistoryCommentsDialog({
                           metadata={comment.metadata as { manual_reply?: boolean; manual_reply_text?: string } | null}
                         />
                         
-                        {/* External Post - Open in Instagram to comment manually */}
+                        {/* Open direct link to comment on Instagram */}
                         {comment.post_url && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
-                            onClick={() => window.open(comment.post_url, '_blank')}
+                            onClick={() => {
+                              // Build direct comment URL if we have comment_id
+                              let targetUrl = comment.post_url;
+                              if (comment.comment_id) {
+                                // Instagram direct comment URL format: /p/POST_ID/c/COMMENT_ID/
+                                const baseUrl = comment.post_url.replace(/\/$/, ''); // Remove trailing slash
+                                targetUrl = `${baseUrl}/c/${comment.comment_id}/`;
+                              }
+                              window.open(targetUrl, '_blank');
+                            }}
                           >
                             <ExternalLink className="h-3 w-3 mr-1 text-amber-600" />
-                            Abrir Post para Comentar
+                            {comment.comment_id ? 'Ir para Comentário' : 'Abrir Post'}
                           </Button>
                         )}
                         
