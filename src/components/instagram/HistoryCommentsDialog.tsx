@@ -222,7 +222,7 @@ export function HistoryCommentsDialog({
                           metadata={comment.metadata as { manual_reply?: boolean; manual_reply_text?: string } | null}
                         />
                         
-                        {/* Open post on Instagram + copy username to help find comment */}
+                        {/* Open post on Instagram + copy comment text to help find it */}
                         {comment.post_url && (
                           <Button
                             size="sm"
@@ -231,11 +231,18 @@ export function HistoryCommentsDialog({
                             onClick={() => {
                               window.open(comment.post_url, '_blank');
                               
-                              // Copy author username to help find the comment with Ctrl+F
-                              if (comment.author_username) {
-                                const username = comment.author_username.replace('@', '');
-                                navigator.clipboard.writeText(username);
-                                toast.info(`Nome "${username}" copiado! Use Ctrl+F no Instagram para encontrar o comentário.`);
+                              // Copy comment text to help find with Ctrl+F
+                              // Use first 50 chars of comment for search
+                              if (comment.comment_text) {
+                                const searchText = comment.comment_text.slice(0, 50);
+                                navigator.clipboard.writeText(searchText);
+                                toast.info(
+                                  <div className="space-y-1">
+                                    <p className="font-medium">Texto copiado para busca:</p>
+                                    <p className="text-xs text-muted-foreground">"{searchText.slice(0, 30)}..."</p>
+                                    <p className="text-xs">Use Ctrl+F no Instagram para encontrar!</p>
+                                  </div>
+                                );
                               }
                             }}
                           >
