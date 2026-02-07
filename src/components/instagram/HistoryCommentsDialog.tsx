@@ -153,35 +153,19 @@ export function HistoryCommentsDialog({
               </DialogTitle>
             </DialogHeader>
             
-            {/* Post Preview - Full view with image and caption */}
-            {(derivedPostMetadata || postUrls.length > 0) && (
+            {/* Post Preview - Always show when we have URLs */}
+            {postUrls.length > 0 && (
               <div className="mt-4">
-                {derivedPostMetadata ? (
-                  <PostPreviewCard
-                    postUrl={derivedPostMetadata.postUrl}
-                    caption={derivedPostMetadata.caption}
-                    thumbnailUrl={derivedPostMetadata.thumbnailUrl}
-                    mediaType={derivedPostMetadata.mediaType}
-                    postOwner={derivedPostMetadata.postOwner}
-                    commentsCount={derivedPostMetadata.commentsCount}
-                    viewsCount={derivedPostMetadata.viewsCount}
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {postUrls.map((url, i) => (
-                      <a
-                        key={i}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Ver Post {postUrls.length > 1 ? i + 1 : ''}
-                      </a>
-                    ))}
-                  </div>
-                )}
+                <PostPreviewCard
+                  postUrl={derivedPostMetadata?.postUrl || postUrls[0]}
+                  caption={derivedPostMetadata?.caption}
+                  thumbnailUrl={derivedPostMetadata?.thumbnailUrl}
+                  mediaType={derivedPostMetadata?.mediaType}
+                  postOwner={derivedPostMetadata?.postOwner}
+                  commentsCount={derivedPostMetadata?.commentsCount || comments.length}
+                  viewsCount={derivedPostMetadata?.viewsCount}
+                  compact
+                />
               </div>
             )}
 

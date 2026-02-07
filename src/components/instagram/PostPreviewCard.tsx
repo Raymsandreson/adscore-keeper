@@ -56,31 +56,37 @@ export function PostPreviewCard({
     return (
       <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-fuchsia-500/5 to-rose-500/5 border border-fuchsia-500/20">
         {/* Thumbnail */}
-        <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-          {thumbnailUrl && !imageError ? (
-            <img
-              src={thumbnailUrl}
-              alt="Post"
-              className="w-full h-full object-cover"
-              onError={() => setImageError(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <MediaIcon className="h-5 w-5 text-muted-foreground" />
-            </div>
-          )}
-        </div>
+        <a 
+          href={postUrl} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="flex-shrink-0"
+        >
+          <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-fuchsia-500/20 to-rose-500/20 flex items-center justify-center">
+            {thumbnailUrl && !imageError ? (
+              <img
+                src={thumbnailUrl}
+                alt="Post"
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <MediaIcon className="h-5 w-5 text-fuchsia-500" />
+            )}
+          </div>
+        </a>
         
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className="bg-gradient-to-r from-fuchsia-500 to-rose-500 text-white border-0 text-[10px] h-4">
+              Postagem
+            </Badge>
             {postOwner && (
               <span className="text-xs font-medium truncate">@{postOwner}</span>
             )}
-            {shortcode && (
-              <Badge variant="outline" className="text-[10px] px-1.5 h-4">
-                {shortcode.slice(0, 8)}...
-              </Badge>
+            {!postOwner && shortcode && (
+              <span className="text-xs text-muted-foreground truncate">{shortcode}</span>
             )}
           </div>
           {hasCaption && (
@@ -88,15 +94,22 @@ export function PostPreviewCard({
               {caption}
             </p>
           )}
+          {!hasCaption && commentsCount !== undefined && commentsCount > 0 && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+              <MessageCircle className="h-3 w-3" />
+              {commentsCount.toLocaleString('pt-BR')} comentários
+            </p>
+          )}
         </div>
         
         <Button
           size="sm"
-          variant="ghost"
-          className="h-7 w-7 p-0"
+          variant="outline"
+          className="h-7 gap-1 text-xs"
           onClick={() => window.open(postUrl, '_blank')}
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          <ExternalLink className="h-3 w-3" />
+          Abrir
         </Button>
       </div>
     );
