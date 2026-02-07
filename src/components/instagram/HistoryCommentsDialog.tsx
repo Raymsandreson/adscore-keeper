@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   MessageCircle,
   ExternalLink,
@@ -18,6 +18,7 @@ import {
   Search,
   History,
   Briefcase,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -31,6 +32,7 @@ import { LeadHistorySheet } from './LeadHistorySheet';
 import { PostPreviewCard } from './PostPreviewCard';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
+import { usePostMetadata, PostMetadata as FetchedPostMetadata } from '@/hooks/usePostMetadata';
 import { toast } from 'sonner';
 
 interface HistoryComment {
@@ -87,23 +89,78 @@ export function HistoryCommentsDialog({
   const [classifyingComment, setClassifyingComment] = useState<HistoryComment | null>(null);
   const [showLeadHistory, setShowLeadHistory] = useState(false);
   const [selectedLead, setSelectedLead] = useState<{ id: string; lead_name: string | null; status: string | null; board_id: string | null } | null>(null);
+  const [fetchedMetadata, setFetchedMetadata] = useState<FetchedPostMetadata | null>(null);
+  const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   
-  // Extract post info from first comment's metadata if not provided
-  const derivedPostMetadata = useMemo(() => {
-    if (postMetadata) return postMetadata;
+  const { fetchMetadata, getCachedMetadata } = usePostMetadata();
+  
+  // Fetch metadata from Instagram when dialog opens if not already available
+  useEffect(() => {
+    if (!open || !postUrls[0]) return;
     
-    const firstCommentWithMeta = comments.find(c => c.metadata?.post_caption || c.metadata?.post_owner);
-    if (!firstCommentWithMeta?.metadata) return null;
+    // Check if we already have metadata
+    const existingMeta = postMetadata?.thumbnailUrl || postMetadata?.caption;
+    if (existingMeta) return;
     
-    return {
-      postUrl: postUrls[0] || firstCommentWithMeta.post_url || '',
-      caption: firstCommentWithMeta.metadata.post_caption,
-      postOwner: firstCommentWithMeta.metadata.post_owner,
-      thumbnailUrl: firstCommentWithMeta.metadata.post_thumbnail,
-      mediaType: firstCommentWithMeta.metadata.media_type,
-      commentsCount: comments.length,
+    // Check cache first
+    const cached = getCachedMetadata(postUrls[0]);
+    if (cached) {
+      setFetchedMetadata(cached);
+      return;
+    }
+    
+    // Fetch from API
+    const doFetch = async () => {
+      setIsFetchingMeta(true);
+      try {
+        const meta = await fetchMetadata(postUrls[0]);
+        if (meta) {
+          setFetchedMetadata(meta);
+        }
+      } finally {
+        setIsFetchingMeta(false);
+      }
     };
-  }, [postMetadata, comments, postUrls]);
+    
+    doFetch();
+  }, [open, postUrls, postMetadata, fetchMetadata, getCachedMetadata]);
+  
+  // Build final metadata combining provided + fetched
+  const derivedPostMetadata = useMemo(() => {
+    const baseUrl = postUrls[0] || '';
+    
+    // Priority: provided props > fetched > from comments
+    if (postMetadata?.thumbnailUrl || postMetadata?.caption) {
+      return postMetadata;
+    }
+    
+    if (fetchedMetadata) {
+      return {
+        postUrl: baseUrl,
+        caption: fetchedMetadata.caption,
+        thumbnailUrl: fetchedMetadata.thumbnailUrl || undefined,
+        mediaType: fetchedMetadata.mediaType,
+        postOwner: fetchedMetadata.ownerUsername,
+        commentsCount: comments.length,
+      };
+    }
+    
+    // Try from first comment metadata
+    const firstCommentWithMeta = comments.find(c => c.metadata?.post_caption || c.metadata?.post_owner);
+    if (firstCommentWithMeta?.metadata) {
+      return {
+        postUrl: baseUrl || firstCommentWithMeta.post_url || '',
+        caption: firstCommentWithMeta.metadata.post_caption,
+        postOwner: firstCommentWithMeta.metadata.post_owner,
+        thumbnailUrl: firstCommentWithMeta.metadata.post_thumbnail,
+        mediaType: firstCommentWithMeta.metadata.media_type,
+        commentsCount: comments.length,
+      };
+    }
+    
+    // Minimal fallback
+    return baseUrl ? { postUrl: baseUrl, commentsCount: comments.length } : null;
+  }, [postMetadata, fetchedMetadata, comments, postUrls]);
 
   // Normalize comments to consistent format
   const normalizedComments = useMemo(() => {
@@ -156,16 +213,26 @@ export function HistoryCommentsDialog({
             {/* Post Preview - Always show when we have URLs */}
             {postUrls.length > 0 && (
               <div className="mt-4">
-                <PostPreviewCard
-                  postUrl={derivedPostMetadata?.postUrl || postUrls[0]}
-                  caption={derivedPostMetadata?.caption}
-                  thumbnailUrl={derivedPostMetadata?.thumbnailUrl}
-                  mediaType={derivedPostMetadata?.mediaType}
-                  postOwner={derivedPostMetadata?.postOwner}
-                  commentsCount={derivedPostMetadata?.commentsCount || comments.length}
-                  viewsCount={derivedPostMetadata?.viewsCount}
-                  compact
-                />
+                {isFetchingMeta ? (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-fuchsia-500/5 to-rose-500/5 border border-fuchsia-500/20">
+                    <Skeleton className="w-12 h-12 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-3 w-48" />
+                    </div>
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <PostPreviewCard
+                    postUrl={derivedPostMetadata?.postUrl || postUrls[0]}
+                    caption={derivedPostMetadata?.caption}
+                    thumbnailUrl={derivedPostMetadata?.thumbnailUrl}
+                    mediaType={derivedPostMetadata?.mediaType}
+                    postOwner={derivedPostMetadata?.postOwner}
+                    commentsCount={derivedPostMetadata?.commentsCount || comments.length}
+                    viewsCount={derivedPostMetadata?.viewsCount}
+                  />
+                )}
               </div>
             )}
 
