@@ -200,6 +200,7 @@ export function CaseSearchResultCard({
   showSelection = false,
 }: CaseSearchResultCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
   const [showLeadDialog, setShowLeadDialog] = useState(false);
   const [selectedComment, setSelectedComment] = useState<CommentData | undefined>();
@@ -282,10 +283,30 @@ export function CaseSearchResultCard({
                 </Button>
               </div>
 
-              {/* Caption */}
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {result.caption || 'Sem legenda'}
-              </p>
+              {/* Caption - Expandable */}
+              <div 
+                className="cursor-pointer group/caption"
+                onClick={() => setIsCaptionExpanded(!isCaptionExpanded)}
+              >
+                <p className={`text-sm text-muted-foreground transition-all ${isCaptionExpanded ? '' : 'line-clamp-2'}`}>
+                  {result.caption || 'Sem legenda'}
+                </p>
+                {result.caption && result.caption.length > 100 && (
+                  <span className="text-xs text-primary hover:underline mt-1 inline-flex items-center gap-1">
+                    {isCaptionExpanded ? (
+                      <>
+                        <ChevronUp className="h-3 w-3" />
+                        Ver menos
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-3 w-3" />
+                        Ver legenda completa
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
 
               {/* Metrics */}
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
