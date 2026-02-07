@@ -193,6 +193,7 @@ export function CaseSearchEngine() {
       mediaType?: 'image' | 'video';
       postOwner?: string;
       commentsCount?: number;
+      viewsCount?: number;
     };
   }>({ open: false, postUrls: [], comments: [] });
   
@@ -862,12 +863,45 @@ export function CaseSearchEngine() {
                             return match ? match[2] : url.substring(0, 20) + '...';
                           };
                           
+                          // Get post metadata from results for preview
+                          const getPostMetadata = () => {
+                            if (!isPostExtraction || !item.results || !Array.isArray(item.results)) return null;
+                            const firstResult = item.results[0] as any;
+                            if (!firstResult?.metadata) return null;
+                            return {
+                              thumbnailUrl: firstResult.metadata.post_thumbnail || firstResult.metadata.thumbnail_url,
+                              caption: firstResult.metadata.post_caption,
+                              postOwner: firstResult.metadata.post_owner,
+                            };
+                          };
+                          const postMeta = getPostMetadata();
+                          
                           return (
                             <div
                               key={item.id}
                               className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
                             >
-                              <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-3">
+                                {/* Thumbnail preview for post extractions */}
+                                {isPostExtraction && (
+                                  <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-muted">
+                                    {postMeta?.thumbnailUrl ? (
+                                      <img
+                                        src={postMeta.thumbnailUrl}
+                                        alt="Post"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <Link2 className="h-6 w-6 text-muted-foreground" />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                
                                 <div className="flex-1 min-w-0">
                                   {/* Type indicator + content */}
                                   <div className="flex items-center gap-2 mb-1">
@@ -875,12 +909,22 @@ export function CaseSearchEngine() {
                                       {isPostExtraction ? <Link2 className="h-3 w-3" /> : <Hash className="h-3 w-3" />}
                                       {isPostExtraction ? 'Post' : 'Hashtag'}
                                     </Badge>
+                                    {postMeta?.postOwner && (
+                                      <span className="text-xs font-medium">@{postMeta.postOwner}</span>
+                                    )}
                                   </div>
+                                  
+                                  {/* Caption preview for post extractions */}
+                                  {postMeta?.caption && (
+                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
+                                      {postMeta.caption}
+                                    </p>
+                                  )}
                                   
                                   <div className="flex flex-wrap gap-1 mb-1">
                                     {isPostExtraction ? (
                                       // Show post URLs for post extractions
-                                      item.post_urls?.slice(0, 3).map((url, i) => (
+                                      item.post_urls?.slice(0, 2).map((url, i) => (
                                         <a
                                           key={i}
                                           href={url}
@@ -888,7 +932,7 @@ export function CaseSearchEngine() {
                                           rel="noopener noreferrer"
                                           className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                                         >
-                                          <Link2 className="h-3 w-3" />
+                                          <ExternalLink className="h-3 w-3" />
                                           {extractShortcode(url)}
                                         </a>
                                       ))
@@ -900,9 +944,9 @@ export function CaseSearchEngine() {
                                         </Badge>
                                       ))
                                     )}
-                                    {isPostExtraction && (item.post_urls?.length || 0) > 3 && (
+                                    {isPostExtraction && (item.post_urls?.length || 0) > 2 && (
                                       <Badge variant="outline" className="text-xs">
-                                        +{(item.post_urls?.length || 0) - 3}
+                                        +{(item.post_urls?.length || 0) - 2}
                                       </Badge>
                                     )}
                                   </div>
@@ -929,7 +973,8 @@ export function CaseSearchEngine() {
                                     </Badge>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                              </div>
+                              <div className="flex items-center gap-2 justify-end mt-2">
                                   {!isPostExtraction && item.status === 'completed' && item.results_count && item.results_count > 0 ? (
                                     <Button
                                       variant="default"
@@ -1000,7 +1045,6 @@ export function CaseSearchEngine() {
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
-                                </div>
                               </div>
                             </div>
                           );
