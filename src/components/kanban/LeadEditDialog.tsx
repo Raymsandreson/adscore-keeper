@@ -29,7 +29,7 @@ import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
-import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
+import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
   User, 
@@ -594,6 +594,21 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
           open={showExtractor}
           onOpenChange={setShowExtractor}
           onDataExtracted={handleExtractedData}
+          currentData={{
+            victim_name: victimName || null,
+            victim_age: victimAge ? parseInt(victimAge) : null,
+            accident_date: accidentDate || null,
+            accident_address: accidentAddress || null,
+            damage_description: damageDescription || null,
+            contractor_company: contractorCompany || null,
+            main_company: mainCompany || null,
+            sector: sector || null,
+            case_type: caseType || null,
+            liability_type: liabilityType || null,
+            legal_viability: legalViability || null,
+            visit_city: visitCity || null,
+            visit_state: visitState || null,
+          }}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
