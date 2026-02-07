@@ -34,6 +34,13 @@ import { LeadHistorySheet } from './LeadHistorySheet';
 import { PostPreviewCard } from './PostPreviewCard';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { 
+  AdvancedSearchFilters, 
+  AdvancedFilters, 
+  emptyFilters, 
+  hasActiveFilters, 
+  applyAdvancedFilters 
+} from './AdvancedSearchFilters';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
 import { usePostMetadata, PostMetadata as FetchedPostMetadata } from '@/hooks/usePostMetadata';
@@ -92,6 +99,7 @@ export function HistoryCommentsDialog({
   postMetadata,
 }: HistoryCommentsDialogProps) {
   const [searchFilter, setSearchFilter] = useState('');
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(emptyFilters);
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [classifyingComment, setClassifyingComment] = useState<HistoryComment | null>(null);
   const [showLeadHistory, setShowLeadHistory] = useState(false);
@@ -197,16 +205,32 @@ export function HistoryCommentsDialog({
   const { getContactData, refetch: refetchContactData, refetchUsername } = useCommentContactInfo(usernames);
   const { config: cardConfig } = useCommentCardSettings();
 
-  // Filter comments
+  // Filter comments with basic search + advanced filters
   const filteredComments = useMemo(() => {
-    if (!searchFilter.trim()) return normalizedComments;
+    let results = normalizedComments;
     
-    const search = searchFilter.toLowerCase();
-    return normalizedComments.filter(comment =>
-      comment.comment_text?.toLowerCase().includes(search) ||
-      comment.author_username?.toLowerCase().includes(search)
-    );
-  }, [normalizedComments, searchFilter]);
+    // Basic search filter
+    if (searchFilter.trim()) {
+      const search = searchFilter.toLowerCase();
+      results = results.filter(comment =>
+        comment.comment_text?.toLowerCase().includes(search) ||
+        comment.author_username?.toLowerCase().includes(search)
+      );
+    }
+    
+    // Advanced filters
+    if (hasActiveFilters(advancedFilters)) {
+      results = results.filter(comment => {
+        const textToSearch = `${comment.comment_text || ''} ${comment.author_username || ''}`;
+        return applyAdvancedFilters(textToSearch, advancedFilters);
+      });
+    }
+    
+    return results;
+  }, [normalizedComments, searchFilter, advancedFilters]);
+  
+  const totalActiveFilters = (searchFilter.trim() ? 1 : 0) + 
+    [advancedFilters.allWords, advancedFilters.exactPhrase, advancedFilters.anyWords, advancedFilters.excludeWords].filter(Boolean).length;
 
   const openClassificationDialog = (comment: typeof normalizedComments[0]) => {
     setClassifyingComment(comment);
@@ -291,19 +315,28 @@ export function HistoryCommentsDialog({
             )}
 
             {/* Search Filter */}
-            <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar nos comentários..."
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                className="pl-10"
+            <div className="space-y-2 mt-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar nos comentários..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  className="pl-10"
+                />
+                {(searchFilter || hasActiveFilters(advancedFilters)) && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    {filteredComments.length} encontrados
+                  </span>
+                )}
+              </div>
+              
+              {/* Advanced Filters */}
+              <AdvancedSearchFilters
+                filters={advancedFilters}
+                onFiltersChange={setAdvancedFilters}
+                onClear={() => setAdvancedFilters(emptyFilters)}
               />
-              {searchFilter && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-                  {filteredComments.length} encontrados
-                </span>
-              )}
             </div>
           </div>
           
