@@ -11,7 +11,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import {
   MessageCircle,
-  Link2,
   ExternalLink,
   Clock,
   Tag,
@@ -29,6 +28,7 @@ import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
 import { CommentClassificationDialog } from './CommentClassificationDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { LeadHistorySheet } from './LeadHistorySheet';
+import { PostPreviewCard } from './PostPreviewCard';
 import { useCommentContactInfo } from '@/hooks/useCommentContactInfo';
 import { useCommentCardSettings } from '@/hooks/useCommentCardSettings';
 import { toast } from 'sonner';
@@ -48,9 +48,23 @@ interface HistoryComment {
     likes_count?: number;
     post_owner?: string;
     post_caption?: string;
+    post_thumbnail?: string;
+    media_type?: 'image' | 'video';
+    comments_count?: number;
+    views_count?: number;
     manual_reply?: boolean;
     manual_reply_text?: string;
   };
+}
+
+interface PostMetadata {
+  postUrl: string;
+  caption?: string;
+  thumbnailUrl?: string;
+  mediaType?: 'image' | 'video';
+  postOwner?: string;
+  commentsCount?: number;
+  viewsCount?: number;
 }
 
 interface HistoryCommentsDialogProps {
@@ -58,6 +72,7 @@ interface HistoryCommentsDialogProps {
   onOpenChange: (open: boolean) => void;
   postUrls: string[];
   comments: HistoryComment[];
+  postMetadata?: PostMetadata;
 }
 
 export function HistoryCommentsDialog({
@@ -65,12 +80,30 @@ export function HistoryCommentsDialog({
   onOpenChange,
   postUrls,
   comments,
+  postMetadata,
 }: HistoryCommentsDialogProps) {
   const [searchFilter, setSearchFilter] = useState('');
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [classifyingComment, setClassifyingComment] = useState<HistoryComment | null>(null);
   const [showLeadHistory, setShowLeadHistory] = useState(false);
   const [selectedLead, setSelectedLead] = useState<{ id: string; lead_name: string | null; status: string | null; board_id: string | null } | null>(null);
+  
+  // Extract post info from first comment's metadata if not provided
+  const derivedPostMetadata = useMemo(() => {
+    if (postMetadata) return postMetadata;
+    
+    const firstCommentWithMeta = comments.find(c => c.metadata?.post_caption || c.metadata?.post_owner);
+    if (!firstCommentWithMeta?.metadata) return null;
+    
+    return {
+      postUrl: postUrls[0] || firstCommentWithMeta.post_url || '',
+      caption: firstCommentWithMeta.metadata.post_caption,
+      postOwner: firstCommentWithMeta.metadata.post_owner,
+      thumbnailUrl: firstCommentWithMeta.metadata.post_thumbnail,
+      mediaType: firstCommentWithMeta.metadata.media_type,
+      commentsCount: comments.length,
+    };
+  }, [postMetadata, comments, postUrls]);
 
   // Normalize comments to consistent format
   const normalizedComments = useMemo(() => {
@@ -112,27 +145,41 @@ export function HistoryCommentsDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
               Comentários Extraídos ({comments.length})
             </DialogTitle>
           </DialogHeader>
           
-          {/* Post URLs */}
-          <div className="flex flex-wrap gap-2 mb-2">
-            {postUrls.map((url, i) => (
-              <a
-                key={i}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
-              >
-                <Link2 className="h-3 w-3" />
-                Ver Post
-              </a>
-            ))}
-          </div>
+          {/* Post Preview */}
+          {derivedPostMetadata && (
+            <PostPreviewCard
+              postUrl={derivedPostMetadata.postUrl}
+              caption={derivedPostMetadata.caption}
+              thumbnailUrl={derivedPostMetadata.thumbnailUrl}
+              mediaType={derivedPostMetadata.mediaType}
+              postOwner={derivedPostMetadata.postOwner}
+              commentsCount={derivedPostMetadata.commentsCount}
+            />
+          )}
+          
+          {/* Fallback: Simple post links if no metadata */}
+          {!derivedPostMetadata && postUrls.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {postUrls.map((url, i) => (
+                <a
+                  key={i}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-muted px-2 py-1 rounded"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Ver Post {postUrls.length > 1 ? i + 1 : ''}
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* Search Filter */}
           <div className="relative mb-4">
