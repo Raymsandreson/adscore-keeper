@@ -65,7 +65,8 @@ import { CaseSearchResultCard } from './CaseSearchResultCard';
 import { PostCommentsFetcher } from './PostCommentsFetcher';
 import { PostExtractionHistory } from './PostExtractionHistory';
 import { HistoryCommentsDialog } from './HistoryCommentsDialog';
-import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear, formatDistanceToNow } from 'date-fns';
+import { HistoryItemCard } from './HistoryItemCard';
+import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
@@ -856,205 +857,17 @@ export function CaseSearchEngine() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {history.map((item) => {
-                          const isPostExtraction = item.search_type === 'post';
-                          const extractShortcode = (url: string) => {
-                            const match = url.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
-                            return match ? match[2] : url.substring(0, 20) + '...';
-                          };
-                          
-                          // Get post metadata from results for preview
-                          const getPostMetadata = () => {
-                            if (!isPostExtraction || !item.results || !Array.isArray(item.results)) return null;
-                            const firstResult = item.results[0] as any;
-                            if (!firstResult?.metadata) return null;
-                            return {
-                              thumbnailUrl: firstResult.metadata.post_thumbnail || firstResult.metadata.thumbnail_url,
-                              caption: firstResult.metadata.post_caption,
-                              postOwner: firstResult.metadata.post_owner,
-                            };
-                          };
-                          const postMeta = getPostMetadata();
-                          
-                          return (
-                            <div
-                              key={item.id}
-                              className="border rounded-lg p-3 space-y-2 hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-start gap-3">
-                                {/* Thumbnail preview for post extractions */}
-                                {isPostExtraction && (
-                                  <a 
-                                    href={item.post_urls?.[0]} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="flex-shrink-0"
-                                  >
-                                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-fuchsia-500/20 to-rose-500/20 flex items-center justify-center">
-                                      {postMeta?.thumbnailUrl ? (
-                                        <img
-                                          src={postMeta.thumbnailUrl}
-                                          alt="Post"
-                                          className="w-full h-full object-cover"
-                                          onError={(e) => {
-                                            e.currentTarget.style.display = 'none';
-                                            e.currentTarget.parentElement!.innerHTML = '<svg class="h-6 w-6 text-fuchsia-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>';
-                                          }}
-                                        />
-                                      ) : (
-                                        <Link2 className="h-6 w-6 text-fuchsia-500" />
-                                      )}
-                                    </div>
-                                  </a>
-                                )}
-                                
-                                <div className="flex-1 min-w-0">
-                                  {/* Type indicator + content */}
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant={isPostExtraction ? 'outline' : 'secondary'} className="text-xs gap-1">
-                                      {isPostExtraction ? <Link2 className="h-3 w-3" /> : <Hash className="h-3 w-3" />}
-                                      {isPostExtraction ? 'Post' : 'Hashtag'}
-                                    </Badge>
-                                    {postMeta?.postOwner && (
-                                      <span className="text-xs font-medium">@{postMeta.postOwner}</span>
-                                    )}
-                                  </div>
-                                  
-                                  {/* Caption preview for post extractions */}
-                                  {postMeta?.caption && (
-                                    <p className="text-xs text-muted-foreground line-clamp-2 mb-1">
-                                      {postMeta.caption}
-                                    </p>
-                                  )}
-                                  
-                                  <div className="flex flex-wrap gap-1 mb-1">
-                                    {isPostExtraction ? (
-                                      // Show post URLs for post extractions
-                                      item.post_urls?.slice(0, 2).map((url, i) => (
-                                        <a
-                                          key={i}
-                                          href={url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          {extractShortcode(url)}
-                                        </a>
-                                      ))
-                                    ) : (
-                                      // Show keywords for hashtag searches
-                                      item.keywords?.map((kw, i) => (
-                                        <Badge key={i} variant="secondary" className="text-xs">
-                                          {kw}
-                                        </Badge>
-                                      ))
-                                    )}
-                                    {isPostExtraction && (item.post_urls?.length || 0) > 2 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        +{(item.post_urls?.length || 0) - 2}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                                    <Clock className="h-3 w-3" />
-                                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true, locale: ptBR })}
-                                    <span>•</span>
-                                    <span>{item.results_count || 0} {isPostExtraction ? 'comentários' : 'posts'}</span>
-                                    {item.cost_brl && item.cost_brl > 0 && (
-                                      <>
-                                        <span>•</span>
-                                        <span className="text-primary font-medium">
-                                          R$ {item.cost_brl.toFixed(2)}
-                                        </span>
-                                      </>
-                                    )}
-                                    <span>•</span>
-                                    <Badge 
-                                      variant={item.status === 'completed' ? 'default' : item.status === 'running' ? 'secondary' : 'destructive'}
-                                      className="text-xs"
-                                    >
-                                      {item.status === 'completed' ? 'Concluída' : item.status === 'running' ? 'Em andamento' : 'Falhou'}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 justify-end mt-2">
-                                  {!isPostExtraction && item.status === 'completed' && item.results_count && item.results_count > 0 ? (
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      onClick={() => loadFromHistory(item)}
-                                      className="gap-1"
-                                    >
-                                      <ExternalLink className="h-4 w-4" />
-                                      Abrir
-                                    </Button>
-                                  ) : !isPostExtraction && item.status === 'running' ? (
-                                    <Button 
-                                      variant="outline" 
-                                      size="sm"
-                                      onClick={() => handleResumeSearch(item)}
-                                      disabled={resumingId === item.id}
-                                      className="gap-1"
-                                    >
-                                      {resumingId === item.id ? (
-                                        <>
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                          Retomando...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <RefreshCw className="h-4 w-4" />
-                                          Retomar
-                                        </>
-                                      )}
-                                    </Button>
-                                  ) : isPostExtraction && item.status === 'completed' && item.results_count && item.results_count > 0 ? (
-                                    <Button
-                                      variant="default"
-                                      size="sm"
-                                      onClick={() => loadCommentsFromHistory(item)}
-                                      className="gap-1"
-                                    >
-                                      <MessageCircle className="h-4 w-4" />
-                                      Ver Comentários
-                                    </Button>
-                                  ) : isPostExtraction && item.post_urls?.[0] ? (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      asChild
-                                    >
-                                      <a
-                                        href={item.post_urls[0]}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="gap-1"
-                                      >
-                                        <ExternalLink className="h-4 w-4" />
-                                        Ver Post
-                                      </a>
-                                    </Button>
-                                  ) : !isPostExtraction && (
-                                    <Badge variant="destructive" className="text-xs">
-                                      Sem resultados
-                                    </Badge>
-                                  )}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                    onClick={() => deleteSearchRecord(item.id)}
-                                    disabled={resumingId === item.id}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {history.map((item) => (
+                          <HistoryItemCard
+                            key={item.id}
+                            item={item}
+                            onViewComments={(histItem) => loadCommentsFromHistory(histItem as typeof history[0])}
+                            onLoadResults={(histItem) => loadFromHistory(histItem as typeof history[0])}
+                            onResume={(histItem) => handleResumeSearch(histItem as typeof history[0])}
+                            onDelete={deleteSearchRecord}
+                            isResuming={resumingId === item.id}
+                          />
+                        ))}
                       </div>
                     )}
                   </ScrollArea>
