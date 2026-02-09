@@ -2,15 +2,17 @@ import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-const HEARTBEAT_INTERVAL = 60 * 1000; // 1 minute
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes without interaction = end session
+const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes - check if still active
 
 export function useSessionTracker() {
   const { user } = useAuthContext();
   const sessionIdRef = useRef<string | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
+  const lastHeartbeatActivityRef = useRef<number>(Date.now()); // tracks last real interaction sent to DB
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasRecentActivityRef = useRef<boolean>(false); // true if user interacted since last heartbeat
 
   // Start a new session
   const startSession = useCallback(async () => {
@@ -56,13 +58,15 @@ export function useSessionTracker() {
       // Get session start time to calculate duration
       const { data: session } = await supabase
         .from('user_sessions')
-        .select('started_at')
+        .select('started_at, last_activity_at')
         .eq('id', sessionId)
         .single();
 
       if (session) {
         const startedAt = new Date(session.started_at);
-        const durationSeconds = Math.round((now.getTime() - startedAt.getTime()) / 1000);
+        // Use last_activity_at for duration so idle time isn't counted
+        const lastActive = session.last_activity_at ? new Date(session.last_activity_at) : now;
+        const durationSeconds = Math.round((lastActive.getTime() - startedAt.getTime()) / 1000);
 
         await supabase
           .from('user_sessions')
@@ -87,6 +91,7 @@ export function useSessionTracker() {
     if (!sessionIdRef.current || !user) return;
 
     lastActivityRef.current = Date.now();
+    hasRecentActivityRef.current = true;
 
     try {
       await supabase
@@ -132,8 +137,19 @@ export function useSessionTracker() {
   useEffect(() => {
     if (!user) return;
 
+    // Throttle: only update DB at most once per 30s on real user interaction
+    let activityThrottleTimer: NodeJS.Timeout | null = null;
     const handleActivity = () => {
-      updateActivity();
+      hasRecentActivityRef.current = true;
+      lastActivityRef.current = Date.now();
+
+      // Reset inactivity timer on real interaction
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+      inactivityTimerRef.current = setTimeout(() => {
+        endSession('inactivity');
+      }, INACTIVITY_TIMEOUT);
     };
 
     // Track user interactions
@@ -145,21 +161,24 @@ export function useSessionTracker() {
     // Start session on mount
     startSession();
 
-    // Heartbeat to update last_activity_at periodically
+    // Heartbeat: only update DB if user had real activity since last heartbeat
     heartbeatTimerRef.current = setInterval(() => {
-      if (sessionIdRef.current) {
-        updateActivity();
+      if (sessionIdRef.current && hasRecentActivityRef.current) {
+        hasRecentActivityRef.current = false;
+        // Update last_activity_at in DB without resetting inactivity timer
+        supabase
+          .from('user_sessions')
+          .update({ last_activity_at: new Date().toISOString() })
+          .eq('id', sessionIdRef.current)
+          .then(() => {});
       }
     }, HEARTBEAT_INTERVAL);
 
     // Handle page visibility change (tab switch, minimize)
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // User left the tab
-        updateActivity();
-      } else {
-        // User came back
-        updateActivity();
+      if (!document.hidden) {
+        // User came back - mark as active
+        handleActivity();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
