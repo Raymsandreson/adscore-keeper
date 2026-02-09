@@ -12,18 +12,22 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Heart,
-  Send,
-  Bookmark,
   Play,
   Image as ImageIcon,
   User,
+  Bot,
+  Sparkles,
+  Tag,
+  CheckCircle2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { usePostMetadata, PostMetadata } from '@/hooks/usePostMetadata';
 import { cn } from '@/lib/utils';
+import { AIReplyDialog } from './AIReplyDialog';
+import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
+import { CommentClassificationDialog } from './CommentClassificationDialog';
 
 interface PostGroup {
   postUrl: string;
@@ -66,11 +70,30 @@ export function PostGroupedView() {
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(new Set());
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
 
+  // Dialog states
+  const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
+  const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
+  const [showClassificationDialog, setShowClassificationDialog] = useState(false);
+  const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
+  const [accessToken, setAccessToken] = useState<string | undefined>();
+
+  // Fetch access token for AI replies
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('instagram_accounts')
+        .select('access_token')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      if (data?.access_token) setAccessToken(data.access_token);
+    })();
+  }, []);
+
   // Fetch grouped posts
   const fetchPostGroups = useCallback(async () => {
     setIsLoadingPosts(true);
     try {
-      // Get all distinct post_urls with counts
       const { data, error } = await supabase
         .from('instagram_comments')
         .select('post_url, created_at')
@@ -78,7 +101,6 @@ export function PostGroupedView() {
 
       if (error) throw error;
 
-      // Group by normalized URL
       const groups: Record<string, { count: number; firstAt: string }> = {};
       for (const row of data || []) {
         if (!row.post_url) continue;
@@ -102,12 +124,10 @@ export function PostGroupedView() {
 
       setPostGroups(sorted);
 
-      // Auto-select first
       if (sorted.length > 0 && !selectedPostUrl) {
         setSelectedPostUrl(sorted[0].postUrl);
       }
 
-      // Fetch metadata for visible posts (first 10)
       sorted.slice(0, 10).forEach(async (group) => {
         const cached = getCachedMetadata(group.postUrl);
         if (cached) {
@@ -130,11 +150,9 @@ export function PostGroupedView() {
     }
   }, []);
 
-  // Fetch comments for selected post
   const fetchCommentsForPost = useCallback(async (postUrl: string) => {
     setIsLoadingComments(true);
     try {
-      // Extract shortcode to use as ilike filter for all URL variants
       const shortcodeMatch = postUrl.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
       const shortcode = shortcodeMatch ? shortcodeMatch[2] : null;
 
@@ -151,7 +169,6 @@ export function PostGroupedView() {
       }
 
       const { data, error } = await query.limit(2000);
-
       if (error) throw error;
       setComments(data || []);
     } catch (err) {
@@ -168,7 +185,6 @@ export function PostGroupedView() {
   useEffect(() => {
     if (selectedPostUrl) {
       fetchCommentsForPost(selectedPostUrl);
-      // Fetch metadata if not loaded
       if (!metadataMap[selectedPostUrl] && !loadingMetadata.has(selectedPostUrl)) {
         setLoadingMetadata(prev => new Set(prev).add(selectedPostUrl));
         fetchMetadata(selectedPostUrl).then(meta => {
@@ -196,7 +212,6 @@ export function PostGroupedView() {
     );
   }, [comments, searchTerm]);
 
-  // Separate parent comments and replies
   const parentComments = filteredComments.filter(c => !c.parent_comment_id);
   const repliesMap = useMemo(() => {
     const map: Record<string, Comment[]> = {};
@@ -209,20 +224,25 @@ export function PostGroupedView() {
   }, [filteredComments]);
 
   const goToPrev = () => {
-    if (selectedIndex > 0) {
-      setSelectedPostUrl(postGroups[selectedIndex - 1].postUrl);
-    }
+    if (selectedIndex > 0) setSelectedPostUrl(postGroups[selectedIndex - 1].postUrl);
   };
-
   const goToNext = () => {
-    if (selectedIndex < postGroups.length - 1) {
-      setSelectedPostUrl(postGroups[selectedIndex + 1].postUrl);
-    }
+    if (selectedIndex < postGroups.length - 1) setSelectedPostUrl(postGroups[selectedIndex + 1].postUrl);
   };
 
   const extractShortcode = (url: string) => {
     const match = url.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
     return match ? match[2] : url.substring(0, 20);
+  };
+
+  const handleAIReply = (comment: Comment) => {
+    setReplyingToComment(comment);
+    setShowAIReplyDialog(true);
+  };
+
+  const handleClassify = (comment: Comment) => {
+    setClassifyingComment(comment);
+    setShowClassificationDialog(true);
   };
 
   if (isLoadingPosts) {
@@ -264,29 +284,21 @@ export function PostGroupedView() {
                       : "border-border hover:border-primary/40"
                   )}
                 >
-                  {/* Thumbnail */}
                   <div className="relative w-full h-[140px] bg-muted">
                     {isMetaLoading ? (
                       <Skeleton className="w-full h-full" />
                     ) : meta?.thumbnailUrl ? (
-                      <img
-                        src={meta.thumbnailUrl}
-                        alt="Post"
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
+                      <img src={meta.thumbnailUrl} alt="Post" className="w-full h-full object-cover" loading="lazy" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
                       </div>
                     )}
-                    {/* Video indicator */}
                     {(meta?.mediaType === 'video' || group.postUrl.includes('/reel')) && (
                       <div className="absolute top-2 right-2">
                         <Play className="h-5 w-5 text-white drop-shadow-md fill-white/80" />
                       </div>
                     )}
-                    {/* Comment count badge */}
                     <div className="absolute bottom-2 right-2">
                       <Badge variant="secondary" className="text-xs shadow-sm">
                         <MessageCircle className="h-3 w-3 mr-1" />
@@ -294,7 +306,6 @@ export function PostGroupedView() {
                       </Badge>
                     </div>
                   </div>
-                  {/* Info */}
                   <div className="p-2 text-left">
                     <p className="text-xs font-medium truncate">
                       {meta?.ownerUsername ? `@${meta.ownerUsername}` : extractShortcode(group.postUrl)}
@@ -313,32 +324,18 @@ export function PostGroupedView() {
       {/* Selected Post Detail */}
       {selectedPostUrl && (
         <Card className="overflow-hidden">
-          {/* Post Header - Instagram style */}
           <div className="border-b">
             <div className="flex items-center gap-4 p-4">
-              {/* Navigation */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToPrev}
-                disabled={selectedIndex <= 0}
-                className="shrink-0"
-              >
+              <Button variant="ghost" size="icon" onClick={goToPrev} disabled={selectedIndex <= 0} className="shrink-0">
                 <ChevronLeft className="h-5 w-5" />
               </Button>
 
-              {/* Post Preview */}
               <div className="flex-1 flex gap-4 min-h-[200px]">
-                {/* Thumbnail */}
                 <div className="relative w-[200px] h-[200px] rounded-lg overflow-hidden bg-muted shrink-0">
                   {loadingMetadata.has(selectedPostUrl) ? (
                     <Skeleton className="w-full h-full" />
                   ) : selectedMeta?.thumbnailUrl ? (
-                    <img
-                      src={selectedMeta.thumbnailUrl}
-                      alt="Post"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={selectedMeta.thumbnailUrl} alt="Post" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <ImageIcon className="h-12 w-12 text-muted-foreground/30" />
@@ -353,7 +350,6 @@ export function PostGroupedView() {
                   )}
                 </div>
 
-                {/* Post Info */}
                 <div className="flex-1 min-w-0 flex flex-col">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 rounded-full bg-primary/80 flex items-center justify-center">
@@ -362,29 +358,18 @@ export function PostGroupedView() {
                     <span className="font-semibold text-sm">
                       {selectedMeta?.ownerUsername || 'Autor desconhecido'}
                     </span>
-                    <a
-                      href={selectedPostUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto text-muted-foreground hover:text-primary"
-                    >
+                    <a href={selectedPostUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-muted-foreground hover:text-primary">
                       <ExternalLink className="h-4 w-4" />
                     </a>
                   </div>
 
-                  {/* Caption */}
                   {selectedMeta?.caption && (
                     <div className="text-sm text-muted-foreground flex-1 overflow-y-auto max-h-[120px] pr-2">
-                      <span className="font-semibold text-foreground mr-1">
-                        {selectedMeta.ownerUsername}
-                      </span>
-                      {selectedMeta.caption.length > 200
-                        ? selectedMeta.caption.substring(0, 200) + '...'
-                        : selectedMeta.caption}
+                      <span className="font-semibold text-foreground mr-1">{selectedMeta.ownerUsername}</span>
+                      {selectedMeta.caption.length > 200 ? selectedMeta.caption.substring(0, 200) + '...' : selectedMeta.caption}
                     </div>
                   )}
 
-                  {/* Engagement row */}
                   <div className="flex items-center gap-4 mt-auto pt-2">
                     <div className="flex items-center gap-1 text-sm text-muted-foreground">
                       <MessageCircle className="h-4 w-4" />
@@ -397,41 +382,24 @@ export function PostGroupedView() {
                 </div>
               </div>
 
-              {/* Navigation */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToNext}
-                disabled={selectedIndex >= postGroups.length - 1}
-                className="shrink-0"
-              >
+              <Button variant="ghost" size="icon" onClick={goToNext} disabled={selectedIndex >= postGroups.length - 1} className="shrink-0">
                 <ChevronRight className="h-5 w-5" />
               </Button>
             </div>
           </div>
 
-          {/* Comments Section */}
           <CardContent className="p-4 space-y-3">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar nos comentários..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+              <Input placeholder="Buscar nos comentários..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
             </div>
 
-            {/* Comments List */}
             {isLoadingComments ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : filteredComments.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Nenhum comentário encontrado
-              </div>
+              <div className="text-center py-8 text-muted-foreground text-sm">Nenhum comentário encontrado</div>
             ) : (
               <ScrollArea className="h-[400px]">
                 <div className="space-y-1 pr-3">
@@ -439,11 +407,21 @@ export function PostGroupedView() {
                     const replies = repliesMap[comment.comment_id || ''] || [];
                     return (
                       <div key={comment.id}>
-                        <CommentRow comment={comment} />
+                        <CommentRow
+                          comment={comment}
+                          onAIReply={handleAIReply}
+                          onClassify={handleClassify}
+                        />
                         {replies.length > 0 && (
                           <div className="ml-10 border-l-2 border-muted pl-3 space-y-1">
                             {replies.map(reply => (
-                              <CommentRow key={reply.id} comment={reply} isReply />
+                              <CommentRow
+                                key={reply.id}
+                                comment={reply}
+                                isReply
+                                onAIReply={handleAIReply}
+                                onClassify={handleClassify}
+                              />
                             ))}
                           </div>
                         )}
@@ -456,15 +434,50 @@ export function PostGroupedView() {
           </CardContent>
         </Card>
       )}
+
+      {/* AI Reply Dialog */}
+      <AIReplyDialog
+        open={showAIReplyDialog}
+        onOpenChange={setShowAIReplyDialog}
+        comment={replyingToComment}
+        accessToken={accessToken}
+        onReplyPosted={() => {
+          if (selectedPostUrl) fetchCommentsForPost(selectedPostUrl);
+        }}
+      />
+
+      {/* Classification Dialog */}
+      <CommentClassificationDialog
+        open={showClassificationDialog}
+        onOpenChange={setShowClassificationDialog}
+        comment={classifyingComment ? {
+          id: classifyingComment.id,
+          author_username: classifyingComment.author_username,
+          comment_text: classifyingComment.comment_text,
+          post_url: classifyingComment.post_url,
+          platform: classifyingComment.platform,
+        } : null}
+        onClassificationsApplied={() => {}}
+        onLeadLinked={() => {}}
+      />
     </div>
   );
 }
 
-function CommentRow({ comment, isReply }: { comment: Comment; isReply?: boolean }) {
+interface CommentRowProps {
+  comment: Comment;
+  isReply?: boolean;
+  onAIReply: (comment: Comment) => void;
+  onClassify: (comment: Comment) => void;
+}
+
+function CommentRow({ comment, isReply, onAIReply, onClassify }: CommentRowProps) {
+  const isReceived = comment.comment_type === 'received';
+
   return (
     <div className={cn(
-      "flex gap-3 py-2 px-1 rounded-md hover:bg-muted/50 transition-colors",
-      isReply && "py-1.5"
+      "flex gap-3 py-3 px-2 rounded-md hover:bg-muted/50 transition-colors",
+      isReply && "py-2"
     )}>
       <div className={cn(
         "shrink-0 rounded-full bg-muted flex items-center justify-center",
@@ -473,25 +486,60 @@ function CommentRow({ comment, isReply }: { comment: Comment; isReply?: boolean 
         <User className={cn("text-muted-foreground", isReply ? "h-3 w-3" : "h-4 w-4")} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className={cn("font-semibold", isReply ? "text-xs" : "text-sm")}>
-            {comment.author_username || 'anônimo'}
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
-          </span>
-          {comment.comment_type === 'sent' && (
-            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
-              enviado
-            </Badge>
-          )}
-          {comment.replied_at && (
-            <Badge variant="default" className="text-[10px] px-1 py-0 h-4">
-              respondido
-            </Badge>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className={cn("font-semibold", isReply ? "text-xs" : "text-sm")}>
+              {comment.author_username || 'anônimo'}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {format(new Date(comment.created_at), "dd/MM HH:mm", { locale: ptBR })}
+            </span>
+            {comment.comment_type === 'sent' && (
+              <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">enviado</Badge>
+            )}
+            {comment.replied_at && (
+              <Badge variant="default" className="text-[10px] px-1 py-0 h-4">respondido</Badge>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          {isReceived && !isReply && (
+            <div className="flex items-center gap-1 shrink-0">
+              {comment.comment_id && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 hover:border-primary/50"
+                  onClick={() => onAIReply(comment)}
+                >
+                  <Bot className="h-3 w-3 mr-1" />
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Responder IA
+                </Button>
+              )}
+
+              {comment.author_username && (
+                <QuickLinkLeadPopover
+                  authorUsername={comment.author_username}
+                  onLeadLinked={() => {}}
+                />
+              )}
+
+              {comment.author_username && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => onClassify(comment)}
+                >
+                  <Tag className="h-3 w-3 mr-1" />
+                  Classificar
+                </Button>
+              )}
+            </div>
           )}
         </div>
-        <p className={cn("text-muted-foreground break-words", isReply ? "text-xs" : "text-sm")}>
+        <p className={cn("text-muted-foreground break-words mt-0.5", isReply ? "text-xs" : "text-sm")}>
           {comment.comment_text || '(sem texto)'}
         </p>
       </div>
