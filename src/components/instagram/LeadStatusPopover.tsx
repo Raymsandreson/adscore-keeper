@@ -32,6 +32,7 @@ interface LeadStatusPopoverProps {
   currentStatus: string | null;
   boardId: string | null;
   onStatusChanged?: () => void;
+  onOpenLead?: (leadId: string) => void;
 }
 
 export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
@@ -39,7 +40,8 @@ export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
   leadName,
   currentStatus,
   boardId,
-  onStatusChanged
+  onStatusChanged,
+  onOpenLead
 }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -117,7 +119,11 @@ export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
   };
 
   const handleOpenInKanban = () => {
-    navigate(`/leads?leadId=${leadId}`);
+    if (onOpenLead) {
+      onOpenLead(leadId);
+    } else {
+      navigate(`/leads?leadId=${leadId}`);
+    }
     setOpen(false);
   };
 

@@ -26,12 +26,14 @@ interface CommentContactBadgesProps {
   contactData: CommentContactData;
   username: string | null;
   onLeadStatusChanged?: () => void;
+  onOpenLead?: (leadId: string) => void;
 }
 
 export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
   contactData,
   username,
-  onLeadStatusChanged
+  onLeadStatusChanged,
+  onOpenLead
 }) => {
   const navigate = useNavigate();
   const { contact, linkedLeads, relationships, loading } = contactData;
@@ -178,6 +180,7 @@ export const CommentContactBadges: React.FC<CommentContactBadgesProps> = ({
             currentStatus={lead.status}
             boardId={lead.board_id}
             onStatusChanged={onLeadStatusChanged}
+            onOpenLead={onOpenLead}
           />
         ))}
         
