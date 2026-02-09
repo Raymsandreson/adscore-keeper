@@ -614,10 +614,14 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-6 h-auto">
+          <TabsList className="grid w-full grid-cols-7 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
               Básico
+            </TabsTrigger>
+            <TabsTrigger value="contacts" className="text-xs py-2">
+              <Users className="h-3 w-3 mr-1" />
+              Contatos
             </TabsTrigger>
             <TabsTrigger value="accident" className="text-xs py-2">
               <FileText className="h-3 w-3 mr-1" />
@@ -841,8 +845,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   />
                 </div>
               </div>
+            </TabsContent>
 
-              {/* Linked Contacts Section */}
+            {/* Contacts Tab */}
+            <TabsContent value="contacts" className="mt-0">
               <LeadLinkedContacts leadId={lead.id} />
             </TabsContent>
 
