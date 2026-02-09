@@ -252,7 +252,7 @@ export function KanbanReportDialog({
       }
     }
 
-    message += `\n🚀 _Enviado via Adscore Keeper_`;
+    message += `\n🚀 _Enviado via ABRACI.IA_`;
 
     return message;
   };
