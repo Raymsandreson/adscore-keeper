@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { usePostExtractionHistory } from '@/hooks/usePostExtractionHistory';
 import {
   Upload,
   FileJson,
@@ -50,6 +51,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
   const [showInstructions, setShowInstructions] = useState(false);
   const [myUsername, setMyUsername] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { createExtractionRecord, updateExtractionResults } = usePostExtractionHistory();
 
   const processFile = async (file: File) => {
     setIsProcessing(true);
@@ -155,6 +157,27 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
       setSaved(savedCount);
       setDuplicates(duplicateCount);
       setErrors(errorCount);
+
+      // Create extraction history records grouped by post URL
+      const postUrlGroups: Record<string, any[]> = {};
+      for (const comment of allComments) {
+        const url = comment.post_url || 'unknown';
+        if (!postUrlGroups[url]) postUrlGroups[url] = [];
+        postUrlGroups[url].push(comment);
+      }
+
+      for (const [postUrl, comments] of Object.entries(postUrlGroups)) {
+        if (postUrl === 'unknown') continue;
+        const historyId = await createExtractionRecord(
+          [postUrl],
+          comments.length,
+          `json-import-${Date.now()}`
+        );
+        if (historyId) {
+          await updateExtractionResults(historyId, comments, 'completed', 0);
+        }
+      }
+
       toast.success(`${savedCount} importados, ${duplicateCount} duplicados ignorados`);
       onImportComplete?.();
     } catch (error) {
@@ -294,7 +317,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
 
         {/* Results */}
         {total > 0 && !isProcessing && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="text-center p-3 rounded-lg bg-muted/50">
               <MessageCircle className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
               <div className="text-2xl font-bold">{total}</div>
@@ -303,12 +326,19 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
             <div className="text-center p-3 rounded-lg bg-green-500/10">
               <Check className="h-5 w-5 mx-auto mb-1 text-green-500" />
               <div className="text-2xl font-bold text-green-500">{saved}</div>
-              <div className="text-xs text-muted-foreground">Importados</div>
+              <div className="text-xs text-muted-foreground">Novos</div>
             </div>
+            {duplicates > 0 && (
+              <div className="text-center p-3 rounded-lg bg-muted/50">
+                <AlertCircle className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
+                <div className="text-2xl font-bold text-muted-foreground">{duplicates}</div>
+                <div className="text-xs text-muted-foreground">Já existiam</div>
+              </div>
+            )}
             {errors > 0 && (
-              <div className="text-center p-3 rounded-lg bg-red-500/10">
-                <AlertCircle className="h-5 w-5 mx-auto mb-1 text-red-500" />
-                <div className="text-2xl font-bold text-red-500">{errors}</div>
+              <div className="text-center p-3 rounded-lg bg-destructive/10">
+                <AlertCircle className="h-5 w-5 mx-auto mb-1 text-destructive" />
+                <div className="text-2xl font-bold text-destructive">{errors}</div>
                 <div className="text-xs text-muted-foreground">Erros</div>
               </div>
             )}
