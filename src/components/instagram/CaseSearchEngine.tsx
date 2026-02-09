@@ -64,6 +64,7 @@ import { toast } from 'sonner';
 import { CaseSearchResultCard } from './CaseSearchResultCard';
 import { PostCommentsFetcher } from './PostCommentsFetcher';
 import { PostExtractionHistory } from './PostExtractionHistory';
+import { PostGroupedView } from './PostGroupedView';
 import { HistoryCommentsDialog } from './HistoryCommentsDialog';
 import { HistoryItemCard } from './HistoryItemCard';
 import { format, subDays, subMonths, subWeeks, subYears, startOfDay, startOfWeek, startOfMonth, startOfYear, endOfDay, endOfWeek, endOfMonth, endOfYear } from 'date-fns';
@@ -963,6 +964,7 @@ export function CaseSearchEngine() {
             
             <TabsContent value="post" className="mt-0 space-y-6">
               <PostCommentsFetcher />
+              <PostGroupedView />
               <PostExtractionHistory />
             </TabsContent>
             
