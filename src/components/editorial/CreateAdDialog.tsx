@@ -39,6 +39,8 @@ import {
   MapPin,
   Search,
   X,
+  ExternalLink,
+  Image,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
@@ -87,6 +89,12 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
   const [postId, setPostId] = useState("");
   const [notes, setNotes] = useState("");
 
+  // External posts selector
+  const [externalPosts, setExternalPosts] = useState<any[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [selectedExternalPost, setSelectedExternalPost] = useState<any>(null);
+  const [postSearch, setPostSearch] = useState("");
+
   // Lead search for location
   const [leadSearch, setLeadSearch] = useState("");
   const [leadResults, setLeadResults] = useState<any[]>([]);
@@ -99,6 +107,28 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
   const resolvedState = activeLocation?.visit_state || activeLocation?.state || null;
   const resolvedNeighborhood = activeLocation?.neighborhood || null;
   const hasLeadLocation = !!(resolvedCity || resolvedState);
+
+  // Fetch external posts (optionally filtered by lead)
+  useEffect(() => {
+    const fetchExternalPosts = async () => {
+      setIsLoadingPosts(true);
+      let query = supabase
+        .from('external_posts')
+        .select('id, url, post_id, title, description, author_username, platform, lead_id, comments_count')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      // If lead is pre-selected, prioritize their posts
+      if (activeLocation?.id) {
+        query = query.eq('lead_id', activeLocation.id);
+      }
+
+      const { data } = await query;
+      setExternalPosts(data || []);
+      setIsLoadingPosts(false);
+    };
+    fetchExternalPosts();
+  }, [activeLocation?.id]);
 
   useEffect(() => {
     if (!leadSearch.trim() || leadSearch.length < 2) {
@@ -117,6 +147,23 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
     }, 300);
     return () => clearTimeout(timer);
   }, [leadSearch]);
+
+  const filteredExternalPosts = externalPosts.filter((p) => {
+    if (!postSearch.trim()) return true;
+    const q = postSearch.toLowerCase();
+    return (
+      (p.title || "").toLowerCase().includes(q) ||
+      (p.description || "").toLowerCase().includes(q) ||
+      (p.author_username || "").toLowerCase().includes(q) ||
+      (p.url || "").toLowerCase().includes(q)
+    );
+  });
+
+  const getInstagramEmbedUrl = (url: string) => {
+    // Extract shortcode from Instagram URL for thumbnail
+    const match = url.match(/instagram\.com\/(?:p|reel|reels)\/([A-Za-z0-9_-]+)/);
+    return match ? match[1] : null;
+  };
 
   const handleCreate = async () => {
     if (!postId.trim()) {
@@ -182,23 +229,130 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
         {/* Step 1: Campaign */}
         {step === 1 && (
           <div className="space-y-4">
-            <div className="p-4 bg-muted/50 rounded-lg border">
-              <p className="text-sm font-medium mb-1">Post selecionado</p>
-              <p className="text-lg font-bold">{post.title}</p>
-              <p className="text-sm text-muted-foreground">{post.description}</p>
-              <Badge variant="secondary" className="mt-2">{post.platform}</Badge>
-            </div>
+            {/* Post selector */}
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Image className="h-4 w-4" />
+                Selecionar Post para Promover
+              </Label>
 
-            <div className="space-y-2">
-              <Label>ID do Post (Instagram/Facebook)</Label>
-              <Input
-                value={postId}
-                onChange={(e) => setPostId(e.target.value)}
-                placeholder="Ex: 17895695668004550 ou page_id_post_id"
-              />
-              <p className="text-xs text-muted-foreground">
-                Cole o ID numérico do post publicado na plataforma. Encontre-o na URL do post ou nos insights.
-              </p>
+              {/* Search posts */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={postSearch}
+                  onChange={(e) => setPostSearch(e.target.value)}
+                  placeholder="Buscar post por título, descrição ou URL..."
+                  className="pl-9"
+                />
+              </div>
+
+              {/* Selected post preview */}
+              {selectedExternalPost ? (
+                <div className="p-4 bg-accent/50 border border-primary/30 rounded-lg space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium flex items-center gap-1">
+                        <Megaphone className="h-3 w-3 text-primary shrink-0" />
+                        Post selecionado
+                      </p>
+                      <p className="font-bold mt-1 truncate">
+                        {selectedExternalPost.title || selectedExternalPost.description?.slice(0, 60) || "Post sem título"}
+                      </p>
+                      {selectedExternalPost.author_username && (
+                        <p className="text-xs text-muted-foreground">@{selectedExternalPost.author_username}</p>
+                      )}
+                      {selectedExternalPost.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{selectedExternalPost.description}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="secondary" className="text-xs">{selectedExternalPost.platform}</Badge>
+                        {selectedExternalPost.comments_count > 0 && (
+                          <span className="text-xs text-muted-foreground">{selectedExternalPost.comments_count} comentários</span>
+                        )}
+                        <a
+                          href={selectedExternalPost.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Ver post
+                        </a>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => {
+                        setSelectedExternalPost(null);
+                        setPostId("");
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* Posts list */
+                <div className="border rounded-lg max-h-48 overflow-y-auto divide-y">
+                  {isLoadingPosts ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                      Carregando posts...
+                    </div>
+                  ) : filteredExternalPosts.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      {externalPosts.length === 0
+                        ? "Nenhum post externo cadastrado para este lead."
+                        : "Nenhum post encontrado com essa busca."}
+                    </div>
+                  ) : (
+                    filteredExternalPosts.map((ep) => (
+                      <button
+                        key={ep.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedExternalPost(ep);
+                          setPostId(ep.post_id || ep.url || "");
+                          if (!campaignName || campaignName.startsWith("Promoção:")) {
+                            setCampaignName(`Promoção: ${ep.title || ep.description?.slice(0, 40) || "Post"}`);
+                          }
+                        }}
+                        className="w-full p-3 text-left hover:bg-muted/50 transition-colors"
+                      >
+                        <p className="text-sm font-medium truncate">
+                          {ep.title || ep.description?.slice(0, 60) || "Post sem título"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          {ep.author_username && (
+                            <span className="text-xs text-muted-foreground">@{ep.author_username}</span>
+                          )}
+                          <Badge variant="outline" className="text-xs">{ep.platform}</Badge>
+                          {ep.comments_count > 0 && (
+                            <span className="text-xs text-muted-foreground">{ep.comments_count} coment.</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-1">{ep.url}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Fallback manual ID */}
+              {!selectedExternalPost && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Ou cole o ID manualmente:</Label>
+                  <Input
+                    value={postId}
+                    onChange={(e) => setPostId(e.target.value)}
+                    placeholder="Ex: 17895695668004550 ou page_id_post_id"
+                    className="text-sm"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
