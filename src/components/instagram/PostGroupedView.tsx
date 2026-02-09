@@ -134,19 +134,26 @@ export function PostGroupedView() {
   const fetchCommentsForPost = useCallback(async (postUrl: string) => {
     setIsLoadingComments(true);
     try {
-      // Need to match any URL variation
-      const norm = normalizeUrl(postUrl);
-      const { data, error } = await supabase
+      // Extract shortcode to use as ilike filter for all URL variants
+      const shortcodeMatch = postUrl.match(/\/(p|reel|reels)\/([A-Za-z0-9_-]+)/);
+      const shortcode = shortcodeMatch ? shortcodeMatch[2] : null;
+
+      let query = supabase
         .from('instagram_comments')
         .select('*')
         .not('post_url', 'is', null)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (shortcode) {
+        query = query.ilike('post_url', `%${shortcode}%`);
+      } else {
+        query = query.eq('post_url', postUrl);
+      }
 
-      // Filter by normalized URL
-      const filtered = (data || []).filter(c => c.post_url && normalizeUrl(c.post_url) === norm);
-      setComments(filtered);
+      const { data, error } = await query.limit(2000);
+
+      if (error) throw error;
+      setComments(data || []);
     } catch (err) {
       console.error('Error fetching comments:', err);
     } finally {
