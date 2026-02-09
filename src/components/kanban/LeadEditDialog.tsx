@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
+import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
 import {
   Dialog,
   DialogContent,
@@ -1166,8 +1167,13 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsContent>
 
             {/* History Tab */}
-            <TabsContent value="history" className="mt-0">
+            <TabsContent value="history" className="mt-0 space-y-6">
               <LeadStageHistoryPanel leadId={lead.id} boards={boards} />
+              
+              {/* Linked Comments Section */}
+              <div className="pt-4 border-t">
+                <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
+              </div>
               
               {/* Custom Fields Section */}
               {customFields.length > 0 && (
