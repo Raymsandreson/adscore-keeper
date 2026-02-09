@@ -199,14 +199,23 @@ serve(async (req) => {
       }
     }
 
-    // Batch upsert: insert in chunks of 100, using on_conflict to skip duplicates
+    // Get existing comment_ids to skip duplicates
+    const allCommentIds = allComments.map(c => c.comment_id);
+    const { data: existingComments } = await supabase
+      .from("instagram_comments")
+      .select("comment_id")
+      .in("comment_id", allCommentIds);
+    
+    const existingSet = new Set((existingComments || []).map(e => e.comment_id));
+    const newComments = allComments.filter(c => !existingSet.has(c.comment_id));
+
+    // Batch insert in chunks of 100
     const BATCH_SIZE = 100;
-    for (let i = 0; i < allComments.length; i += BATCH_SIZE) {
-      const batch = allComments.slice(i, i + BATCH_SIZE);
-      const { error, count } = await supabase
+    for (let i = 0; i < newComments.length; i += BATCH_SIZE) {
+      const batch = newComments.slice(i, i + BATCH_SIZE);
+      const { error } = await supabase
         .from("instagram_comments")
-        .upsert(batch, { onConflict: 'comment_id', ignoreDuplicates: true })
-        .select('id');
+        .insert(batch);
 
       if (error) {
         console.error(`Erro no batch ${i / BATCH_SIZE}:`, error.message);

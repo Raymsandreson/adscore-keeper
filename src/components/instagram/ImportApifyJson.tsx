@@ -120,16 +120,27 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
 
       setTotal(allComments.length);
 
-      // Batch upsert in chunks of 100
+      // Get existing comment_ids to skip duplicates
+      const commentIds = allComments.map(c => c.comment_id);
+      const { data: existing } = await supabase
+        .from('instagram_comments')
+        .select('comment_id')
+        .in('comment_id', commentIds);
+      
+      const existingIds = new Set((existing || []).map(e => e.comment_id));
+      const newComments = allComments.filter(c => !existingIds.has(c.comment_id));
+      const duplicateCount = allComments.length - newComments.length;
+
+      // Batch insert in chunks of 100
       const BATCH_SIZE = 100;
       let savedCount = 0;
       let errorCount = 0;
 
-      for (let i = 0; i < allComments.length; i += BATCH_SIZE) {
-        const batch = allComments.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < newComments.length; i += BATCH_SIZE) {
+        const batch = newComments.slice(i, i + BATCH_SIZE);
         const { error } = await supabase
           .from('instagram_comments')
-          .upsert(batch, { onConflict: 'comment_id', ignoreDuplicates: true });
+          .insert(batch);
 
         if (error) {
           console.error('Batch error:', error.message);
@@ -138,12 +149,13 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
           savedCount += batch.length;
         }
 
-        setProgress(((i + BATCH_SIZE) / allComments.length) * 100);
+        setProgress(((i + BATCH_SIZE) / newComments.length) * 100);
       }
 
       setSaved(savedCount);
+      setDuplicates(duplicateCount);
       setErrors(errorCount);
-      toast.success(`${savedCount} comentários importados de ${allComments.length} total`);
+      toast.success(`${savedCount} importados, ${duplicateCount} duplicados ignorados`);
       onImportComplete?.();
     } catch (error) {
       console.error('Import error:', error);
