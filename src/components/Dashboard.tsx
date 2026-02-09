@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import abraciLogo from "@/assets/abraci-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -328,8 +329,9 @@ const Dashboard = () => {
             <UserMenu />
           </div>
           
+          <img src={abraciLogo} alt="ABRACI.IA" className="h-20 mx-auto" />
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2">
-            Dashboard de Marketing Digital
+            Abraci.IA
           </h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
