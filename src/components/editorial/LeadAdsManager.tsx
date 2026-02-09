@@ -14,6 +14,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Megaphone,
   Search,
   MapPin,
@@ -28,9 +34,14 @@ import {
   TrendingUp,
   Clock,
   Plus,
+  Download,
+  Loader2,
+  Link2,
+  Check,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateAdDialog } from "./CreateAdDialog";
+import { toast } from "sonner";
 import type { Post } from "@/types/editorial";
 
 interface LeadWithAds {
@@ -68,6 +79,27 @@ interface PromotedPostRow {
   lifetime_budget: number | null;
 }
 
+interface MetaCampaign {
+  campaign_id: string;
+  campaign_name: string;
+  status: string;
+  objective: string | null;
+  daily_budget: number | null;
+  lifetime_budget: number | null;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  spend: number;
+  cpm: number;
+  cpc: number;
+  ctr: number;
+  followers_gained: number;
+  comments_count: number;
+  likes_count: number;
+  start_time?: string;
+  created_time?: string;
+}
+
 export function LeadAdsManager() {
   const [leads, setLeads] = useState<any[]>([]);
   const [promotedPosts, setPromotedPosts] = useState<any[]>([]);
@@ -76,6 +108,16 @@ export function LeadAdsManager() {
   const [activeTab, setActiveTab] = useState("pending");
   const [adDialogOpen, setAdDialogOpen] = useState(false);
   const [selectedLeadForAd, setSelectedLeadForAd] = useState<any>(null);
+
+  // Import state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [metaCampaigns, setMetaCampaigns] = useState<MetaCampaign[]>([]);
+  const [isLoadingMeta, setIsLoadingMeta] = useState(false);
+  const [linkingCampaign, setLinkingCampaign] = useState<MetaCampaign | null>(null);
+  const [leadSearchImport, setLeadSearchImport] = useState("");
+  const [leadResultsImport, setLeadResultsImport] = useState<any[]>([]);
+  const [isSearchingLeadsImport, setIsSearchingLeadsImport] = useState(false);
+  const [importingIds, setImportingIds] = useState<Set<string>>(new Set());
 
   const dummyPost: Post = {
     id: selectedLeadForAd?.id || "lead-ad",
@@ -110,7 +152,113 @@ export function LeadAdsManager() {
     setIsLoading(false);
   };
 
-  // Build lead-ads map using lead_id from promoted_posts
+  // --- Meta Import Functions ---
+  const getMetaCredentials = () => {
+    const savedAccounts = localStorage.getItem('meta_saved_accounts');
+    let accessToken: string | null = null;
+    let adAccountId: string | null = null;
+    if (savedAccounts) {
+      const accounts = JSON.parse(savedAccounts);
+      const selectedId = localStorage.getItem('meta_selected_account');
+      const selected = accounts.find((a: any) => a.id === selectedId) || accounts[0];
+      accessToken = selected?.accessToken || null;
+      adAccountId = selected?.adAccountId || null;
+    } else {
+      accessToken = localStorage.getItem('meta_access_token');
+      adAccountId = localStorage.getItem('meta_ad_account_id');
+    }
+    return { accessToken, adAccountId };
+  };
+
+  const fetchMetaAds = async () => {
+    const { accessToken, adAccountId } = getMetaCredentials();
+    if (!accessToken || !adAccountId) {
+      toast.error("Token Meta não encontrado. Conecte sua conta primeiro.");
+      return;
+    }
+
+    setIsLoadingMeta(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-meta-ads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken, adAccountId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao buscar anúncios');
+      setMetaCampaigns(data.campaigns || []);
+      setImportDialogOpen(true);
+      toast.success(`${(data.campaigns || []).length} campanhas encontradas!`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar anúncios da Meta');
+    } finally {
+      setIsLoadingMeta(false);
+    }
+  };
+
+  const importCampaignToLead = async (campaign: MetaCampaign, leadId: string) => {
+    setImportingIds(prev => new Set(prev).add(campaign.campaign_id));
+    try {
+      const { error } = await supabase.from('promoted_posts').insert({
+        post_title: campaign.campaign_name,
+        post_platform: 'instagram',
+        campaign_id: campaign.campaign_id,
+        campaign_name: campaign.campaign_name,
+        objective: campaign.objective,
+        status: campaign.status,
+        daily_budget: campaign.daily_budget,
+        lifetime_budget: campaign.lifetime_budget,
+        impressions: campaign.impressions,
+        reach: campaign.reach,
+        clicks: campaign.clicks,
+        spend: campaign.spend,
+        cpm: campaign.cpm,
+        cpc: campaign.cpc,
+        ctr: campaign.ctr,
+        followers_gained: campaign.followers_gained,
+        comments_count: campaign.comments_count,
+        likes_count: campaign.likes_count,
+        lead_id: leadId,
+      });
+      if (error) throw error;
+      toast.success(`Campanha "${campaign.campaign_name}" vinculada ao lead!`);
+      setLinkingCampaign(null);
+      setLeadSearchImport("");
+      await fetchData();
+    } catch (err) {
+      toast.error('Erro ao importar campanha');
+      console.error(err);
+    } finally {
+      setImportingIds(prev => {
+        const next = new Set(prev);
+        next.delete(campaign.campaign_id);
+        return next;
+      });
+    }
+  };
+
+  // Lead search for import linking
+  useEffect(() => {
+    if (!leadSearchImport.trim() || leadSearchImport.length < 2) {
+      setLeadResultsImport([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingLeadsImport(true);
+      const { data } = await supabase
+        .from('leads')
+        .select('id, lead_name, victim_name, city, state, visit_city, visit_state')
+        .or(`lead_name.ilike.%${leadSearchImport}%,victim_name.ilike.%${leadSearchImport}%,city.ilike.%${leadSearchImport}%`)
+        .limit(8);
+      setLeadResultsImport(data || []);
+      setIsSearchingLeadsImport(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadSearchImport]);
+
+  // Check which campaigns are already imported
+  const importedCampaignIds = new Set(promotedPosts.filter(p => p.campaign_id).map(p => p.campaign_id));
+
   const leadAdsMap = new Map<string, any[]>();
   for (const ad of promotedPosts) {
     if (ad.lead_id) {
@@ -151,7 +299,6 @@ export function LeadAdsManager() {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  // Totals for leads with ads
   const totalSpend = leadsWithAds.reduce((sum, l) => {
     const ads = leadAdsMap.get(l.id) || [];
     return sum + ads.reduce((s: number, a: any) => s + (a.spend || 0), 0);
@@ -216,7 +363,7 @@ export function LeadAdsManager() {
         </Card>
       </div>
 
-      {/* Search + Tabs */}
+      {/* Search + Import Button */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -227,6 +374,18 @@ export function LeadAdsManager() {
             className="pl-9"
           />
         </div>
+        <Button
+          onClick={fetchMetaAds}
+          disabled={isLoadingMeta}
+          className="gap-2"
+        >
+          {isLoadingMeta ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          Importar Anúncios da Meta
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -324,7 +483,7 @@ export function LeadAdsManager() {
             {filterLeads(leadsWithAds).length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                  {search ? "Nenhum lead com anúncio encontrado" : "Nenhum lead com anúncio ainda."}
+                  {search ? "Nenhum lead com anúncio encontrado" : "Nenhum lead com anúncio ainda. Use 'Importar Anúncios da Meta' para buscar campanhas existentes."}
                 </CardContent>
               </Card>
             ) : (
@@ -352,7 +511,6 @@ export function LeadAdsManager() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      {/* Metrics summary */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
                         <div className="flex items-center gap-2 text-sm">
                           <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -393,7 +551,6 @@ export function LeadAdsManager() {
                         </div>
                       </div>
 
-                      {/* Ads table */}
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -437,6 +594,7 @@ export function LeadAdsManager() {
         </TabsContent>
       </Tabs>
 
+      {/* Create Ad Dialog */}
       {selectedLeadForAd && (
         <CreateAdDialog
           open={adDialogOpen}
@@ -458,6 +616,150 @@ export function LeadAdsManager() {
           }}
         />
       )}
+
+      {/* Import Meta Ads Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5 text-primary" />
+              Anúncios da Meta ({metaCampaigns.length})
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Selecione uma campanha e vincule a um lead para acompanhar o desempenho.
+            </p>
+          </DialogHeader>
+
+          {/* Linking sub-dialog */}
+          {linkingCampaign ? (
+            <div className="space-y-4">
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="pt-4 pb-3">
+                  <p className="text-sm font-medium">Vincular campanha:</p>
+                  <p className="font-bold">{linkingCampaign.campaign_name}</p>
+                  <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+                    <span>Gasto: R$ {linkingCampaign.spend.toFixed(2)}</span>
+                    <span>Alcance: {linkingCampaign.reach.toLocaleString("pt-BR")}</span>
+                    <span>{getStatusBadge(linkingCampaign.status)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Buscar lead para vincular:</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={leadSearchImport}
+                    onChange={(e) => setLeadSearchImport(e.target.value)}
+                    placeholder="Digite o nome do lead ou cidade..."
+                    className="pl-9"
+                    autoFocus
+                  />
+                  {isSearchingLeadsImport && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />
+                  )}
+                </div>
+
+                {leadResultsImport.length > 0 && (
+                  <div className="border rounded-lg max-h-60 overflow-y-auto divide-y">
+                    {leadResultsImport.map((lead) => {
+                      const city = lead.visit_city || lead.city;
+                      const state = lead.visit_state || lead.state;
+                      return (
+                        <button
+                          key={lead.id}
+                          type="button"
+                          onClick={() => importCampaignToLead(linkingCampaign, lead.id)}
+                          disabled={importingIds.has(linkingCampaign.campaign_id)}
+                          className="w-full p-3 text-left hover:bg-muted/50 flex items-center justify-between transition-colors"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{lead.lead_name || lead.victim_name || "Sem nome"}</p>
+                            {(city || state) && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {[city, state].filter(Boolean).join("/")}
+                              </p>
+                            )}
+                          </div>
+                          {importingIds.has(linkingCampaign.campaign_id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Link2 className="h-4 w-4 text-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <Button variant="outline" onClick={() => { setLinkingCampaign(null); setLeadSearchImport(""); }}>
+                Voltar à lista
+              </Button>
+            </div>
+          ) : (
+            /* Campaigns list */
+            <div className="space-y-2">
+              {metaCampaigns.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">Nenhuma campanha encontrada na conta Meta.</p>
+              ) : (
+                metaCampaigns.map((c) => {
+                  const alreadyImported = importedCampaignIds.has(c.campaign_id);
+                  return (
+                    <Card key={c.campaign_id} className={alreadyImported ? "opacity-60" : ""}>
+                      <CardContent className="pt-4 pb-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{c.campaign_name}</p>
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {getStatusBadge(c.status)}
+                              {c.objective && (
+                                <Badge variant="outline" className="text-xs">
+                                  {c.objective.replace("OUTCOME_", "")}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-4 mt-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <DollarSign className="h-3 w-3" /> R$ {c.spend.toFixed(2)}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Eye className="h-3 w-3" /> {c.reach.toLocaleString("pt-BR")} alcance
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <MousePointer className="h-3 w-3" /> {c.clicks} cliques
+                              </span>
+                              <span>CTR: {c.ctr.toFixed(2)}%</span>
+                              <span>CPM: R$ {c.cpm.toFixed(2)}</span>
+                            </div>
+                          </div>
+                          {alreadyImported ? (
+                            <Badge variant="secondary" className="gap-1 shrink-0">
+                              <Check className="h-3 w-3" /> Importado
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 shrink-0"
+                              onClick={() => setLinkingCampaign(c)}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              Vincular a Lead
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
