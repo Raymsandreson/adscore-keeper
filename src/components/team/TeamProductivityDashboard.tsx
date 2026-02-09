@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { MemberProductivitySheet } from './MemberProductivitySheet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,8 @@ type DateRangeOption = 'today' | 'yesterday' | '7d' | '14d' | '30d' | 'week' | '
 export function TeamProductivityDashboard() {
   const { isAdmin, loading: roleLoading } = useUserRole();
   const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('today');
+  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -365,7 +368,8 @@ export function TeamProductivityDashboard() {
                   {rankingData.map((member) => (
                     <div
                       key={member.userId}
-                      className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                      className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => { setSelectedMember(member); setSheetOpen(true); }}
                     >
                       <div className={`
                         w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg
@@ -623,6 +627,13 @@ export function TeamProductivityDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <MemberProductivitySheet
+        member={selectedMember}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        dateRange={dateRange}
+      />
     </div>
   );
 }
