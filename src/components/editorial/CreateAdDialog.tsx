@@ -46,6 +46,7 @@ import type { Post } from "@/types/editorial";
 import { usePromotedPosts } from "@/hooks/usePromotedPosts";
 
 interface LeadLocation {
+  id?: string;
   city?: string | null;
   state?: string | null;
   visit_city?: string | null;
@@ -143,6 +144,7 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
       editorialPostId: post.id,
       postTitle: post.title,
       postPlatform: post.platform,
+      leadId: activeLocation?.id,
     });
 
     setIsCreating(false);
@@ -310,6 +312,7 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
                         type="button"
                         onClick={() => {
                           setSelectedLead({
+                            id: lead.id,
                             city: lead.city,
                             state: lead.state,
                             visit_city: lead.visit_city,

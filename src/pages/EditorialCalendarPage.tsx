@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, CalendarDays, BarChart3 } from "lucide-react";
+import { ArrowLeft, CalendarDays, BarChart3, Megaphone } from "lucide-react";
 import { EditorialCalendar } from "@/components/editorial/EditorialCalendar";
 import { OrganicPaidCorrelation } from "@/components/editorial/OrganicPaidCorrelation";
+import { LeadAdsManager } from "@/components/editorial/LeadAdsManager";
 import { useEditorialPosts } from "@/hooks/useEditorialPosts";
 
 export default function EditorialCalendarPage() {
@@ -29,16 +30,20 @@ export default function EditorialCalendarPage() {
           </div>
         </div>
 
-        {/* Tabs: Calendário / Correlação */}
+        {/* Tabs: Calendário / Correlação / Anúncios por Lead */}
         <Tabs defaultValue="calendar" className="w-full">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+          <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3">
             <TabsTrigger value="calendar" className="gap-2">
               <CalendarDays className="h-4 w-4" />
               Calendário
             </TabsTrigger>
+            <TabsTrigger value="ads" className="gap-2">
+              <Megaphone className="h-4 w-4" />
+              Anúncios
+            </TabsTrigger>
             <TabsTrigger value="correlation" className="gap-2">
               <BarChart3 className="h-4 w-4" />
-              Correlação Pago
+              Correlação
             </TabsTrigger>
           </TabsList>
 
@@ -49,6 +54,10 @@ export default function EditorialCalendarPage() {
               onUpdatePost={updatePost}
               onDeletePost={deletePost}
             />
+          </TabsContent>
+
+          <TabsContent value="ads" className="mt-6">
+            <LeadAdsManager />
           </TabsContent>
 
           <TabsContent value="correlation" className="mt-6">
