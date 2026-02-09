@@ -73,7 +73,7 @@ interface PostInfo {
 export function PostCommentsFetcher() {
   const [postUrl, setPostUrl] = useState('');
   const [postUrls, setPostUrls] = useState<string[]>([]);
-  const [maxComments, setMaxComments] = useState(0); // 0 = todos
+  const [maxComments, setMaxComments] = useState(1000);
   const [isLoading, setIsLoading] = useState(false);
   const [comments, setComments] = useState<CommentResult[]>([]);
   const [posts, setPosts] = useState<PostInfo[]>([]);
