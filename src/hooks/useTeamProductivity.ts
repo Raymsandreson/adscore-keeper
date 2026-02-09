@@ -126,7 +126,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         supabase.from('lead_followups').select('id, created_at, followup_type, outcome')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Leads created (has created_by)
-        supabase.from('leads').select('id, created_by, created_at, status')
+        supabase.from('leads').select('id, created_by, created_at, status, lead_name')
           .gte('created_at', startDate).lte('created_at', endDate),
         // Sessions
         supabase.from('user_sessions').select('*')
@@ -225,10 +225,18 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Sessions
+      // Sessions - cap active sessions to avoid inflated times
       sessionsData.forEach(s => {
         const u = getUser(s.user_id);
-        if (s.duration_seconds) u.sessionMinutes += Math.round(s.duration_seconds / 60);
+        if (s.duration_seconds && s.duration_seconds < 43200) { // cap at 12 hours
+          u.sessionMinutes += Math.round(s.duration_seconds / 60);
+        } else if (!s.duration_seconds && s.started_at) {
+          // Active session - calculate from start to now, cap at 12h
+          const elapsed = Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000);
+          if (elapsed < 43200) {
+            u.sessionMinutes += Math.round(elapsed / 60);
+          }
+        }
       });
 
       // Activity log for page visits
