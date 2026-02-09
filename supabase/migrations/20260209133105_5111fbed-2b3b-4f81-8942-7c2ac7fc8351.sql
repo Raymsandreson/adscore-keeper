@@ -1,0 +1,1 @@
+ALTER TABLE public.contact_leads ADD COLUMN relationship_to_victim text DEFAULT null;

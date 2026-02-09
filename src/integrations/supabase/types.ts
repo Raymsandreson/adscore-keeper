@@ -243,6 +243,7 @@ export type Database = {
           id: string
           lead_id: string
           notes: string | null
+          relationship_to_victim: string | null
         }
         Insert: {
           contact_id: string
@@ -250,6 +251,7 @@ export type Database = {
           id?: string
           lead_id: string
           notes?: string | null
+          relationship_to_victim?: string | null
         }
         Update: {
           contact_id?: string
@@ -257,6 +259,7 @@ export type Database = {
           id?: string
           lead_id?: string
           notes?: string | null
+          relationship_to_victim?: string | null
         }
         Relationships: [
           {

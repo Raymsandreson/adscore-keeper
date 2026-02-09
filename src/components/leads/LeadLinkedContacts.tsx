@@ -6,11 +6,27 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const RELATIONSHIP_OPTIONS = [
+  'Vítima',
+  'Cônjuge',
+  'Pai/Mãe',
+  'Filho(a)',
+  'Irmão(ã)',
+  'Familiar',
+  'Amigo(a)',
+  'Advogado(a)',
+  'Testemunha',
+  'Responsável',
+  'Outro',
+];
 
 interface LinkedContact {
   id: string;
   contact_id: string;
+  relationship_to_victim: string | null;
   contact: {
     id: string;
     full_name: string;
@@ -49,9 +65,9 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('contact_leads')
-        .select('id, contact_id, contacts:contact_id(id, full_name, instagram_username, phone, email, classification, classifications)')
+        .select('id, contact_id, relationship_to_victim, contacts:contact_id(id, full_name, instagram_username, phone, email, classification, classifications)')
         .eq('lead_id', leadId);
 
       if (!error && data) {
@@ -60,6 +76,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
           .map((d: any) => ({
             id: d.id,
             contact_id: d.contact_id,
+            relationship_to_victim: d.relationship_to_victim || null,
             contact: d.contacts,
           }));
         setContacts(mapped);
@@ -181,8 +198,21 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
+  const handleUpdateRelationship = async (linkId: string, value: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('contact_leads')
+        .update({ relationship_to_victim: value || null })
+        .eq('id', linkId);
+
+      if (error) throw error;
+      setContacts(prev => prev.map(c => c.id === linkId ? { ...c, relationship_to_victim: value || null } : c));
+    } catch {
+      toast.error('Erro ao atualizar relação');
+    }
+  };
+
   const handleOpenContact = async (contact: any) => {
-    // Fetch full contact data to avoid missing fields (created_at, updated_at, etc.)
     const { data } = await supabase
       .from('contacts')
       .select('*')
@@ -325,48 +355,66 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
           </p>
         ) : (
           <div className="space-y-1.5">
-            {contacts.map((cl) => (
+             {contacts.map((cl) => (
               <div
                 key={cl.id}
-                className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                className="p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group space-y-2"
               >
-                <button
-                  type="button"
-                  onClick={() => handleOpenContact(cl.contact)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                >
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Users className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{cl.contact.full_name}</p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {cl.contact.instagram_username && (
-                        <span className="flex items-center gap-0.5">
-                          <Instagram className="h-3 w-3" />
-                          {cl.contact.instagram_username}
-                        </span>
-                      )}
-                      {cl.contact.phone && (
-                        <span className="flex items-center gap-0.5">
-                          <Phone className="h-3 w-3" />
-                          {cl.contact.phone}
-                        </span>
-                      )}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenContact(cl.contact)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  >
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Users className="h-4 w-4 text-primary" />
                     </div>
-                  </div>
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                </button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                  onClick={() => handleUnlinkContact(cl.id)}
-                  title="Desvincular contato"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{cl.contact.full_name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {cl.contact.instagram_username && (
+                          <span className="flex items-center gap-0.5">
+                            <Instagram className="h-3 w-3" />
+                            {cl.contact.instagram_username}
+                          </span>
+                        )}
+                        {cl.contact.phone && (
+                          <span className="flex items-center gap-0.5">
+                            <Phone className="h-3 w-3" />
+                            {cl.contact.phone}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    onClick={() => handleUnlinkContact(cl.id)}
+                    title="Desvincular contato"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 pl-11">
+                  <Heart className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <Select
+                    value={cl.relationship_to_victim || ''}
+                    onValueChange={(val) => handleUpdateRelationship(cl.id, val)}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-auto min-w-[140px]">
+                      <SelectValue placeholder="Relação com a vítima" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RELATIONSHIP_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             ))}
           </div>
