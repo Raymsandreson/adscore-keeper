@@ -9,9 +9,16 @@ import { Phone, MessageSquare, Mail, Clock, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import type { CatLead, CatLeadContact } from '@/hooks/useCatLeads';
 
 type AddContactPayload = Omit<CatLeadContact, 'id' | 'created_at'>;
+
+interface ProfileOption {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+}
 
 const CHANNELS = [
   { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
@@ -51,6 +58,24 @@ export function CatLeadContactDialog({
   const [phoneUsed, setPhoneUsed] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [contactedBy, setContactedBy] = useState(user?.id || '');
+  const [teamProfiles, setTeamProfiles] = useState<ProfileOption[]>([]);
+
+  // Fetch team profiles
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .order('full_name');
+      if (data) setTeamProfiles(data);
+    };
+    fetchProfiles();
+  }, []);
+
+  useEffect(() => {
+    if (user?.id && !contactedBy) setContactedBy(user.id);
+  }, [user]);
 
   // Available phones
   const phones = [
@@ -69,7 +94,7 @@ export function CatLeadContactDialog({
     try {
       await onAddContact({
         cat_lead_id: catLead.id,
-        contacted_by: user?.id || null,
+        contacted_by: contactedBy || user?.id || null,
         contact_channel: channel,
         contact_result: result,
         phone_used: phoneUsed || null,
@@ -146,6 +171,25 @@ export function CatLeadContactDialog({
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1">
+                <User className="h-3.5 w-3.5" />
+                Responsável
+              </Label>
+              <Select value={contactedBy} onValueChange={setContactedBy}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Selecionar responsável" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamProfiles.map(p => (
+                    <SelectItem key={p.user_id} value={p.user_id}>
+                      {p.full_name || p.email?.split('@')[0] || 'Usuário'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {phones.length > 0 && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Telefone usado</Label>
@@ -191,6 +235,7 @@ export function CatLeadContactDialog({
                 {contacts.map(c => {
                   const rl = resultLabel(c.contact_result);
                   const ch = CHANNELS.find(x => x.value === c.contact_channel);
+                  const responsavel = teamProfiles.find(p => p.user_id === c.contacted_by);
                   return (
                     <div key={c.id} className="border rounded-lg p-2.5 text-xs space-y-1">
                       <div className="flex items-center justify-between">
@@ -205,6 +250,12 @@ export function CatLeadContactDialog({
                           {format(new Date(c.created_at), "dd/MM/yy HH:mm", { locale: ptBR })}
                         </span>
                       </div>
+                      {responsavel && (
+                        <p className="text-muted-foreground flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          {responsavel.full_name || responsavel.email?.split('@')[0] || 'Usuário'}
+                        </p>
+                      )}
                       {c.phone_used && (
                         <p className="text-muted-foreground">📞 {c.phone_used}</p>
                       )}
