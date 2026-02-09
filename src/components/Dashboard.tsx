@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MetricCard from "./MetricCard";
 import DataSourceIndicator from "./DataSourceIndicator";
+import { InlineDatabaseSearch } from "./InlineDatabaseSearch";
 import GoalBiasIndicator from "./GoalBiasIndicator";
 import UnifiedMetaStatus from "./UnifiedMetaStatus";
 import ViewsBreakdown from "./ViewsBreakdown";
@@ -29,7 +30,7 @@ import GoalsManager from "./GoalsManager";
 import SpendBreakdown from "./SpendBreakdown";
 import InstagramAutomation from "./instagram/InstagramAutomation";
 import { UserMenu } from "./auth/UserMenu";
-import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound, CreditCard, Search } from "lucide-react";
+import { TrendingUp, Target, MousePointer, Eye, Play, DollarSign, Users, UserPlus, Phone, CheckCircle, XCircle, Trophy, UserX, Sparkles, LayoutDashboard, Megaphone, Heart, Flag, CalendarDays, Bot, Flame, Calendar, MessageCircle, Filter, Layers, UsersRound, CreditCard } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useMetaAPI, DateRangeOption } from "@/hooks/useMetaAPI";
 import { useMetricAlerts } from "@/hooks/useMetricAlerts";
@@ -425,17 +426,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div 
-            onClick={() => {
-              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }));
-            }}
-            className="mx-auto mt-4 max-w-xl w-full flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border/50 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
-          >
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground flex-1">Buscar leads, contatos, comentários, DMs...</span>
-            <kbd className="hidden sm:inline-flex items-center gap-1 rounded border bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">⌘K</kbd>
-          </div>
+          <InlineDatabaseSearch />
         </div>
 
         {/* Pipeline de Leads - Resumo */}
