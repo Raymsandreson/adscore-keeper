@@ -2187,6 +2187,7 @@ export type Database = {
           id: string
           impressions: number | null
           last_metrics_sync: string | null
+          lead_id: string | null
           lifetime_budget: number | null
           likes_count: number | null
           notes: string | null
@@ -2229,6 +2230,7 @@ export type Database = {
           id?: string
           impressions?: number | null
           last_metrics_sync?: string | null
+          lead_id?: string | null
           lifetime_budget?: number | null
           likes_count?: number | null
           notes?: string | null
@@ -2271,6 +2273,7 @@ export type Database = {
           id?: string
           impressions?: number | null
           last_metrics_sync?: string | null
+          lead_id?: string | null
           lifetime_budget?: number | null
           likes_count?: number | null
           notes?: string | null
@@ -2293,7 +2296,15 @@ export type Database = {
           targeting_locations?: string[] | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "promoted_posts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       purchase_groups: {
         Row: {

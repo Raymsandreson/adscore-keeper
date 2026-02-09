@@ -31,6 +31,7 @@ interface CreateCampaignRequest {
   postTitle?: string;
   postPlatform?: string;
   pageId?: string;
+  leadId?: string;
 }
 
 serve(async (req) => {
@@ -266,6 +267,7 @@ async function createAd(
     targeting_custom_audiences: body.customAudiences || null,
     placements: body.placements || null,
     editorial_post_id: body.editorialPostId || null,
+    lead_id: body.leadId || null,
   });
 
   const result = {
