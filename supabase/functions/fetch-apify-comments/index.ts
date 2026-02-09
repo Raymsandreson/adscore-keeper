@@ -143,30 +143,25 @@ serve(async (req) => {
     let savedCount = 0;
     let errorCount = 0;
 
-    // O Actor retorna cada comentário como um item separado no dataset
-    // Cada item tem: id, text, ownerUsername, timestamp, etc.
-    const commentsArray: ApifyComment[] = Array.isArray(results) ? results : [];
+    const commentsArray = Array.isArray(results) ? results : [];
     
     console.log(`📝 Total de comentários recebidos: ${commentsArray.length}`);
 
+    // Build all comment data first (no DB calls)
     for (const comment of commentsArray) {
-      // Pular items inválidos
-      if (!comment.id || !comment.text) {
-        console.log(`⚠️ Comentário inválido (sem id ou text):`, comment);
-        continue;
-      }
+      if (!comment.id || !comment.text) continue;
 
       const isOwnComment = myUsername && 
         comment.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
 
-      const commentData = {
+      allComments.push({
         comment_id: comment.id,
         comment_text: comment.text,
         author_username: comment.ownerUsername || 'unknown',
-        author_id: comment.ownerId,
+        author_id: comment.owner?.id || comment.ownerId || null,
         created_at: comment.timestamp || new Date().toISOString(),
         post_id: null,
-        post_url: postUrls[0], // Usar a URL fornecida
+        post_url: postUrls[0],
         comment_type: isOwnComment ? "sent" : "received",
         platform: "instagram",
         metadata: {
@@ -175,47 +170,19 @@ serve(async (req) => {
           replies_count: comment.repliesCount || 0,
           is_outbound: true,
         },
-      };
+      });
 
-      allComments.push(commentData);
-
-      // Verificar se comentário já existe antes de inserir
-      const { data: existing } = await supabase
-        .from("instagram_comments")
-        .select("id")
-        .eq("comment_id", comment.id)
-        .maybeSingle();
-
-      if (existing) {
-        // Já existe, pular
-        continue;
-      }
-
-      // Inserir novo comentário
-      const { error } = await supabase
-        .from("instagram_comments")
-        .insert(commentData);
-
-      if (error) {
-        console.error(`Erro ao salvar comentário ${comment.id}:`, error.message);
-        errorCount++;
-      } else {
-        savedCount++;
-      }
-
-      // Processar respostas aninhadas se existirem
+      // Nested replies
       if (comment.replies && Array.isArray(comment.replies)) {
         for (const reply of comment.replies) {
           if (!reply.id || !reply.text) continue;
-
           const isOwnReply = myUsername && 
             reply.ownerUsername?.toLowerCase() === myUsername.toLowerCase();
-
-          const replyData = {
+          allComments.push({
             comment_id: reply.id,
             comment_text: reply.text,
             author_username: reply.ownerUsername || 'unknown',
-            author_id: reply.ownerId,
+            author_id: reply.owner?.id || reply.ownerId || null,
             created_at: reply.timestamp || new Date().toISOString(),
             post_id: null,
             post_url: postUrls[0],
@@ -227,31 +194,25 @@ serve(async (req) => {
               likes_count: reply.likesCount || 0,
               is_outbound: true,
             },
-          };
-
-          allComments.push(replyData);
-
-          // Verificar se resposta já existe
-          const { data: existingReply } = await supabase
-            .from("instagram_comments")
-            .select("id")
-            .eq("comment_id", reply.id)
-            .maybeSingle();
-
-          if (existingReply) {
-            continue;
-          }
-
-          const { error: replyError } = await supabase
-            .from("instagram_comments")
-            .insert(replyData);
-
-          if (replyError) {
-            errorCount++;
-          } else {
-            savedCount++;
-          }
+          });
         }
+      }
+    }
+
+    // Batch upsert: insert in chunks of 100, using on_conflict to skip duplicates
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < allComments.length; i += BATCH_SIZE) {
+      const batch = allComments.slice(i, i + BATCH_SIZE);
+      const { error, count } = await supabase
+        .from("instagram_comments")
+        .upsert(batch, { onConflict: 'comment_id', ignoreDuplicates: true })
+        .select('id');
+
+      if (error) {
+        console.error(`Erro no batch ${i / BATCH_SIZE}:`, error.message);
+        errorCount += batch.length;
+      } else {
+        savedCount += batch.length;
       }
     }
 
