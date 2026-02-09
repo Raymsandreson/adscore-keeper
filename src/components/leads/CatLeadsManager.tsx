@@ -27,7 +27,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
 };
 
 export function CatLeadsManager() {
-  const { catLeads, loading, importCatLeads, updateCatLead, deleteCatLead, addContact, fetchContacts } = useCatLeads();
+  const { catLeads, loading, fetchCatLeads, importCatLeads, updateCatLead, deleteCatLead, addContact, fetchContacts } = useCatLeads();
   const [importOpen, setImportOpen] = useState(false);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<CatLead | null>(null);
@@ -285,7 +285,8 @@ export function CatLeadsManager() {
           catLead={selectedLead}
           contacts={leadContacts}
           onAddContact={addContact}
-          onRefresh={refreshContacts}
+          onRefresh={() => { refreshContacts(); fetchCatLeads(); }}
+          onUpdateCatLead={updateCatLead}
         />
       )}
     </div>
