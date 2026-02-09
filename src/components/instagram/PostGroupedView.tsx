@@ -35,6 +35,8 @@ import { PostDmContactRegistration } from './PostDmContactRegistration';
 import { CommentContactBadges } from './CommentContactBadges';
 import { useCommentContactInfo, type CommentContactData } from '@/hooks/useCommentContactInfo';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 interface PostGroup {
   postUrl: string;
@@ -96,6 +98,8 @@ export function PostGroupedView() {
   const [accessToken, setAccessToken] = useState<string | undefined>();
   const [detailContact, setDetailContact] = useState<any>(null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isLeadEditOpen, setIsLeadEditOpen] = useState(false);
 
   // Fetch access token for AI replies
   useEffect(() => {
@@ -277,6 +281,32 @@ export function PostGroupedView() {
     }
   };
 
+  const handleOpenLead = async (leadId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .eq('id', leadId)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) {
+        setEditingLead(data as Lead);
+        setIsLeadEditOpen(true);
+      }
+    } catch (err) {
+      console.error('Error fetching lead:', err);
+    }
+  };
+
+  const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
+    const { error } = await supabase
+      .from('leads')
+      .update(updates)
+      .eq('id', leadId);
+    if (error) throw error;
+    refetchContacts();
+  };
+
   if (isLoadingPosts) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -446,6 +476,7 @@ export function PostGroupedView() {
                           onClassify={handleClassify}
                           onRegisterContact={handleRegisterContact}
                           onOpenContact={handleOpenContact}
+                          onOpenLead={handleOpenLead}
                           onDataChanged={refetchContacts}
                         />
                         {replies.length > 0 && (
@@ -460,6 +491,7 @@ export function PostGroupedView() {
                                 onClassify={handleClassify}
                                 onRegisterContact={handleRegisterContact}
                                 onOpenContact={handleOpenContact}
+                                onOpenLead={handleOpenLead}
                                 onDataChanged={refetchContacts}
                               />
                             ))}
@@ -516,6 +548,14 @@ export function PostGroupedView() {
         onOpenChange={setIsDetailSheetOpen}
         onContactUpdated={refetchContacts}
       />
+
+      {/* Lead Edit Dialog */}
+      <LeadEditDialog
+        open={isLeadEditOpen}
+        onOpenChange={setIsLeadEditOpen}
+        lead={editingLead}
+        onSave={handleSaveLead}
+      />
     </div>
   );
 }
@@ -528,10 +568,11 @@ interface CommentRowProps {
   onClassify: (comment: Comment) => void;
   onRegisterContact: (username: string) => void;
   onOpenContact: (contactData: CommentContactData) => void;
+  onOpenLead: (leadId: string) => void;
   onDataChanged: () => void;
 }
 
-function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onOpenContact, onDataChanged }: CommentRowProps) {
+function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onOpenContact, onOpenLead, onDataChanged }: CommentRowProps) {
   const isReceived = comment.comment_type === 'received';
   const hasContact = !!contactData.contact;
 
@@ -640,6 +681,7 @@ function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRe
               contactData={contactData}
               username={comment.author_username}
               onLeadStatusChanged={onDataChanged}
+              onOpenLead={onOpenLead}
             />
           </div>
         )}
