@@ -181,8 +181,15 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
   };
 
-  const handleOpenContact = (contact: any) => {
-    setSelectedContact(contact);
+  const handleOpenContact = async (contact: any) => {
+    // Fetch full contact data to avoid missing fields (created_at, updated_at, etc.)
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('id', contact.id)
+      .maybeSingle();
+    
+    setSelectedContact(data || contact);
     setSheetOpen(true);
   };
 
