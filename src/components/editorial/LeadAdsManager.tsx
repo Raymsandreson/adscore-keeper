@@ -27,8 +27,11 @@ import {
   AlertCircle,
   TrendingUp,
   Clock,
+  Plus,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CreateAdDialog } from "./CreateAdDialog";
+import type { Post } from "@/types/editorial";
 
 interface LeadWithAds {
   id: string;
@@ -71,6 +74,19 @@ export function LeadAdsManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("pending");
+  const [adDialogOpen, setAdDialogOpen] = useState(false);
+  const [selectedLeadForAd, setSelectedLeadForAd] = useState<any>(null);
+
+  const dummyPost: Post = {
+    id: selectedLeadForAd?.id || "lead-ad",
+    title: selectedLeadForAd?.lead_name || selectedLeadForAd?.victim_name || "Anúncio para Lead",
+    description: `Campanha para ${selectedLeadForAd?.lead_name || selectedLeadForAd?.victim_name || "lead"}`,
+    platform: "instagram",
+    status: "published",
+    scheduled_date: new Date(),
+    scheduled_time: "12:00",
+    content_type: "image",
+  };
 
   useEffect(() => {
     fetchData();
@@ -239,18 +255,19 @@ export function LeadAdsManager() {
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
+                   <TableRow>
                     <TableHead>Lead</TableHead>
                     <TableHead>Localização</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Origem</TableHead>
                     <TableHead>Criado em</TableHead>
+                    <TableHead className="text-right">Ação</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filterLeads(leadsWithoutAds).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                         {search ? "Nenhum lead encontrado" : "Todos os leads têm anúncios! 🎉"}
                       </TableCell>
                     </TableRow>
@@ -278,6 +295,20 @@ export function LeadAdsManager() {
                           <span className="text-sm text-muted-foreground">
                             {new Date(lead.created_at).toLocaleDateString("pt-BR")}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => {
+                              setSelectedLeadForAd(lead);
+                              setAdDialogOpen(true);
+                            }}
+                          >
+                            <Plus className="h-3 w-3" />
+                            Criar Anúncio
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -405,6 +436,28 @@ export function LeadAdsManager() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {selectedLeadForAd && (
+        <CreateAdDialog
+          open={adDialogOpen}
+          onOpenChange={(open) => {
+            setAdDialogOpen(open);
+            if (!open) {
+              setSelectedLeadForAd(null);
+              fetchData();
+            }
+          }}
+          post={dummyPost}
+          leadLocation={{
+            id: selectedLeadForAd.id,
+            city: selectedLeadForAd.city,
+            state: selectedLeadForAd.state,
+            visit_city: selectedLeadForAd.visit_city,
+            visit_state: selectedLeadForAd.visit_state,
+            lead_name: selectedLeadForAd.lead_name || selectedLeadForAd.victim_name,
+          }}
+        />
+      )}
     </div>
   );
 }
