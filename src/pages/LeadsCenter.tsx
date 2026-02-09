@@ -35,6 +35,7 @@ import { InstagramAccountsManager } from "@/components/analytics/InstagramAccoun
 import { ContactsManager } from "@/components/contacts/ContactsManager";
 import { UnifiedKanbanManager } from "@/components/kanban/UnifiedKanbanManager";
 import { GeographicDistributionMap } from "@/components/contacts/GeographicDistributionMap";
+import { CatLeadsManager } from "@/components/leads/CatLeadsManager";
 
 // Dados simulados de conversão de leads ao longo do tempo
 const generateLeadsData = () => {
@@ -197,7 +198,7 @@ const LeadsCenter = () => {
 
           {/* Tabs for Lead Management and Analytics */}
           <Tabs defaultValue="kanban" className="w-full">
-            <TabsList className="grid w-full grid-cols-7 mb-4">
+            <TabsList className="grid w-full grid-cols-8 mb-4">
               <TabsTrigger value="kanban" className="flex items-center gap-2">
                 <LayoutGrid className="h-4 w-4" />
                 Kanbans
@@ -205,6 +206,10 @@ const LeadsCenter = () => {
               <TabsTrigger value="leads" className="flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
                 Leads WhatsApp
+              </TabsTrigger>
+              <TabsTrigger value="cats" className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                CATs
               </TabsTrigger>
               <TabsTrigger value="contacts" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
@@ -236,6 +241,11 @@ const LeadsCenter = () => {
             {/* Lead Manager Tab */}
             <TabsContent value="leads">
               <LeadManager adAccountId={adAccountId || undefined} />
+            </TabsContent>
+
+            {/* CAT Leads Tab */}
+            <TabsContent value="cats">
+              <CatLeadsManager />
             </TabsContent>
 
             {/* Contacts Tab */}

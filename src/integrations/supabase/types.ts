@@ -147,6 +147,221 @@ export type Database = {
           },
         ]
       }
+      cat_lead_contacts: {
+        Row: {
+          cat_lead_id: string
+          contact_channel: string
+          contact_result: string
+          contacted_by: string | null
+          created_at: string
+          id: string
+          next_action: string | null
+          next_action_date: string | null
+          notes: string | null
+          phone_used: string | null
+        }
+        Insert: {
+          cat_lead_id: string
+          contact_channel?: string
+          contact_result?: string
+          contacted_by?: string | null
+          created_at?: string
+          id?: string
+          next_action?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          phone_used?: string | null
+        }
+        Update: {
+          cat_lead_id?: string
+          contact_channel?: string
+          contact_result?: string
+          contacted_by?: string | null
+          created_at?: string
+          id?: string
+          next_action?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          phone_used?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cat_lead_contacts_cat_lead_id_fkey"
+            columns: ["cat_lead_id"]
+            isOneToOne: false
+            referencedRelation: "cat_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cat_leads: {
+        Row: {
+          agente_causador: string | null
+          assigned_to: string | null
+          bairro: string | null
+          cbo: string | null
+          celular_1: string | null
+          celular_2: string | null
+          celular_3: string | null
+          celular_4: string | null
+          cep: string | null
+          cid_10: string | null
+          cnae_empregador: string | null
+          cnpj_cei_empregador: string | null
+          contact_status: string | null
+          cpf: string | null
+          created_at: string
+          data_acidente: string | null
+          data_afastamento: string | null
+          data_emissao_cat: string | null
+          data_nascimento: string | null
+          endereco: string | null
+          filiacao_segurado: string | null
+          fixo_1: string | null
+          fixo_2: string | null
+          fixo_3: string | null
+          fixo_4: string | null
+          id: string
+          import_batch_id: string | null
+          imported_at: string | null
+          indica_obito: boolean | null
+          lead_id: string | null
+          municipio: string | null
+          municipio_empregador: string | null
+          natureza_lesao: string | null
+          nome_completo: string
+          notes: string | null
+          origem_cadastramento: string | null
+          parte_corpo_atingida: string | null
+          priority: string | null
+          resultado_celular_1: string | null
+          resultado_celular_2: string | null
+          resultado_celular_3: string | null
+          resultado_celular_4: string | null
+          resultado_fixo_1: string | null
+          resultado_fixo_2: string | null
+          resultado_fixo_3: string | null
+          resultado_fixo_4: string | null
+          sexo: string | null
+          tipo_acidente: string | null
+          tipo_empregador: string | null
+          uf: string | null
+          uf_municipio_acidente: string | null
+          uf_municipio_empregador: string | null
+          updated_at: string
+        }
+        Insert: {
+          agente_causador?: string | null
+          assigned_to?: string | null
+          bairro?: string | null
+          cbo?: string | null
+          celular_1?: string | null
+          celular_2?: string | null
+          celular_3?: string | null
+          celular_4?: string | null
+          cep?: string | null
+          cid_10?: string | null
+          cnae_empregador?: string | null
+          cnpj_cei_empregador?: string | null
+          contact_status?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_acidente?: string | null
+          data_afastamento?: string | null
+          data_emissao_cat?: string | null
+          data_nascimento?: string | null
+          endereco?: string | null
+          filiacao_segurado?: string | null
+          fixo_1?: string | null
+          fixo_2?: string | null
+          fixo_3?: string | null
+          fixo_4?: string | null
+          id?: string
+          import_batch_id?: string | null
+          imported_at?: string | null
+          indica_obito?: boolean | null
+          lead_id?: string | null
+          municipio?: string | null
+          municipio_empregador?: string | null
+          natureza_lesao?: string | null
+          nome_completo: string
+          notes?: string | null
+          origem_cadastramento?: string | null
+          parte_corpo_atingida?: string | null
+          priority?: string | null
+          resultado_celular_1?: string | null
+          resultado_celular_2?: string | null
+          resultado_celular_3?: string | null
+          resultado_celular_4?: string | null
+          resultado_fixo_1?: string | null
+          resultado_fixo_2?: string | null
+          resultado_fixo_3?: string | null
+          resultado_fixo_4?: string | null
+          sexo?: string | null
+          tipo_acidente?: string | null
+          tipo_empregador?: string | null
+          uf?: string | null
+          uf_municipio_acidente?: string | null
+          uf_municipio_empregador?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agente_causador?: string | null
+          assigned_to?: string | null
+          bairro?: string | null
+          cbo?: string | null
+          celular_1?: string | null
+          celular_2?: string | null
+          celular_3?: string | null
+          celular_4?: string | null
+          cep?: string | null
+          cid_10?: string | null
+          cnae_empregador?: string | null
+          cnpj_cei_empregador?: string | null
+          contact_status?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_acidente?: string | null
+          data_afastamento?: string | null
+          data_emissao_cat?: string | null
+          data_nascimento?: string | null
+          endereco?: string | null
+          filiacao_segurado?: string | null
+          fixo_1?: string | null
+          fixo_2?: string | null
+          fixo_3?: string | null
+          fixo_4?: string | null
+          id?: string
+          import_batch_id?: string | null
+          imported_at?: string | null
+          indica_obito?: boolean | null
+          lead_id?: string | null
+          municipio?: string | null
+          municipio_empregador?: string | null
+          natureza_lesao?: string | null
+          nome_completo?: string
+          notes?: string | null
+          origem_cadastramento?: string | null
+          parte_corpo_atingida?: string | null
+          priority?: string | null
+          resultado_celular_1?: string | null
+          resultado_celular_2?: string | null
+          resultado_celular_3?: string | null
+          resultado_celular_4?: string | null
+          resultado_fixo_1?: string | null
+          resultado_fixo_2?: string | null
+          resultado_fixo_3?: string | null
+          resultado_fixo_4?: string | null
+          sexo?: string | null
+          tipo_acidente?: string | null
+          tipo_empregador?: string | null
+          uf?: string | null
+          uf_municipio_acidente?: string | null
+          uf_municipio_empregador?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       category_api_mappings: {
         Row: {
           api_category_name: string
