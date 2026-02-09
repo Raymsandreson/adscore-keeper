@@ -134,6 +134,9 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
   const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
   
+  // External posts URLs for third-party detection
+  const [externalPostUrls, setExternalPostUrls] = useState<Set<string>>(new Set());
+  
   // Workflow mode state - default to flow mode
   const [showWorkflowMode, setShowWorkflowMode] = useState(true);
   
@@ -181,6 +184,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     fetchComments();
     fetchStats();
     checkExistingLeads();
+    // Load external post URLs for third-party detection
+    supabase.from('external_posts').select('url').then(({ data }) => {
+      if (data) {
+        setExternalPostUrls(new Set(data.map(p => p.url.replace(/\/$/, '').toLowerCase())));
+      }
+    });
   }, []);
 
   // Auto-refresh effect
@@ -2114,6 +2123,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         onOpenChange={setShowAIReplyDialog}
         comment={replyingToComment}
         accessToken={accessToken}
+        isThirdPartyPost={
+          replyingToComment?.post_url
+            ? externalPostUrls.has(replyingToComment.post_url.replace(/\/$/, '').toLowerCase())
+            : false
+        }
         onReplyPosted={() => {
           syncFromInstagram();
         }}
