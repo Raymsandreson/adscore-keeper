@@ -53,6 +53,18 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { createExtractionRecord, updateExtractionResults } = usePostExtractionHistory();
 
+  // Normalizar URL do Instagram removendo parâmetros desnecessários
+  const normalizeInstagramUrl = (url: string): string => {
+    if (!url) return url;
+    try {
+      const parsed = new URL(url);
+      // Manter apenas o path sem query params
+      return `${parsed.origin}${parsed.pathname.replace(/\/$/, '')}`;
+    } catch {
+      return url.replace(/\?.*$/, '').replace(/\/$/, '');
+    }
+  };
+
   const processFile = async (file: File) => {
     setIsProcessing(true);
     setProgress(0);
@@ -77,6 +89,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
         if (!comment.id || !comment.text) continue;
 
         const isOwn = myUser && comment.ownerUsername?.toLowerCase() === myUser;
+        const normalizedUrl = comment.postUrl ? normalizeInstagramUrl(comment.postUrl) : null;
 
         allComments.push({
           comment_id: comment.id,
@@ -84,7 +97,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
           author_username: comment.ownerUsername || 'unknown',
           author_id: comment.owner?.id || comment.ownerId || null,
           created_at: comment.timestamp || new Date().toISOString(),
-          post_url: comment.postUrl || null,
+          post_url: normalizedUrl,
           comment_type: isOwn ? 'sent' : 'received',
           platform: 'instagram',
           metadata: {
@@ -106,7 +119,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
               author_username: reply.ownerUsername || 'unknown',
               author_id: reply.owner?.id || reply.ownerId || null,
               created_at: reply.timestamp || new Date().toISOString(),
-              post_url: comment.postUrl || null,
+              post_url: normalizedUrl,
               comment_type: isOwnReply ? 'sent' : 'received',
               parent_comment_id: comment.id,
               platform: 'instagram',
@@ -122,14 +135,20 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
 
       setTotal(allComments.length);
 
-      // Get existing comment_ids to skip duplicates
+      // Get existing comment_ids to skip duplicates (batch in chunks to avoid .in() limit)
       const commentIds = allComments.map(c => c.comment_id);
-      const { data: existing } = await supabase
-        .from('instagram_comments')
-        .select('comment_id')
-        .in('comment_id', commentIds);
+      const existingIds = new Set<string>();
+      const ID_BATCH = 500;
       
-      const existingIds = new Set((existing || []).map(e => e.comment_id));
+      for (let i = 0; i < commentIds.length; i += ID_BATCH) {
+        const batch = commentIds.slice(i, i + ID_BATCH);
+        const { data: existing } = await supabase
+          .from('instagram_comments')
+          .select('comment_id')
+          .in('comment_id', batch);
+        (existing || []).forEach(e => existingIds.add(e.comment_id));
+      }
+      
       const newComments = allComments.filter(c => !existingIds.has(c.comment_id));
       const duplicateCount = allComments.length - newComments.length;
 
@@ -137,6 +156,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
       const BATCH_SIZE = 100;
       let savedCount = 0;
       let errorCount = 0;
+      const totalToProcess = newComments.length || 1;
 
       for (let i = 0; i < newComments.length; i += BATCH_SIZE) {
         const batch = newComments.slice(i, i + BATCH_SIZE);
@@ -151,7 +171,7 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
           savedCount += batch.length;
         }
 
-        setProgress(((i + BATCH_SIZE) / newComments.length) * 100);
+        setProgress(Math.min(((i + BATCH_SIZE) / totalToProcess) * 100, 100));
       }
 
       setSaved(savedCount);
@@ -166,19 +186,23 @@ export function ImportApifyJson({ onImportComplete }: ImportApifyJsonProps) {
         postUrlGroups[url].push(comment);
       }
 
-      for (const [postUrl, comments] of Object.entries(postUrlGroups)) {
+      for (const [postUrl, groupComments] of Object.entries(postUrlGroups)) {
         if (postUrl === 'unknown') continue;
-        const historyId = await createExtractionRecord(
-          [postUrl],
-          comments.length,
-          `json-import-${Date.now()}`
-        );
-        if (historyId) {
-          await updateExtractionResults(historyId, comments, 'completed', 0);
+        try {
+          const historyId = await createExtractionRecord(
+            [postUrl],
+            groupComments.length,
+            `json-import-${Date.now()}`
+          );
+          if (historyId) {
+            await updateExtractionResults(historyId, groupComments, 'completed', 0);
+          }
+        } catch (histErr) {
+          console.error('Error creating history for', postUrl, histErr);
         }
       }
 
-      toast.success(`${savedCount} importados, ${duplicateCount} duplicados ignorados`);
+      toast.success(`${savedCount} importados, ${duplicateCount} já existiam no banco`);
       onImportComplete?.();
     } catch (error) {
       console.error('Import error:', error);
