@@ -41,6 +41,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { InstagramProfileHoverCard } from "./InstagramProfileHoverCard";
+import { PostPreviewCard, PostPreviewCardSkeleton } from "./PostPreviewCard";
+import { usePostMetadata } from "@/hooks/usePostMetadata";
 import { CommentCardBadges } from "./CommentCardBadges";
 import { CommentCardSettingsDialog } from "./CommentCardSettingsDialog";
 import { PostDmContactRegistration } from "./PostDmContactRegistration";
@@ -226,6 +228,11 @@ export const CommentResponseWorkflow = ({
   // Activity logger for productivity tracking
   const { logActivity } = useActivityLogger();
   
+  // Post metadata for preview
+  const { fetchMetadata, getCachedMetadata } = usePostMetadata();
+  const [postMetadata, setPostMetadata] = useState<any>(null);
+  const [isMetadataFetching, setIsMetadataFetching] = useState(false);
+  
   // Get usernames for contact info lookup
   const commentUsernames = useMemo(() => {
     return comments
@@ -330,6 +337,27 @@ export const CommentResponseWorkflow = ({
       details
     }]);
   }, []);
+
+  // Fetch post metadata for preview
+  useEffect(() => {
+    if (currentComment?.post_url) {
+      const cached = getCachedMetadata(currentComment.post_url);
+      if (cached) {
+        setPostMetadata(cached);
+        setIsMetadataFetching(false);
+      } else {
+        setIsMetadataFetching(true);
+        setPostMetadata(null);
+        fetchMetadata(currentComment.post_url).then(meta => {
+          setPostMetadata(meta);
+          setIsMetadataFetching(false);
+        });
+      }
+    } else {
+      setPostMetadata(null);
+      setIsMetadataFetching(false);
+    }
+  }, [currentComment?.post_url]);
 
   // Check if user is following and if lead exists
   useEffect(() => {
@@ -1223,24 +1251,37 @@ export const CommentResponseWorkflow = ({
                   
                   {/* Post Preview */}
                   {currentComment.post_url && (
-                    <a
-                      href={currentComment.post_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg border bg-card overflow-hidden flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 text-sm">
-                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">
-                          {isThirdPartyPost(currentComment) 
-                            ? 'Postagem de Terceiro' 
-                            : 'Postagem Original (Própria)'}
+                    isMetadataFetching ? (
+                      <PostPreviewCardSkeleton />
+                    ) : postMetadata ? (
+                      <PostPreviewCard
+                        postUrl={currentComment.post_url}
+                        caption={postMetadata.caption}
+                        thumbnailUrl={postMetadata.thumbnailUrl}
+                        mediaType={postMetadata.mediaType}
+                        postOwner={postMetadata.ownerUsername}
+                        compact
+                      />
+                    ) : (
+                      <a
+                        href={currentComment.post_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-lg border bg-card overflow-hidden flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 text-sm">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">
+                            {isThirdPartyPost(currentComment) 
+                              ? 'Postagem de Terceiro' 
+                              : 'Postagem Original (Própria)'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-primary flex items-center gap-1">
+                          Abrir <ExternalLink className="h-3 w-3" />
                         </span>
-                      </div>
-                      <span className="text-xs text-primary flex items-center gap-1">
-                        Abrir <ExternalLink className="h-3 w-3" />
-                      </span>
-                    </a>
+                      </a>
+                    )
                   )}
                   
                   {/* Parent Comment (if replying to a comment) */}
