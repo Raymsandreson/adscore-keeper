@@ -19,6 +19,8 @@ import {
   Sparkles,
   Tag,
   CheckCircle2,
+  Briefcase,
+  UserPlus,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -28,6 +30,8 @@ import { cn } from '@/lib/utils';
 import { AIReplyDialog } from './AIReplyDialog';
 import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
 import { CommentClassificationDialog } from './CommentClassificationDialog';
+import { ProfessionBadgePopover } from './ProfessionBadgePopover';
+import { PostDmContactRegistration } from './PostDmContactRegistration';
 
 interface PostGroup {
   postUrl: string;
@@ -75,6 +79,8 @@ export function PostGroupedView() {
   const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
   const [showClassificationDialog, setShowClassificationDialog] = useState(false);
   const [classifyingComment, setClassifyingComment] = useState<Comment | null>(null);
+  const [showContactRegistration, setShowContactRegistration] = useState(false);
+  const [registeringUsername, setRegisteringUsername] = useState<string>('');
   const [accessToken, setAccessToken] = useState<string | undefined>();
 
   // Fetch access token for AI replies
@@ -245,6 +251,11 @@ export function PostGroupedView() {
     setShowClassificationDialog(true);
   };
 
+  const handleRegisterContact = (username: string) => {
+    setRegisteringUsername(username);
+    setShowContactRegistration(true);
+  };
+
   if (isLoadingPosts) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -411,6 +422,7 @@ export function PostGroupedView() {
                           comment={comment}
                           onAIReply={handleAIReply}
                           onClassify={handleClassify}
+                          onRegisterContact={handleRegisterContact}
                         />
                         {replies.length > 0 && (
                           <div className="ml-10 border-l-2 border-muted pl-3 space-y-1">
@@ -421,6 +433,7 @@ export function PostGroupedView() {
                                 isReply
                                 onAIReply={handleAIReply}
                                 onClassify={handleClassify}
+                                onRegisterContact={handleRegisterContact}
                               />
                             ))}
                           </div>
@@ -460,6 +473,14 @@ export function PostGroupedView() {
         onClassificationsApplied={() => {}}
         onLeadLinked={() => {}}
       />
+
+      {/* Contact Registration Dialog */}
+      <PostDmContactRegistration
+        open={showContactRegistration}
+        onOpenChange={setShowContactRegistration}
+        instagramUsername={registeringUsername}
+        onContactSaved={() => {}}
+      />
     </div>
   );
 }
@@ -469,9 +490,10 @@ interface CommentRowProps {
   isReply?: boolean;
   onAIReply: (comment: Comment) => void;
   onClassify: (comment: Comment) => void;
+  onRegisterContact: (username: string) => void;
 }
 
-function CommentRow({ comment, isReply, onAIReply, onClassify }: CommentRowProps) {
+function CommentRow({ comment, isReply, onAIReply, onClassify, onRegisterContact }: CommentRowProps) {
   const isReceived = comment.comment_type === 'received';
 
   return (
@@ -534,6 +556,26 @@ function CommentRow({ comment, isReply, onAIReply, onClassify }: CommentRowProps
                 >
                   <Tag className="h-3 w-3 mr-1" />
                   Classificar
+                </Button>
+              )}
+
+              {comment.author_username && (
+                <ProfessionBadgePopover
+                  authorUsername={comment.author_username}
+                  interactive
+                  compact
+                />
+              )}
+
+              {comment.author_username && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => onRegisterContact(comment.author_username!)}
+                >
+                  <UserPlus className="h-3 w-3 mr-1" />
+                  Contato
                 </Button>
               )}
             </div>
