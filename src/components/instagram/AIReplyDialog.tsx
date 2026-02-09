@@ -317,51 +317,88 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
             </div>
           )}
 
-          {/* Generated Reply - Comment */}
+          {/* Generated Reply - Comment Section */}
           {generatedReply && (
             <>
-              <div className="space-y-2">
+              {/* Instagram-style comment thread preview */}
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <MessageCircle className="h-4 w-4 text-blue-500" />
-                  <label className="text-sm font-medium">Comentário sugerido:</label>
+                  <label className="text-sm font-medium">Comentário:</label>
+                  {markedComment && (
+                    <Badge variant="outline" className="border-green-500 text-green-600 text-[10px]">
+                      <CheckCircle2 className="h-3 w-3 mr-1" /> Enviado
+                    </Badge>
+                  )}
                 </div>
-                <Textarea
-                  value={editedReply}
-                  onChange={(e) => setEditedReply(e.target.value)}
-                  rows={3}
-                  className="resize-none"
-                  placeholder="Edite a resposta se necessário..."
-                />
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{editedReply.length} caracteres</span>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedReply, 'comment')} className="h-7">
-                      {copied ? (
-                        <Check className="h-3 w-3 mr-1 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3 mr-1" />
-                      )}
-                      {copied ? "Copiado!" : "Copiar"}
-                    </Button>
-                    <Button
-                      variant={markedComment ? "outline" : "secondary"}
-                      size="sm"
-                      onClick={markAsCommented}
-                      disabled={markedComment}
-                      className={cn("h-7", markedComment && "border-green-500 text-green-600")}
-                    >
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      {markedComment ? "Comentado ✅" : "Marcar Comentado"}
-                    </Button>
+
+                {/* Instagram-style thread */}
+                <div className="rounded-lg border overflow-hidden">
+                  {/* Original comment */}
+                  <div className="p-3 bg-muted/30">
+                    <div className="flex items-start gap-2.5">
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                        {(comment.author_username || '?')[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold">{comment.author_username || 'usuário'}</span>
+                        <p className="text-sm mt-0.5">{comment.comment_text}</p>
+                        <span className="text-[11px] text-muted-foreground mt-1 block">Comentário original</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Our reply - indented like Instagram */}
+                  <div className={cn(
+                    "p-3 pl-12 border-t",
+                    markedComment ? "bg-green-50/50 dark:bg-green-950/20" : "bg-background"
+                  )}>
+                    <div className="flex items-start gap-2.5">
+                      <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
+                        V
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-primary">Você</span>
+                        {markedComment ? (
+                          <p className="text-sm mt-0.5">{editedReply}</p>
+                        ) : (
+                          <Textarea
+                            value={editedReply}
+                            onChange={(e) => setEditedReply(e.target.value)}
+                            rows={2}
+                            className="resize-none mt-1 text-sm"
+                            placeholder="Edite o comentário..."
+                          />
+                        )}
+                      </div>
+                    </div>
+                    {!markedComment && (
+                      <div className="flex items-center justify-end gap-2 mt-2">
+                        <span className="text-[11px] text-muted-foreground mr-auto">{editedReply.length} chars</span>
+                        <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedReply, 'comment')} className="h-7 text-xs">
+                          {copied ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
+                          {copied ? "Copiado!" : "Copiar"}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={markAsCommented}
+                          className="h-7 text-xs"
+                        >
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Marcar Comentado
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* Alternatives */}
-              {alternatives.length > 0 && (
+              {!markedComment && alternatives.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-xs text-muted-foreground">Alternativas:</label>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {alternatives.map((alt, index) => (
                       <button
                         key={index}
@@ -379,42 +416,75 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                 </div>
               )}
 
-              {/* DM Suggestion */}
+              {/* DM Section - Instagram DM style */}
               {dmSuggestion && (
-                <div className="space-y-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-blue-500" />
-                    <label className="text-sm font-medium">Mensagem para DM:</label>
+                    <label className="text-sm font-medium">Direct Message:</label>
+                    {markedDm && (
+                      <Badge variant="outline" className="border-green-500 text-green-600 text-[10px]">
+                        <CheckCircle2 className="h-3 w-3 mr-1" /> Enviada
+                      </Badge>
+                    )}
                   </div>
-                  <Textarea
-                    value={editedDm}
-                    onChange={(e) => setEditedDm(e.target.value)}
-                    rows={3}
-                    className="resize-none text-sm"
-                    placeholder="Edite a DM se necessário..."
-                  />
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{editedDm.length} caracteres</span>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedDm, 'dm')} className="h-7">
-                        {copiedDm ? (
-                          <Check className="h-3 w-3 mr-1 text-green-500" />
-                        ) : (
-                          <Copy className="h-3 w-3 mr-1" />
-                        )}
-                        {copiedDm ? "Copiado!" : "Copiar DM"}
-                      </Button>
-                      <Button
-                        variant={markedDm ? "outline" : "secondary"}
-                        size="sm"
-                        onClick={markDmSent}
-                        disabled={markedDm || !editedDm.trim()}
-                        className={cn("h-7", markedDm && "border-green-500 text-green-600")}
-                      >
-                        <Mail className="h-3 w-3 mr-1" />
-                        {markedDm ? "DM Registrada ✅" : "Marcar DM Enviada"}
-                      </Button>
+
+                  {/* Instagram DM bubble style */}
+                  <div className="rounded-lg border overflow-hidden bg-muted/10">
+                    <div className="p-2 border-b bg-muted/30 flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center text-white text-[10px] font-bold">
+                        {(comment.author_username || '?')[0]?.toUpperCase()}
+                      </div>
+                      <span className="text-xs font-medium">{comment.author_username || 'usuário'}</span>
+                      <span className="text-[10px] text-muted-foreground ml-auto">Direct</span>
                     </div>
+                    <div className="p-3 space-y-2">
+                      {/* Our DM message - right-aligned like Instagram */}
+                      <div className="flex justify-end">
+                        <div className={cn(
+                          "max-w-[85%] rounded-2xl rounded-br-sm px-3 py-2",
+                          markedDm 
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100" 
+                            : "bg-primary text-primary-foreground"
+                        )}>
+                          {markedDm ? (
+                            <p className="text-sm">{editedDm}</p>
+                          ) : (
+                            <Textarea
+                              value={editedDm}
+                              onChange={(e) => setEditedDm(e.target.value)}
+                              rows={2}
+                              className="resize-none text-sm bg-transparent border-none p-0 text-primary-foreground placeholder:text-primary-foreground/50 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-0"
+                              placeholder="Edite a DM..."
+                            />
+                          )}
+                        </div>
+                      </div>
+                      {markedDm && (
+                        <div className="flex justify-end">
+                          <span className="text-[10px] text-muted-foreground">Enviada ✓✓</span>
+                        </div>
+                      )}
+                    </div>
+                    {!markedDm && (
+                      <div className="p-2 border-t flex items-center justify-end gap-2">
+                        <span className="text-[11px] text-muted-foreground mr-auto">{editedDm.length} chars</span>
+                        <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedDm, 'dm')} className="h-7 text-xs">
+                          {copiedDm ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
+                          {copiedDm ? "Copiado!" : "Copiar DM"}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={markDmSent}
+                          disabled={!editedDm.trim()}
+                          className="h-7 text-xs"
+                        >
+                          <Mail className="h-3 w-3 mr-1" />
+                          Marcar DM Enviada
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
