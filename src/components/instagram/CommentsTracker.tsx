@@ -66,6 +66,7 @@ import { useCommentCardSettings } from "@/hooks/useCommentCardSettings";
 import { ProfessionFilter } from "./ProfessionFilter";
 import { OutboundCommentDialog } from "./OutboundCommentDialog";
 import { ImportCommentsFromExport } from "./ImportCommentsFromExport";
+import { ImportApifyJson } from "./ImportApifyJson";
 import { CommentTextWithMentions } from "./CommentTextWithMentions";
 import { ApifyCommentsFetcher } from "./ApifyCommentsFetcher";
 import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
@@ -1350,6 +1351,24 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
                     onImportComplete={() => {
                       fetchComments();
                       toast.success('Importação concluída!');
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
+              
+              {/* Import from Apify JSON */}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Upload className="h-4 w-4 text-primary" />
+                    Importar Apify JSON
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <ImportApifyJson 
+                    onImportComplete={() => {
+                      fetchComments();
+                      toast.success('Importação do Apify concluída!');
                     }}
                   />
                 </DialogContent>
