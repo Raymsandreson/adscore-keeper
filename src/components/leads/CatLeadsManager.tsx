@@ -231,7 +231,13 @@ export function CatLeadsManager() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-xs">
-                          {lead.celular_1 || '-'}
+                          <div className="flex items-center gap-1">
+                            {lead.celular_1 ? (
+                              <span className="font-medium text-primary">{lead.celular_1}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 justify-end">
