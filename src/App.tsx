@@ -8,7 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PageTracker } from "@/components/PageTracker";
-import { GlobalCommandPalette } from "@/components/GlobalCommandPalette";
+import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { FloatingNav } from "@/components/FloatingNav";
 import Index from "./pages/Index";
 import LeadsCenter from "./pages/LeadsCenter";
@@ -46,7 +46,7 @@ function AppRoutes() {
   return (
     <>
       <PageTracker />
-      <GlobalCommandPalette />
+      <GlobalDatabaseSearch />
       <FloatingNav />
       <Routes>
         <Route path="/" element={<Index />} />
