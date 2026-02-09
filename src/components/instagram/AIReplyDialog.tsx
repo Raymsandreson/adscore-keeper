@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Send, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText } from "lucide-react";
+import { Bot, Send, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText, AlertTriangle, CheckCircle2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,7 @@ interface AIReplyDialogProps {
   comment: Comment | null;
   accessToken?: string;
   onReplyPosted?: () => void;
+  isThirdPartyPost?: boolean;
 }
 
 const TONES = [
@@ -34,14 +35,18 @@ const TONES = [
   { value: "casual", label: "Casual", emoji: "✌️" },
 ];
 
-export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onReplyPosted }: AIReplyDialogProps) => {
+export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onReplyPosted, isThirdPartyPost = false }: AIReplyDialogProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [selectedTone, setSelectedTone] = useState("friendly");
   const [generatedReply, setGeneratedReply] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [editedReply, setEditedReply] = useState("");
+  const [dmSuggestion, setDmSuggestion] = useState<string | null>(null);
+  const [editedDm, setEditedDm] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedDm, setCopiedDm] = useState(false);
+  const [markedAsDone, setMarkedAsDone] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
 
@@ -51,6 +56,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     setIsGenerating(true);
     setGeneratedReply("");
     setAlternatives([]);
+    setDmSuggestion(null);
+    setMarkedAsDone(false);
 
     try {
       const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
@@ -60,6 +67,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           postContext: null,
           tone: selectedTone,
           customPrompt: customPrompt.trim() || null,
+          generateDM: true,
         },
       });
 
@@ -79,6 +87,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       setGeneratedReply(data.reply);
       setEditedReply(data.reply);
       setAlternatives(data.alternatives || []);
+      setDmSuggestion(data.dmSuggestion || null);
+      setEditedDm(data.dmSuggestion || "");
     } catch (error: any) {
       console.error("Error generating reply:", error);
       toast.error("Erro ao gerar resposta. Tente novamente.");
@@ -90,7 +100,6 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
   const postReply = async () => {
     if (!editedReply.trim() || !comment) return;
 
-    // Check if we have a comment_id (from Instagram API) to reply to
     const commentIdToReply = (comment as any).comment_id;
     if (!commentIdToReply) {
       toast.error("Este comentário não pode receber respostas (registrado manualmente)");
@@ -117,11 +126,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       toast.success("Resposta postada no Instagram! 🎉");
       onOpenChange(false);
       onReplyPosted?.();
-      
-      // Reset state
-      setGeneratedReply("");
-      setEditedReply("");
-      setAlternatives([]);
+      resetState();
     } catch (error: any) {
       console.error("Error posting reply:", error);
       toast.error(error.message || "Erro ao postar resposta");
@@ -130,24 +135,53 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     }
   };
 
+  const markAsCommented = async () => {
+    if (!comment) return;
+    
+    try {
+      await supabase
+        .from('instagram_comments')
+        .update({ replied_at: new Date().toISOString(), replied_by: 'manual' })
+        .eq('id', comment.id);
+      
+      setMarkedAsDone(true);
+      toast.success("Marcado como comentado! ✅");
+      onReplyPosted?.();
+    } catch (error) {
+      toast.error("Erro ao marcar como comentado");
+    }
+  };
+
   const selectAlternative = (alt: string) => {
     setEditedReply(alt);
   };
 
-  const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(editedReply);
-    setCopied(true);
-    toast.success("Resposta copiada!");
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async (text: string, type: 'comment' | 'dm') => {
+    await navigator.clipboard.writeText(text);
+    if (type === 'comment') {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      setCopiedDm(true);
+      setTimeout(() => setCopiedDm(false), 2000);
+    }
+    toast.success(type === 'comment' ? "Comentário copiado!" : "DM copiada!");
+  };
+
+  const resetState = () => {
+    setGeneratedReply("");
+    setEditedReply("");
+    setAlternatives([]);
+    setDmSuggestion(null);
+    setEditedDm("");
+    setCustomPrompt("");
+    setShowCustomPrompt(false);
+    setMarkedAsDone(false);
   };
 
   const handleClose = () => {
     onOpenChange(false);
-    setGeneratedReply("");
-    setEditedReply("");
-    setAlternatives([]);
-    setCustomPrompt("");
-    setShowCustomPrompt(false);
+    resetState();
   };
 
   if (!comment) return null;
@@ -158,11 +192,20 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
-            Responder com IA
+            {isThirdPartyPost ? "Gerar Comentário + DM" : "Responder com IA"}
           </DialogTitle>
           <DialogDescription>
-            Gere uma resposta inteligente para o comentário de{" "}
-            <strong className="text-foreground">@{comment.author_username?.replace("@", "")}</strong>
+            {isThirdPartyPost ? (
+              <span className="flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+                Post de terceiro — copie e comente manualmente
+              </span>
+            ) : (
+              <>
+                Gere uma resposta inteligente para o comentário de{" "}
+                <strong className="text-foreground">@{comment.author_username?.replace("@", "")}</strong>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -254,11 +297,14 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
             </div>
           )}
 
-          {/* Generated Reply */}
+          {/* Generated Reply - Comment */}
           {generatedReply && (
             <>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Resposta sugerida:</label>
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 text-blue-500" />
+                  <label className="text-sm font-medium">Comentário sugerido:</label>
+                </div>
                 <Textarea
                   value={editedReply}
                   onChange={(e) => setEditedReply(e.target.value)}
@@ -268,7 +314,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{editedReply.length} caracteres</span>
-                  <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-7">
+                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedReply, 'comment')} className="h-7">
                     {copied ? (
                       <Check className="h-3 w-3 mr-1 text-green-500" />
                     ) : (
@@ -300,6 +346,34 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                   </div>
                 </div>
               )}
+
+              {/* DM Suggestion */}
+              {dmSuggestion && (
+                <div className="space-y-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-blue-500" />
+                    <label className="text-sm font-medium">Mensagem para DM:</label>
+                  </div>
+                  <Textarea
+                    value={editedDm}
+                    onChange={(e) => setEditedDm(e.target.value)}
+                    rows={3}
+                    className="resize-none text-sm"
+                    placeholder="Edite a DM se necessário..."
+                  />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{editedDm.length} caracteres</span>
+                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedDm, 'dm')} className="h-7">
+                      {copiedDm ? (
+                        <Check className="h-3 w-3 mr-1 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3 mr-1" />
+                      )}
+                      {copiedDm ? "Copiado!" : "Copiar DM"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -308,17 +382,33 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>
-          <Button
-            onClick={postReply}
-            disabled={!editedReply.trim() || isPosting}
-          >
-            {isPosting ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            Postar Resposta
-          </Button>
+          {isThirdPartyPost ? (
+            <Button
+              onClick={markAsCommented}
+              disabled={!generatedReply || markedAsDone}
+              variant={markedAsDone ? "outline" : "default"}
+              className={markedAsDone ? "border-green-500 text-green-600" : ""}
+            >
+              {markedAsDone ? (
+                <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+              )}
+              {markedAsDone ? "Comentado ✅" : "Marcar como Comentado"}
+            </Button>
+          ) : (
+            <Button
+              onClick={postReply}
+              disabled={!editedReply.trim() || isPosting}
+            >
+              {isPosting ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Postar Resposta
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
