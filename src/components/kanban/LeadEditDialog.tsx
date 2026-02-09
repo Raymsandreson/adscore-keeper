@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { generateLeadName } from '@/utils/generateLeadName';
 import {
   Dialog,
   DialogContent,
@@ -307,10 +308,6 @@ export function LeadEditDialog({
   const handleApplyAIData = (updates: Partial<Lead>) => {
     const u = updates as any;
     
-    // Basic
-    if (u.lead_name) setLeadName(u.lead_name);
-    if (u.notes) setNotes(prev => prev ? `${prev}\n\n${u.notes}` : u.notes);
-    
     // Accident
     if (u.victim_name) setVictimName(u.victim_name);
     if (u.victim_age) setVictimAge(u.victim_age.toString());
@@ -318,6 +315,7 @@ export function LeadEditDialog({
     if (u.case_type) setCaseType(u.case_type);
     if (u.accident_address) setAccidentAddress(u.accident_address);
     if (u.damage_description) setDamageDescription(u.damage_description);
+    if (u.notes) setNotes(prev => prev ? `${prev}\n\n${u.notes}` : u.notes);
     
     // Location
     if (u.visit_city) setVisitCity(u.visit_city);
@@ -335,6 +333,23 @@ export function LeadEditDialog({
     if (u.liability_type) setLiabilityType(u.liability_type);
     if (u.news_link) setNewsLink(u.news_link);
     if (u.legal_viability) setLegalViability(u.legal_viability);
+
+    // Auto-generate lead name in standard pattern
+    const generatedName = generateLeadName({
+      city: u.visit_city || undefined,
+      state: u.visit_state || undefined,
+      victim_name: u.victim_name || undefined,
+      main_company: u.main_company || undefined,
+      contractor_company: u.contractor_company || undefined,
+      accident_date: u.accident_date || undefined,
+      damage_description: u.damage_description || undefined,
+      case_type: u.case_type || undefined,
+    });
+    if (generatedName) {
+      setLeadName(generatedName);
+    } else if (u.lead_name) {
+      setLeadName(u.lead_name);
+    }
   };
 
   // Handle extracted data from AccidentDataExtractor
@@ -364,51 +379,18 @@ export function LeadEditDialog({
     if (data.liability_type) setLiabilityType(data.liability_type);
     if (data.legal_viability) setLegalViability(data.legal_viability);
     
-    // Auto-generate lead name in pattern: City (State) | Victim x Company (Injury) - (Date)
-    const city = data.visit_city || '';
-    const state = data.visit_state || '';
-    const victim = data.victim_name || ''; // Full victim name
-    const company = data.main_company || data.contractor_company || '';
-    const injury = data.damage_description || data.case_type || '';
-    const accDate = data.accident_date ? format(new Date(data.accident_date), 'dd/MM/yyyy') : '';
-    
-    // Build lead name parts
-    const parts: string[] = [];
-    
-    // Location part: City (State)
-    if (city && state) {
-      parts.push(`${city} (${state})`);
-    } else if (city) {
-      parts.push(city);
-    } else if (state) {
-      parts.push(`(${state})`);
-    }
-    
-    // Victim x Company part
-    let mainPart = '';
-    if (victim && company) {
-      mainPart = `${victim} x ${company}`;
-    } else if (victim) {
-      mainPart = victim;
-    } else if (company) {
-      mainPart = company;
-    }
-    
-    // Injury and date
-    const details: string[] = [];
-    if (injury) details.push(injury);
-    if (accDate) details.push(accDate);
-    
-    if (mainPart) {
-      if (details.length > 0) {
-        mainPart += ` (${details.join(' - ')})`;
-      }
-      parts.push(mainPart);
-    }
-    
-    // Generate final name
-    if (parts.length > 0) {
-      const generatedName = parts.join(' | ');
+    // Auto-generate lead name following standard pattern
+    const generatedName = generateLeadName({
+      city: data.visit_city,
+      state: data.visit_state,
+      victim_name: data.victim_name,
+      main_company: data.main_company,
+      contractor_company: data.contractor_company,
+      accident_date: data.accident_date,
+      damage_description: data.damage_description,
+      case_type: data.case_type,
+    });
+    if (generatedName) {
       setLeadName(generatedName);
     }
     
