@@ -34,6 +34,7 @@ import { ProfessionBadgePopover } from './ProfessionBadgePopover';
 import { PostDmContactRegistration } from './PostDmContactRegistration';
 import { CommentContactBadges } from './CommentContactBadges';
 import { useCommentContactInfo, type CommentContactData } from '@/hooks/useCommentContactInfo';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 
 interface PostGroup {
   postUrl: string;
@@ -93,6 +94,8 @@ export function PostGroupedView() {
   const [showContactRegistration, setShowContactRegistration] = useState(false);
   const [registeringUsername, setRegisteringUsername] = useState<string>('');
   const [accessToken, setAccessToken] = useState<string | undefined>();
+  const [detailContact, setDetailContact] = useState<any>(null);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
 
   // Fetch access token for AI replies
   useEffect(() => {
@@ -267,6 +270,13 @@ export function PostGroupedView() {
     setShowContactRegistration(true);
   };
 
+  const handleOpenContact = (contactData: CommentContactData) => {
+    if (contactData.contact) {
+      setDetailContact(contactData.contact);
+      setIsDetailSheetOpen(true);
+    }
+  };
+
   if (isLoadingPosts) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -435,6 +445,7 @@ export function PostGroupedView() {
                           onAIReply={handleAIReply}
                           onClassify={handleClassify}
                           onRegisterContact={handleRegisterContact}
+                          onOpenContact={handleOpenContact}
                           onDataChanged={refetchContacts}
                         />
                         {replies.length > 0 && (
@@ -448,6 +459,7 @@ export function PostGroupedView() {
                                 onAIReply={handleAIReply}
                                 onClassify={handleClassify}
                                 onRegisterContact={handleRegisterContact}
+                                onOpenContact={handleOpenContact}
                                 onDataChanged={refetchContacts}
                               />
                             ))}
@@ -496,6 +508,14 @@ export function PostGroupedView() {
         instagramUsername={registeringUsername}
         onContactSaved={refetchContacts}
       />
+
+      {/* Contact Detail Sheet */}
+      <ContactDetailSheet
+        contact={detailContact}
+        open={isDetailSheetOpen}
+        onOpenChange={setIsDetailSheetOpen}
+        onContactUpdated={refetchContacts}
+      />
     </div>
   );
 }
@@ -507,11 +527,13 @@ interface CommentRowProps {
   onAIReply: (comment: Comment) => void;
   onClassify: (comment: Comment) => void;
   onRegisterContact: (username: string) => void;
+  onOpenContact: (contactData: CommentContactData) => void;
   onDataChanged: () => void;
 }
 
-function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onDataChanged }: CommentRowProps) {
+function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onOpenContact, onDataChanged }: CommentRowProps) {
   const isReceived = comment.comment_type === 'received';
+  const hasContact = !!contactData.contact;
 
   return (
     <div className={cn(
@@ -519,15 +541,26 @@ function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRe
       isReply && "py-2"
     )}>
       <div className={cn(
-        "shrink-0 rounded-full bg-muted flex items-center justify-center",
-        isReply ? "w-6 h-6" : "w-8 h-8"
-      )}>
-        <User className={cn("text-muted-foreground", isReply ? "h-3 w-3" : "h-4 w-4")} />
+        "shrink-0 rounded-full flex items-center justify-center",
+        hasContact ? "bg-primary/10" : "bg-muted",
+        isReply ? "w-6 h-6" : "w-8 h-8",
+        hasContact && !isReply && "cursor-pointer hover:bg-primary/20 transition-colors"
+      )}
+        onClick={hasContact && !isReply ? () => onOpenContact(contactData) : undefined}
+      >
+        <User className={cn(hasContact ? "text-primary" : "text-muted-foreground", isReply ? "h-3 w-3" : "h-4 w-4")} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2 min-w-0">
-            <span className={cn("font-semibold", isReply ? "text-xs" : "text-sm")}>
+            <span
+              className={cn(
+                "font-semibold",
+                isReply ? "text-xs" : "text-sm",
+                hasContact && !isReply && "cursor-pointer text-primary hover:underline"
+              )}
+              onClick={hasContact && !isReply ? () => onOpenContact(contactData) : undefined}
+            >
               {comment.author_username || 'anônimo'}
             </span>
             <span className="text-[10px] text-muted-foreground">
