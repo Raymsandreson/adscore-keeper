@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.analyze-legal-viability]
 verify_jwt = false
+
+[functions.create-meta-campaign]
+verify_jwt = false

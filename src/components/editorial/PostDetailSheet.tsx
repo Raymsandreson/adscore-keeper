@@ -21,8 +21,11 @@ import {
   Trash2,
   TrendingUp,
   Link as LinkIcon,
-  ExternalLink
+  ExternalLink,
+  Megaphone
 } from "lucide-react";
+import { useState } from "react";
+import { CreateAdDialog } from "./CreateAdDialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -52,8 +55,9 @@ export function PostDetailSheet({
   onDelete,
   statusConfig: externalStatusConfig 
 }: PostDetailSheetProps) {
-  if (!post) return null;
+  const [isAdDialogOpen, setIsAdDialogOpen] = useState(false);
 
+  if (!post) return null;
   const statusConfig = externalStatusConfig || defaultStatusConfig;
   if (!post) return null;
 
@@ -265,11 +269,30 @@ export function PostDetailSheet({
             <Trash2 className="h-4 w-4" />
             Excluir
           </Button>
+          {post.status === "published" && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setIsAdDialogOpen(true)} 
+              className="gap-2"
+            >
+              <Megaphone className="h-4 w-4" />
+              Criar Anúncio
+            </Button>
+          )}
           <Button onClick={onEdit} className="gap-2 flex-1">
             <Pencil className="h-4 w-4" />
             Editar Atividade
           </Button>
         </SheetFooter>
+
+        {isAdDialogOpen && (
+          <CreateAdDialog
+            open={isAdDialogOpen}
+            onOpenChange={setIsAdDialogOpen}
+            post={post}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );
