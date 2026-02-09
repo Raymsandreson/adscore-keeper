@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { generateLeadName as generateLeadNameUtil } from '@/utils/generateLeadName';
 import {
   Dialog,
   DialogContent,
@@ -274,47 +275,20 @@ export function CreateLeadFromSearchDialog({
   };
 
   const handleExtractedData = (data: ExtractedAccidentData) => {
-    // Generate lead name following the pattern: Cidade/UF | Vítima x Empresa | (Data) - Lesão
-    const generateLeadName = () => {
-      const parts: string[] = [];
-      
-      // Location part: Cidade/UF
-      if (data.visit_city || data.visit_state) {
-        const location = data.visit_city && data.visit_state 
-          ? `${data.visit_city}/${data.visit_state}`
-          : data.visit_city || data.visit_state || '';
-        if (location) parts.push(location);
-      }
-      
-      // Victim x Company part
-      const victimPart = data.victim_name || '';
-      const companyPart = data.main_company || data.contractor_company || '';
-      if (victimPart || companyPart) {
-        const vsText = victimPart && companyPart 
-          ? `${victimPart} x ${companyPart}`
-          : victimPart || companyPart;
-        parts.push(vsText);
-      }
-      
-      // Date and Damage part: (DD/MM/YYYY) - Lesão
-      const datePart = data.accident_date 
-        ? `(${new Date(data.accident_date).toLocaleDateString('pt-BR')})`
-        : '';
-      const damagePart = data.damage_description || '';
-      
-      if (datePart || damagePart) {
-        const suffix = datePart && damagePart 
-          ? `${datePart} - ${damagePart}`
-          : datePart || damagePart;
-        parts.push(suffix);
-      }
-      
-      return parts.join(' | ') || comment?.ownerUsername || postData.username;
-    };
+    // Generate lead name following standard pattern
+    const generatedName = generateLeadNameUtil({
+      city: data.visit_city,
+      state: data.visit_state,
+      victim_name: data.victim_name,
+      main_company: data.main_company,
+      contractor_company: data.contractor_company,
+      accident_date: data.accident_date,
+      damage_description: data.damage_description,
+    }, comment?.ownerUsername || postData.username);
 
     setFormData(prev => ({
       ...prev,
-      lead_name: generateLeadName(),
+      lead_name: generatedName,
       victim_name: data.victim_name || prev.victim_name,
       victim_age: data.victim_age?.toString() || prev.victim_age,
       accident_date: data.accident_date || prev.accident_date,
