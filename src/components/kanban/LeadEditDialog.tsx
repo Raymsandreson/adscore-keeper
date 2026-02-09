@@ -8,6 +8,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,6 +74,7 @@ interface LeadEditDialogProps {
   onSave: (leadId: string, updates: Partial<Lead>) => Promise<void>;
   adAccountId?: string;
   boards?: KanbanBoard[];
+  mode?: 'dialog' | 'sheet';
 }
 
 const brazilianStates = [
@@ -140,6 +148,7 @@ export function LeadEditDialog({
   onSave,
   adAccountId,
   boards = [],
+  mode = 'dialog',
 }: LeadEditDialogProps) {
   // Basic fields state
   const [leadName, setLeadName] = useState('');
@@ -550,15 +559,25 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
 
   if (!lead) return null;
 
+  const Wrapper = mode === 'sheet' ? Sheet : Dialog;
+  const Content = mode === 'sheet' ? SheetContent : DialogContent;
+  const Header = mode === 'sheet' ? SheetHeader : DialogHeader;
+  const Title = mode === 'sheet' ? SheetTitle : DialogTitle;
+  const Footer = mode === 'sheet' ? SheetFooter : DialogFooter;
+
+  const contentClassName = mode === 'sheet'
+    ? 'sm:max-w-lg flex flex-col h-full overflow-y-auto'
+    : 'max-w-2xl max-h-[90vh] flex flex-col';
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Wrapper open={open} onOpenChange={onOpenChange}>
+      <Content className={contentClassName} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
+        <Header>
+          <Title className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Editar Lead
-          </DialogTitle>
-        </DialogHeader>
+          </Title>
+        </Header>
 
         {/* AI Extraction Button - opens dialog directly */}
         <Button 
@@ -1169,15 +1188,15 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
           </div>
         </Tabs>
 
-        <DialogFooter className="mt-4">
+        <Footer className="mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Salvando...' : 'Salvar'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </Footer>
+      </Content>
+    </Wrapper>
   );
 }

@@ -549,12 +549,13 @@ export function PostGroupedView() {
         onContactUpdated={refetchContacts}
       />
 
-      {/* Lead Edit Dialog */}
+      {/* Lead Edit Sheet */}
       <LeadEditDialog
         open={isLeadEditOpen}
         onOpenChange={setIsLeadEditOpen}
         lead={editingLead}
         onSave={handleSaveLead}
+        mode="sheet"
       />
     </div>
   );
