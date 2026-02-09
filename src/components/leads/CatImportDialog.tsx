@@ -55,11 +55,20 @@ const COLUMN_MAP: Record<string, keyof CatLead> = {
 
 function parseDate(value: any): string | null {
   if (!value) return null;
+  
+  // Handle Excel serial date numbers
+  if (typeof value === 'number') {
+    const excelEpoch = new Date(1899, 11, 30);
+    const date = new Date(excelEpoch.getTime() + value * 86400000);
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+    return null;
+  }
+  
   const str = String(value).trim();
-  // Try MM/DD/YY format
+  // Try DD/MM/YYYY or DD/MM/YY (Brazilian format)
   const parts = str.split('/');
   if (parts.length === 3) {
-    const [m, d, y] = parts;
+    const [d, m, y] = parts;
     const year = y.length === 2 ? (parseInt(y) > 50 ? `19${y}` : `20${y}`) : y;
     const date = new Date(`${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
     if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
