@@ -5,7 +5,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Phone, MessageSquare, Mail, Clock, User, UserPlus, ExternalLink } from 'lucide-react';
+import { Phone, MessageSquare, Mail, Clock, User, UserPlus, ExternalLink, Save, CheckCircle2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -64,6 +66,9 @@ export function CatLeadContactDialog({
   const [contactedBy, setContactedBy] = useState(user?.id || '');
   const [teamProfiles, setTeamProfiles] = useState<ProfileOption[]>([]);
   const [showCreateLead, setShowCreateLead] = useState(false);
+  const [saveAsCorrect, setSaveAsCorrect] = useState(false);
+  const [customPhone, setCustomPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
 
   // Fetch team profiles
   useEffect(() => {
@@ -106,11 +111,28 @@ export function CatLeadContactDialog({
         next_action: null,
         next_action_date: null,
       });
+      // Save correct phone if toggled
+      if (saveAsCorrect && phoneUsed && onUpdateCatLead) {
+        await onUpdateCatLead(catLead.id, { celular_1: phoneUsed });
+      }
       setNotes('');
       setResult('no_answer');
+      setSaveAsCorrect(false);
       onRefresh();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveCustomPhone = async () => {
+    if (!customPhone.trim() || !onUpdateCatLead) return;
+    setSavingPhone(true);
+    try {
+      await onUpdateCatLead(catLead.id, { celular_1: customPhone.trim() });
+      setCustomPhone('');
+      onRefresh();
+    } finally {
+      setSavingPhone(false);
     }
   };
 
@@ -221,9 +243,45 @@ export function CatLeadContactDialog({
               />
             </div>
 
+            {phones.length > 0 && phoneUsed && (
+              <div className="flex items-center gap-2">
+                <Switch checked={saveAsCorrect} onCheckedChange={setSaveAsCorrect} id="save-correct" />
+                <Label htmlFor="save-correct" className="text-xs cursor-pointer">
+                  Salvar "{phoneUsed}" como telefone principal
+                </Label>
+              </div>
+            )}
+
             <Button onClick={handleSubmit} disabled={saving} size="sm" className="w-full">
               {saving ? 'Salvando...' : 'Registrar contato'}
             </Button>
+          </div>
+
+          {/* Save correct phone manually */}
+          <div className="space-y-2 border rounded-lg p-3">
+            <h4 className="text-sm font-semibold flex items-center gap-2">
+              <Save className="h-4 w-4" />
+              Atualizar telefone principal
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Atual: <strong>{catLead.celular_1 || 'Nenhum'}</strong>
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={customPhone}
+                onChange={e => setCustomPhone(e.target.value)}
+                placeholder="Novo número correto..."
+                className="h-9 text-sm"
+              />
+              <Button
+                onClick={handleSaveCustomPhone}
+                disabled={savingPhone || !customPhone.trim()}
+                size="sm"
+                variant="outline"
+              >
+                {savingPhone ? '...' : <CheckCircle2 className="h-4 w-4" />}
+              </Button>
+            </div>
           </div>
 
           {/* Contact history */}
