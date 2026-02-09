@@ -32,6 +32,8 @@ import { QuickLinkLeadPopover } from './QuickLinkLeadPopover';
 import { CommentClassificationDialog } from './CommentClassificationDialog';
 import { ProfessionBadgePopover } from './ProfessionBadgePopover';
 import { PostDmContactRegistration } from './PostDmContactRegistration';
+import { CommentContactBadges } from './CommentContactBadges';
+import { useCommentContactInfo, type CommentContactData } from '@/hooks/useCommentContactInfo';
 
 interface PostGroup {
   postUrl: string;
@@ -73,6 +75,15 @@ export function PostGroupedView() {
   const [metadataMap, setMetadataMap] = useState<Record<string, PostMetadata | null>>({});
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(new Set());
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
+
+  // Collect unique usernames for contact info
+  const commentUsernames = useMemo(() => {
+    return comments
+      .filter(c => c.author_username)
+      .map(c => c.author_username!);
+  }, [comments]);
+
+  const { getContactData, refetch: refetchContacts } = useCommentContactInfo(commentUsernames);
 
   // Dialog states
   const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
@@ -420,9 +431,11 @@ export function PostGroupedView() {
                       <div key={comment.id}>
                         <CommentRow
                           comment={comment}
+                          contactData={getContactData(comment.author_username)}
                           onAIReply={handleAIReply}
                           onClassify={handleClassify}
                           onRegisterContact={handleRegisterContact}
+                          onDataChanged={refetchContacts}
                         />
                         {replies.length > 0 && (
                           <div className="ml-10 border-l-2 border-muted pl-3 space-y-1">
@@ -430,10 +443,12 @@ export function PostGroupedView() {
                               <CommentRow
                                 key={reply.id}
                                 comment={reply}
+                                contactData={getContactData(reply.author_username)}
                                 isReply
                                 onAIReply={handleAIReply}
                                 onClassify={handleClassify}
                                 onRegisterContact={handleRegisterContact}
+                                onDataChanged={refetchContacts}
                               />
                             ))}
                           </div>
@@ -470,8 +485,8 @@ export function PostGroupedView() {
           post_url: classifyingComment.post_url,
           platform: classifyingComment.platform,
         } : null}
-        onClassificationsApplied={() => {}}
-        onLeadLinked={() => {}}
+        onClassificationsApplied={refetchContacts}
+        onLeadLinked={refetchContacts}
       />
 
       {/* Contact Registration Dialog */}
@@ -479,7 +494,7 @@ export function PostGroupedView() {
         open={showContactRegistration}
         onOpenChange={setShowContactRegistration}
         instagramUsername={registeringUsername}
-        onContactSaved={() => {}}
+        onContactSaved={refetchContacts}
       />
     </div>
   );
@@ -487,13 +502,15 @@ export function PostGroupedView() {
 
 interface CommentRowProps {
   comment: Comment;
+  contactData: CommentContactData;
   isReply?: boolean;
   onAIReply: (comment: Comment) => void;
   onClassify: (comment: Comment) => void;
   onRegisterContact: (username: string) => void;
+  onDataChanged: () => void;
 }
 
-function CommentRow({ comment, isReply, onAIReply, onClassify, onRegisterContact }: CommentRowProps) {
+function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onDataChanged }: CommentRowProps) {
   const isReceived = comment.comment_type === 'received';
 
   return (
@@ -543,7 +560,7 @@ function CommentRow({ comment, isReply, onAIReply, onClassify, onRegisterContact
               {comment.author_username && (
                 <QuickLinkLeadPopover
                   authorUsername={comment.author_username}
-                  onLeadLinked={() => {}}
+                  onLeadLinked={onDataChanged}
                 />
               )}
 
@@ -564,6 +581,7 @@ function CommentRow({ comment, isReply, onAIReply, onClassify, onRegisterContact
                   authorUsername={comment.author_username}
                   interactive
                   compact
+                  onDataChanged={onDataChanged}
                 />
               )}
 
@@ -581,6 +599,18 @@ function CommentRow({ comment, isReply, onAIReply, onClassify, onRegisterContact
             </div>
           )}
         </div>
+
+        {/* Contact badges - shows linked leads, classifications, profession, relationships */}
+        {comment.author_username && !isReply && (
+          <div className="mt-1">
+            <CommentContactBadges
+              contactData={contactData}
+              username={comment.author_username}
+              onLeadStatusChanged={onDataChanged}
+            />
+          </div>
+        )}
+
         <p className={cn("text-muted-foreground break-words mt-0.5", isReply ? "text-xs" : "text-sm")}>
           {comment.comment_text || '(sem texto)'}
         </p>
