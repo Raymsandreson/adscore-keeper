@@ -70,6 +70,7 @@ import { ImportApifyJson } from "./ImportApifyJson";
 import { CommentTextWithMentions } from "./CommentTextWithMentions";
 import { ApifyCommentsFetcher } from "./ApifyCommentsFetcher";
 import { MessageSquarePlus, Upload, FileJson } from "lucide-react";
+import { PostStatsFilter } from "./PostStatsFilter";
 interface Comment {
   id: string;
   platform: string;
@@ -147,6 +148,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [replyStatusFilter, setReplyStatusFilter] = useState<'all' | 'not_replied' | 'replied_system' | 'replied_manual' | 'replied_any'>('all');
   const [filterByClassifications, setFilterByClassifications] = useState<string[]>([]);
   const [filterByProfessions, setFilterByProfessions] = useState<string[]>([]);
+  const [filterByPostUrl, setFilterByPostUrl] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'created_at' | 'classification_updated'>('created_at');
   
   // Classification settings dialogs
@@ -899,6 +901,20 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         if (!contactProfession || !filterByProfessions.includes(contactProfession)) return false;
       }
       
+      // Filter by post URL
+      if (filterByPostUrl) {
+        if (!c.post_url) return false;
+        const normalizeUrl = (url: string) => {
+          try {
+            const parsed = new URL(url);
+            let path = parsed.pathname.replace(/\/$/, '');
+            path = path.replace(/\/reels\//i, '/reel/');
+            return `${parsed.origin}${path}`;
+          } catch { return url.replace(/\?.*$/, '').replace(/\/$/, ''); }
+        };
+        if (normalizeUrl(c.post_url) !== normalizeUrl(filterByPostUrl)) return false;
+      }
+      
       return true;
     });
 
@@ -911,13 +927,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         const updatedAtA = contactDataA?.contact?.updated_at ? new Date(contactDataA.contact.updated_at).getTime() : 0;
         const updatedAtB = contactDataB?.contact?.updated_at ? new Date(contactDataB.contact.updated_at).getTime() : 0;
         
-        return updatedAtB - updatedAtA; // Most recently updated first
+        return updatedAtB - updatedAtA;
       });
     }
     
-    // Default: sort by created_at (already sorted from DB)
     return filtered;
-  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, replyStatusFilter, filterByClassifications, filterByProfessions, getContactData, sortBy, selectedAccounts]);
+  }, [comments, activeTab, searchText, dateFrom, dateTo, showOnlyLinked, replyStatusFilter, filterByClassifications, filterByProfessions, filterByPostUrl, getContactData, sortBy, selectedAccounts]);
 
   const clearFilters = () => {
     setSearchText('');
@@ -927,10 +942,11 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
     setReplyStatusFilter('all');
     setFilterByClassifications([]);
     setFilterByProfessions([]);
+    setFilterByPostUrl(null);
     setSortBy('created_at');
   };
 
-  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || replyStatusFilter !== 'all' || filterByClassifications.length > 0 || filterByProfessions.length > 0 || sortBy !== 'created_at';
+  const hasActiveFilters = searchText || dateFrom || dateTo || showOnlyLinked !== 'all' || replyStatusFilter !== 'all' || filterByClassifications.length > 0 || filterByProfessions.length > 0 || filterByPostUrl || sortBy !== 'created_at';
   
   // Toggle classification in filter
   const toggleClassificationFilter = (classificationName: string) => {
@@ -1461,6 +1477,12 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
         <CardContent>
           {/* Evolution Chart */}
           <CommentsEvolutionChart comments={comments} />
+
+          {/* Post Stats Filter */}
+          <PostStatsFilter
+            selectedPost={filterByPostUrl}
+            onSelectPost={setFilterByPostUrl}
+          />
 
           {/* Filters Section */}
           <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b">
