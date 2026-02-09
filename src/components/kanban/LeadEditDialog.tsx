@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
 import {
   Dialog,
   DialogContent,
@@ -840,6 +841,9 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   />
                 </div>
               </div>
+
+              {/* Linked Contacts Section */}
+              <LeadLinkedContacts leadId={lead.id} />
             </TabsContent>
 
             {/* Accident Details Tab */}
