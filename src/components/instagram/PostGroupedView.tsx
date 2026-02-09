@@ -576,11 +576,15 @@ interface CommentRowProps {
 function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRegisterContact, onOpenContact, onOpenLead, onDataChanged }: CommentRowProps) {
   const isReceived = comment.comment_type === 'received';
   const hasContact = !!contactData.contact;
+  const hasLead = contactData.linkedLeads.length > 0;
+  const hasClassification = (contactData.contact?.classifications?.length || 0) > 0;
+  const isReplied = !!comment.replied_at;
 
   return (
     <div className={cn(
       "flex gap-3 py-3 px-2 rounded-md hover:bg-muted/50 transition-colors",
-      isReply && "py-2"
+      isReply && "py-2",
+      isReplied && "bg-green-50/50 dark:bg-green-950/10"
     )}>
       <div className={cn(
         "shrink-0 rounded-full flex items-center justify-center",
@@ -611,31 +615,38 @@ function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRe
             {comment.comment_type === 'sent' && (
               <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">enviado</Badge>
             )}
-            {comment.replied_at && (
-              <Badge variant="default" className="text-[10px] px-1 py-0 h-4">respondido</Badge>
+            {isReplied && (
+              <Badge className="text-[10px] px-1 py-0 h-4 bg-green-600 hover:bg-green-600 text-white">
+                <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
+                respondido
+              </Badge>
             )}
           </div>
 
           {/* Action buttons */}
           {isReceived && !isReply && (
             <div className="flex items-center gap-1 shrink-0">
-              {comment.comment_id && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 hover:border-primary/50"
-                  onClick={() => onAIReply(comment)}
-                >
-                  <Bot className="h-3 w-3 mr-1" />
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  Responder IA
-                </Button>
-              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  "h-7 text-xs",
+                  isReplied
+                    ? "border-green-500/50 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700/50"
+                    : "bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 hover:border-primary/50"
+                )}
+                onClick={() => onAIReply(comment)}
+              >
+                <Bot className="h-3 w-3 mr-1" />
+                <Sparkles className="h-3 w-3 mr-1" />
+                {isReplied ? "Respondido ✓" : "Responder IA"}
+              </Button>
 
               {comment.author_username && (
                 <QuickLinkLeadPopover
                   authorUsername={comment.author_username}
                   onLeadLinked={onDataChanged}
+                  hasLinkedLead={hasLead}
                 />
               )}
 
@@ -643,11 +654,14 @@ function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRe
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className={cn(
+                    "h-7 text-xs",
+                    hasClassification && "border-green-500/50 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700/50"
+                  )}
                   onClick={() => onClassify(comment)}
                 >
                   <Tag className="h-3 w-3 mr-1" />
-                  Classificar
+                  {hasClassification ? "Classificado ✓" : "Classificar"}
                 </Button>
               )}
 
@@ -664,11 +678,14 @@ function CommentRow({ comment, contactData, isReply, onAIReply, onClassify, onRe
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 text-xs"
+                  className={cn(
+                    "h-7 text-xs",
+                    hasContact && "border-green-500/50 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700/50"
+                  )}
                   onClick={() => onRegisterContact(comment.author_username!)}
                 >
                   <UserPlus className="h-3 w-3 mr-1" />
-                  Contato
+                  {hasContact ? "Contato ✓" : "Contato"}
                 </Button>
               )}
             </div>
