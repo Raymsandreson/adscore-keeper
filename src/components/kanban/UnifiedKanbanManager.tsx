@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { generateLeadName } from '@/utils/generateLeadName';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -298,6 +299,18 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   };
 
   const handleExtractedData = (data: ExtractedAccidentData) => {
+    // Generate lead name following standard pattern
+    const generatedName = generateLeadName({
+      city: data.visit_city,
+      state: data.visit_state,
+      victim_name: data.victim_name,
+      main_company: data.main_company,
+      contractor_company: data.contractor_company,
+      accident_date: data.accident_date,
+      damage_description: data.damage_description,
+      case_type: data.case_type,
+    });
+
     setNewLeadFormData(prev => ({
       ...prev,
       victim_name: data.victim_name || prev.victim_name,
@@ -314,8 +327,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       visit_city: data.visit_city || prev.visit_city,
       visit_state: data.visit_state || prev.visit_state,
       news_link: (data as any).news_link || prev.news_link,
-      // Use victim_name as lead_name if not set
-      lead_name: prev.lead_name || data.victim_name || '',
+      lead_name: generatedName || prev.lead_name || data.victim_name || '',
     }));
   };
 
