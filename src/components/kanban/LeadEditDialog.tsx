@@ -141,6 +141,7 @@ const sources = [
   { value: 'facebook', label: 'Facebook' },
   { value: 'noticia', label: 'Notícia' },
   { value: 'prospecção', label: 'Prospecção Ativa' },
+  { value: 'cat_import', label: 'CAT' },
 ];
 
 export function LeadEditDialog({
