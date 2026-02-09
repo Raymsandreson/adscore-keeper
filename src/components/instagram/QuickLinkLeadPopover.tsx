@@ -26,11 +26,13 @@ interface Lead {
 interface QuickLinkLeadPopoverProps {
   authorUsername: string | null;
   onLeadLinked?: () => void;
+  hasLinkedLead?: boolean;
 }
 
 export const QuickLinkLeadPopover: React.FC<QuickLinkLeadPopoverProps> = ({
   authorUsername,
-  onLeadLinked
+  onLeadLinked,
+  hasLinkedLead = false,
 }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -172,10 +174,13 @@ export const QuickLinkLeadPopover: React.FC<QuickLinkLeadPopoverProps> = ({
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-xs bg-blue-50 border-blue-200 hover:bg-blue-100 text-blue-700"
+          className={hasLinkedLead 
+            ? "h-7 text-xs border-green-500/50 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700/50"
+            : "h-7 text-xs bg-blue-50 border-blue-200 hover:bg-blue-100 text-blue-700"
+          }
         >
           <Link2 className="h-3 w-3 mr-1" />
-          Vincular Lead
+          {hasLinkedLead ? "Lead ✓" : "Vincular Lead"}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80 p-3" align="end">
