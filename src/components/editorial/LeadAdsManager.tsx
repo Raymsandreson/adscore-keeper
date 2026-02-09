@@ -179,17 +179,24 @@ export function LeadAdsManager() {
 
     setIsLoadingMeta(true);
     try {
+      console.log('Fetching Meta ads with adAccountId:', adAccountId);
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-meta-ads`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
         body: JSON.stringify({ accessToken, adAccountId }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao buscar anúncios');
+      console.log('Meta ads response:', data);
+      if (!res.ok) throw new Error(data.error || data.msg || 'Erro ao buscar anúncios');
       setMetaCampaigns(data.campaigns || []);
       setImportDialogOpen(true);
       toast.success(`${(data.campaigns || []).length} campanhas encontradas!`);
     } catch (err) {
+      console.error('Meta ads fetch error:', err);
       toast.error(err instanceof Error ? err.message : 'Erro ao buscar anúncios da Meta');
     } finally {
       setIsLoadingMeta(false);
