@@ -225,17 +225,11 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Sessions - cap active sessions to avoid inflated times
+      // Sessions - use duration_seconds (now correctly calculated from last_activity_at)
       sessionsData.forEach(s => {
         const u = getUser(s.user_id);
-        if (s.duration_seconds && s.duration_seconds < 43200) { // cap at 12 hours
+        if (s.duration_seconds) {
           u.sessionMinutes += Math.round(s.duration_seconds / 60);
-        } else if (!s.duration_seconds && s.started_at) {
-          // Active session - calculate from start to now, cap at 12h
-          const elapsed = Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000);
-          if (elapsed < 43200) {
-            u.sessionMinutes += Math.round(elapsed / 60);
-          }
         }
       });
 
