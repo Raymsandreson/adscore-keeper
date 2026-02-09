@@ -5,12 +5,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Phone, MessageSquare, Mail, Clock, User } from 'lucide-react';
+import { Phone, MessageSquare, Mail, Clock, User, UserPlus, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import type { CatLead, CatLeadContact } from '@/hooks/useCatLeads';
+import { CreateLeadFromCatDialog } from './CreateLeadFromCatDialog';
 
 type AddContactPayload = Omit<CatLeadContact, 'id' | 'created_at'>;
 
@@ -42,6 +43,7 @@ interface CatLeadContactDialogProps {
   contacts: CatLeadContact[];
   onAddContact: (contact: AddContactPayload) => Promise<void>;
   onRefresh: () => void;
+  onUpdateCatLead?: (id: string, updates: Partial<CatLead>) => Promise<void>;
 }
 
 export function CatLeadContactDialog({
@@ -51,6 +53,7 @@ export function CatLeadContactDialog({
   contacts,
   onAddContact,
   onRefresh,
+  onUpdateCatLead,
 }: CatLeadContactDialogProps) {
   const { user } = useAuthContext();
   const [channel, setChannel] = useState('whatsapp');
@@ -60,6 +63,7 @@ export function CatLeadContactDialog({
   const [saving, setSaving] = useState(false);
   const [contactedBy, setContactedBy] = useState(user?.id || '');
   const [teamProfiles, setTeamProfiles] = useState<ProfileOption[]>([]);
+  const [showCreateLead, setShowCreateLead] = useState(false);
 
   // Fetch team profiles
   useEffect(() => {
@@ -266,8 +270,37 @@ export function CatLeadContactDialog({
               </div>
             )}
           </div>
+
+          {/* Create Lead action */}
+          <div className="border-t pt-3">
+            {catLead.lead_id ? (
+              <div className="flex items-center gap-2 text-sm text-primary">
+                <ExternalLink className="h-4 w-4" />
+                <span>Lead já vinculado a esta CAT</span>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => setShowCreateLead(true)}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Criar Lead a partir desta CAT
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
+
+      <CreateLeadFromCatDialog
+        open={showCreateLead}
+        onOpenChange={setShowCreateLead}
+        catLead={catLead}
+        onLeadCreated={(leadId) => {
+          onRefresh();
+        }}
+      />
     </Dialog>
   );
 }
