@@ -249,7 +249,7 @@ export function TeamProductivityDashboard() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700"><MessageSquare className="h-4 w-4" /></div>
-              <div><p className="text-xl font-bold">{totalReplies}</p><p className="text-[10px] text-muted-foreground">Respostas</p></div>
+              <div><p className="text-xl font-bold">{totalReplies}</p><p className="text-[10px] text-muted-foreground">Comentários</p></div>
             </div>
           </CardContent>
         </Card>
@@ -266,6 +266,14 @@ export function TeamProductivityDashboard() {
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-teal-100 text-teal-700"><UserPlus className="h-4 w-4" /></div>
               <div><p className="text-xl font-bold">{totalContacts}</p><p className="text-[10px] text-muted-foreground">Contatos</p></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700"><Target className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{productivity.reduce((sum, p) => sum + p.leadsCreated, 0)}</p><p className="text-[10px] text-muted-foreground">Leads</p></div>
             </div>
           </CardContent>
         </Card>
@@ -377,7 +385,7 @@ export function TeamProductivityDashboard() {
                       <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 gap-2 text-sm">
                         <div className="text-center">
                           <p className="font-semibold text-blue-600">{member.commentReplies}</p>
-                          <p className="text-[10px] text-muted-foreground">respostas</p>
+                          <p className="text-[10px] text-muted-foreground">comentários</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-violet-600">{member.dmsSent}</p>
@@ -386,6 +394,10 @@ export function TeamProductivityDashboard() {
                         <div className="text-center">
                           <p className="font-semibold text-teal-600">{member.contactsCreated}</p>
                           <p className="text-[10px] text-muted-foreground">contatos</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-indigo-600">{member.leadsCreated}</p>
+                          <p className="text-[10px] text-muted-foreground">leads</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-green-600">{member.callsMade}</p>
@@ -398,10 +410,6 @@ export function TeamProductivityDashboard() {
                         <div className="text-center">
                           <p className="font-semibold text-rose-600">{member.leadsClosed}</p>
                           <p className="text-[10px] text-muted-foreground">fechados</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-indigo-600">{member.leadsCreated}</p>
-                          <p className="text-[10px] text-muted-foreground">leads</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-orange-600">{formatMinutesToHours(member.sessionMinutes)}</p>
