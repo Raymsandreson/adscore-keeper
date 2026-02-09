@@ -2166,6 +2166,135 @@ export type Database = {
         }
         Relationships: []
       }
+      promoted_posts: {
+        Row: {
+          ad_account_id: string | null
+          ad_id: string | null
+          adset_id: string | null
+          campaign_id: string | null
+          campaign_name: string | null
+          clicks: number | null
+          comments_count: number | null
+          cpc: number | null
+          cpm: number | null
+          created_at: string
+          ctr: number | null
+          daily_budget: number | null
+          editorial_post_id: string | null
+          end_date: string | null
+          engagement_rate: number | null
+          followers_gained: number | null
+          id: string
+          impressions: number | null
+          last_metrics_sync: string | null
+          lifetime_budget: number | null
+          likes_count: number | null
+          notes: string | null
+          objective: string | null
+          placements: string[] | null
+          post_id: string | null
+          post_platform: string
+          post_title: string
+          reach: number | null
+          saves_count: number | null
+          shares_count: number | null
+          spend: number | null
+          start_date: string | null
+          status: string
+          targeting_age_max: number | null
+          targeting_age_min: number | null
+          targeting_custom_audiences: Json | null
+          targeting_genders: number[] | null
+          targeting_interests: Json | null
+          targeting_locations: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          ad_account_id?: string | null
+          ad_id?: string | null
+          adset_id?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          clicks?: number | null
+          comments_count?: number | null
+          cpc?: number | null
+          cpm?: number | null
+          created_at?: string
+          ctr?: number | null
+          daily_budget?: number | null
+          editorial_post_id?: string | null
+          end_date?: string | null
+          engagement_rate?: number | null
+          followers_gained?: number | null
+          id?: string
+          impressions?: number | null
+          last_metrics_sync?: string | null
+          lifetime_budget?: number | null
+          likes_count?: number | null
+          notes?: string | null
+          objective?: string | null
+          placements?: string[] | null
+          post_id?: string | null
+          post_platform?: string
+          post_title: string
+          reach?: number | null
+          saves_count?: number | null
+          shares_count?: number | null
+          spend?: number | null
+          start_date?: string | null
+          status?: string
+          targeting_age_max?: number | null
+          targeting_age_min?: number | null
+          targeting_custom_audiences?: Json | null
+          targeting_genders?: number[] | null
+          targeting_interests?: Json | null
+          targeting_locations?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          ad_account_id?: string | null
+          ad_id?: string | null
+          adset_id?: string | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          clicks?: number | null
+          comments_count?: number | null
+          cpc?: number | null
+          cpm?: number | null
+          created_at?: string
+          ctr?: number | null
+          daily_budget?: number | null
+          editorial_post_id?: string | null
+          end_date?: string | null
+          engagement_rate?: number | null
+          followers_gained?: number | null
+          id?: string
+          impressions?: number | null
+          last_metrics_sync?: string | null
+          lifetime_budget?: number | null
+          likes_count?: number | null
+          notes?: string | null
+          objective?: string | null
+          placements?: string[] | null
+          post_id?: string | null
+          post_platform?: string
+          post_title?: string
+          reach?: number | null
+          saves_count?: number | null
+          shares_count?: number | null
+          spend?: number | null
+          start_date?: string | null
+          status?: string
+          targeting_age_max?: number | null
+          targeting_age_min?: number | null
+          targeting_custom_audiences?: Json | null
+          targeting_genders?: number[] | null
+          targeting_interests?: Json | null
+          targeting_locations?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       purchase_groups: {
         Row: {
           card_last_digits: string | null
