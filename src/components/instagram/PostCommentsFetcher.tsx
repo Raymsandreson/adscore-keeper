@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { ImportApifyJson } from './ImportApifyJson';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -533,6 +534,11 @@ export function PostCommentsFetcher() {
           )}
         </CardContent>
       </Card>
+      
+      {/* Import from Apify JSON */}
+      <ImportApifyJson onImportComplete={() => {
+        // Could refresh comments if needed
+      }} />
       
       {/* Classification Dialog */}
       <CommentClassificationDialog
