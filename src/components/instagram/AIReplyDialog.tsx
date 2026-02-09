@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Send, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText, AlertTriangle, CheckCircle2, Mail } from "lucide-react";
+import { Bot, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText, AlertTriangle, CheckCircle2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,6 @@ const TONES = [
 
 export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onReplyPosted, isThirdPartyPost = false }: AIReplyDialogProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isPosting, setIsPosting] = useState(false);
   const [selectedTone, setSelectedTone] = useState("friendly");
   const [generatedReply, setGeneratedReply] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
@@ -46,7 +45,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
   const [editedDm, setEditedDm] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedDm, setCopiedDm] = useState(false);
-  const [markedAsDone, setMarkedAsDone] = useState(false);
+  const [markedComment, setMarkedComment] = useState(false);
+  const [markedDm, setMarkedDm] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
 
@@ -57,7 +57,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     setGeneratedReply("");
     setAlternatives([]);
     setDmSuggestion(null);
-    setMarkedAsDone(false);
+    setMarkedComment(false);
+    setMarkedDm(false);
 
     try {
       const { data, error } = await supabase.functions.invoke("generate-ai-reply", {
@@ -97,58 +98,83 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     }
   };
 
-  const postReply = async () => {
-    if (!editedReply.trim() || !comment) return;
-
-    const commentIdToReply = (comment as any).comment_id;
-    if (!commentIdToReply) {
-      toast.error("Este comentário não pode receber respostas (registrado manualmente)");
-      return;
-    }
-
-    setIsPosting(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke("post-instagram-reply", {
-        body: {
-          commentId: commentIdToReply,
-          message: editedReply.trim(),
-          accessToken,
-        },
-      });
-
-      if (error) throw error;
-
-      if (!data.success) {
-        throw new Error(data.error || "Erro ao postar resposta");
-      }
-
-      toast.success("Resposta postada no Instagram! 🎉");
-      onOpenChange(false);
-      onReplyPosted?.();
-      resetState();
-    } catch (error: any) {
-      console.error("Error posting reply:", error);
-      toast.error(error.message || "Erro ao postar resposta");
-    } finally {
-      setIsPosting(false);
-    }
-  };
-
   const markAsCommented = async () => {
     if (!comment) return;
     
     try {
+      // Update comment as replied
       await supabase
         .from('instagram_comments')
         .update({ replied_at: new Date().toISOString(), replied_by: 'manual' })
         .eq('id', comment.id);
+
+      // Try to find linked lead and add followup
+      const username = comment.author_username?.replace('@', '');
+      if (username) {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('instagram_username', username)
+          .maybeSingle();
+
+        if (lead) {
+          await supabase.from('lead_followups').insert({
+            lead_id: lead.id,
+            followup_type: 'instagram_comment',
+            notes: `Comentário feito no post: ${comment.post_url || 'N/A'}\n\nTexto: ${editedReply.slice(0, 500)}`,
+            outcome: 'done',
+          });
+        }
+      }
       
-      setMarkedAsDone(true);
-      toast.success("Marcado como comentado! ✅");
+      setMarkedComment(true);
+      toast.success("Comentário registrado! ✅");
       onReplyPosted?.();
     } catch (error) {
       toast.error("Erro ao marcar como comentado");
+    }
+  };
+
+  const markDmSent = async () => {
+    if (!comment) return;
+
+    const username = comment.author_username?.replace('@', '') || '';
+    
+    try {
+      // Log to dm_history
+      await supabase.from('dm_history').insert({
+        instagram_username: username,
+        dm_message: editedDm.trim(),
+        original_suggestion: dmSuggestion || '',
+        was_edited: editedDm.trim() !== (dmSuggestion || '').trim(),
+        action_type: 'copied',
+        comment_id: comment.id,
+        author_id: (comment as any).author_id || null,
+      });
+
+      // Try to find linked lead and add followup
+      if (username) {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('instagram_username', username)
+          .maybeSingle();
+
+        if (lead) {
+          await supabase.from('lead_followups').insert({
+            lead_id: lead.id,
+            followup_type: 'instagram_dm',
+            notes: `DM enviada via Instagram\n\nTexto: ${editedDm.slice(0, 500)}`,
+            outcome: 'done',
+          });
+        }
+      }
+
+      setMarkedDm(true);
+      toast.success("DM registrada no histórico! 📩");
+      onReplyPosted?.();
+    } catch (error) {
+      toast.error("Erro ao registrar DM");
     }
   };
 
@@ -176,7 +202,8 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     setEditedDm("");
     setCustomPrompt("");
     setShowCustomPrompt(false);
-    setMarkedAsDone(false);
+    setMarkedComment(false);
+    setMarkedDm(false);
   };
 
   const handleClose = () => {
@@ -192,20 +219,13 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
-            {isThirdPartyPost ? "Gerar Comentário + DM" : "Responder com IA"}
+            Gerar Comentário + DM
           </DialogTitle>
           <DialogDescription>
-            {isThirdPartyPost ? (
-              <span className="flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
-                Post de terceiro — copie e comente manualmente
-              </span>
-            ) : (
-              <>
-                Gere uma resposta inteligente para o comentário de{" "}
-                <strong className="text-foreground">@{comment.author_username?.replace("@", "")}</strong>
-              </>
-            )}
+            <span className="flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
+              Post de terceiro — copie e interaja manualmente no Instagram
+            </span>
           </DialogDescription>
         </DialogHeader>
 
@@ -314,14 +334,26 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                 />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>{editedReply.length} caracteres</span>
-                  <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedReply, 'comment')} className="h-7">
-                    {copied ? (
-                      <Check className="h-3 w-3 mr-1 text-green-500" />
-                    ) : (
-                      <Copy className="h-3 w-3 mr-1" />
-                    )}
-                    {copied ? "Copiado!" : "Copiar"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedReply, 'comment')} className="h-7">
+                      {copied ? (
+                        <Check className="h-3 w-3 mr-1 text-green-500" />
+                      ) : (
+                        <Copy className="h-3 w-3 mr-1" />
+                      )}
+                      {copied ? "Copiado!" : "Copiar"}
+                    </Button>
+                    <Button
+                      variant={markedComment ? "outline" : "secondary"}
+                      size="sm"
+                      onClick={markAsCommented}
+                      disabled={markedComment}
+                      className={cn("h-7", markedComment && "border-green-500 text-green-600")}
+                    >
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      {markedComment ? "Comentado ✅" : "Marcar Comentado"}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -363,14 +395,26 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
                   />
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>{editedDm.length} caracteres</span>
-                    <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedDm, 'dm')} className="h-7">
-                      {copiedDm ? (
-                        <Check className="h-3 w-3 mr-1 text-green-500" />
-                      ) : (
-                        <Copy className="h-3 w-3 mr-1" />
-                      )}
-                      {copiedDm ? "Copiado!" : "Copiar DM"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => copyToClipboard(editedDm, 'dm')} className="h-7">
+                        {copiedDm ? (
+                          <Check className="h-3 w-3 mr-1 text-green-500" />
+                        ) : (
+                          <Copy className="h-3 w-3 mr-1" />
+                        )}
+                        {copiedDm ? "Copiado!" : "Copiar DM"}
+                      </Button>
+                      <Button
+                        variant={markedDm ? "outline" : "secondary"}
+                        size="sm"
+                        onClick={markDmSent}
+                        disabled={markedDm || !editedDm.trim()}
+                        className={cn("h-7", markedDm && "border-green-500 text-green-600")}
+                      >
+                        <Mail className="h-3 w-3 mr-1" />
+                        {markedDm ? "DM Registrada ✅" : "Marcar DM Enviada"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -378,37 +422,10 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           )}
         </div>
 
-        <DialogFooter className="flex gap-2 sm:gap-0">
+        <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancelar
+            {markedComment || markedDm ? "Fechar" : "Cancelar"}
           </Button>
-          {isThirdPartyPost ? (
-            <Button
-              onClick={markAsCommented}
-              disabled={!generatedReply || markedAsDone}
-              variant={markedAsDone ? "outline" : "default"}
-              className={markedAsDone ? "border-green-500 text-green-600" : ""}
-            >
-              {markedAsDone ? (
-                <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-              )}
-              {markedAsDone ? "Comentado ✅" : "Marcar como Comentado"}
-            </Button>
-          ) : (
-            <Button
-              onClick={postReply}
-              disabled={!editedReply.trim() || isPosting}
-            >
-              {isPosting ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4 mr-2" />
-              )}
-              Postar Resposta
-            </Button>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
