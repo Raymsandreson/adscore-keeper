@@ -27,6 +27,10 @@ import {
   ArrowRightLeft,
   Eye,
   CheckCircle2,
+  Phone,
+  UserPlus,
+  Link2,
+  ClipboardList,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -107,11 +111,11 @@ export function TeamProductivityDashboard() {
   // Prepare chart data
   const comparisonData = productivity.map(p => ({
     name: p.userName || p.email?.split('@')[0] || 'Usuário',
-    respostas: p.replies,
+    respostas: p.commentReplies,
     dms: p.dmsSent,
-    leads: p.leadsCreated,
-    tempo: p.sessionMinutes,
-    conversoes: p.stageConversions,
+    contatos: p.contactsCreated,
+    etapas: p.stageChanges,
+    ligacoes: p.callsMade,
   }));
 
   const getActionTypeLabel = (type: string) => {
@@ -203,10 +207,11 @@ export function TeamProductivityDashboard() {
   };
 
   // Summary stats
-  const totalReplies = productivity.reduce((sum, p) => sum + p.replies, 0);
+  const totalReplies = productivity.reduce((sum, p) => sum + p.commentReplies, 0);
   const totalDms = productivity.reduce((sum, p) => sum + p.dmsSent, 0);
-  const totalLeads = productivity.reduce((sum, p) => sum + p.leadsCreated, 0);
+  const totalContacts = productivity.reduce((sum, p) => sum + p.contactsCreated, 0);
   const totalMinutes = productivity.reduce((sum, p) => sum + p.sessionMinutes, 0);
+  const totalCalls = productivity.reduce((sum, p) => sum + p.callsMade, 0);
 
   return (
     <div className="space-y-6">
@@ -239,101 +244,68 @@ export function TeamProductivityDashboard() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
-                <MessageSquare className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalReplies}</p>
-                <p className="text-xs text-muted-foreground">Respostas</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700"><MessageSquare className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalReplies}</p><p className="text-[10px] text-muted-foreground">Respostas</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-violet-100 text-violet-700">
-                <Send className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalDms}</p>
-                <p className="text-xs text-muted-foreground">DMs</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-violet-100 text-violet-700"><Send className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalDms}</p><p className="text-[10px] text-muted-foreground">DMs enviadas</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-100 text-green-700">
-                <Target className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{totalLeads}</p>
-                <p className="text-xs text-muted-foreground">Leads</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-teal-100 text-teal-700"><UserPlus className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalContacts}</p><p className="text-[10px] text-muted-foreground">Contatos</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-100 text-orange-700">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{Math.round(totalMinutes / 60)}h</p>
-                <p className="text-xs text-muted-foreground">Tempo total</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-green-100 text-green-700"><Phone className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalCalls}</p><p className="text-[10px] text-muted-foreground">Ligações</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-100 text-amber-700">
-                <ArrowRightLeft className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.totalStageConversions}</p>
-                <p className="text-xs text-muted-foreground">Conversões</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700"><ArrowRightLeft className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{summary.totalStageChanges}</p><p className="text-[10px] text-muted-foreground">Etapas</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-sky-100 text-sky-700">
-                <Eye className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.totalPageVisits}</p>
-                <p className="text-xs text-muted-foreground">Visitas</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-rose-100 text-rose-700"><CheckCircle2 className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{summary.totalLeadsClosed}</p><p className="text-[10px] text-muted-foreground">Fechados</p></div>
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{summary.totalGoalsAchieved}</p>
-                <p className="text-xs text-muted-foreground">Metas</p>
-              </div>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700"><ClipboardList className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{summary.totalFollowups}</p><p className="text-[10px] text-muted-foreground">Follow-ups</p></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-orange-100 text-orange-700"><Clock className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{Math.round(totalMinutes / 60)}h</p><p className="text-[10px] text-muted-foreground">Tempo</p></div>
             </div>
           </CardContent>
         </Card>
@@ -402,30 +374,38 @@ export function TeamProductivityDashboard() {
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
 
-                      <div className="flex gap-3 text-sm flex-wrap">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 gap-2 text-sm">
                         <div className="text-center">
-                          <p className="font-semibold text-blue-600">{member.replies}</p>
-                          <p className="text-xs text-muted-foreground">respostas</p>
+                          <p className="font-semibold text-blue-600">{member.commentReplies}</p>
+                          <p className="text-[10px] text-muted-foreground">respostas</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-violet-600">{member.dmsSent}</p>
-                          <p className="text-xs text-muted-foreground">DMs</p>
+                          <p className="text-[10px] text-muted-foreground">DMs</p>
                         </div>
                         <div className="text-center">
-                          <p className="font-semibold text-green-600">{member.leadsCreated}</p>
-                          <p className="text-xs text-muted-foreground">leads</p>
+                          <p className="font-semibold text-teal-600">{member.contactsCreated}</p>
+                          <p className="text-[10px] text-muted-foreground">contatos</p>
                         </div>
                         <div className="text-center">
-                          <p className="font-semibold text-amber-600">{member.stageConversions}</p>
-                          <p className="text-xs text-muted-foreground">conversões</p>
+                          <p className="font-semibold text-green-600">{member.callsMade}</p>
+                          <p className="text-[10px] text-muted-foreground">ligações</p>
                         </div>
                         <div className="text-center">
-                          <p className="font-semibold text-sky-600">{member.pageVisits}</p>
-                          <p className="text-xs text-muted-foreground">visitas</p>
+                          <p className="font-semibold text-amber-600">{member.stageChanges}</p>
+                          <p className="text-[10px] text-muted-foreground">etapas</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-rose-600">{member.leadsClosed}</p>
+                          <p className="text-[10px] text-muted-foreground">fechados</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-indigo-600">{member.leadsCreated}</p>
+                          <p className="text-[10px] text-muted-foreground">leads</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-orange-600">{formatMinutesToHours(member.sessionMinutes)}</p>
-                          <p className="text-xs text-muted-foreground">tempo</p>
+                          <p className="text-[10px] text-muted-foreground">tempo</p>
                         </div>
                       </div>
 
@@ -537,7 +517,9 @@ export function TeamProductivityDashboard() {
                     <Legend />
                     <Bar dataKey="respostas" fill="#3b82f6" name="Respostas" />
                     <Bar dataKey="dms" fill="#8b5cf6" name="DMs" />
-                    <Bar dataKey="leads" fill="#22c55e" name="Leads" />
+                    <Bar dataKey="contatos" fill="#14b8a6" name="Contatos" />
+                    <Bar dataKey="ligacoes" fill="#22c55e" name="Ligações" />
+                    <Bar dataKey="etapas" fill="#f59e0b" name="Etapas" />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -623,9 +605,9 @@ export function TeamProductivityDashboard() {
                     <Legend />
                     <Line type="monotone" dataKey="replies" stroke="#3b82f6" name="Respostas" strokeWidth={2} />
                     <Line type="monotone" dataKey="dms" stroke="#8b5cf6" name="DMs" strokeWidth={2} />
-                    <Line type="monotone" dataKey="leads" stroke="#22c55e" name="Leads" strokeWidth={2} />
-                    <Line type="monotone" dataKey="conversions" stroke="#f59e0b" name="Conversões" strokeWidth={2} />
-                    <Line type="monotone" dataKey="goals" stroke="#10b981" name="Metas" strokeWidth={2} />
+                    <Line type="monotone" dataKey="contacts" stroke="#14b8a6" name="Contatos" strokeWidth={2} />
+                    <Line type="monotone" dataKey="stageChanges" stroke="#f59e0b" name="Etapas" strokeWidth={2} />
+                    <Line type="monotone" dataKey="followups" stroke="#6366f1" name="Follow-ups" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
