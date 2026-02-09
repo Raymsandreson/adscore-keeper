@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -36,16 +37,28 @@ import {
   Loader2,
   Rocket,
   MapPin,
+  Search,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
 import type { Post } from "@/types/editorial";
 import { usePromotedPosts } from "@/hooks/usePromotedPosts";
 
+interface LeadLocation {
+  city?: string | null;
+  state?: string | null;
+  visit_city?: string | null;
+  visit_state?: string | null;
+  neighborhood?: string | null;
+  lead_name?: string | null;
+}
+
 interface CreateAdDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   post: Post;
+  leadLocation?: LeadLocation | null;
 }
 
 const objectives = [
@@ -56,7 +69,7 @@ const objectives = [
   { value: "OUTCOME_SALES", label: "Vendas", description: "Encontrar pessoas para comprar" },
 ];
 
-export function CreateAdDialog({ open, onOpenChange, post }: CreateAdDialogProps) {
+export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: CreateAdDialogProps) {
   const { createCampaign } = usePromotedPosts();
   const [isCreating, setIsCreating] = useState(false);
   const [step, setStep] = useState(1);
@@ -73,12 +86,48 @@ export function CreateAdDialog({ open, onOpenChange, post }: CreateAdDialogProps
   const [postId, setPostId] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Lead search for location
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadResults, setLeadResults] = useState<any[]>([]);
+  const [isSearchingLeads, setIsSearchingLeads] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<LeadLocation | null>(leadLocation || null);
+
+  // Pre-fill location from selected lead or prop
+  const activeLocation = selectedLead || leadLocation;
+  const resolvedCity = activeLocation?.visit_city || activeLocation?.city || null;
+  const resolvedState = activeLocation?.visit_state || activeLocation?.state || null;
+  const resolvedNeighborhood = activeLocation?.neighborhood || null;
+  const hasLeadLocation = !!(resolvedCity || resolvedState);
+
+  useEffect(() => {
+    if (!leadSearch.trim() || leadSearch.length < 2) {
+      setLeadResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingLeads(true);
+      const { data } = await supabase
+        .from('leads')
+        .select('id, lead_name, victim_name, city, state, visit_city, visit_state, neighborhood')
+        .or(`lead_name.ilike.%${leadSearch}%,victim_name.ilike.%${leadSearch}%,city.ilike.%${leadSearch}%`)
+        .limit(8);
+      setLeadResults(data || []);
+      setIsSearchingLeads(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadSearch]);
+
   const handleCreate = async () => {
     if (!postId.trim()) {
       return;
     }
 
     setIsCreating(true);
+    // Build locations from lead data
+    const locations = hasLeadLocation
+      ? [{ key: "BR", name: [resolvedCity, resolvedState].filter(Boolean).join("/") }]
+      : undefined;
+
     const result = await createCampaign({
       postId: postId.trim(),
       campaignName,
@@ -87,6 +136,7 @@ export function CreateAdDialog({ open, onOpenChange, post }: CreateAdDialogProps
       lifetimeBudget: budgetType === "lifetime" ? lifetimeBudget : undefined,
       startDate: startDate.toISOString(),
       endDate: endDate?.toISOString(),
+      locations,
       ageMin: ageRange[0],
       ageMax: ageRange[1],
       genders,
@@ -228,15 +278,96 @@ export function CreateAdDialog({ open, onOpenChange, post }: CreateAdDialogProps
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label className="flex items-center gap-2">
                 <MapPin className="h-4 w-4" />
-                Localização
+                Localização (vincular ao lead)
               </Label>
-              <p className="text-sm text-muted-foreground">
-                Por padrão, o anúncio será veiculado em todo o Brasil. 
-                Após criar, você pode ajustar a segmentação detalhada no Gerenciador de Anúncios.
-              </p>
+
+              {/* Lead search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={leadSearch}
+                  onChange={(e) => setLeadSearch(e.target.value)}
+                  placeholder="Buscar lead por nome, vítima ou cidade..."
+                  className="pl-9"
+                />
+                {isSearchingLeads && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+
+              {/* Search results */}
+              {leadResults.length > 0 && (
+                <div className="border rounded-lg max-h-40 overflow-y-auto divide-y">
+                  {leadResults.map((lead) => {
+                    const leadCity = lead.visit_city || lead.city;
+                    const leadState = lead.visit_state || lead.state;
+                    return (
+                      <button
+                        key={lead.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLead({
+                            city: lead.city,
+                            state: lead.state,
+                            visit_city: lead.visit_city,
+                            visit_state: lead.visit_state,
+                            neighborhood: lead.neighborhood,
+                            lead_name: lead.lead_name || lead.victim_name,
+                          });
+                          setLeadSearch("");
+                          setLeadResults([]);
+                        }}
+                        className="w-full p-2 text-left hover:bg-muted/50 text-sm flex items-center justify-between"
+                      >
+                        <span className="font-medium">{lead.lead_name || lead.victim_name || "Sem nome"}</span>
+                        {(leadCity || leadState) && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {[leadCity, leadState].filter(Boolean).join("/")}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Selected location display */}
+              {hasLeadLocation ? (
+                <div className="p-3 bg-accent/50 border border-primary/30 rounded-lg space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-primary" />
+                      Localização do lead
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setSelectedLead(null)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <p className="text-sm">
+                    {[resolvedCity, resolvedState].filter(Boolean).join(" / ")}
+                    {resolvedNeighborhood && ` - ${resolvedNeighborhood}`}
+                  </p>
+                  {activeLocation?.lead_name && (
+                    <p className="text-xs text-muted-foreground">Lead: {activeLocation.lead_name}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    O anúncio será direcionado para a região do acidente/visita.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Busque e selecione um lead acima para segmentar pela região. Sem lead, o anúncio vai para todo o Brasil.
+                </p>
+              )}
             </div>
 
             <Separator />
@@ -377,7 +508,9 @@ export function CreateAdDialog({ open, onOpenChange, post }: CreateAdDialogProps
                 </div>
                 <div>
                   <span className="text-muted-foreground">Público:</span>
-                  <p className="font-medium">{ageRange[0]}-{ageRange[1]} anos, Brasil</p>
+                  <p className="font-medium">
+                    {ageRange[0]}-{ageRange[1]} anos, {hasLeadLocation ? [resolvedCity, resolvedState].filter(Boolean).join("/") : "Brasil"}
+                  </p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
