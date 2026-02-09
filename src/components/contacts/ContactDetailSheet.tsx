@@ -94,7 +94,7 @@ export function ContactDetailSheet({
   onOpenChange,
   onContactUpdated,
 }: ContactDetailSheetProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(true);
   const [saving, setSaving] = useState(false);
   
   // Edit form state
@@ -140,7 +140,7 @@ export function ContactDetailSheet({
       setProfession((contact as any).profession || '');
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
-      setIsEditing(false);
+      setIsEditing(true);
     }
   }, [contact, open]);
 
@@ -209,7 +209,6 @@ export function ContactDetailSheet({
       if (error) throw error;
 
       toast.success('Contato atualizado com sucesso!');
-      setIsEditing(false);
       onContactUpdated?.();
     } catch (error) {
       console.error('Error updating contact:', error);
@@ -247,57 +246,37 @@ export function ContactDetailSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-hidden flex flex-col">
-        <SheetHeader className="pb-4">
+         <SheetHeader className="pb-4">
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2 text-xl">
               <User className="h-5 w-5" />
-              {isEditing ? 'Editar Contato' : contact.full_name}
+              {fullName || contact.full_name}
             </SheetTitle>
-            {!isEditing ? (
-              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
-                <Edit className="h-4 w-4 mr-2" />
-                Editar
-              </Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditing(false)}
-                  disabled={saving}
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Cancelar
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Salvando...' : 'Salvar'}
-                </Button>
-              </div>
-            )}
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
           </div>
 
           {/* Quick badges */}
-          {!isEditing && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {classifications.map((c) => (
-                <Badge key={c} className={`${getClassificationColor(c)} text-white text-xs`}>
-                  <Tag className="h-3 w-3 mr-1" />
-                  {getClassificationLabel(c)}
-                </Badge>
-              ))}
-              {followerStatus && followerStatus !== 'none' && (
-                <Badge className={`${followerStatusLabels[followerStatus]?.color} text-white text-xs`}>
-                  <Instagram className="h-3 w-3 mr-1" />
-                  {followerStatusLabels[followerStatus]?.label}
-                </Badge>
-              )}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2 mt-2">
+            {classifications.map((c) => (
+              <Badge key={c} className={`${getClassificationColor(c)} text-white text-xs`}>
+                <Tag className="h-3 w-3 mr-1" />
+                {getClassificationLabel(c)}
+              </Badge>
+            ))}
+            {followerStatus && followerStatus !== 'none' && (
+              <Badge className={`${followerStatusLabels[followerStatus]?.color} text-white text-xs`}>
+                <Instagram className="h-3 w-3 mr-1" />
+                {followerStatusLabels[followerStatus]?.label}
+              </Badge>
+            )}
+          </div>
         </SheetHeader>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
