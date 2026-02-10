@@ -56,6 +56,7 @@ import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransac
 import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelectFilter";
 import { CostAccountsManager } from "@/components/finance/CostAccountsManager";
 import { translateCategory } from "@/utils/categoryTranslations";
+import { ExpenseFormLinkGenerator } from "@/components/finance/ExpenseFormLinkGenerator";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -604,6 +605,18 @@ export default function FinancePage() {
                 <Link2 className="h-4 w-4 mr-2" />
                 Conectar
               </Button>
+              <ExpenseFormLinkGenerator 
+                knownCards={availableCards} 
+                transactions={permittedTransactions.map(t => ({
+                  id: t.id,
+                  pluggy_transaction_id: t.pluggy_transaction_id,
+                  description: t.description || '',
+                  amount: t.amount,
+                  transaction_date: t.transaction_date,
+                  merchant_name: t.merchant_name,
+                  card_last_digits: t.card_last_digits || '',
+                }))}
+              />
             </div>
           </div>
         </div>

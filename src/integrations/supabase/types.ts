@@ -1287,6 +1287,95 @@ export type Database = {
           },
         ]
       }
+      expense_form_responses: {
+        Row: {
+          category: string | null
+          city: string | null
+          description: string | null
+          id: string
+          lead_name: string | null
+          state: string | null
+          submitted_at: string
+          token_id: string
+          transaction_id: string
+        }
+        Insert: {
+          category?: string | null
+          city?: string | null
+          description?: string | null
+          id?: string
+          lead_name?: string | null
+          state?: string | null
+          submitted_at?: string
+          token_id: string
+          transaction_id: string
+        }
+        Update: {
+          category?: string | null
+          city?: string | null
+          description?: string | null
+          id?: string
+          lead_name?: string | null
+          state?: string | null
+          submitted_at?: string
+          token_id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_form_responses_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "expense_form_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_form_tokens: {
+        Row: {
+          card_last_digits: string
+          created_at: string
+          created_by: string | null
+          date_from: string
+          date_to: string
+          expires_at: string
+          id: string
+          notes: string | null
+          pluggy_account_id: string | null
+          submitted_at: string | null
+          token: string
+          transaction_ids: string[] | null
+        }
+        Insert: {
+          card_last_digits: string
+          created_at?: string
+          created_by?: string | null
+          date_from: string
+          date_to: string
+          expires_at?: string
+          id?: string
+          notes?: string | null
+          pluggy_account_id?: string | null
+          submitted_at?: string | null
+          token?: string
+          transaction_ids?: string[] | null
+        }
+        Update: {
+          card_last_digits?: string
+          created_at?: string
+          created_by?: string | null
+          date_from?: string
+          date_to?: string
+          expires_at?: string
+          id?: string
+          notes?: string | null
+          pluggy_account_id?: string | null
+          submitted_at?: string | null
+          token?: string
+          transaction_ids?: string[] | null
+        }
+        Relationships: []
+      }
       external_posts: {
         Row: {
           author_username: string | null
