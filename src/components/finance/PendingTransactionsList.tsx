@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { 
@@ -97,6 +98,7 @@ export function PendingTransactionsList({
   } = useExpenseCategories();
   
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const teamProfiles = useProfilesList();
   
   const NONE_SELECTED = 'NONE';
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -887,6 +889,7 @@ export function PendingTransactionsList({
                 formData={leadFormData}
                 onChange={(data) => setLeadFormData(prev => ({ ...prev, ...data }))}
                 onOpenExtractor={() => setExtractorOpen(true)}
+                teamMembers={teamProfiles}
               />
             </div>
           ) : (
