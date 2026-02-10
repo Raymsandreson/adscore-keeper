@@ -32,11 +32,14 @@ import {
   Loader2,
   Link2,
   Check,
+  FileText,
+  Image,
+  Trash2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CreateAdDialog } from "./CreateAdDialog";
+import { CreateBriefingDialog } from "./CreateBriefingDialog";
+import { useAdBriefings } from "@/hooks/useAdBriefings";
 import { toast } from "sonner";
-import type { Post } from "@/types/editorial";
 
 interface LeadWithAds {
   id: string;
@@ -100,8 +103,8 @@ export function LeadAdsManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("meta");
-  const [adDialogOpen, setAdDialogOpen] = useState(false);
-  const [selectedLeadForAd, setSelectedLeadForAd] = useState<any>(null);
+  const [briefingDialogOpen, setBriefingDialogOpen] = useState(false);
+  const [selectedLeadForBriefing, setSelectedLeadForBriefing] = useState<any>(null);
 
   // Import state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -116,16 +119,8 @@ export function LeadAdsManager() {
   // Lead linking flow (from "Sem Anúncio" tab)
   const [linkingLeadId, setLinkingLeadId] = useState<string | null>(null);
 
-  const dummyPost: Post = {
-    id: selectedLeadForAd?.id || "lead-ad",
-    title: selectedLeadForAd?.lead_name || selectedLeadForAd?.victim_name || "Anúncio para Lead",
-    description: `Campanha para ${selectedLeadForAd?.lead_name || selectedLeadForAd?.victim_name || "lead"}`,
-    platform: "instagram",
-    status: "published",
-    scheduled_date: new Date(),
-    scheduled_time: "12:00",
-    content_type: "image",
-  };
+  // Briefings
+  const { briefings, isLoading: isLoadingBriefings, deleteBriefing, updateBriefingStatus } = useAdBriefings();
 
   useEffect(() => {
     fetchData();
@@ -450,6 +445,10 @@ export function LeadAdsManager() {
             <Download className="h-4 w-4" />
             Meta ({isLoadingMeta ? '...' : metaCampaigns.length})
           </TabsTrigger>
+          <TabsTrigger value="briefings" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Briefings ({briefings.length})
+          </TabsTrigger>
           <TabsTrigger value="active" className="gap-2">
             <TrendingUp className="h-4 w-4" />
             Vinculados ({leadsWithAds.length})
@@ -705,12 +704,12 @@ export function LeadAdsManager() {
                               size="sm"
                               className="gap-1"
                               onClick={() => {
-                                setSelectedLeadForAd(lead);
-                                setAdDialogOpen(true);
+                                setSelectedLeadForBriefing(lead);
+                                setBriefingDialogOpen(true);
                               }}
                             >
-                              <Plus className="h-3 w-3" />
-                              Criar Novo
+                              <FileText className="h-3 w-3" />
+                              Briefing
                             </Button>
                           </div>
                         </TableCell>
@@ -838,31 +837,107 @@ export function LeadAdsManager() {
             )}
           </div>
         </TabsContent>
+
+        {/* Briefings Tab */}
+        <TabsContent value="briefings" className="mt-4">
+          <Card>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Briefings de Criativos
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Criativos e copy preparados para o gestor de tráfego criar os anúncios no BM
+                </p>
+              </div>
+              <Button size="sm" className="gap-1" onClick={() => { setSelectedLeadForBriefing(null); setBriefingDialogOpen(true); }}>
+                <Plus className="h-3 w-3" /> Novo Briefing
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {isLoadingBriefings ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              ) : briefings.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">Nenhum briefing criado ainda.</p>
+              ) : (
+                <div className="space-y-3">
+                  {briefings.map((b) => {
+                    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+                      pending: { label: "Pendente", variant: "outline" },
+                      approved: { label: "Aprovado", variant: "default" },
+                      created: { label: "Anúncio Criado", variant: "secondary" },
+                      linked: { label: "Vinculado", variant: "default" },
+                    };
+                    const st = statusMap[b.status] || { label: b.status, variant: "outline" as const };
+                    return (
+                      <div key={b.id} className="flex gap-4 p-4 border rounded-lg hover:bg-muted/30 transition-colors">
+                        {/* Thumbnail */}
+                        <div className="w-20 h-20 rounded-lg border overflow-hidden bg-muted shrink-0 flex items-center justify-center">
+                          {b.creative_url ? (
+                            b.creative_type === "video" ? (
+                              <video src={b.creative_url} className="w-full h-full object-cover" />
+                            ) : (
+                              <img src={b.creative_url} alt="" className="w-full h-full object-cover" />
+                            )
+                          ) : (
+                            <Image className="h-8 w-8 text-muted-foreground" />
+                          )}
+                        </div>
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-sm truncate">{b.headline || "Sem título"}</p>
+                              {b.lead_name && (
+                                <p className="text-xs text-muted-foreground">Lead: {b.lead_name}</p>
+                              )}
+                              {b.body_text && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{b.body_text}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Badge variant={st.variant}>{st.label}</Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            {b.cta && <Badge variant="outline" className="text-xs">{b.cta.replace(/_/g, " ")}</Badge>}
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(b.created_at).toLocaleDateString("pt-BR")}
+                            </span>
+                            {b.status === "pending" && (
+                              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => updateBriefingStatus(b.id, "approved")}>
+                                <Check className="h-3 w-3" /> Aprovar
+                              </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="h-6 text-xs text-destructive gap-1" onClick={() => deleteBriefing(b.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
-      {/* Create Ad Dialog */}
-      {selectedLeadForAd && (
-        <CreateAdDialog
-          open={adDialogOpen}
-          onOpenChange={(open) => {
-            setAdDialogOpen(open);
-            if (!open) {
-              setSelectedLeadForAd(null);
-              fetchData();
-            }
-          }}
-          post={dummyPost}
-          leadLocation={{
-            id: selectedLeadForAd.id,
-            city: selectedLeadForAd.city,
-            state: selectedLeadForAd.state,
-            visit_city: selectedLeadForAd.visit_city,
-            visit_state: selectedLeadForAd.visit_state,
-            lead_name: selectedLeadForAd.lead_name || selectedLeadForAd.victim_name,
-          }}
-        />
-      )}
-
+      {/* Create Briefing Dialog */}
+      <CreateBriefingDialog
+        open={briefingDialogOpen}
+        onOpenChange={(open) => {
+          setBriefingDialogOpen(open);
+          if (!open) setSelectedLeadForBriefing(null);
+        }}
+        leadId={selectedLeadForBriefing?.id}
+        leadName={selectedLeadForBriefing?.lead_name || selectedLeadForBriefing?.victim_name}
+      />
     </div>
   );
 }

@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_briefings: {
+        Row: {
+          approved_by: string | null
+          body_text: string | null
+          created_at: string
+          created_by: string | null
+          creative_type: string | null
+          creative_url: string | null
+          cta: string | null
+          headline: string | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          link_description: string | null
+          notes: string | null
+          promoted_post_id: string | null
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          approved_by?: string | null
+          body_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          creative_type?: string | null
+          creative_url?: string | null
+          cta?: string | null
+          headline?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          link_description?: string | null
+          notes?: string | null
+          promoted_post_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approved_by?: string | null
+          body_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          creative_type?: string | null
+          creative_url?: string | null
+          cta?: string | null
+          headline?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          link_description?: string | null
+          notes?: string | null
+          promoted_post_id?: string | null
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_briefings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_briefings_promoted_post_id_fkey"
+            columns: ["promoted_post_id"]
+            isOneToOne: false
+            referencedRelation: "promoted_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_conversation_history: {
         Row: {
           ad_account_id: string | null
