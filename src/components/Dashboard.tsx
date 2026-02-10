@@ -210,18 +210,20 @@ const Dashboard = () => {
     });
   }, [metaConfig, isConnected, useAggregated, selectedCount]);
 
-  // Fetch organic data on mount to update status indicator
+  // Fetch organic data when connection or date range changes
   useEffect(() => {
     const fetchOrganicStatus = async () => {
       if (!metaConfig?.accessToken || !isConnected) return;
       
+      const periodDays = dateRange === 'today' ? 1 : dateRange === 'yesterday' ? 1 : dateRange === 'last_7d' ? 7 : dateRange === 'last_30d' ? 30 : 7;
+      
       try {
-        console.log('📊 [Dashboard] Fetching organic insights for status...');
+        console.log('📊 [Dashboard] Fetching organic insights for status...', { period: periodDays });
         const { data, error } = await supabase.functions.invoke('fetch-organic-insights', {
           body: { 
             pageId: metaConfig.accountId,
             accessToken: metaConfig.accessToken,
-            period: 7
+            period: periodDays
           }
         });
 
@@ -242,7 +244,7 @@ const Dashboard = () => {
     };
 
     fetchOrganicStatus();
-  }, [metaConfig?.accessToken, metaConfig?.accountId, isConnected]);
+  }, [metaConfig?.accessToken, metaConfig?.accountId, isConnected, dateRange]);
 
   const { stats: leadStats, loading: leadsLoading } = useLeads();
 
