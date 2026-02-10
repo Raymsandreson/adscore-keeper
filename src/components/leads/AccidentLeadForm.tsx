@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Sparkles, User, MapPin, Building, FileText, Briefcase } from 'lucide-react';
+import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 
 export interface AccidentLeadFormData {
   // Basic info
@@ -58,13 +59,13 @@ interface AccidentLeadFormProps {
   teamMembers?: { id: string; full_name: string | null; email: string | null }[];
 }
 
-const brazilianStates = [
-  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 
-  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 
-  'SP', 'SE', 'TO'
-];
-
-const regions = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'];
+const stateToRegion: Record<string, string> = {
+  'AC': 'Norte', 'AP': 'Norte', 'AM': 'Norte', 'PA': 'Norte', 'RO': 'Norte', 'RR': 'Norte', 'TO': 'Norte',
+  'AL': 'Nordeste', 'BA': 'Nordeste', 'CE': 'Nordeste', 'MA': 'Nordeste', 'PB': 'Nordeste', 'PE': 'Nordeste', 'PI': 'Nordeste', 'RN': 'Nordeste', 'SE': 'Nordeste',
+  'DF': 'Centro-Oeste', 'GO': 'Centro-Oeste', 'MT': 'Centro-Oeste', 'MS': 'Centro-Oeste',
+  'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
+  'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
+};
 
 const caseTypes = [
   'Queda de Altura',
@@ -115,8 +116,40 @@ const sources = [
 ];
 
 export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [] }: AccidentLeadFormProps) {
+  const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+
   const updateField = (field: keyof AccidentLeadFormData, value: string) => {
     onChange({ [field]: value });
+  };
+
+  const handleStateChange = (state: string) => {
+    const region = stateToRegion[state] || '';
+    onChange({ visit_state: state, visit_region: region, visit_city: '' });
+    fetchCities(state);
+  };
+
+  // Format date for display (YYYY-MM-DD → DD/MM/YYYY)
+  const formatDateBR = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  // Parse BR date input (DD/MM/YYYY → YYYY-MM-DD)
+  const parseDateBR = (input: string) => {
+    const clean = input.replace(/\D/g, '');
+    let formatted = '';
+    if (clean.length <= 2) formatted = clean;
+    else if (clean.length <= 4) formatted = clean.slice(0, 2) + '/' + clean.slice(2);
+    else formatted = clean.slice(0, 2) + '/' + clean.slice(2, 4) + '/' + clean.slice(4, 8);
+    
+    if (clean.length === 8) {
+      const day = clean.slice(0, 2);
+      const month = clean.slice(2, 4);
+      const year = clean.slice(4, 8);
+      return { display: formatted, iso: `${year}-${month}-${day}` };
+    }
+    return { display: formatted, iso: '' };
   };
 
   return (
@@ -271,9 +304,18 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
             <div>
               <Label>Data do Acidente</Label>
               <Input
-                type="date"
-                value={formData.accident_date}
-                onChange={(e) => updateField('accident_date', e.target.value)}
+                value={formatDateBR(formData.accident_date)}
+                onChange={(e) => {
+                  const result = parseDateBR(e.target.value);
+                  if (result.iso) {
+                    updateField('accident_date', result.iso);
+                  } else {
+                    // Store partial display, keep old iso
+                    updateField('accident_date', formData.accident_date);
+                  }
+                }}
+                placeholder="DD/MM/AAAA"
+                maxLength={10}
               />
             </div>
 
@@ -316,23 +358,32 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
         <TabsContent value="location" className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Cidade da Visita</Label>
-              <Input
-                value={formData.visit_city}
-                onChange={(e) => updateField('visit_city', e.target.value)}
-                placeholder="Cidade"
-              />
-            </div>
-
-            <div>
               <Label>Estado da Visita</Label>
-              <Select value={formData.visit_state} onValueChange={(v) => updateField('visit_state', v)}>
+              <Select value={formData.visit_state} onValueChange={handleStateChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {brazilianStates.map((state) => (
-                    <SelectItem key={state} value={state}>{state}</SelectItem>
+                  {states.map((state) => (
+                    <SelectItem key={state.sigla} value={state.sigla}>{state.sigla} - {state.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Cidade da Visita</Label>
+              <Select 
+                value={formData.visit_city} 
+                onValueChange={(v) => updateField('visit_city', v)}
+                disabled={!formData.visit_state || loadingCities}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingCities ? 'Carregando...' : 'Selecione o estado primeiro'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cities.map((city) => (
+                    <SelectItem key={city.id} value={city.nome}>{city.nome}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -340,16 +391,12 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
 
             <div>
               <Label>Região da Visita</Label>
-              <Select value={formData.visit_region} onValueChange={(v) => updateField('visit_region', v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {regions.map((region) => (
-                    <SelectItem key={region} value={region}>{region}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input
+                value={formData.visit_region}
+                readOnly
+                className="bg-muted"
+                placeholder="Selecione o estado"
+              />
             </div>
 
             <div className="col-span-2">
