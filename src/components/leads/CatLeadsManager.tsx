@@ -222,7 +222,7 @@ export function CatLeadsManager() {
                             value={lead.contact_status}
                             onValueChange={v => handleStatusChange(lead, v)}
                           >
-                            <SelectTrigger className={`h-7 text-xs w-[130px] ${sc.color} border rounded-full`}>
+                            <SelectTrigger className={`h-7 text-xs w-auto min-w-[130px] ${sc.color} border rounded-full`}>
                               <SelectValue>{sc.label}</SelectValue>
                             </SelectTrigger>
                             <SelectContent>
