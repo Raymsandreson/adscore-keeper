@@ -309,6 +309,16 @@ export function LeadAdsManager() {
     return () => clearTimeout(timer);
   }, [leadSearchImport]);
 
+  // Auto-fetch Meta campaigns when linking flow starts
+  useEffect(() => {
+    if (linkingLeadId && metaCampaigns.length === 0 && !isLoadingMeta) {
+      const { accessToken, adAccountId } = getMetaCredentials();
+      if (accessToken && adAccountId) {
+        fetchMetaAds();
+      }
+    }
+  }, [linkingLeadId]);
+
   // Check which campaigns are already imported
   const importedCampaignIds = new Set(promotedPosts.filter(p => p.campaign_id).map(p => p.campaign_id));
 
@@ -605,9 +615,15 @@ export function LeadAdsManager() {
                     <Skeleton className="h-16 w-full" />
                   </div>
                 ) : metaCampaigns.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhuma campanha encontrada. Conecte sua conta Meta primeiro.
-                  </p>
+                  <div className="text-center py-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma campanha carregada.
+                    </p>
+                    <Button size="sm" variant="outline" className="gap-2" onClick={fetchMetaAds}>
+                      <Download className="h-4 w-4" />
+                      Buscar Campanhas da Meta
+                    </Button>
+                  </div>
                 ) : (
                   metaCampaigns.filter(c => !importedCampaignIds.has(c.campaign_id)).map((c) => (
                     <div key={c.campaign_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
