@@ -9,10 +9,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CreditCard, CheckCircle2, AlertCircle, Loader2, Send, 
-  MapPin, Tag, FileText, ChevronDown, ChevronUp, User
+  MapPin, Tag, FileText, ChevronDown, ChevronUp, User, Building, UserCheck, Search
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,6 +40,24 @@ interface Category {
   icon: string | null;
 }
 
+interface LeadOption {
+  id: string;
+  lead_name: string | null;
+  lead_email: string | null;
+  instagram_username: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+interface ContactOption {
+  id: string;
+  full_name: string;
+  instagram_username: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+}
+
 interface FormResponse {
   transaction_id: string;
   description: string;
@@ -47,6 +65,17 @@ interface FormResponse {
   city: string;
   state: string;
   lead_name: string;
+}
+
+interface IBGEState {
+  id: number;
+  sigla: string;
+  nome: string;
+}
+
+interface IBGECity {
+  id: number;
+  nome: string;
 }
 
 const BRAZILIAN_STATES = [
@@ -62,6 +91,8 @@ export default function ExpenseFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [leads, setLeads] = useState<LeadOption[]>([]);
+  const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [cardInfo, setCardInfo] = useState<{ card_last_digits: string; card_name?: string; lead_name?: string } | null>(null);
   const [tokenData, setTokenData] = useState<any>(null);
   const [respondedIds, setRespondedIds] = useState<Set<string>>(new Set());
@@ -70,10 +101,52 @@ export default function ExpenseFormPage() {
   const [batchMode, setBatchMode] = useState(false);
   const [batchData, setBatchData] = useState<Partial<FormResponse>>({});
   const [expandedTx, setExpandedTx] = useState<Set<string>>(new Set());
+  
+  // City loading per state
+  const [citiesCache, setCitiesCache] = useState<Record<string, IBGECity[]>>({});
+  const [loadingCities, setLoadingCities] = useState<Record<string, boolean>>({});
+  const [batchCities, setBatchCities] = useState<IBGECity[]>([]);
+  const [batchLoadingCities, setBatchLoadingCities] = useState(false);
+
+  // Search terms for lead/contact
+  const [leadSearchTerms, setLeadSearchTerms] = useState<Record<string, string>>({});
+  const [contactSearchTerms, setContactSearchTerms] = useState<Record<string, string>>({});
+  const [batchLeadSearch, setBatchLeadSearch] = useState('');
+  const [batchContactSearch, setBatchContactSearch] = useState('');
+  const [linkTabs, setLinkTabs] = useState<Record<string, 'lead' | 'contact'>>({});
+  const [batchLinkTab, setBatchLinkTab] = useState<'lead' | 'contact'>('lead');
 
   useEffect(() => {
     if (token) loadFormData();
   }, [token]);
+
+  const fetchCitiesForState = async (uf: string, target: 'batch' | string) => {
+    if (citiesCache[uf]) {
+      if (target === 'batch') setBatchCities(citiesCache[uf]);
+      return;
+    }
+    
+    if (target === 'batch') setBatchLoadingCities(true);
+    else setLoadingCities(prev => ({ ...prev, [target]: true }));
+    
+    try {
+      const res = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios?orderBy=nome`);
+      const data: IBGECity[] = await res.json();
+      setCitiesCache(prev => ({ ...prev, [uf]: data }));
+      if (target === 'batch') setBatchCities(data);
+    } catch {
+      // fallback
+    } finally {
+      if (target === 'batch') setBatchLoadingCities(false);
+      else setLoadingCities(prev => ({ ...prev, [target]: false }));
+    }
+  };
+
+  const getCitiesForTx = (txId: string): IBGECity[] => {
+    const state = responses[txId]?.state;
+    if (!state) return [];
+    return citiesCache[state] || [];
+  };
 
   const loadFormData = async () => {
     setLoading(true);
@@ -91,6 +164,8 @@ export default function ExpenseFormPage() {
 
       setTransactions(data.transactions);
       setCategories(data.categories);
+      setLeads(data.leads || []);
+      setContacts(data.contacts || []);
       setTokenData(data.token);
       setRespondedIds(new Set(data.respondedTransactionIds));
       setCardInfo({
@@ -99,7 +174,6 @@ export default function ExpenseFormPage() {
         lead_name: data.cardAssignment?.lead_name,
       });
 
-      // Initialize responses
       const initial: Record<string, FormResponse> = {};
       data.transactions.forEach((tx: Transaction) => {
         const override = data.overrides?.find((o: any) => o.transaction_id === tx.id);
@@ -113,6 +187,15 @@ export default function ExpenseFormPage() {
         };
       });
       setResponses(initial);
+
+      // Pre-fetch cities for states that exist
+      const states = new Set<string>();
+      data.transactions.forEach((tx: Transaction) => {
+        const override = data.overrides?.find((o: any) => o.transaction_id === tx.id);
+        const st = override?.manual_state || tx.merchant_state;
+        if (st) states.add(st);
+      });
+      states.forEach(st => fetchCitiesForState(st, 'preload'));
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar formulário');
     } finally {
@@ -131,7 +214,6 @@ export default function ExpenseFormPage() {
   }, [categories]);
 
   const selectableCategories = useMemo(() => {
-    // Categories that have children are groups; only show children
     const result: { id: string; name: string; groupName?: string }[] = [];
     parentCategories.forEach(parent => {
       const children = childCategories[parent.id];
@@ -228,6 +310,176 @@ export default function ExpenseFormPage() {
       setSubmitting(false);
     }
   };
+
+  const getLeadDisplay = (lead: LeadOption) => lead.lead_name || lead.lead_email || lead.instagram_username || 'Sem nome';
+  const getContactDisplay = (contact: ContactOption) => contact.full_name || contact.instagram_username || 'Sem nome';
+
+  const getFilteredLeads = (search: string) => {
+    if (!search) return leads;
+    const s = search.toLowerCase();
+    return leads.filter(l => 
+      l.lead_name?.toLowerCase().includes(s) ||
+      l.lead_email?.toLowerCase().includes(s) ||
+      l.instagram_username?.toLowerCase().includes(s)
+    );
+  };
+
+  const getFilteredContacts = (search: string) => {
+    if (!search) return contacts;
+    const s = search.toLowerCase();
+    return contacts.filter(c => 
+      c.full_name?.toLowerCase().includes(s) ||
+      c.instagram_username?.toLowerCase().includes(s) ||
+      c.phone?.includes(s)
+    );
+  };
+
+  // Render location selectors (state → city)
+  const renderLocationSelectors = (
+    stateValue: string,
+    cityValue: string,
+    onStateChange: (v: string) => void,
+    onCityChange: (v: string) => void,
+    cities: IBGECity[],
+    isLoadingCities: boolean,
+  ) => (
+    <div className="grid grid-cols-2 gap-2">
+      <div>
+        <Label className="text-xs flex items-center gap-1">
+          <MapPin className="h-3 w-3" /> Estado
+        </Label>
+        <Select value={stateValue} onValueChange={onStateChange}>
+          <SelectTrigger className="h-8 text-xs mt-1">
+            <SelectValue placeholder="UF" />
+          </SelectTrigger>
+          <SelectContent>
+            {BRAZILIAN_STATES.map(s => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Label className="text-xs flex items-center gap-1">
+          <MapPin className="h-3 w-3" /> Cidade
+        </Label>
+        <Select value={cityValue} onValueChange={onCityChange} disabled={!stateValue || isLoadingCities}>
+          <SelectTrigger className="h-8 text-xs mt-1">
+            <SelectValue placeholder={isLoadingCities ? "Carregando..." : "Selecione"} />
+          </SelectTrigger>
+          <SelectContent>
+            {cities.map(c => (
+              <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
+  // Render lead/contact link selector
+  const renderLinkSelector = (
+    txId: string,
+    leadNameValue: string,
+    onSelect: (displayName: string) => void,
+    activeTab: 'lead' | 'contact',
+    onTabChange: (v: 'lead' | 'contact') => void,
+    leadSearch: string,
+    onLeadSearch: (v: string) => void,
+    contactSearch: string,
+    onContactSearch: (v: string) => void,
+  ) => (
+    <div>
+      <Label className="text-xs flex items-center gap-1 mb-1">
+        <User className="h-3 w-3" /> Vincular a Lead ou Contato
+      </Label>
+      <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as 'lead' | 'contact')}>
+        <TabsList className="grid w-full grid-cols-2 h-7">
+          <TabsTrigger value="lead" className="text-xs gap-1 h-6">
+            <Building className="h-3 w-3" /> Lead
+          </TabsTrigger>
+          <TabsTrigger value="contact" className="text-xs gap-1 h-6">
+            <UserCheck className="h-3 w-3" /> Contato
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="lead" className="mt-2">
+          <div className="relative mb-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <Input
+              placeholder="Buscar lead..."
+              value={leadSearch}
+              onChange={e => onLeadSearch(e.target.value)}
+              className="h-7 text-xs pl-7"
+            />
+          </div>
+          <ScrollArea className="h-24 border rounded-md">
+            <div className="p-1 space-y-0.5">
+              <button
+                type="button"
+                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors text-muted-foreground italic ${!leadNameValue ? 'bg-muted font-medium' : 'hover:bg-muted'}`}
+                onClick={() => onSelect('')}
+              >
+                Nenhum
+              </button>
+              {getFilteredLeads(leadSearch).map(lead => (
+                <button
+                  key={lead.id}
+                  type="button"
+                  className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${
+                    leadNameValue === getLeadDisplay(lead) ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                  onClick={() => onSelect(getLeadDisplay(lead))}
+                >
+                  <span className="font-medium">{getLeadDisplay(lead)}</span>
+                  {lead.city && <span className="text-[10px] opacity-70 ml-1">• {lead.city}/{lead.state}</span>}
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+        <TabsContent value="contact" className="mt-2">
+          <div className="relative mb-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+            <Input
+              placeholder="Buscar contato..."
+              value={contactSearch}
+              onChange={e => onContactSearch(e.target.value)}
+              className="h-7 text-xs pl-7"
+            />
+          </div>
+          <ScrollArea className="h-24 border rounded-md">
+            <div className="p-1 space-y-0.5">
+              <button
+                type="button"
+                className={`w-full text-left px-2 py-1 rounded text-xs transition-colors text-muted-foreground italic ${!leadNameValue ? 'bg-muted font-medium' : 'hover:bg-muted'}`}
+                onClick={() => onSelect('')}
+              >
+                Nenhum
+              </button>
+              {getFilteredContacts(contactSearch).map(contact => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  className={`w-full text-left px-2 py-1 rounded text-xs transition-colors ${
+                    leadNameValue === getContactDisplay(contact) ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                  onClick={() => onSelect(getContactDisplay(contact))}
+                >
+                  <span className="font-medium">{getContactDisplay(contact)}</span>
+                  {contact.city && <span className="text-[10px] opacity-70 ml-1">• {contact.city}/{contact.state}</span>}
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
+      {leadNameValue && (
+        <div className="mt-1 px-2 py-1 bg-muted/50 rounded text-xs text-muted-foreground">
+          Vinculado: <span className="font-medium">{leadNameValue}</span>
+        </div>
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -349,38 +601,34 @@ export default function ExpenseFormPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label className="text-xs">Cidade</Label>
-                      <Input
-                        placeholder="Cidade"
-                        value={batchData.city || ''}
-                        onChange={e => setBatchData(p => ({ ...p, city: e.target.value }))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Estado</Label>
-                      <Select value={batchData.state || ''} onValueChange={v => setBatchData(p => ({ ...p, state: v }))}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="UF" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {BRAZILIAN_STATES.map(s => (
-                            <SelectItem key={s} value={s}>{s}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label className="text-xs">Lead / Cliente</Label>
-                      <Input
-                        placeholder="Nome do lead ou cliente"
-                        value={batchData.lead_name || ''}
-                        onChange={e => setBatchData(p => ({ ...p, lead_name: e.target.value }))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
                   </div>
+                  
+                  {renderLocationSelectors(
+                    batchData.state || '',
+                    batchData.city || '',
+                    (v) => {
+                      setBatchData(p => ({ ...p, state: v, city: '' }));
+                      fetchCitiesForState(v, 'batch');
+                    },
+                    (v) => setBatchData(p => ({ ...p, city: v })),
+                    batchCities,
+                    batchLoadingCities,
+                  )}
+
+                  <div>
+                    {renderLinkSelector(
+                      'batch',
+                      batchData.lead_name || '',
+                      (name) => setBatchData(p => ({ ...p, lead_name: name })),
+                      batchLinkTab,
+                      setBatchLinkTab,
+                      batchLeadSearch,
+                      setBatchLeadSearch,
+                      batchContactSearch,
+                      setBatchContactSearch,
+                    )}
+                  </div>
+
                   <Button size="sm" onClick={applyBatch}>
                     Aplicar a {selectedIds.size} transações
                   </Button>
@@ -396,6 +644,8 @@ export default function ExpenseFormPage() {
             {pendingTransactions.map(tx => {
               const resp = responses[tx.id];
               const isExpanded = expandedTx.has(tx.id);
+              const txCities = getCitiesForTx(tx.id);
+              const isLoadingTxCities = loadingCities[tx.id] || false;
 
               return (
                 <Card key={tx.id} className="overflow-hidden">
@@ -468,44 +718,32 @@ export default function ExpenseFormPage() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div>
-                            <Label className="text-xs flex items-center gap-1">
-                              <User className="h-3 w-3" /> Lead / Cliente
-                            </Label>
-                            <Input
-                              placeholder="Nome"
-                              value={resp.lead_name}
-                              onChange={e => updateResponse(tx.id, 'lead_name', e.target.value)}
-                              className="h-8 text-sm mt-1"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs flex items-center gap-1">
-                              <MapPin className="h-3 w-3" /> Cidade
-                            </Label>
-                            <Input
-                              placeholder="Cidade"
-                              value={resp.city}
-                              onChange={e => updateResponse(tx.id, 'city', e.target.value)}
-                              className="h-8 text-sm mt-1"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs flex items-center gap-1">
-                              <MapPin className="h-3 w-3" /> Estado
-                            </Label>
-                            <Select value={resp.state} onValueChange={v => updateResponse(tx.id, 'state', v)}>
-                              <SelectTrigger className="h-8 text-xs mt-1">
-                                <SelectValue placeholder="UF" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {BRAZILIAN_STATES.map(s => (
-                                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
                         </div>
+
+                        {renderLocationSelectors(
+                          resp.state,
+                          resp.city,
+                          (v) => {
+                            updateResponse(tx.id, 'state', v);
+                            updateResponse(tx.id, 'city', '');
+                            fetchCitiesForState(v, tx.id);
+                          },
+                          (v) => updateResponse(tx.id, 'city', v),
+                          txCities,
+                          isLoadingTxCities,
+                        )}
+
+                        {renderLinkSelector(
+                          tx.id,
+                          resp.lead_name,
+                          (name) => updateResponse(tx.id, 'lead_name', name),
+                          linkTabs[tx.id] || 'lead',
+                          (v) => setLinkTabs(prev => ({ ...prev, [tx.id]: v })),
+                          leadSearchTerms[tx.id] || '',
+                          (v) => setLeadSearchTerms(prev => ({ ...prev, [tx.id]: v })),
+                          contactSearchTerms[tx.id] || '',
+                          (v) => setContactSearchTerms(prev => ({ ...prev, [tx.id]: v })),
+                        )}
                       </div>
                     )}
                   </div>

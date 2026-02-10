@@ -95,12 +95,26 @@ serve(async (req) => {
         .eq("card_last_digits", tokenData.card_last_digits)
         .maybeSingle();
 
+      // Get leads for linking
+      const { data: leads } = await supabase
+        .from("leads")
+        .select("id, lead_name, lead_email, instagram_username, city, state")
+        .order("lead_name");
+
+      // Get contacts for linking
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("id, full_name, instagram_username, phone, city, state")
+        .order("full_name");
+
       return new Response(JSON.stringify({
         token: tokenData,
         transactions: transactions || [],
         overrides: overrides || [],
         categories: categories || [],
         cardAssignment,
+        leads: leads || [],
+        contacts: contacts || [],
         respondedTransactionIds: Array.from(respondedTxIds),
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
