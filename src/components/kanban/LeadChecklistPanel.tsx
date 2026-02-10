@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckSquare, Lock, ListChecks } from 'lucide-react';
+import { CheckSquare, Lock, ListChecks, RefreshCw } from 'lucide-react';
 import { useChecklists, LeadChecklistInstance, ChecklistItem } from '@/hooks/useChecklists';
 import { supabase } from '@/integrations/supabase/client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { toast } from 'sonner';
 
 interface LeadChecklistPanelProps {
   leadId: string;
@@ -16,9 +18,10 @@ interface LeadChecklistPanelProps {
 }
 
 export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [] }: LeadChecklistPanelProps) {
-  const { fetchLeadInstances, updateInstanceItem } = useChecklists();
+  const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
 
   useEffect(() => {
@@ -46,6 +49,20 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
 
     setInstances(data);
     setLoading(false);
+  };
+
+  const handleGenerateChecklists = async () => {
+    if (!boardId || !currentStageId) return;
+    setGenerating(true);
+    try {
+      await createLeadInstances(leadId, boardId, currentStageId);
+      await loadInstances();
+      toast.success('Checklists gerados para esta etapa!');
+    } catch (e) {
+      toast.error('Erro ao gerar checklists');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleToggleItem = async (instance: LeadChecklistInstance, itemId: string) => {
@@ -83,9 +100,20 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
 
   if (instances.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
+      <div className="text-center py-8 text-muted-foreground space-y-3">
         <ListChecks className="h-8 w-8 mx-auto mb-2 opacity-50" />
         <p className="text-sm">Nenhum checklist vinculado a esta etapa</p>
+        {boardId && currentStageId && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateChecklists}
+            disabled={generating}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${generating ? 'animate-spin' : ''}`} />
+            {generating ? 'Gerando...' : 'Gerar checklists desta etapa'}
+          </Button>
+        )}
       </div>
     );
   }
