@@ -1179,62 +1179,20 @@ export const ContactsManager: React.FC = () => {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col gap-3">
-            {/* Row 1: Search + Action Buttons */}
-            <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
-              <div className="relative flex-1 w-full md:max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar contatos..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
+            {/* Row 1: Search full width */}
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar contatos por nome, telefone, email, Instagram..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-10"
+              />
+            </div>
+
+            {/* Row 2: Main actions left, Import/Export right */}
+            <div className="flex flex-col md:flex-row gap-2 items-start md:items-center justify-between">
               <div className="flex gap-2 flex-wrap">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setIsNetworkGraphOpen(true)}
-                  className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50"
-                >
-                  <Network className="h-4 w-4 mr-1 text-blue-500" />
-                  Rede de Vínculos
-                </Button>
-                <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Modelo CSV
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <input
-                  ref={metaFileInputRef}
-                  type="file"
-                  accept=".json,.html"
-                  onChange={handleMetaFileUpload}
-                  className="hidden"
-                />
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-1" />
-                  CSV
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
-                  <Instagram className="h-4 w-4 mr-1 text-pink-500" />
-                  Meta Export
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleMergeDuplicates}
-                  className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
-                >
-                  <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
-                  Mesclar Duplicados
-                </Button>
                 <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
                   <DialogTrigger asChild>
                     <Button size="sm">
@@ -1242,10 +1200,10 @@ export const ContactsManager: React.FC = () => {
                       Adicionar
                     </Button>
                   </DialogTrigger>
-                <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
-                  <DialogHeader className="flex-shrink-0">
-                    <DialogTitle>Novo Contato</DialogTitle>
-                  </DialogHeader>
+                  <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+                    <DialogHeader className="flex-shrink-0">
+                      <DialogTitle>Novo Contato</DialogTitle>
+                    </DialogHeader>
                   <div className="space-y-4 flex-1 overflow-y-auto pr-2">
                     <div>
                       <Label>Nome *</Label>
@@ -1418,8 +1376,54 @@ export const ContactsManager: React.FC = () => {
                     </Button>
                   </div>
                 </DialogContent>
-              </Dialog>
-            </div>
+                </Dialog>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setIsNetworkGraphOpen(true)}
+                  className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50"
+                >
+                  <Network className="h-4 w-4 mr-1 text-blue-500" />
+                  Rede de Vínculos
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleMergeDuplicates}
+                  className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
+                >
+                  <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
+                  Mesclar Duplicados
+                </Button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <input
+                  ref={metaFileInputRef}
+                  type="file"
+                  accept=".json,.html"
+                  onChange={handleMetaFileUpload}
+                  className="hidden"
+                />
+                <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Modelo CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-1" />
+                  Importar CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
+                  <Instagram className="h-4 w-4 mr-1 text-pink-500" />
+                  Meta Export
+                </Button>
+              </div>
             </div>
             
             {/* Row 2: People & CRM filters */}
