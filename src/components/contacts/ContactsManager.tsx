@@ -1179,9 +1179,9 @@ export const ContactsManager: React.FC = () => {
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
-            <div className="flex gap-2 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
+            {/* Row 1: Search + Action Buttons */}
+            <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
+              <div className="relative flex-1 w-full md:max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar contatos..."
@@ -1190,227 +1190,58 @@ export const ContactsManager: React.FC = () => {
                   className="pl-9"
                 />
               </div>
-              <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Classificação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {Object.entries(classificationConfig).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${config.color}`} />
-                        {config.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Relationship Type Filter */}
-              <Select 
-                value={filterRelationshipType || 'all'} 
-                onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <div className="flex items-center gap-2">
-                    <Link2 className="h-4 w-4 text-muted-foreground" />
-                    <SelectValue placeholder="Vínculo" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os vínculos</SelectItem>
-                  {relationshipTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.name}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Profession Filter */}
-              <ProfessionFilter
-                selectedProfessions={filterProfessions}
-                onSelectionChange={setFilterProfessions}
-              />
-              
-              {/* Lead Linked Filter */}
-              <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
-                <SelectTrigger className="w-[160px]">
-                  <div className="flex items-center gap-2">
-                    <Link className="h-4 w-4 text-muted-foreground" />
-                    <SelectValue placeholder="Leads" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="linked">Vinculados a Lead</SelectItem>
-                  <SelectItem value="not_linked">Sem Lead</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Date Filters Row */}
-            <div className="flex gap-2 items-center">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={filterDateFrom}
-                onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="w-[150px] h-9"
-                placeholder="De"
-              />
-              <span className="text-muted-foreground text-sm">até</span>
-              <Input
-                type="date"
-                value={filterDateTo}
-                onChange={(e) => setFilterDateTo(e.target.value)}
-                className="w-[150px] h-9"
-                placeholder="Até"
-              />
-              {(filterDateFrom || filterDateTo) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
-                  className="h-8 px-2"
+              <div className="flex gap-2 flex-wrap">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setIsNetworkGraphOpen(true)}
+                  className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50"
                 >
-                  <X className="h-3 w-3" />
+                  <Network className="h-4 w-4 mr-1 text-blue-500" />
+                  Rede de Vínculos
                 </Button>
-              )}
-            </div>
-            
-            {/* Quick Tag Filters */}
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                variant={filterTag === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('all')}
-                className="h-8"
-              >
-                <Users className="h-3 w-3 mr-1" />
-                Todos
-              </Button>
-              <Button
-                variant={filterTag === 'seguidor' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('seguidor')}
-                className="h-8"
-              >
-                <UserPlus className="h-3 w-3 mr-1" />
-                Seguidores
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {tagStats.seguidores}
-                </Badge>
-              </Button>
-              <Button
-                variant={filterTag === 'seguindo' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('seguindo')}
-                className="h-8"
-              >
-                <UserMinus className="h-3 w-3 mr-1" />
-                Seguindo
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {tagStats.seguindo}
-                </Badge>
-              </Button>
-              <Button
-                variant={filterTag === 'mutual' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('mutual')}
-                className="h-8"
-              >
-                <Users2 className="h-3 w-3 mr-1" />
-                Mútuos
-                <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
-                  {tagStats.mutuos}
-                </Badge>
-              </Button>
-              {filterTag !== 'all' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFilterTag('all')}
-                  className="h-8 px-2"
-                >
-                  <X className="h-3 w-3" />
+                <Button variant="outline" size="sm" onClick={downloadTemplate}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Modelo CSV
                 </Button>
-              )}
-              
-              {/* Active relationship filter badge */}
-              {filterRelationshipType && (
-                <Badge 
-                  variant="secondary" 
-                  className="h-8 px-3 gap-2 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20"
-                  onClick={() => setFilterRelationshipType(null)}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <input
+                  ref={metaFileInputRef}
+                  type="file"
+                  accept=".json,.html"
+                  onChange={handleMetaFileUpload}
+                  className="hidden"
+                />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-1" />
+                  CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
+                  <Instagram className="h-4 w-4 mr-1 text-pink-500" />
+                  Meta Export
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleMergeDuplicates}
+                  className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
                 >
-                  <Link2 className="h-3 w-3" />
-                  {filterRelationshipType}
-                  {loadingRelationshipFilter ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <>
-                      <span className="text-xs">({filteredByRelationshipIds.size})</span>
-                      <X className="h-3 w-3" />
-                    </>
-                  )}
-                </Badge>
-              )}
-            </div>
-            
-            <div className="flex gap-2 w-full md:w-auto justify-end flex-wrap">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setIsNetworkGraphOpen(true)}
-                className="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border-blue-500/30 hover:border-blue-500/50"
-              >
-                <Network className="h-4 w-4 mr-1 text-blue-500" />
-                Rede de Vínculos
-              </Button>
-              <Button variant="outline" size="sm" onClick={downloadTemplate}>
-                <Download className="h-4 w-4 mr-1" />
-                Modelo CSV
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <input
-                ref={metaFileInputRef}
-                type="file"
-                accept=".json,.html"
-                onChange={handleMetaFileUpload}
-                className="hidden"
-              />
-              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-4 w-4 mr-1" />
-                CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => metaFileInputRef.current?.click()} className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-pink-500/30 hover:border-pink-500/50">
-                <Instagram className="h-4 w-4 mr-1 text-pink-500" />
-                Meta Export
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleMergeDuplicates}
-                className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 border-amber-500/30 hover:border-amber-500/50"
-              >
-                <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
-                Mesclar Duplicados
-              </Button>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Adicionar
-                  </Button>
-                </DialogTrigger>
+                  <GitMerge className="h-4 w-4 mr-1 text-amber-500" />
+                  Mesclar Duplicados
+                </Button>
+                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adicionar
+                    </Button>
+                  </DialogTrigger>
                 <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
                   <DialogHeader className="flex-shrink-0">
                     <DialogTitle>Novo Contato</DialogTitle>
@@ -1589,7 +1420,173 @@ export const ContactsManager: React.FC = () => {
                 </DialogContent>
               </Dialog>
             </div>
-          </div>
+            </div>
+            
+            {/* Row 2: Filters */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue placeholder="Classificação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {Object.entries(classificationConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${config.color}`} />
+                        {config.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select 
+                value={filterRelationshipType || 'all'} 
+                onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
+              >
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Vínculo" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os vínculos</SelectItem>
+                  {relationshipTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.name}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <ProfessionFilter
+                selectedProfessions={filterProfessions}
+                onSelectionChange={setFilterProfessions}
+              />
+              
+              <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
+                <SelectTrigger className="w-[150px] h-8 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Link className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Leads" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="linked">Vinculados a Lead</SelectItem>
+                  <SelectItem value="not_linked">Sem Lead</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex gap-1.5 items-center">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  type="date"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                  className="w-[130px] h-8 text-xs"
+                  placeholder="De"
+                />
+                <span className="text-muted-foreground text-xs">até</span>
+                <Input
+                  type="date"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                  className="w-[130px] h-8 text-xs"
+                  placeholder="Até"
+                />
+                {(filterDateFrom || filterDateTo) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                    className="h-7 w-7 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            {/* Row 3: Tag Filters */}
+            <div className="flex gap-2 flex-wrap items-center">
+              <Button
+                variant={filterTag === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('all')}
+                className="h-7 text-xs"
+              >
+                <Users className="h-3 w-3 mr-1" />
+                Todos
+              </Button>
+              <Button
+                variant={filterTag === 'seguidor' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguidor')}
+                className="h-7 text-xs"
+              >
+                <UserPlus className="h-3 w-3 mr-1" />
+                Seguidores
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.seguidores}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'seguindo' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguindo')}
+                className="h-7 text-xs"
+              >
+                <UserMinus className="h-3 w-3 mr-1" />
+                Seguindo
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.seguindo}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'mutual' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('mutual')}
+                className="h-7 text-xs"
+              >
+                <Users2 className="h-3 w-3 mr-1" />
+                Mútuos
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.mutuos}
+                </Badge>
+              </Button>
+              {filterTag !== 'all' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFilterTag('all')}
+                  className="h-7 w-7 p-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+              
+              {filterRelationshipType && (
+                <Badge 
+                  variant="secondary" 
+                  className="h-7 px-2 gap-1.5 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20 text-xs"
+                  onClick={() => setFilterRelationshipType(null)}
+                >
+                  <Link2 className="h-3 w-3" />
+                  {filterRelationshipType}
+                  {loadingRelationshipFilter ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <span className="text-[10px]">({filteredByRelationshipIds.size})</span>
+                      <X className="h-3 w-3" />
+                    </>
+                  )}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
