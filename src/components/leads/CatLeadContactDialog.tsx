@@ -83,6 +83,10 @@ export function CatLeadContactDialog({
   const [editBairro, setEditBairro] = useState(catLead.bairro || '');
   const [editCep, setEditCep] = useState(catLead.cep || '');
   const [editCatNotes, setEditCatNotes] = useState(catLead.notes || '');
+  const [editCelular1, setEditCelular1] = useState(catLead.celular_1 || '');
+  const [editCelular2, setEditCelular2] = useState(catLead.celular_2 || '');
+  const [editCelular3, setEditCelular3] = useState(catLead.celular_3 || '');
+  const [editCelular4, setEditCelular4] = useState(catLead.celular_4 || '');
   const [savingCat, setSavingCat] = useState(false);
 
   // Sync state when catLead prop changes
@@ -98,6 +102,10 @@ export function CatLeadContactDialog({
     setEditBairro(catLead.bairro || '');
     setEditCep(catLead.cep || '');
     setEditCatNotes(catLead.notes || '');
+    setEditCelular1(catLead.celular_1 || '');
+    setEditCelular2(catLead.celular_2 || '');
+    setEditCelular3(catLead.celular_3 || '');
+    setEditCelular4(catLead.celular_4 || '');
   }, [catLead]);
 
   const handleSaveCatChanges = async () => {
@@ -116,6 +124,10 @@ export function CatLeadContactDialog({
         bairro: editBairro || null,
         cep: editCep || null,
         notes: editCatNotes || null,
+        celular_1: editCelular1 || null,
+        celular_2: editCelular2 || null,
+        celular_3: editCelular3 || null,
+        celular_4: editCelular4 || null,
       });
       onRefresh();
     } finally {
@@ -273,6 +285,24 @@ export function CatLeadContactDialog({
                     </div>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Celular 1 (principal)</Label>
+                    <Input value={editCelular1} onChange={e => setEditCelular1(e.target.value)} className="h-9 text-sm" placeholder="Ex: 21999999999" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Celular 2</Label>
+                    <Input value={editCelular2} onChange={e => setEditCelular2(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Celular 3</Label>
+                    <Input value={editCelular3} onChange={e => setEditCelular3(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Celular 4</Label>
+                    <Input value={editCelular4} onChange={e => setEditCelular4(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Observações da CAT</Label>
                   <Textarea value={editCatNotes} onChange={e => setEditCatNotes(e.target.value)} placeholder="Anotações sobre esta CAT..." className="min-h-[50px] text-sm" />
@@ -384,32 +414,6 @@ export function CatLeadContactDialog({
             </Button>
           </div>
 
-          {/* Save correct phone manually */}
-          <div className="space-y-2 border rounded-lg p-3">
-            <h4 className="text-sm font-semibold flex items-center gap-2">
-              <Save className="h-4 w-4" />
-              Atualizar telefone principal
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              Atual: <strong>{catLead.celular_1 || 'Nenhum'}</strong>
-            </p>
-            <div className="flex gap-2">
-              <Input
-                value={customPhone}
-                onChange={e => setCustomPhone(e.target.value)}
-                placeholder="Novo número correto..."
-                className="h-9 text-sm"
-              />
-              <Button
-                onClick={handleSaveCustomPhone}
-                disabled={savingPhone || !customPhone.trim()}
-                size="sm"
-                variant="outline"
-              >
-                {savingPhone ? '...' : <CheckCircle2 className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
 
           {/* Contact history */}
           <div className="space-y-2">
