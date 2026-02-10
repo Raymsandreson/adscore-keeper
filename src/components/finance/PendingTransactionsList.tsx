@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CreditCard, 
   MapPin,
@@ -129,7 +130,18 @@ export function PendingTransactionsList({
     state: '',
     notes: '',
     instagram: '',
+    // Lead-specific fields
+    source: '',
+    acolhedor: '',
+    group_link: '',
+    accident_date: '',
+    victim_name: '',
+    main_company: '',
+    contractor_company: '',
+    legal_viability: '',
+    neighborhood: '',
   });
+  const [sheetTab, setSheetTab] = useState('basico');
   const [savingSheet, setSavingSheet] = useState(false);
 
   // Local copies of leads/contacts to append newly created ones
@@ -140,22 +152,28 @@ export function PendingTransactionsList({
   useMemo(() => { setLocalLeads(leads); }, [leads]);
   useMemo(() => { setLocalContacts(contacts); }, [contacts]);
 
+  const defaultSheetData = { id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '', source: '', acolhedor: '', group_link: '', accident_date: '', victim_name: '', main_company: '', contractor_company: '', legal_viability: '', neighborhood: '' };
+
   const openCreateSheet = (type: 'lead' | 'contact') => {
     setSheetType(type);
     setSheetMode('create');
-    setSheetData({ id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '' });
+    setSheetData({ ...defaultSheetData });
+    setSheetTab('basico');
     setSheetOpen(true);
   };
 
-  const openViewSheet = (type: 'lead' | 'contact', id: string) => {
+  const openViewSheet = async (type: 'lead' | 'contact', id: string) => {
     setSheetType(type);
     setSheetMode('view');
+    setSheetTab('basico');
+    
+    // Fetch full data from DB
     if (type === 'lead') {
-      const lead = localLeads.find(l => l.id === id);
-      if (lead) setSheetData({ id: lead.id, name: lead.lead_name || '', phone: '', email: '', city: lead.city || '', state: lead.state || '', notes: '', instagram: '' });
+      const { data } = await supabase.from('leads').select('*').eq('id', id).single();
+      if (data) setSheetData({ id: data.id, name: data.lead_name || '', phone: data.lead_phone || '', email: data.lead_email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '', source: data.source || '', acolhedor: data.acolhedor || '', group_link: data.group_link || '', accident_date: data.accident_date || '', victim_name: data.victim_name || '', main_company: data.main_company || '', contractor_company: data.contractor_company || '', legal_viability: data.legal_viability || '', neighborhood: data.neighborhood || '' });
     } else {
-      const contact = localContacts.find(c => c.id === id);
-      if (contact) setSheetData({ id: contact.id, name: contact.full_name, phone: '', email: '', city: contact.city || '', state: contact.state || '', notes: '', instagram: '' });
+      const { data } = await supabase.from('contacts').select('*').eq('id', id).single();
+      if (data) setSheetData({ ...defaultSheetData, id: data.id, name: data.full_name, phone: data.phone || '', email: data.email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '', neighborhood: data.neighborhood || '' });
     }
     setSheetOpen(true);
   };
@@ -172,10 +190,27 @@ export function PendingTransactionsList({
     setSavingSheet(true);
     try {
       if (sheetType === 'lead') {
+        const payload = {
+          lead_name: sheetData.name.trim(),
+          lead_phone: sheetData.phone || null,
+          lead_email: sheetData.email || null,
+          city: sheetData.city || null,
+          state: sheetData.state || null,
+          notes: sheetData.notes || null,
+          source: sheetData.source || null,
+          acolhedor: sheetData.acolhedor || null,
+          group_link: sheetData.group_link || null,
+          accident_date: sheetData.accident_date || null,
+          victim_name: sheetData.victim_name || null,
+          main_company: sheetData.main_company || null,
+          contractor_company: sheetData.contractor_company || null,
+          legal_viability: sheetData.legal_viability || null,
+          neighborhood: sheetData.neighborhood || null,
+        };
         if (sheetMode === 'create') {
           const { data, error } = await supabase
             .from('leads')
-            .insert({ lead_name: sheetData.name.trim(), lead_phone: sheetData.phone || null, lead_email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null })
+            .insert(payload)
             .select('id, lead_name, city, state')
             .single();
           if (error) throw error;
@@ -185,17 +220,27 @@ export function PendingTransactionsList({
         } else {
           const { error } = await supabase
             .from('leads')
-            .update({ lead_name: sheetData.name.trim(), lead_phone: sheetData.phone || null, lead_email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null })
+            .update(payload)
             .eq('id', sheetData.id);
           if (error) throw error;
           setLocalLeads(prev => prev.map(l => l.id === sheetData.id ? { ...l, lead_name: sheetData.name, city: sheetData.city, state: sheetData.state } : l));
           toast.success('Lead atualizado!');
         }
       } else {
+        const payload = {
+          full_name: sheetData.name.trim(),
+          phone: sheetData.phone || null,
+          email: sheetData.email || null,
+          city: sheetData.city || null,
+          state: sheetData.state || null,
+          instagram_username: sheetData.instagram || null,
+          notes: sheetData.notes || null,
+          neighborhood: sheetData.neighborhood || null,
+        };
         if (sheetMode === 'create') {
           const { data, error } = await supabase
             .from('contacts')
-            .insert({ full_name: sheetData.name.trim(), phone: sheetData.phone || null, email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null, instagram_username: sheetData.instagram || null })
+            .insert(payload)
             .select('id, full_name, city, state')
             .single();
           if (error) throw error;
@@ -205,7 +250,7 @@ export function PendingTransactionsList({
         } else {
           const { error } = await supabase
             .from('contacts')
-            .update({ full_name: sheetData.name.trim(), phone: sheetData.phone || null, email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null, instagram_username: sheetData.instagram || null })
+            .update(payload)
             .eq('id', sheetData.id);
           if (error) throw error;
           setLocalContacts(prev => prev.map(c => c.id === sheetData.id ? { ...c, full_name: sheetData.name, city: sheetData.city, state: sheetData.state } : c));
@@ -793,74 +838,166 @@ export function PendingTransactionsList({
           </SheetTitle>
         </SheetHeader>
         <div className="space-y-4 mt-4">
-          <div className="space-y-2">
-            <Label>Nome *</Label>
-            <Input
-              value={sheetData.name}
-              onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))}
-              placeholder={sheetType === 'lead' ? 'Nome do lead' : 'Nome completo'}
-              disabled={sheetMode === 'view'}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Telefone</Label>
-              <Input
-                value={sheetData.phone}
-                onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder="(00) 00000-0000"
-                disabled={sheetMode === 'view'}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input
-                value={sheetData.email}
-                onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="email@exemplo.com"
-                disabled={sheetMode === 'view'}
-              />
-            </div>
-          </div>
-          {sheetType === 'contact' && (
-            <div className="space-y-2">
-              <Label>Instagram</Label>
-              <Input
-                value={sheetData.instagram}
-                onChange={(e) => setSheetData(prev => ({ ...prev, instagram: e.target.value }))}
-                placeholder="@usuario"
-                disabled={sheetMode === 'view'}
-              />
+          {sheetType === 'lead' ? (
+            /* ===== LEAD SHEET WITH TABS ===== */
+            <>
+              <Tabs value={sheetTab} onValueChange={setSheetTab}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="basico" className="flex-1 text-xs">Básico</TabsTrigger>
+                  <TabsTrigger value="acidente" className="flex-1 text-xs">Acidente</TabsTrigger>
+                  <TabsTrigger value="local" className="flex-1 text-xs">Local</TabsTrigger>
+                  <TabsTrigger value="empresas" className="flex-1 text-xs">Empresas</TabsTrigger>
+                  <TabsTrigger value="juridico" className="flex-1 text-xs">Jurídico</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="basico" className="space-y-3 mt-3">
+                  <div className="space-y-2">
+                    <Label>Nome do Lead *</Label>
+                    <Input value={sheetData.name} onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome do lead" disabled={sheetMode === 'view'} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Telefone</Label>
+                      <Input value={sheetData.phone} onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))} placeholder="(00) 00000-0000" disabled={sheetMode === 'view'} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input value={sheetData.email} onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" disabled={sheetMode === 'view'} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Origem</Label>
+                      <Select value={sheetData.source} onValueChange={(v) => setSheetData(prev => ({ ...prev, source: v }))} disabled={sheetMode === 'view'}>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manual">Manual</SelectItem>
+                          <SelectItem value="instagram">Instagram</SelectItem>
+                          <SelectItem value="facebook">Facebook</SelectItem>
+                          <SelectItem value="indicacao">Indicação</SelectItem>
+                          <SelectItem value="site">Site</SelectItem>
+                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                          <SelectItem value="outro">Outro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Acolhedor</Label>
+                      <Input value={sheetData.acolhedor} onChange={(e) => setSheetData(prev => ({ ...prev, acolhedor: e.target.value }))} placeholder="Nome do acolhedor" disabled={sheetMode === 'view'} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Link do Grupo</Label>
+                    <Input value={sheetData.group_link} onChange={(e) => setSheetData(prev => ({ ...prev, group_link: e.target.value }))} placeholder="https://chat.whatsapp.com/..." disabled={sheetMode === 'view'} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Observações</Label>
+                    <Textarea value={sheetData.notes} onChange={(e) => setSheetData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notas sobre o lead..." disabled={sheetMode === 'view'} rows={3} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="acidente" className="space-y-3 mt-3">
+                  <div className="space-y-2">
+                    <Label>Nome da Vítima</Label>
+                    <Input value={sheetData.victim_name} onChange={(e) => setSheetData(prev => ({ ...prev, victim_name: e.target.value }))} placeholder="Nome da vítima" disabled={sheetMode === 'view'} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data do Acidente</Label>
+                    <Input type="date" value={sheetData.accident_date} onChange={(e) => setSheetData(prev => ({ ...prev, accident_date: e.target.value }))} disabled={sheetMode === 'view'} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="local" className="space-y-3 mt-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Estado</Label>
+                      <Select value={sheetData.state} onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))} disabled={sheetMode === 'view'}>
+                        <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
+                        <SelectContent>
+                          {states.map(s => (<SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cidade</Label>
+                      <Input value={sheetData.city} onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))} placeholder="Cidade" disabled={sheetMode === 'view'} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bairro</Label>
+                    <Input value={sheetData.neighborhood} onChange={(e) => setSheetData(prev => ({ ...prev, neighborhood: e.target.value }))} placeholder="Bairro" disabled={sheetMode === 'view'} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="empresas" className="space-y-3 mt-3">
+                  <div className="space-y-2">
+                    <Label>Empresa Principal</Label>
+                    <Input value={sheetData.main_company} onChange={(e) => setSheetData(prev => ({ ...prev, main_company: e.target.value }))} placeholder="Nome da empresa" disabled={sheetMode === 'view'} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Empresa Contratante</Label>
+                    <Input value={sheetData.contractor_company} onChange={(e) => setSheetData(prev => ({ ...prev, contractor_company: e.target.value }))} placeholder="Nome da contratante" disabled={sheetMode === 'view'} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="juridico" className="space-y-3 mt-3">
+                  <div className="space-y-2">
+                    <Label>Viabilidade Jurídica</Label>
+                    <Select value={sheetData.legal_viability} onValueChange={(v) => setSheetData(prev => ({ ...prev, legal_viability: v }))} disabled={sheetMode === 'view'}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="alta">Alta</SelectItem>
+                        <SelectItem value="media">Média</SelectItem>
+                        <SelectItem value="baixa">Baixa</SelectItem>
+                        <SelectItem value="inviavel">Inviável</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </>
+          ) : (
+            /* ===== CONTACT SHEET ===== */
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Nome *</Label>
+                <Input value={sheetData.name} onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome completo" disabled={sheetMode === 'view'} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Telefone</Label>
+                  <Input value={sheetData.phone} onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))} placeholder="(00) 00000-0000" disabled={sheetMode === 'view'} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input value={sheetData.email} onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" disabled={sheetMode === 'view'} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Instagram</Label>
+                <Input value={sheetData.instagram} onChange={(e) => setSheetData(prev => ({ ...prev, instagram: e.target.value }))} placeholder="@usuario" disabled={sheetMode === 'view'} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Estado</Label>
+                  <Select value={sheetData.state} onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))} disabled={sheetMode === 'view'}>
+                    <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
+                    <SelectContent>
+                      {states.map(s => (<SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Cidade</Label>
+                  <Input value={sheetData.city} onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))} placeholder="Cidade" disabled={sheetMode === 'view'} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Observações</Label>
+                <Textarea value={sheetData.notes} onChange={(e) => setSheetData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notas sobre o contato..." disabled={sheetMode === 'view'} rows={3} />
+              </div>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <Select
-                value={sheetData.state}
-                onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))}
-                disabled={sheetMode === 'view'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="UF" />
-                </SelectTrigger>
-                <SelectContent>
-                  {states.map(s => (
-                    <SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Cidade</Label>
-              <Input
-                value={sheetData.city}
-                onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))}
-                placeholder="Cidade"
-                disabled={sheetMode === 'view'}
-              />
-            </div>
-          </div>
 
           {sheetMode === 'view' ? (
             <div className="flex gap-2 pt-4">
@@ -874,7 +1011,7 @@ export function PendingTransactionsList({
             <div className="flex gap-2 pt-4">
               <Button className="flex-1" onClick={saveSheetEntity} disabled={savingSheet}>
                 <Save className="h-4 w-4 mr-2" />
-                {savingSheet ? 'Salvando...' : 'Salvar'}
+                {savingSheet ? 'Salvando...' : sheetMode === 'create' ? 'Adicionar' : 'Salvar'}
               </Button>
               <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancelar</Button>
             </div>
