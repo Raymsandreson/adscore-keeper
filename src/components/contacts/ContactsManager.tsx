@@ -1429,11 +1429,11 @@ export const ContactsManager: React.FC = () => {
             {/* Row 2: People & CRM filters */}
             <div className="flex flex-wrap gap-2 items-center">
               <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
-                <SelectTrigger className="w-[130px] h-8 text-xs">
+                <SelectTrigger className="w-[160px] h-8 text-xs">
                   <SelectValue placeholder="Classificação" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="all">Todas classificações</SelectItem>
                   {Object.entries(classificationConfig).map(([key, config]) => (
                     <SelectItem key={key} value={key}>
                       <div className="flex items-center gap-2">
@@ -1471,14 +1471,14 @@ export const ContactsManager: React.FC = () => {
               />
               
               <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
-                <SelectTrigger className="w-[145px] h-8 text-xs">
+                <SelectTrigger className="w-[155px] h-8 text-xs">
                   <div className="flex items-center gap-1.5">
                     <Link className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="Leads" />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="all">Todos os leads</SelectItem>
                   <SelectItem value="linked">Vinculados a Lead</SelectItem>
                   <SelectItem value="not_linked">Sem Lead</SelectItem>
                 </SelectContent>
@@ -1543,7 +1543,7 @@ export const ContactsManager: React.FC = () => {
                   className="h-7 text-xs"
                 >
                   <Users className="h-3 w-3 mr-1" />
-                  Todos
+                  Todos os status
                 </Button>
                 <Button
                   variant={filterTag === 'seguidor' ? 'default' : 'outline'}
