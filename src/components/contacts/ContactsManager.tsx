@@ -82,6 +82,8 @@ import {
   ArrowDown,
   GitMerge,
   Briefcase,
+  Calendar,
+  Link,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -376,6 +378,9 @@ export const ContactsManager: React.FC = () => {
   const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
   const [filterTag, setFilterTag] = useState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('all');
   const [filterProfessions, setFilterProfessions] = useState<string[]>([]);
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterLeadLinked, setFilterLeadLinked] = useState<'all' | 'linked' | 'not_linked'>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -508,14 +513,17 @@ export const ContactsManager: React.FC = () => {
       classification: filterClassification !== 'all' ? filterClassification : undefined,
       followerStatus: filterTag !== 'all' ? filterTag : undefined,
       professions: filterProfessions.length > 0 ? filterProfessions : undefined,
+      dateFrom: filterDateFrom || undefined,
+      dateTo: filterDateTo || undefined,
+      leadLinked: filterLeadLinked !== 'all' ? filterLeadLinked : undefined,
     };
     fetchContacts(currentPage, itemsPerPage, filters);
-  }, [currentPage, itemsPerPage, searchTerm, filterClassification, filterTag, filterProfessions, fetchContacts]);
+  }, [currentPage, itemsPerPage, searchTerm, filterClassification, filterTag, filterProfessions, filterDateFrom, filterDateTo, filterLeadLinked, fetchContacts]);
 
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterClassification, filterTag, filterRelationshipType, filterProfessions]);
+  }, [searchTerm, filterClassification, filterTag, filterRelationshipType, filterProfessions, filterDateFrom, filterDateTo, filterLeadLinked]);
 
   // Filter contacts by relationship type (client-side since it's a join) and sort by leads
   const displayedContacts = React.useMemo(() => {
@@ -1170,7 +1178,8 @@ export const ContactsManager: React.FC = () => {
       {/* Actions Bar */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
             <div className="flex gap-2 w-full md:w-auto">
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1224,6 +1233,51 @@ export const ContactsManager: React.FC = () => {
                 selectedProfessions={filterProfessions}
                 onSelectionChange={setFilterProfessions}
               />
+              
+              {/* Lead Linked Filter */}
+              <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
+                <SelectTrigger className="w-[160px]">
+                  <div className="flex items-center gap-2">
+                    <Link className="h-4 w-4 text-muted-foreground" />
+                    <SelectValue placeholder="Leads" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="linked">Vinculados a Lead</SelectItem>
+                  <SelectItem value="not_linked">Sem Lead</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Date Filters Row */}
+            <div className="flex gap-2 items-center">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-[150px] h-9"
+                placeholder="De"
+              />
+              <span className="text-muted-foreground text-sm">até</span>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-[150px] h-9"
+                placeholder="Até"
+              />
+              {(filterDateFrom || filterDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                  className="h-8 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
             </div>
             
             {/* Quick Tag Filters */}
@@ -1535,6 +1589,7 @@ export const ContactsManager: React.FC = () => {
                 </DialogContent>
               </Dialog>
             </div>
+          </div>
           </div>
         </CardContent>
       </Card>
