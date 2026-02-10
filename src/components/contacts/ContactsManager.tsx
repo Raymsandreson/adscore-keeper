@@ -1486,7 +1486,7 @@ export const ContactsManager: React.FC = () => {
                   type="date"
                   value={filterDateFrom}
                   onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="w-[130px] h-8 text-xs"
+                  className="w-[155px] h-8 text-xs"
                   placeholder="De"
                 />
                 <span className="text-muted-foreground text-xs">até</span>
@@ -1494,7 +1494,7 @@ export const ContactsManager: React.FC = () => {
                   type="date"
                   value={filterDateTo}
                   onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="w-[130px] h-8 text-xs"
+                  className="w-[155px] h-8 text-xs"
                   placeholder="Até"
                 />
                 {(filterDateFrom || filterDateTo) && (
