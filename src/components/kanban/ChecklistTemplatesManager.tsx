@@ -29,6 +29,8 @@ import {
   Layers,
   ChevronRight,
   ChevronDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { useChecklists, ChecklistTemplate, ChecklistItem, ChecklistStageLink } from '@/hooks/useChecklists';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -145,6 +147,14 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
     setFormItems(formItems.filter(i => i.id !== id));
   };
 
+  const handleMoveItem = (idx: number, direction: 'up' | 'down') => {
+    const newItems = [...formItems];
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= newItems.length) return;
+    [newItems[idx], newItems[targetIdx]] = [newItems[targetIdx], newItems[idx]];
+    setFormItems(newItems);
+  };
+
   const toggleStageLink = (boardId: string, stageId: string) => {
     const key = `${boardId}::${stageId}`;
     setLinkedStages(prev => {
@@ -259,8 +269,27 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
                 <Label>Itens</Label>
                 <div className="border rounded-md p-2 mt-1 space-y-1">
                   {formItems.map((item, idx) => (
-                    <div key={item.id} className="flex items-center gap-2 py-1 border-b border-border/50 last:border-0">
-                      <GripVertical className="h-3 w-3 text-muted-foreground" />
+                    <div key={item.id} className="flex items-center gap-1 py-1 border-b border-border/50 last:border-0">
+                      <div className="flex flex-col">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 p-0"
+                          onClick={() => handleMoveItem(idx, 'up')}
+                          disabled={idx === 0}
+                        >
+                          <ArrowUp className="h-2.5 w-2.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 p-0"
+                          onClick={() => handleMoveItem(idx, 'down')}
+                          disabled={idx === formItems.length - 1}
+                        >
+                          <ArrowDown className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
                       <CheckSquare className="h-3 w-3 text-muted-foreground" />
                       <Input
                         value={item.label}
