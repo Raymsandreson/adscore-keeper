@@ -1422,69 +1422,87 @@ export const ContactsManager: React.FC = () => {
             </div>
             </div>
             
-            {/* Row 2: Filters - grouped by nature */}
-            <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-              {/* Group 1: People filters */}
-              <div className="flex gap-1.5 items-center border-r border-border pr-4">
-                <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
-                  <SelectTrigger className="w-[130px] h-8 text-xs">
-                    <SelectValue placeholder="Classificação" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {Object.entries(classificationConfig).map(([key, config]) => (
-                      <SelectItem key={key} value={key}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${config.color}`} />
-                          {config.label}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                <Select 
-                  value={filterRelationshipType || 'all'} 
-                  onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
-                >
-                  <SelectTrigger className="w-[145px] h-8 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <SelectValue placeholder="Vínculo" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os vínculos</SelectItem>
-                    {relationshipTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.name}>
-                        {type.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                <ProfessionFilter
-                  selectedProfessions={filterProfessions}
-                  onSelectionChange={setFilterProfessions}
-                />
-                
-                <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
-                  <SelectTrigger className="w-[145px] h-8 text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <Link className="h-3.5 w-3.5 text-muted-foreground" />
-                      <SelectValue placeholder="Leads" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="linked">Vinculados a Lead</SelectItem>
-                    <SelectItem value="not_linked">Sem Lead</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Row 2: People & CRM filters */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
+                <SelectTrigger className="w-[130px] h-8 text-xs">
+                  <SelectValue placeholder="Classificação" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {Object.entries(classificationConfig).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${config.color}`} />
+                        {config.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Select 
+                value={filterRelationshipType || 'all'} 
+                onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
+              >
+                <SelectTrigger className="w-[145px] h-8 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Vínculo" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os vínculos</SelectItem>
+                  {relationshipTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.name}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <ProfessionFilter
+                selectedProfessions={filterProfessions}
+                onSelectionChange={setFilterProfessions}
+              />
+              
+              <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
+                <SelectTrigger className="w-[145px] h-8 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Link className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Leads" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="linked">Vinculados a Lead</SelectItem>
+                  <SelectItem value="not_linked">Sem Lead</SelectItem>
+                </SelectContent>
+              </Select>
 
-              {/* Group 2: Date filters */}
-              <div className="flex gap-1.5 items-center border-r border-border pr-4">
+              {filterRelationshipType && (
+                <Badge 
+                  variant="secondary" 
+                  className="h-7 px-2 gap-1.5 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20 text-xs"
+                  onClick={() => setFilterRelationshipType(null)}
+                >
+                  <Link2 className="h-3 w-3" />
+                  {filterRelationshipType}
+                  {loadingRelationshipFilter ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <span className="text-[10px]">({filteredByRelationshipIds.size})</span>
+                      <X className="h-3 w-3" />
+                    </>
+                  )}
+                </Badge>
+              )}
+            </div>
+
+            {/* Row 3: Date + Instagram status */}
+            <div className="flex flex-wrap gap-3 items-center justify-between">
+              <div className="flex gap-1.5 items-center">
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   type="date"
@@ -1513,7 +1531,6 @@ export const ContactsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* Group 3: Instagram / follower status */}
               <div className="flex gap-1.5 items-center">
                 <Button
                   variant={filterTag === 'all' ? 'default' : 'outline'}
@@ -1572,28 +1589,6 @@ export const ContactsManager: React.FC = () => {
                 )}
               </div>
             </div>
-
-            {/* Active filter badges */}
-            {filterRelationshipType && (
-              <div className="flex gap-2 items-center">
-                <Badge 
-                  variant="secondary" 
-                  className="h-7 px-2 gap-1.5 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20 text-xs"
-                  onClick={() => setFilterRelationshipType(null)}
-                >
-                  <Link2 className="h-3 w-3" />
-                  {filterRelationshipType}
-                  {loadingRelationshipFilter ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <>
-                      <span className="text-[10px]">({filteredByRelationshipIds.size})</span>
-                      <X className="h-3 w-3" />
-                    </>
-                  )}
-                </Badge>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
