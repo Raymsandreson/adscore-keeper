@@ -62,6 +62,9 @@ export const useContacts = () => {
     classification?: string;
     followerStatus?: string;
     professions?: string[];
+    dateFrom?: string;
+    dateTo?: string;
+    leadLinked?: 'all' | 'linked' | 'not_linked';
   }) => {
     setLoading(true);
     try {
@@ -100,6 +103,44 @@ export const useContacts = () => {
       // Filter by professions (multi-select)
       if (filters?.professions && filters.professions.length > 0) {
         query = query.in('profession', filters.professions);
+      }
+
+      // Filter by created_at date range
+      if (filters?.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom);
+      }
+      if (filters?.dateTo) {
+        // Add end of day to include the full day
+        query = query.lte('created_at', `${filters.dateTo}T23:59:59.999Z`);
+      }
+
+      // Filter by lead linkage via contact_leads table
+      if (filters?.leadLinked === 'linked') {
+        // Get contact IDs that have entries in contact_leads
+        const { data: linkedData } = await supabase
+          .from('contact_leads')
+          .select('contact_id');
+        const linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
+        if (linkedIds.length > 0) {
+          query = query.in('id', linkedIds);
+        } else {
+          // No contacts linked, return empty
+          setContacts([]);
+          setTotalCount(0);
+          setLoading(false);
+          return;
+        }
+      } else if (filters?.leadLinked === 'not_linked') {
+        const { data: linkedData } = await supabase
+          .from('contact_leads')
+          .select('contact_id');
+        const linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
+        if (linkedIds.length > 0) {
+          // Supabase doesn't have "not in" easily, use filter
+          for (const id of linkedIds) {
+            query = query.neq('id', id);
+          }
+        }
       }
 
       // Apply pagination
