@@ -8,7 +8,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
+import { generateLeadName } from '@/utils/generateLeadName';
 import { 
   CreditCard, 
   MapPin,
@@ -121,27 +123,22 @@ export function PendingTransactionsList({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | 'view'>('create');
   const [sheetType, setSheetType] = useState<'lead' | 'contact'>('lead');
-  const [sheetData, setSheetData] = useState({
-    id: '',
-    name: '',
-    phone: '',
-    email: '',
-    city: '',
-    state: '',
-    notes: '',
-    instagram: '',
-    // Lead-specific fields
-    source: '',
-    acolhedor: '',
-    group_link: '',
-    accident_date: '',
-    victim_name: '',
-    main_company: '',
-    contractor_company: '',
-    legal_viability: '',
-    neighborhood: '',
-  });
-  const [sheetTab, setSheetTab] = useState('basico');
+  const [extractorOpen, setExtractorOpen] = useState(false);
+
+  const defaultLeadFormData: AccidentLeadFormData = {
+    lead_name: '', lead_phone: '', lead_email: '', source: 'manual', notes: '',
+    acolhedor: '', case_type: '', group_link: '',
+    visit_city: '', visit_state: '', visit_region: '', visit_address: '',
+    accident_date: '', damage_description: '', victim_name: '', victim_age: '',
+    accident_address: '', contractor_company: '', main_company: '', sector: '',
+    news_link: '', company_size_justification: '', liability_type: '', legal_viability: '',
+  };
+  const [leadFormData, setLeadFormData] = useState<AccidentLeadFormData>({ ...defaultLeadFormData });
+  const [leadSheetId, setLeadSheetId] = useState('');
+
+  // Contact sheet data
+  const [contactSheetData, setContactSheetData] = useState({ id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '' });
+  
   const [savingSheet, setSavingSheet] = useState(false);
 
   // Local copies of leads/contacts to append newly created ones
@@ -152,28 +149,42 @@ export function PendingTransactionsList({
   useMemo(() => { setLocalLeads(leads); }, [leads]);
   useMemo(() => { setLocalContacts(contacts); }, [contacts]);
 
-  const defaultSheetData = { id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '', source: '', acolhedor: '', group_link: '', accident_date: '', victim_name: '', main_company: '', contractor_company: '', legal_viability: '', neighborhood: '' };
-
   const openCreateSheet = (type: 'lead' | 'contact') => {
     setSheetType(type);
     setSheetMode('create');
-    setSheetData({ ...defaultSheetData });
-    setSheetTab('basico');
+    if (type === 'lead') {
+      setLeadFormData({ ...defaultLeadFormData });
+      setLeadSheetId('');
+    } else {
+      setContactSheetData({ id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '' });
+    }
     setSheetOpen(true);
   };
 
   const openViewSheet = async (type: 'lead' | 'contact', id: string) => {
     setSheetType(type);
     setSheetMode('view');
-    setSheetTab('basico');
     
-    // Fetch full data from DB
     if (type === 'lead') {
       const { data } = await supabase.from('leads').select('*').eq('id', id).single();
-      if (data) setSheetData({ id: data.id, name: data.lead_name || '', phone: data.lead_phone || '', email: data.lead_email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '', source: data.source || '', acolhedor: data.acolhedor || '', group_link: data.group_link || '', accident_date: data.accident_date || '', victim_name: data.victim_name || '', main_company: data.main_company || '', contractor_company: data.contractor_company || '', legal_viability: data.legal_viability || '', neighborhood: data.neighborhood || '' });
+      if (data) {
+        setLeadSheetId(data.id);
+        setLeadFormData({
+          lead_name: data.lead_name || '', lead_phone: data.lead_phone || '', lead_email: data.lead_email || '',
+          source: data.source || 'manual', notes: data.notes || '', acolhedor: data.acolhedor || '',
+          case_type: data.case_type || '', group_link: data.group_link || '',
+          visit_city: data.visit_city || '', visit_state: data.visit_state || '', visit_region: data.visit_region || '', visit_address: data.visit_address || '',
+          accident_date: data.accident_date || '', damage_description: data.damage_description || '',
+          victim_name: data.victim_name || '', victim_age: data.victim_age ? String(data.victim_age) : '',
+          accident_address: data.accident_address || '', contractor_company: data.contractor_company || '',
+          main_company: data.main_company || '', sector: data.sector || '',
+          news_link: data.news_link || '', company_size_justification: data.company_size_justification || '',
+          liability_type: data.liability_type || '', legal_viability: data.legal_viability || '',
+        });
+      }
     } else {
       const { data } = await supabase.from('contacts').select('*').eq('id', id).single();
-      if (data) setSheetData({ ...defaultSheetData, id: data.id, name: data.full_name, phone: data.phone || '', email: data.email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '', neighborhood: data.neighborhood || '' });
+      if (data) setContactSheetData({ id: data.id, name: data.full_name, phone: data.phone || '', email: data.email || '', city: data.city || '', state: data.state || '', notes: data.notes || '', instagram: data.instagram_username || '' });
     }
     setSheetOpen(true);
   };
@@ -182,78 +193,110 @@ export function PendingTransactionsList({
     setSheetMode('edit');
   };
 
+  const handleExtractedData = (extracted: ExtractedAccidentData) => {
+    const updates: Partial<AccidentLeadFormData> = {};
+    if (extracted.victim_name) updates.victim_name = extracted.victim_name;
+    if (extracted.victim_age) updates.victim_age = String(extracted.victim_age);
+    if (extracted.accident_date) updates.accident_date = extracted.accident_date;
+    if (extracted.accident_address) updates.accident_address = extracted.accident_address;
+    if (extracted.damage_description) updates.damage_description = extracted.damage_description;
+    if (extracted.contractor_company) updates.contractor_company = extracted.contractor_company;
+    if (extracted.main_company) updates.main_company = extracted.main_company;
+    if (extracted.sector) updates.sector = extracted.sector;
+    if (extracted.case_type) updates.case_type = extracted.case_type;
+    if (extracted.liability_type) updates.liability_type = extracted.liability_type;
+    if (extracted.legal_viability) updates.legal_viability = extracted.legal_viability;
+    if (extracted.visit_city) updates.visit_city = extracted.visit_city;
+    if (extracted.visit_state) updates.visit_state = extracted.visit_state;
+
+    setLeadFormData(prev => {
+      const updated = { ...prev, ...updates };
+      // Auto-generate lead name
+      const autoName = generateLeadName({
+        city: updated.visit_city, state: updated.visit_state,
+        victim_name: updated.victim_name, main_company: updated.main_company,
+        contractor_company: updated.contractor_company, accident_date: updated.accident_date,
+        damage_description: updated.damage_description, case_type: updated.case_type,
+      });
+      if (autoName) updated.lead_name = autoName;
+      return updated;
+    });
+  };
+
   const saveSheetEntity = async () => {
-    if (!sheetData.name.trim()) {
-      toast.error('Nome é obrigatório');
-      return;
-    }
     setSavingSheet(true);
     try {
       if (sheetType === 'lead') {
-        const payload = {
-          lead_name: sheetData.name.trim(),
-          lead_phone: sheetData.phone || null,
-          lead_email: sheetData.email || null,
-          city: sheetData.city || null,
-          state: sheetData.state || null,
-          notes: sheetData.notes || null,
-          source: sheetData.source || null,
-          acolhedor: sheetData.acolhedor || null,
-          group_link: sheetData.group_link || null,
-          accident_date: sheetData.accident_date || null,
-          victim_name: sheetData.victim_name || null,
-          main_company: sheetData.main_company || null,
-          contractor_company: sheetData.contractor_company || null,
-          legal_viability: sheetData.legal_viability || null,
-          neighborhood: sheetData.neighborhood || null,
+        if (!leadFormData.lead_name.trim()) {
+          toast.error('Nome é obrigatório');
+          setSavingSheet(false);
+          return;
+        }
+        const payload: any = {
+          lead_name: leadFormData.lead_name.trim(),
+          lead_phone: leadFormData.lead_phone || null,
+          lead_email: leadFormData.lead_email || null,
+          source: leadFormData.source || null,
+          notes: leadFormData.notes || null,
+          acolhedor: leadFormData.acolhedor || null,
+          case_type: leadFormData.case_type || null,
+          group_link: leadFormData.group_link || null,
+          visit_city: leadFormData.visit_city || null,
+          visit_state: leadFormData.visit_state || null,
+          visit_region: leadFormData.visit_region || null,
+          visit_address: leadFormData.visit_address || null,
+          accident_date: leadFormData.accident_date || null,
+          damage_description: leadFormData.damage_description || null,
+          victim_name: leadFormData.victim_name || null,
+          victim_age: leadFormData.victim_age ? parseInt(leadFormData.victim_age) : null,
+          accident_address: leadFormData.accident_address || null,
+          contractor_company: leadFormData.contractor_company || null,
+          main_company: leadFormData.main_company || null,
+          sector: leadFormData.sector || null,
+          news_link: leadFormData.news_link || null,
+          company_size_justification: leadFormData.company_size_justification || null,
+          liability_type: leadFormData.liability_type || null,
+          legal_viability: leadFormData.legal_viability || null,
+          city: leadFormData.visit_city || null,
+          state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase
-            .from('leads')
-            .insert(payload)
-            .select('id, lead_name, city, state')
-            .single();
+          const { data, error } = await supabase.from('leads').insert(payload).select('id, lead_name, city, state').single();
           if (error) throw error;
           setLocalLeads(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
           toast.success('Lead criado!');
         } else {
-          const { error } = await supabase
-            .from('leads')
-            .update(payload)
-            .eq('id', sheetData.id);
+          const { error } = await supabase.from('leads').update(payload).eq('id', leadSheetId);
           if (error) throw error;
-          setLocalLeads(prev => prev.map(l => l.id === sheetData.id ? { ...l, lead_name: sheetData.name, city: sheetData.city, state: sheetData.state } : l));
+          setLocalLeads(prev => prev.map(l => l.id === leadSheetId ? { ...l, lead_name: leadFormData.lead_name, city: leadFormData.visit_city, state: leadFormData.visit_state } : l));
           toast.success('Lead atualizado!');
         }
       } else {
+        if (!contactSheetData.name.trim()) {
+          toast.error('Nome é obrigatório');
+          setSavingSheet(false);
+          return;
+        }
         const payload = {
-          full_name: sheetData.name.trim(),
-          phone: sheetData.phone || null,
-          email: sheetData.email || null,
-          city: sheetData.city || null,
-          state: sheetData.state || null,
-          instagram_username: sheetData.instagram || null,
-          notes: sheetData.notes || null,
-          neighborhood: sheetData.neighborhood || null,
+          full_name: contactSheetData.name.trim(),
+          phone: contactSheetData.phone || null,
+          email: contactSheetData.email || null,
+          city: contactSheetData.city || null,
+          state: contactSheetData.state || null,
+          instagram_username: contactSheetData.instagram || null,
+          notes: contactSheetData.notes || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase
-            .from('contacts')
-            .insert(payload)
-            .select('id, full_name, city, state')
-            .single();
+          const { data, error } = await supabase.from('contacts').insert(payload).select('id, full_name, city, state').single();
           if (error) throw error;
           setLocalContacts(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'contact', linkId: data.id }));
           toast.success('Contato criado!');
         } else {
-          const { error } = await supabase
-            .from('contacts')
-            .update(payload)
-            .eq('id', sheetData.id);
+          const { error } = await supabase.from('contacts').update(payload).eq('id', contactSheetData.id);
           if (error) throw error;
-          setLocalContacts(prev => prev.map(c => c.id === sheetData.id ? { ...c, full_name: sheetData.name, city: sheetData.city, state: sheetData.state } : c));
+          setLocalContacts(prev => prev.map(c => c.id === contactSheetData.id ? { ...c, full_name: contactSheetData.name, city: contactSheetData.city, state: contactSheetData.state } : c));
           toast.success('Contato atualizado!');
         }
       }
@@ -830,157 +873,47 @@ export function PendingTransactionsList({
 
     {/* Sheet for Create/Edit/View Lead or Contact */}
     <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-      <SheetContent className="w-[400px] sm:w-[450px]">
+      <SheetContent className="w-[420px] sm:w-[500px]">
         <SheetHeader>
           <SheetTitle>
-            {sheetMode === 'create' ? 'Criar' : sheetMode === 'edit' ? 'Editar' : 'Visualizar'}{' '}
-            {sheetType === 'lead' ? 'Lead' : 'Contato'}
+            {sheetMode === 'create' ? (sheetType === 'lead' ? 'Adicionar Lead' : 'Criar Contato') : sheetMode === 'edit' ? (sheetType === 'lead' ? 'Editar Lead' : 'Editar Contato') : (sheetType === 'lead' ? 'Visualizar Lead' : 'Visualizar Contato')}
           </SheetTitle>
         </SheetHeader>
         <div className="space-y-4 mt-4">
           {sheetType === 'lead' ? (
-            /* ===== LEAD SHEET WITH TABS ===== */
-            <>
-              <Tabs value={sheetTab} onValueChange={setSheetTab}>
-                <TabsList className="w-full">
-                  <TabsTrigger value="basico" className="flex-1 text-xs">Básico</TabsTrigger>
-                  <TabsTrigger value="acidente" className="flex-1 text-xs">Acidente</TabsTrigger>
-                  <TabsTrigger value="local" className="flex-1 text-xs">Local</TabsTrigger>
-                  <TabsTrigger value="empresas" className="flex-1 text-xs">Empresas</TabsTrigger>
-                  <TabsTrigger value="juridico" className="flex-1 text-xs">Jurídico</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="basico" className="space-y-3 mt-3">
-                  <div className="space-y-2">
-                    <Label>Nome do Lead *</Label>
-                    <Input value={sheetData.name} onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome do lead" disabled={sheetMode === 'view'} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Telefone</Label>
-                      <Input value={sheetData.phone} onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))} placeholder="(00) 00000-0000" disabled={sheetMode === 'view'} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Email</Label>
-                      <Input value={sheetData.email} onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" disabled={sheetMode === 'view'} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Origem</Label>
-                      <Select value={sheetData.source} onValueChange={(v) => setSheetData(prev => ({ ...prev, source: v }))} disabled={sheetMode === 'view'}>
-                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="manual">Manual</SelectItem>
-                          <SelectItem value="instagram">Instagram</SelectItem>
-                          <SelectItem value="facebook">Facebook</SelectItem>
-                          <SelectItem value="indicacao">Indicação</SelectItem>
-                          <SelectItem value="site">Site</SelectItem>
-                          <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                          <SelectItem value="outro">Outro</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Acolhedor</Label>
-                      <Input value={sheetData.acolhedor} onChange={(e) => setSheetData(prev => ({ ...prev, acolhedor: e.target.value }))} placeholder="Nome do acolhedor" disabled={sheetMode === 'view'} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Link do Grupo</Label>
-                    <Input value={sheetData.group_link} onChange={(e) => setSheetData(prev => ({ ...prev, group_link: e.target.value }))} placeholder="https://chat.whatsapp.com/..." disabled={sheetMode === 'view'} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Observações</Label>
-                    <Textarea value={sheetData.notes} onChange={(e) => setSheetData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notas sobre o lead..." disabled={sheetMode === 'view'} rows={3} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="acidente" className="space-y-3 mt-3">
-                  <div className="space-y-2">
-                    <Label>Nome da Vítima</Label>
-                    <Input value={sheetData.victim_name} onChange={(e) => setSheetData(prev => ({ ...prev, victim_name: e.target.value }))} placeholder="Nome da vítima" disabled={sheetMode === 'view'} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Data do Acidente</Label>
-                    <Input type="date" value={sheetData.accident_date} onChange={(e) => setSheetData(prev => ({ ...prev, accident_date: e.target.value }))} disabled={sheetMode === 'view'} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="local" className="space-y-3 mt-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Estado</Label>
-                      <Select value={sheetData.state} onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))} disabled={sheetMode === 'view'}>
-                        <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
-                        <SelectContent>
-                          {states.map(s => (<SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Cidade</Label>
-                      <Input value={sheetData.city} onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))} placeholder="Cidade" disabled={sheetMode === 'view'} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Bairro</Label>
-                    <Input value={sheetData.neighborhood} onChange={(e) => setSheetData(prev => ({ ...prev, neighborhood: e.target.value }))} placeholder="Bairro" disabled={sheetMode === 'view'} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="empresas" className="space-y-3 mt-3">
-                  <div className="space-y-2">
-                    <Label>Empresa Principal</Label>
-                    <Input value={sheetData.main_company} onChange={(e) => setSheetData(prev => ({ ...prev, main_company: e.target.value }))} placeholder="Nome da empresa" disabled={sheetMode === 'view'} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Empresa Contratante</Label>
-                    <Input value={sheetData.contractor_company} onChange={(e) => setSheetData(prev => ({ ...prev, contractor_company: e.target.value }))} placeholder="Nome da contratante" disabled={sheetMode === 'view'} />
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="juridico" className="space-y-3 mt-3">
-                  <div className="space-y-2">
-                    <Label>Viabilidade Jurídica</Label>
-                    <Select value={sheetData.legal_viability} onValueChange={(v) => setSheetData(prev => ({ ...prev, legal_viability: v }))} disabled={sheetMode === 'view'}>
-                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="alta">Alta</SelectItem>
-                        <SelectItem value="media">Média</SelectItem>
-                        <SelectItem value="baixa">Baixa</SelectItem>
-                        <SelectItem value="inviavel">Inviável</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </>
+            /* ===== LEAD SHEET - uses AccidentLeadForm ===== */
+            <div className={sheetMode === 'view' ? 'pointer-events-none opacity-75' : ''}>
+              <AccidentLeadForm
+                formData={leadFormData}
+                onChange={(data) => setLeadFormData(prev => ({ ...prev, ...data }))}
+                onOpenExtractor={() => setExtractorOpen(true)}
+              />
+            </div>
           ) : (
             /* ===== CONTACT SHEET ===== */
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label>Nome *</Label>
-                <Input value={sheetData.name} onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome completo" disabled={sheetMode === 'view'} />
+                <Input value={contactSheetData.name} onChange={(e) => setContactSheetData(prev => ({ ...prev, name: e.target.value }))} placeholder="Nome completo" disabled={sheetMode === 'view'} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Telefone</Label>
-                  <Input value={sheetData.phone} onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))} placeholder="(00) 00000-0000" disabled={sheetMode === 'view'} />
+                  <Input value={contactSheetData.phone} onChange={(e) => setContactSheetData(prev => ({ ...prev, phone: e.target.value }))} placeholder="(00) 00000-0000" disabled={sheetMode === 'view'} />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input value={sheetData.email} onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" disabled={sheetMode === 'view'} />
+                  <Input value={contactSheetData.email} onChange={(e) => setContactSheetData(prev => ({ ...prev, email: e.target.value }))} placeholder="email@exemplo.com" disabled={sheetMode === 'view'} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Instagram</Label>
-                <Input value={sheetData.instagram} onChange={(e) => setSheetData(prev => ({ ...prev, instagram: e.target.value }))} placeholder="@usuario" disabled={sheetMode === 'view'} />
+                <Input value={contactSheetData.instagram} onChange={(e) => setContactSheetData(prev => ({ ...prev, instagram: e.target.value }))} placeholder="@usuario" disabled={sheetMode === 'view'} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Estado</Label>
-                  <Select value={sheetData.state} onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))} disabled={sheetMode === 'view'}>
+                  <Select value={contactSheetData.state} onValueChange={(v) => setContactSheetData(prev => ({ ...prev, state: v, city: '' }))} disabled={sheetMode === 'view'}>
                     <SelectTrigger><SelectValue placeholder="UF" /></SelectTrigger>
                     <SelectContent>
                       {states.map(s => (<SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>))}
@@ -989,12 +922,12 @@ export function PendingTransactionsList({
                 </div>
                 <div className="space-y-2">
                   <Label>Cidade</Label>
-                  <Input value={sheetData.city} onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))} placeholder="Cidade" disabled={sheetMode === 'view'} />
+                  <Input value={contactSheetData.city} onChange={(e) => setContactSheetData(prev => ({ ...prev, city: e.target.value }))} placeholder="Cidade" disabled={sheetMode === 'view'} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Observações</Label>
-                <Textarea value={sheetData.notes} onChange={(e) => setSheetData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notas sobre o contato..." disabled={sheetMode === 'view'} rows={3} />
+                <Textarea value={contactSheetData.notes} onChange={(e) => setContactSheetData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Notas sobre o contato..." disabled={sheetMode === 'view'} rows={3} />
               </div>
             </div>
           )}
@@ -1019,6 +952,28 @@ export function PendingTransactionsList({
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* AI Data Extractor Dialog */}
+    <AccidentDataExtractor
+      open={extractorOpen}
+      onOpenChange={setExtractorOpen}
+      onDataExtracted={handleExtractedData}
+      currentData={{
+        victim_name: leadFormData.victim_name,
+        victim_age: leadFormData.victim_age ? parseInt(leadFormData.victim_age) : null,
+        accident_date: leadFormData.accident_date,
+        accident_address: leadFormData.accident_address,
+        damage_description: leadFormData.damage_description,
+        contractor_company: leadFormData.contractor_company,
+        main_company: leadFormData.main_company,
+        sector: leadFormData.sector,
+        case_type: leadFormData.case_type,
+        liability_type: leadFormData.liability_type,
+        legal_viability: leadFormData.legal_viability,
+        visit_city: leadFormData.visit_city,
+        visit_state: leadFormData.visit_state,
+      }}
+    />
     </div>
   );
 }
