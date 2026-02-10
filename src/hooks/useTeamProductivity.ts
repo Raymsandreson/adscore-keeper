@@ -234,11 +234,10 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Activity log for page visits
+      // Activity log for page visits (tracked but not counted in totalActions)
       activities.forEach(a => {
         const u = getUser(a.user_id);
         if (a.action_type === 'page_visit') u.pageVisits++;
-        u.totalActions++;
       });
 
       // Stage changes per user (now has changed_by)
@@ -255,7 +254,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       userMap.forEach(u => {
         u.totalActions = u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
           u.commentReplies + u.callsMade + u.leadsCreated + u.leadsClosed +
-          u.followupsCreated + u.followupsDone + u.pageVisits;
+          u.followupsCreated + u.followupsDone;
       });
 
       const productivityList = Array.from(userMap.values())
