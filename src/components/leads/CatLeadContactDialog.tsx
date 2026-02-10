@@ -5,7 +5,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
-import { Phone, MessageSquare, Mail, Clock, User, UserPlus, ExternalLink, Save, CheckCircle2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Phone, MessageSquare, Mail, Clock, User, UserPlus, ExternalLink, Save, CheckCircle2, Pencil, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
@@ -69,6 +70,58 @@ export function CatLeadContactDialog({
   const [saveAsCorrect, setSaveAsCorrect] = useState(false);
   const [customPhone, setCustomPhone] = useState('');
   const [savingPhone, setSavingPhone] = useState(false);
+
+  // Editable CAT fields
+  const [editNomeCompleto, setEditNomeCompleto] = useState(catLead.nome_completo);
+  const [editMunicipio, setEditMunicipio] = useState(catLead.municipio || '');
+  const [editUf, setEditUf] = useState(catLead.uf || '');
+  const [editNaturezaLesao, setEditNaturezaLesao] = useState(catLead.natureza_lesao || '');
+  const [editParteCorpo, setEditParteCorpo] = useState(catLead.parte_corpo_atingida || '');
+  const [editCnpj, setEditCnpj] = useState(catLead.cnpj_cei_empregador || '');
+  const [editCpf, setEditCpf] = useState(catLead.cpf || '');
+  const [editEndereco, setEditEndereco] = useState(catLead.endereco || '');
+  const [editBairro, setEditBairro] = useState(catLead.bairro || '');
+  const [editCep, setEditCep] = useState(catLead.cep || '');
+  const [editCatNotes, setEditCatNotes] = useState(catLead.notes || '');
+  const [savingCat, setSavingCat] = useState(false);
+
+  // Sync state when catLead prop changes
+  useEffect(() => {
+    setEditNomeCompleto(catLead.nome_completo);
+    setEditMunicipio(catLead.municipio || '');
+    setEditUf(catLead.uf || '');
+    setEditNaturezaLesao(catLead.natureza_lesao || '');
+    setEditParteCorpo(catLead.parte_corpo_atingida || '');
+    setEditCnpj(catLead.cnpj_cei_empregador || '');
+    setEditCpf(catLead.cpf || '');
+    setEditEndereco(catLead.endereco || '');
+    setEditBairro(catLead.bairro || '');
+    setEditCep(catLead.cep || '');
+    setEditCatNotes(catLead.notes || '');
+  }, [catLead]);
+
+  const handleSaveCatChanges = async () => {
+    if (!onUpdateCatLead) return;
+    setSavingCat(true);
+    try {
+      await onUpdateCatLead(catLead.id, {
+        nome_completo: editNomeCompleto,
+        municipio: editMunicipio || null,
+        uf: editUf || null,
+        natureza_lesao: editNaturezaLesao || null,
+        parte_corpo_atingida: editParteCorpo || null,
+        cnpj_cei_empregador: editCnpj || null,
+        cpf: editCpf || null,
+        endereco: editEndereco || null,
+        bairro: editBairro || null,
+        cep: editCep || null,
+        notes: editCatNotes || null,
+      });
+      onRefresh();
+    } finally {
+      setSavingCat(false);
+    }
+  };
 
   // Fetch team profiles
   useEffect(() => {
@@ -149,14 +202,88 @@ export function CatLeadContactDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Info summary */}
-          <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
-            <p><strong>Município:</strong> {catLead.municipio}/{catLead.uf}</p>
-            <p><strong>Acidente:</strong> {catLead.natureza_lesao} - {catLead.parte_corpo_atingida}</p>
-            {catLead.indica_obito && (
-              <Badge variant="destructive" className="text-xs">Óbito</Badge>
-            )}
-          </div>
+          {/* Editable CAT fields */}
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar dados da CAT
+                </span>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="border rounded-lg p-3 space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nome completo</Label>
+                  <Input value={editNomeCompleto} onChange={e => setEditNomeCompleto(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">CPF</Label>
+                    <Input value={editCpf} onChange={e => setEditCpf(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">CNPJ Empregador</Label>
+                    <Input value={editCnpj} onChange={e => setEditCnpj(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs">Município</Label>
+                    <Input value={editMunicipio} onChange={e => setEditMunicipio(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">UF</Label>
+                    <Input value={editUf} onChange={e => setEditUf(e.target.value)} className="h-9 text-sm" maxLength={2} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Natureza Lesão</Label>
+                    <Input value={editNaturezaLesao} onChange={e => setEditNaturezaLesao(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Parte do corpo</Label>
+                    <Input value={editParteCorpo} onChange={e => setEditParteCorpo(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Endereço</Label>
+                  <Input value={editEndereco} onChange={e => setEditEndereco(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Bairro</Label>
+                    <Input value={editBairro} onChange={e => setEditBairro(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">CEP</Label>
+                    <Input value={editCep} onChange={e => setEditCep(e.target.value)} className="h-9 text-sm" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Óbito</Label>
+                    <div className="h-9 flex items-center">
+                      {catLead.indica_obito ? (
+                        <Badge variant="destructive" className="text-xs">Sim</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Não</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Observações da CAT</Label>
+                  <Textarea value={editCatNotes} onChange={e => setEditCatNotes(e.target.value)} placeholder="Anotações sobre esta CAT..." className="min-h-[50px] text-sm" />
+                </div>
+                <Button onClick={handleSaveCatChanges} disabled={savingCat} size="sm" className="w-full gap-2">
+                  <Save className="h-3.5 w-3.5" />
+                  {savingCat ? 'Salvando...' : 'Salvar alterações'}
+                </Button>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* New contact form */}
           <div className="space-y-3 border rounded-lg p-3">
