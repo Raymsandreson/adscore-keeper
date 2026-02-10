@@ -21,18 +21,22 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
   const { fetchLeadInstances, updateInstanceItem, createLeadInstances } = useChecklists();
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
 
   useEffect(() => {
-    loadInstances();
-  }, [leadId]);
+    loadAndEnsureInstances();
+  }, [leadId, boardId, currentStageId]);
 
-  const loadInstances = async () => {
+  const loadAndEnsureInstances = async () => {
     setLoading(true);
+    
+    // Auto-create instances for current stage if needed
+    if (boardId && currentStageId) {
+      await createLeadInstances(leadId, boardId, currentStageId);
+    }
+
     const data = await fetchLeadInstances(leadId);
 
-    // Fetch template names
     if (data.length > 0) {
       const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
       const { data: templates } = await supabase
@@ -49,20 +53,6 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
 
     setInstances(data);
     setLoading(false);
-  };
-
-  const handleGenerateChecklists = async () => {
-    if (!boardId || !currentStageId) return;
-    setGenerating(true);
-    try {
-      await createLeadInstances(leadId, boardId, currentStageId);
-      await loadInstances();
-      toast.success('Checklists gerados para esta etapa!');
-    } catch (e) {
-      toast.error('Erro ao gerar checklists');
-    } finally {
-      setGenerating(false);
-    }
   };
 
   const handleToggleItem = async (instance: LeadChecklistInstance, itemId: string) => {
@@ -103,17 +93,6 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
       <div className="text-center py-8 text-muted-foreground space-y-3">
         <ListChecks className="h-8 w-8 mx-auto mb-2 opacity-50" />
         <p className="text-sm">Nenhum checklist vinculado a esta etapa</p>
-        {boardId && currentStageId && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleGenerateChecklists}
-            disabled={generating}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${generating ? 'animate-spin' : ''}`} />
-            {generating ? 'Gerando...' : 'Gerar checklists desta etapa'}
-          </Button>
-        )}
       </div>
     );
   }
