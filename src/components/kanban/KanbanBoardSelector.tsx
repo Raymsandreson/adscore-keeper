@@ -293,7 +293,15 @@ export function KanbanBoardSelector({
                       className="w-3 h-3 rounded-full shrink-0" 
                       style={{ backgroundColor: stage.color }}
                     />
-                    <span className="flex-1 text-sm truncate">{stage.name}</span>
+                    <Input
+                      value={stage.name}
+                      onChange={(e) => {
+                        const newStages = [...formStages];
+                        newStages[index] = { ...stage, name: e.target.value };
+                        setFormStages(newStages);
+                      }}
+                      className="flex-1 h-7 text-sm"
+                    />
                     <Input
                       type="number"
                       min="0"
@@ -422,7 +430,15 @@ export function KanbanBoardSelector({
                       className="w-3 h-3 rounded-full shrink-0" 
                       style={{ backgroundColor: stage.color }}
                     />
-                    <span className="flex-1 text-sm truncate">{stage.name}</span>
+                    <Input
+                      value={stage.name}
+                      onChange={(e) => {
+                        const newStages = [...formStages];
+                        newStages[index] = { ...stage, name: e.target.value };
+                        setFormStages(newStages);
+                      }}
+                      className="flex-1 h-7 text-sm"
+                    />
                     <Input
                       type="number"
                       min="0"
