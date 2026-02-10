@@ -1422,65 +1422,69 @@ export const ContactsManager: React.FC = () => {
             </div>
             </div>
             
-            {/* Row 2: Filters */}
-            <div className="flex flex-wrap gap-2 items-center">
-              <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <SelectValue placeholder="Classificação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {Object.entries(classificationConfig).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${config.color}`} />
-                        {config.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <Select 
-                value={filterRelationshipType || 'all'} 
-                onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
-              >
-                <SelectTrigger className="w-[150px] h-8 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <SelectValue placeholder="Vínculo" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os vínculos</SelectItem>
-                  {relationshipTypes.map((type) => (
-                    <SelectItem key={type.id} value={type.name}>
-                      {type.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <ProfessionFilter
-                selectedProfessions={filterProfessions}
-                onSelectionChange={setFilterProfessions}
-              />
-              
-              <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
-                <SelectTrigger className="w-[150px] h-8 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Link className="h-3.5 w-3.5 text-muted-foreground" />
-                    <SelectValue placeholder="Leads" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="linked">Vinculados a Lead</SelectItem>
-                  <SelectItem value="not_linked">Sem Lead</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Row 2: Filters - grouped by nature */}
+            <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+              {/* Group 1: People filters */}
+              <div className="flex gap-1.5 items-center border-r border-border pr-4">
+                <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
+                  <SelectTrigger className="w-[130px] h-8 text-xs">
+                    <SelectValue placeholder="Classificação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {Object.entries(classificationConfig).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${config.color}`} />
+                          {config.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Select 
+                  value={filterRelationshipType || 'all'} 
+                  onValueChange={(v) => setFilterRelationshipType(v === 'all' ? null : v)}
+                >
+                  <SelectTrigger className="w-[145px] h-8 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Vínculo" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os vínculos</SelectItem>
+                    {relationshipTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.name}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <ProfessionFilter
+                  selectedProfessions={filterProfessions}
+                  onSelectionChange={setFilterProfessions}
+                />
+                
+                <Select value={filterLeadLinked} onValueChange={(v) => setFilterLeadLinked(v as any)}>
+                  <SelectTrigger className="w-[145px] h-8 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Link className="h-3.5 w-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="Leads" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="linked">Vinculados a Lead</SelectItem>
+                    <SelectItem value="not_linked">Sem Lead</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <div className="flex gap-1.5 items-center">
+              {/* Group 2: Date filters */}
+              <div className="flex gap-1.5 items-center border-r border-border pr-4">
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   type="date"
@@ -1508,67 +1512,70 @@ export const ContactsManager: React.FC = () => {
                   </Button>
                 )}
               </div>
-            </div>
-            
-            {/* Row 3: Tag Filters */}
-            <div className="flex gap-2 flex-wrap items-center">
-              <Button
-                variant={filterTag === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('all')}
-                className="h-7 text-xs"
-              >
-                <Users className="h-3 w-3 mr-1" />
-                Todos
-              </Button>
-              <Button
-                variant={filterTag === 'seguidor' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('seguidor')}
-                className="h-7 text-xs"
-              >
-                <UserPlus className="h-3 w-3 mr-1" />
-                Seguidores
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {tagStats.seguidores}
-                </Badge>
-              </Button>
-              <Button
-                variant={filterTag === 'seguindo' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('seguindo')}
-                className="h-7 text-xs"
-              >
-                <UserMinus className="h-3 w-3 mr-1" />
-                Seguindo
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {tagStats.seguindo}
-                </Badge>
-              </Button>
-              <Button
-                variant={filterTag === 'mutual' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterTag('mutual')}
-                className="h-7 text-xs"
-              >
-                <Users2 className="h-3 w-3 mr-1" />
-                Mútuos
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {tagStats.mutuos}
-                </Badge>
-              </Button>
-              {filterTag !== 'all' && (
+
+              {/* Group 3: Instagram / follower status */}
+              <div className="flex gap-1.5 items-center">
                 <Button
-                  variant="ghost"
+                  variant={filterTag === 'all' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setFilterTag('all')}
-                  className="h-7 w-7 p-0"
+                  className="h-7 text-xs"
                 >
-                  <X className="h-3 w-3" />
+                  <Users className="h-3 w-3 mr-1" />
+                  Todos
                 </Button>
-              )}
-              
-              {filterRelationshipType && (
+                <Button
+                  variant={filterTag === 'seguidor' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterTag('seguidor')}
+                  className="h-7 text-xs"
+                >
+                  <UserPlus className="h-3 w-3 mr-1" />
+                  Seguidores
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {tagStats.seguidores}
+                  </Badge>
+                </Button>
+                <Button
+                  variant={filterTag === 'seguindo' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterTag('seguindo')}
+                  className="h-7 text-xs"
+                >
+                  <UserMinus className="h-3 w-3 mr-1" />
+                  Seguindo
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {tagStats.seguindo}
+                  </Badge>
+                </Button>
+                <Button
+                  variant={filterTag === 'mutual' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilterTag('mutual')}
+                  className="h-7 text-xs"
+                >
+                  <Users2 className="h-3 w-3 mr-1" />
+                  Mútuos
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                    {tagStats.mutuos}
+                  </Badge>
+                </Button>
+                {filterTag !== 'all' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFilterTag('all')}
+                    className="h-7 w-7 p-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Active filter badges */}
+            {filterRelationshipType && (
+              <div className="flex gap-2 items-center">
                 <Badge 
                   variant="secondary" 
                   className="h-7 px-2 gap-1.5 bg-blue-500/10 text-blue-600 border-blue-500/30 cursor-pointer hover:bg-blue-500/20 text-xs"
@@ -1585,8 +1592,8 @@ export const ContactsManager: React.FC = () => {
                     </>
                   )}
                 </Badge>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
