@@ -1809,6 +1809,7 @@ export type Database = {
       lead_stage_history: {
         Row: {
           changed_at: string
+          changed_by: string | null
           from_board_id: string | null
           from_stage: string | null
           id: string
@@ -1819,6 +1820,7 @@ export type Database = {
         }
         Insert: {
           changed_at?: string
+          changed_by?: string | null
           from_board_id?: string | null
           from_stage?: string | null
           id?: string
@@ -1829,6 +1831,7 @@ export type Database = {
         }
         Update: {
           changed_at?: string
+          changed_by?: string | null
           from_board_id?: string | null
           from_stage?: string | null
           id?: string
