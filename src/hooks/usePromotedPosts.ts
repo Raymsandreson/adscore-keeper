@@ -86,6 +86,13 @@ export function usePromotedPosts() {
     postTitle?: string;
     postPlatform?: string;
     leadId?: string;
+    creativeData?: {
+      imageUrl?: string;
+      headline?: string;
+      body?: string;
+      linkDescription?: string;
+      callToAction?: string;
+    };
   }) => {
     const savedAccounts = localStorage.getItem('meta_saved_accounts');
     let accessToken: string | null = null;

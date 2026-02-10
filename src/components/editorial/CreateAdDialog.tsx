@@ -95,6 +95,14 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
   const [selectedExternalPost, setSelectedExternalPost] = useState<any>(null);
   const [postSearch, setPostSearch] = useState("");
 
+  // Creative fields
+  const [creativeMode, setCreativeMode] = useState<"post" | "custom">("post");
+  const [adImageUrl, setAdImageUrl] = useState("");
+  const [adHeadline, setAdHeadline] = useState("");
+  const [adBody, setAdBody] = useState("");
+  const [adLinkDescription, setAdLinkDescription] = useState("");
+  const [adCta, setAdCta] = useState("LEARN_MORE");
+
   // Lead search for location
   const [leadSearch, setLeadSearch] = useState("");
   const [leadResults, setLeadResults] = useState<any[]>([]);
@@ -166,18 +174,17 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
   };
 
   const handleCreate = async () => {
-    if (!postId.trim()) {
+    if (creativeMode === "post" && !postId.trim()) {
       return;
     }
 
     setIsCreating(true);
-    // Build locations from lead data
     const locations = hasLeadLocation
       ? [{ key: "BR", name: [resolvedCity, resolvedState].filter(Boolean).join("/") }]
       : undefined;
 
     const result = await createCampaign({
-      postId: postId.trim(),
+      postId: creativeMode === "post" ? postId.trim() : "custom_creative",
       campaignName,
       objective,
       dailyBudget: budgetType === "daily" ? dailyBudget : undefined,
@@ -192,6 +199,15 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
       postTitle: post.title,
       postPlatform: post.platform,
       leadId: activeLocation?.id,
+      ...(creativeMode === "custom" && {
+        creativeData: {
+          imageUrl: adImageUrl,
+          headline: adHeadline,
+          body: adBody,
+          linkDescription: adLinkDescription,
+          callToAction: adCta,
+        },
+      }),
     });
 
     setIsCreating(false);
@@ -200,7 +216,7 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
     }
   };
 
-  const totalSteps = 3;
+  const totalSteps = 4;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -211,7 +227,7 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
             Criar Anúncio - {post.title}
           </DialogTitle>
           <div className="flex items-center gap-2 mt-2">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div
                 key={s}
                 className={cn(
@@ -222,146 +238,182 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
             ))}
           </div>
           <p className="text-sm text-muted-foreground">
-            Passo {step} de {totalSteps}: {step === 1 ? "Campanha" : step === 2 ? "Público" : "Orçamento"}
+            Passo {step} de {totalSteps}: {step === 1 ? "Criativo" : step === 2 ? "Campanha" : step === 3 ? "Público" : "Orçamento"}
           </p>
         </DialogHeader>
 
-        {/* Step 1: Campaign */}
+        {/* Step 1: Creative */}
         {step === 1 && (
           <div className="space-y-4">
-            {/* Post selector */}
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Image className="h-4 w-4" />
-                Selecionar Post para Promover
-              </Label>
+            <Label className="font-medium">Tipo de Criativo</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCreativeMode("post")}
+                className={cn(
+                  "flex-1 p-3 rounded-lg border text-sm transition-all text-left",
+                  creativeMode === "post"
+                    ? "border-primary bg-primary/10 ring-1 ring-primary"
+                    : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="font-medium">Promover Post Existente</p>
+                <p className="text-xs text-muted-foreground">Selecione um post já publicado</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreativeMode("custom")}
+                className={cn(
+                  "flex-1 p-3 rounded-lg border text-sm transition-all text-left",
+                  creativeMode === "custom"
+                    ? "border-primary bg-primary/10 ring-1 ring-primary"
+                    : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="font-medium">Criar do Zero</p>
+                <p className="text-xs text-muted-foreground">Imagem, texto e CTA personalizados</p>
+              </button>
+            </div>
 
-              {/* Search posts */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={postSearch}
-                  onChange={(e) => setPostSearch(e.target.value)}
-                  placeholder="Buscar post por título, descrição ou URL..."
-                  className="pl-9"
-                />
-              </div>
-
-              {/* Selected post preview */}
-              {selectedExternalPost ? (
-                <div className="p-4 bg-accent/50 border border-primary/30 rounded-lg space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium flex items-center gap-1">
-                        <Megaphone className="h-3 w-3 text-primary shrink-0" />
-                        Post selecionado
-                      </p>
-                      <p className="font-bold mt-1 truncate">
-                        {selectedExternalPost.title || selectedExternalPost.description?.slice(0, 60) || "Post sem título"}
-                      </p>
-                      {selectedExternalPost.author_username && (
-                        <p className="text-xs text-muted-foreground">@{selectedExternalPost.author_username}</p>
-                      )}
-                      {selectedExternalPost.description && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{selectedExternalPost.description}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="secondary" className="text-xs">{selectedExternalPost.platform}</Badge>
-                        {selectedExternalPost.comments_count > 0 && (
-                          <span className="text-xs text-muted-foreground">{selectedExternalPost.comments_count} comentários</span>
-                        )}
-                        <a
-                          href={selectedExternalPost.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          Ver post
-                        </a>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0"
-                      onClick={() => {
-                        setSelectedExternalPost(null);
-                        setPostId("");
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
+            {creativeMode === "post" ? (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={postSearch}
+                    onChange={(e) => setPostSearch(e.target.value)}
+                    placeholder="Buscar post por título, descrição ou URL..."
+                    className="pl-9"
+                  />
                 </div>
-              ) : (
-                /* Posts list */
-                <div className="border rounded-lg max-h-48 overflow-y-auto divide-y">
-                  {isLoadingPosts ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
-                      Carregando posts...
+
+                {selectedExternalPost ? (
+                  <div className="p-4 bg-accent/50 border border-primary/30 rounded-lg space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium flex items-center gap-1">
+                          <Megaphone className="h-3 w-3 text-primary shrink-0" />
+                          Post selecionado
+                        </p>
+                        <p className="font-bold mt-1 truncate">
+                          {selectedExternalPost.title || selectedExternalPost.description?.slice(0, 60) || "Post sem título"}
+                        </p>
+                        {selectedExternalPost.author_username && (
+                          <p className="text-xs text-muted-foreground">@{selectedExternalPost.author_username}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge variant="secondary" className="text-xs">{selectedExternalPost.platform}</Badge>
+                          <a href={selectedExternalPost.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
+                            <ExternalLink className="h-3 w-3" /> Ver post
+                          </a>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => { setSelectedExternalPost(null); setPostId(""); }}>
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
-                  ) : filteredExternalPosts.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">
-                      {externalPosts.length === 0
-                        ? "Nenhum post externo cadastrado para este lead."
-                        : "Nenhum post encontrado com essa busca."}
-                    </div>
-                  ) : (
-                    filteredExternalPosts.map((ep) => (
-                      <button
-                        key={ep.id}
-                        type="button"
-                        onClick={() => {
+                  </div>
+                ) : (
+                  <div className="border rounded-lg max-h-48 overflow-y-auto divide-y">
+                    {isLoadingPosts ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
+                        Carregando posts...
+                      </div>
+                    ) : filteredExternalPosts.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        {externalPosts.length === 0 ? "Nenhum post externo cadastrado." : "Nenhum post encontrado."}
+                      </div>
+                    ) : (
+                      filteredExternalPosts.map((ep) => (
+                        <button key={ep.id} type="button" onClick={() => {
                           setSelectedExternalPost(ep);
                           setPostId(ep.post_id || ep.url || "");
                           if (!campaignName || campaignName.startsWith("Promoção:")) {
                             setCampaignName(`Promoção: ${ep.title || ep.description?.slice(0, 40) || "Post"}`);
                           }
-                        }}
-                        className="w-full p-3 text-left hover:bg-muted/50 transition-colors"
-                      >
-                        <p className="text-sm font-medium truncate">
-                          {ep.title || ep.description?.slice(0, 60) || "Post sem título"}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          {ep.author_username && (
-                            <span className="text-xs text-muted-foreground">@{ep.author_username}</span>
-                          )}
-                          <Badge variant="outline" className="text-xs">{ep.platform}</Badge>
-                          {ep.comments_count > 0 && (
-                            <span className="text-xs text-muted-foreground">{ep.comments_count} coment.</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mt-1">{ep.url}</p>
-                      </button>
-                    ))
+                        }} className="w-full p-3 text-left hover:bg-muted/50 transition-colors">
+                          <p className="text-sm font-medium truncate">{ep.title || ep.description?.slice(0, 60) || "Post sem título"}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {ep.author_username && <span className="text-xs text-muted-foreground">@{ep.author_username}</span>}
+                            <Badge variant="outline" className="text-xs">{ep.platform}</Badge>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {!selectedExternalPost && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Ou cole o ID manualmente:</Label>
+                    <Input value={postId} onChange={(e) => setPostId(e.target.value)} placeholder="Ex: 17895695668004550 ou page_id_post_id" className="text-sm" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Image className="h-4 w-4" />
+                    URL da Imagem do Anúncio
+                  </Label>
+                  <Input
+                    value={adImageUrl}
+                    onChange={(e) => setAdImageUrl(e.target.value)}
+                    placeholder="https://exemplo.com/imagem.jpg ou cole a URL da imagem"
+                  />
+                  {adImageUrl && (
+                    <div className="border rounded-lg overflow-hidden max-h-48">
+                      <img src={adImageUrl} alt="Preview" className="w-full h-48 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    </div>
                   )}
                 </div>
-              )}
 
-              {/* Fallback manual ID */}
-              {!selectedExternalPost && (
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Ou cole o ID manualmente:</Label>
-                  <Input
-                    value={postId}
-                    onChange={(e) => setPostId(e.target.value)}
-                    placeholder="Ex: 17895695668004550 ou page_id_post_id"
-                    className="text-sm"
-                  />
+                <div className="space-y-2">
+                  <Label>Título do Anúncio</Label>
+                  <Input value={adHeadline} onChange={(e) => setAdHeadline(e.target.value)} placeholder="Ex: Conheça seus direitos trabalhistas" />
                 </div>
-              )}
-            </div>
 
+                <div className="space-y-2">
+                  <Label>Texto Principal</Label>
+                  <Textarea value={adBody} onChange={(e) => setAdBody(e.target.value)} placeholder="Texto que aparece no corpo do anúncio..." rows={3} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Descrição do Link (opcional)</Label>
+                  <Input value={adLinkDescription} onChange={(e) => setAdLinkDescription(e.target.value)} placeholder="Descrição que aparece abaixo do título" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Botão de Ação (CTA)</Label>
+                  <Select value={adCta} onValueChange={setAdCta}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LEARN_MORE">Saiba Mais</SelectItem>
+                      <SelectItem value="CONTACT_US">Fale Conosco</SelectItem>
+                      <SelectItem value="SEND_MESSAGE">Enviar Mensagem</SelectItem>
+                      <SelectItem value="SIGN_UP">Cadastre-se</SelectItem>
+                      <SelectItem value="CALL_NOW">Ligue Agora</SelectItem>
+                      <SelectItem value="GET_QUOTE">Obter Cotação</SelectItem>
+                      <SelectItem value="WATCH_MORE">Assistir Mais</SelectItem>
+                      <SelectItem value="APPLY_NOW">Inscreva-se</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Campaign Name & Objective */}
+        {step === 2 && (
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nome da Campanha</Label>
-              <Input
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value)}
-                placeholder="Nome da campanha"
-              />
+              <Input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="Nome da campanha" />
             </div>
 
             <div className="space-y-2">
@@ -371,17 +423,10 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
               </Label>
               <div className="grid grid-cols-1 gap-2">
                 {objectives.map((obj) => (
-                  <button
-                    key={obj.value}
-                    type="button"
-                    onClick={() => setObjective(obj.value)}
-                    className={cn(
-                      "p-3 rounded-lg border text-left transition-all",
-                      objective === obj.value
-                        ? "border-primary bg-primary/10 ring-1 ring-primary"
-                        : "border-border hover:border-primary/50"
-                    )}
-                  >
+                  <button key={obj.value} type="button" onClick={() => setObjective(obj.value)} className={cn(
+                    "p-3 rounded-lg border text-left transition-all",
+                    objective === obj.value ? "border-primary bg-primary/10 ring-1 ring-primary" : "border-border hover:border-primary/50"
+                  )}>
                     <p className="font-medium text-sm">{obj.label}</p>
                     <p className="text-xs text-muted-foreground">{obj.description}</p>
                   </button>
@@ -391,8 +436,8 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
           </div>
         )}
 
-        {/* Step 2: Targeting */}
-        {step === 2 && (
+        {/* Step 3: Targeting */}
+        {step === 3 && (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -541,8 +586,8 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
           </div>
         )}
 
-        {/* Step 3: Budget */}
-        {step === 3 && (
+        {/* Step 4: Budget */}
+        {step === 4 && (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -684,11 +729,11 @@ export function CreateAdDialog({ open, onOpenChange, post, leadLocation }: Creat
             </Button>
           )}
           {step < totalSteps ? (
-            <Button onClick={() => setStep(step + 1)} disabled={step === 1 && !postId.trim()}>
+            <Button onClick={() => setStep(step + 1)} disabled={step === 1 && creativeMode === "post" && !postId.trim()}>
               Próximo
             </Button>
           ) : (
-            <Button onClick={handleCreate} disabled={isCreating || !postId.trim()} className="gap-2">
+            <Button onClick={handleCreate} disabled={isCreating || (creativeMode === "post" && !postId.trim())} className="gap-2">
               {isCreating ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
