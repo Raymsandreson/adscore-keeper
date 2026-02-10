@@ -13,6 +13,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { useChecklists } from '@/hooks/useChecklists';
 
 interface Stage {
   id: string;
@@ -44,6 +45,7 @@ export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
   onOpenLead
 }) => {
   const navigate = useNavigate();
+  const { createLeadInstances, markStageInstancesReadonly } = useChecklists();
   const [open, setOpen] = useState(false);
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(false);
@@ -106,6 +108,12 @@ export const LeadStatusPopover: React.FC<LeadStatusPopoverProps> = ({
           from_board_id: boardId,
           to_board_id: boardId
         });
+
+      // Checklist: mark old readonly, create new
+      if (boardId) {
+        if (currentStatus) await markStageInstancesReadonly(leadId, boardId, currentStatus);
+        await createLeadInstances(leadId, boardId, stageId);
+      }
 
       toast.success('Status atualizado!');
       onStatusChanged?.();

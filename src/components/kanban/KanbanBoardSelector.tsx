@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ChecklistStageLinking } from '@/components/kanban/ChecklistStageLinking';
+import { ChecklistTemplatesManager } from '@/components/kanban/ChecklistTemplatesManager';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -74,6 +76,7 @@ export function KanbanBoardSelector({
   const [formStages, setFormStages] = useState<KanbanStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
+  const [showChecklistManager, setShowChecklistManager] = useState(false);
 
   const resetForm = () => {
     setFormName('');
@@ -484,6 +487,20 @@ export function KanbanBoardSelector({
                 </Button>
               </div>
             </div>
+
+            {editingBoard && (
+              <div>
+                <ChecklistStageLinking boardId={editingBoard.id} stages={formStages} />
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-1 h-auto p-0 text-xs"
+                  onClick={() => setShowChecklistManager(true)}
+                >
+                  Gerenciar templates de checklist
+                </Button>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="flex justify-between">
@@ -502,6 +519,8 @@ export function KanbanBoardSelector({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ChecklistTemplatesManager open={showChecklistManager} onOpenChange={setShowChecklistManager} />
     </>
   );
 }

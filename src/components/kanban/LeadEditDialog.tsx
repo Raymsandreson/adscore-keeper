@@ -39,6 +39,7 @@ import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
+import { LeadChecklistPanel } from '@/components/kanban/LeadChecklistPanel';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
@@ -64,6 +65,7 @@ import {
   Loader2,
   Scale,
   RefreshCw,
+  CheckSquare,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { format } from 'date-fns';
@@ -616,7 +618,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-7 h-auto">
+          <TabsList className="grid w-full grid-cols-8 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
               Básico
@@ -624,6 +626,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             <TabsTrigger value="contacts" className="text-xs py-2">
               <Users className="h-3 w-3 mr-1" />
               Contatos
+            </TabsTrigger>
+            <TabsTrigger value="checklist" className="text-xs py-2">
+              <CheckSquare className="h-3 w-3 mr-1" />
+              Checklist
             </TabsTrigger>
             <TabsTrigger value="accident" className="text-xs py-2">
               <FileText className="h-3 w-3 mr-1" />
@@ -1165,6 +1171,18 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   />
                 </div>
               </div>
+            </TabsContent>
+
+            {/* Checklist Tab */}
+            <TabsContent value="checklist" className="mt-0">
+              {lead && (
+                <LeadChecklistPanel
+                  leadId={lead.id}
+                  boardId={lead.board_id || null}
+                  currentStageId={lead.status || null}
+                  boards={boards}
+                />
+              )}
             </TabsContent>
 
             {/* History Tab */}
