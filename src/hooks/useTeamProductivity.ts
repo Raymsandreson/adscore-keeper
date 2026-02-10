@@ -119,8 +119,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         supabase.from('instagram_comments').select('id, replied_by, replied_at')
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .not('replied_by', 'is', null),
-        // Stage changes
-        supabase.from('lead_stage_history').select('id, changed_at, to_stage')
+        // Stage changes (now with changed_by for per-user tracking)
+        supabase.from('lead_stage_history').select('id, changed_at, to_stage, changed_by')
           .gte('changed_at', startDate).lte('changed_at', endDate),
         // Followups
         supabase.from('lead_followups').select('id, created_at, followup_type, outcome')
@@ -162,6 +162,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       sessionsData.forEach(s => allUserIds.add(s.user_id));
       activities.forEach(a => allUserIds.add(a.user_id));
       catContacts.forEach(c => c.contacted_by && allUserIds.add(c.contacted_by));
+      stageHistory.forEach(s => (s as any).changed_by && allUserIds.add((s as any).changed_by));
 
       // Fetch profiles
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
@@ -240,7 +241,14 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         u.totalActions++;
       });
 
-      // Stage changes (no user_id on lead_stage_history, count globally)
+      // Stage changes per user (now has changed_by)
+      stageHistory.forEach(s => {
+        const changedBy = (s as any).changed_by;
+        if (changedBy) {
+          getUser(changedBy).stageChanges++;
+          allUserIds.add(changedBy);
+        }
+      });
       // Followups (no user_id, count globally)
 
       // Compute total actions for each user

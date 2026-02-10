@@ -9,6 +9,7 @@ export interface LeadStageHistory {
   from_board_id: string | null;
   to_board_id: string | null;
   changed_at: string;
+  changed_by: string | null;
   notes: string | null;
 }
 
@@ -44,6 +45,9 @@ export function useLeadStageHistory() {
     notes?: string
   ) => {
     try {
+      // Get current user for changed_by attribution
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { error } = await supabase
         .from('lead_stage_history')
         .insert({
@@ -53,6 +57,7 @@ export function useLeadStageHistory() {
           from_board_id: fromBoardId || null,
           to_board_id: toBoardId || null,
           notes: notes || null,
+          changed_by: user?.id || null,
         });
 
       if (error) throw error;

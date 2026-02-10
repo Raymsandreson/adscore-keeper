@@ -103,9 +103,11 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     
     try {
       // Update comment as replied
+      // Get current user for replied_by attribution
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       await supabase
         .from('instagram_comments')
-        .update({ replied_at: new Date().toISOString(), replied_by: 'manual' })
+        .update({ replied_at: new Date().toISOString(), replied_by: currentUser?.id || null })
         .eq('id', comment.id);
 
       // Try to find linked lead and add followup

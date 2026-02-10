@@ -381,7 +381,7 @@ export const WorkflowFullscreen = ({
 
       await supabase
         .from('instagram_comments')
-        .update({ replied_at: new Date().toISOString() })
+        .update({ replied_at: new Date().toISOString(), replied_by: user?.id || null })
         .eq('id', currentComment.id);
 
       setRepliedComments(prev => new Set([...prev, currentComment.id]));

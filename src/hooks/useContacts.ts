@@ -245,6 +245,9 @@ export const useContacts = () => {
       // Determine follower_status from tags
       const followerStatus = contact.follower_status || getFollowerStatusFromTags(contact.tags);
 
+      // Get current user for created_by attribution
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('contacts')
         .insert([{
@@ -259,6 +262,7 @@ export const useContacts = () => {
           city: contact.city || null,
           state: contact.state || null,
           follower_status: followerStatus,
+          created_by: currentUser?.id || null,
         }])
         .select()
         .single();
