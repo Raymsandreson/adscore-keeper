@@ -173,6 +173,7 @@ export function CatLeadsManager() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[200px]">Nome</TableHead>
+                    <TableHead>Empresa/CNPJ</TableHead>
                     <TableHead>Município/UF</TableHead>
                     <TableHead>Óbito</TableHead>
                     <TableHead>Natureza Lesão</TableHead>
@@ -192,6 +193,9 @@ export function CatLeadsManager() {
                             <p className="font-medium text-sm truncate max-w-[200px]">{lead.nome_completo}</p>
                             <p className="text-xs text-muted-foreground">{lead.cpf}</p>
                           </div>
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[150px] truncate" title={lead.cnpj_cei_empregador || ''}>
+                          {lead.municipio_empregador || lead.cnpj_cei_empregador || '-'}
                         </TableCell>
                         <TableCell className="text-sm">
                           {lead.municipio}/{lead.uf}
