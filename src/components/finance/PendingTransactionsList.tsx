@@ -155,11 +155,9 @@ export function PendingTransactionsList({
       if (error) throw error;
 
       const link = `${window.location.origin}/expense-form/${data.token}`;
-      const text = `Olá! Por favor, preencha a justificativa dos seus gastos do cartão ****${card}:\n\n${link}`;
       
       await navigator.clipboard.writeText(link);
-      toast.success('Link copiado! Abrindo WhatsApp...');
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      toast.success('Link do formulário copiado!');
       setSelectedIds(new Set());
     } catch (err: any) {
       toast.error('Erro ao gerar link: ' + err.message);
