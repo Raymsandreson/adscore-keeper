@@ -1,10 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   CreditCard, 
   MapPin,
@@ -21,7 +24,8 @@ import {
   Clock,
   Building2,
   Link2,
-  MessageCircle
+  Plus,
+  Eye
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -111,6 +115,110 @@ export function PendingTransactionsList({
     manualCity: ''
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Sheet state for create/edit/view lead or contact
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'create' | 'edit' | 'view'>('create');
+  const [sheetType, setSheetType] = useState<'lead' | 'contact'>('lead');
+  const [sheetData, setSheetData] = useState({
+    id: '',
+    name: '',
+    phone: '',
+    email: '',
+    city: '',
+    state: '',
+    notes: '',
+    instagram: '',
+  });
+  const [savingSheet, setSavingSheet] = useState(false);
+
+  // Local copies of leads/contacts to append newly created ones
+  const [localLeads, setLocalLeads] = useState<Lead[]>(leads);
+  const [localContacts, setLocalContacts] = useState<Contact[]>(contacts);
+  
+  // Keep in sync with props
+  useMemo(() => { setLocalLeads(leads); }, [leads]);
+  useMemo(() => { setLocalContacts(contacts); }, [contacts]);
+
+  const openCreateSheet = (type: 'lead' | 'contact') => {
+    setSheetType(type);
+    setSheetMode('create');
+    setSheetData({ id: '', name: '', phone: '', email: '', city: '', state: '', notes: '', instagram: '' });
+    setSheetOpen(true);
+  };
+
+  const openViewSheet = (type: 'lead' | 'contact', id: string) => {
+    setSheetType(type);
+    setSheetMode('view');
+    if (type === 'lead') {
+      const lead = localLeads.find(l => l.id === id);
+      if (lead) setSheetData({ id: lead.id, name: lead.lead_name || '', phone: '', email: '', city: lead.city || '', state: lead.state || '', notes: '', instagram: '' });
+    } else {
+      const contact = localContacts.find(c => c.id === id);
+      if (contact) setSheetData({ id: contact.id, name: contact.full_name, phone: '', email: '', city: contact.city || '', state: contact.state || '', notes: '', instagram: '' });
+    }
+    setSheetOpen(true);
+  };
+
+  const openEditSheet = () => {
+    setSheetMode('edit');
+  };
+
+  const saveSheetEntity = async () => {
+    if (!sheetData.name.trim()) {
+      toast.error('Nome é obrigatório');
+      return;
+    }
+    setSavingSheet(true);
+    try {
+      if (sheetType === 'lead') {
+        if (sheetMode === 'create') {
+          const { data, error } = await supabase
+            .from('leads')
+            .insert({ lead_name: sheetData.name.trim(), lead_phone: sheetData.phone || null, lead_email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null })
+            .select('id, lead_name, city, state')
+            .single();
+          if (error) throw error;
+          setLocalLeads(prev => [...prev, data]);
+          setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
+          toast.success('Lead criado!');
+        } else {
+          const { error } = await supabase
+            .from('leads')
+            .update({ lead_name: sheetData.name.trim(), lead_phone: sheetData.phone || null, lead_email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null })
+            .eq('id', sheetData.id);
+          if (error) throw error;
+          setLocalLeads(prev => prev.map(l => l.id === sheetData.id ? { ...l, lead_name: sheetData.name, city: sheetData.city, state: sheetData.state } : l));
+          toast.success('Lead atualizado!');
+        }
+      } else {
+        if (sheetMode === 'create') {
+          const { data, error } = await supabase
+            .from('contacts')
+            .insert({ full_name: sheetData.name.trim(), phone: sheetData.phone || null, email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null, instagram_username: sheetData.instagram || null })
+            .select('id, full_name, city, state')
+            .single();
+          if (error) throw error;
+          setLocalContacts(prev => [...prev, data]);
+          setEditData(prev => ({ ...prev, linkType: 'contact', linkId: data.id }));
+          toast.success('Contato criado!');
+        } else {
+          const { error } = await supabase
+            .from('contacts')
+            .update({ full_name: sheetData.name.trim(), phone: sheetData.phone || null, email: sheetData.email || null, city: sheetData.city || null, state: sheetData.state || null, instagram_username: sheetData.instagram || null })
+            .eq('id', sheetData.id);
+          if (error) throw error;
+          setLocalContacts(prev => prev.map(c => c.id === sheetData.id ? { ...c, full_name: sheetData.name, city: sheetData.city, state: sheetData.state } : c));
+          toast.success('Contato atualizado!');
+        }
+      }
+      setSheetOpen(false);
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    } finally {
+      setSavingSheet(false);
+    }
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -322,10 +430,10 @@ export function PendingTransactionsList({
           // Get linked entity name
           let linkedName = '';
           if (override?.lead_id) {
-            const lead = leads.find(l => l.id === override.lead_id);
+            const lead = localLeads.find(l => l.id === override.lead_id);
             linkedName = lead?.lead_name || '';
           } else if (override?.contact_id) {
-            const contact = contacts.find(c => c.id === override.contact_id);
+            const contact = localContacts.find(c => c.id === override.contact_id);
             linkedName = contact?.full_name || '';
           }
           
@@ -493,9 +601,33 @@ export function PendingTransactionsList({
                         </div>
                         
                         <div className="space-y-1">
-                          <label className="text-xs font-medium">
-                            {editData.linkType === 'lead' ? 'Lead' : 'Contato'}
-                          </label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-medium">
+                              {editData.linkType === 'lead' ? 'Lead' : 'Contato'}
+                            </label>
+                            <div className="flex gap-1">
+                              {editData.linkId && editData.linkId !== NONE_SELECTED && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType, editData.linkId!); }}
+                                  title="Visualizar"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5"
+                                onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }}
+                                title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
                           <Select
                             value={editData.linkId || ''}
                             onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}
@@ -504,7 +636,6 @@ export function PendingTransactionsList({
                               <SelectValue placeholder="Selecione..." />
                             </SelectTrigger>
                             <SelectContent>
-                              {/* None option with distinct styling */}
                               <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
                                 <div className="flex items-center gap-2">
                                   <X className="h-3 w-3" />
@@ -512,7 +643,7 @@ export function PendingTransactionsList({
                                 </div>
                               </SelectItem>
                               {editData.linkType === 'lead' 
-                                ? leads.map(lead => (
+                                ? localLeads.map(lead => (
                                     <SelectItem key={lead.id} value={lead.id}>
                                       <div className="flex items-center gap-2">
                                         <span>{lead.lead_name || 'Sem nome'}</span>
@@ -524,7 +655,7 @@ export function PendingTransactionsList({
                                       </div>
                                     </SelectItem>
                                   ))
-                                : contacts.map(contact => (
+                                : localContacts.map(contact => (
                                     <SelectItem key={contact.id} value={contact.id}>
                                       <div className="flex items-center gap-2">
                                         <span>{contact.full_name}</span>
@@ -651,6 +782,106 @@ export function PendingTransactionsList({
         })}
       </div>
     </ScrollArea>
+
+    {/* Sheet for Create/Edit/View Lead or Contact */}
+    <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <SheetContent className="w-[400px] sm:w-[450px]">
+        <SheetHeader>
+          <SheetTitle>
+            {sheetMode === 'create' ? 'Criar' : sheetMode === 'edit' ? 'Editar' : 'Visualizar'}{' '}
+            {sheetType === 'lead' ? 'Lead' : 'Contato'}
+          </SheetTitle>
+        </SheetHeader>
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <Label>Nome *</Label>
+            <Input
+              value={sheetData.name}
+              onChange={(e) => setSheetData(prev => ({ ...prev, name: e.target.value }))}
+              placeholder={sheetType === 'lead' ? 'Nome do lead' : 'Nome completo'}
+              disabled={sheetMode === 'view'}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input
+                value={sheetData.phone}
+                onChange={(e) => setSheetData(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="(00) 00000-0000"
+                disabled={sheetMode === 'view'}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                value={sheetData.email}
+                onChange={(e) => setSheetData(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="email@exemplo.com"
+                disabled={sheetMode === 'view'}
+              />
+            </div>
+          </div>
+          {sheetType === 'contact' && (
+            <div className="space-y-2">
+              <Label>Instagram</Label>
+              <Input
+                value={sheetData.instagram}
+                onChange={(e) => setSheetData(prev => ({ ...prev, instagram: e.target.value }))}
+                placeholder="@usuario"
+                disabled={sheetMode === 'view'}
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Estado</Label>
+              <Select
+                value={sheetData.state}
+                onValueChange={(v) => setSheetData(prev => ({ ...prev, state: v, city: '' }))}
+                disabled={sheetMode === 'view'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  {states.map(s => (
+                    <SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Cidade</Label>
+              <Input
+                value={sheetData.city}
+                onChange={(e) => setSheetData(prev => ({ ...prev, city: e.target.value }))}
+                placeholder="Cidade"
+                disabled={sheetMode === 'view'}
+              />
+            </div>
+          </div>
+
+          {sheetMode === 'view' ? (
+            <div className="flex gap-2 pt-4">
+              <Button className="flex-1" onClick={openEditSheet}>
+                <Edit2 className="h-4 w-4 mr-2" />
+                Editar
+              </Button>
+              <Button variant="outline" onClick={() => setSheetOpen(false)}>Fechar</Button>
+            </div>
+          ) : (
+            <div className="flex gap-2 pt-4">
+              <Button className="flex-1" onClick={saveSheetEntity} disabled={savingSheet}>
+                <Save className="h-4 w-4 mr-2" />
+                {savingSheet ? 'Salvando...' : 'Salvar'}
+              </Button>
+              <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancelar</Button>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
     </div>
   );
 }
