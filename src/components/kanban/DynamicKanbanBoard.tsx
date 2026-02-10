@@ -46,6 +46,7 @@ import { Lead } from '@/hooks/useLeads';
 import { differenceInDays } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { LeadContactsManager } from './LeadContactsManager';
+import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { toast } from 'sonner';
 
@@ -736,6 +737,15 @@ export function DynamicKanbanBoard({
                                       </Badge>
                                     )}
                                   </div>
+
+                                  {/* Checklist progress preview */}
+                                  {lead.board_id && (
+                                    <LeadCardChecklists
+                                      leadId={lead.id}
+                                      boardId={lead.board_id}
+                                      stageId={stage.id}
+                                    />
+                                  )}
                                 </div>
                               </div>
                             </CardContent>
