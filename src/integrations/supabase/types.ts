@@ -490,6 +490,78 @@ export type Database = {
         }
         Relationships: []
       }
+      checklist_stage_links: {
+        Row: {
+          board_id: string
+          checklist_template_id: string
+          created_at: string
+          display_order: number
+          id: string
+          stage_id: string
+        }
+        Insert: {
+          board_id: string
+          checklist_template_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          stage_id: string
+        }
+        Update: {
+          board_id?: string
+          checklist_template_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_stage_links_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_stage_links_checklist_template_id_fkey"
+            columns: ["checklist_template_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checklist_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_mandatory: boolean
+          items: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_mandatory?: boolean
+          items?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_mandatory?: boolean
+          items?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contact_classifications: {
         Row: {
           color: string
@@ -1680,6 +1752,70 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      lead_checklist_instances: {
+        Row: {
+          board_id: string
+          checklist_template_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          is_completed: boolean
+          is_readonly: boolean
+          items: Json
+          lead_id: string
+          stage_id: string
+          updated_at: string
+        }
+        Insert: {
+          board_id: string
+          checklist_template_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          is_readonly?: boolean
+          items?: Json
+          lead_id: string
+          stage_id: string
+          updated_at?: string
+        }
+        Update: {
+          board_id?: string
+          checklist_template_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_completed?: boolean
+          is_readonly?: boolean
+          items?: Json
+          lead_id?: string
+          stage_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_checklist_instances_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_checklist_instances_checklist_template_id_fkey"
+            columns: ["checklist_template_id"]
+            isOneToOne: false
+            referencedRelation: "checklist_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_checklist_instances_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_custom_field_values: {
         Row: {

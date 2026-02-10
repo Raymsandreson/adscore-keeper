@@ -35,6 +35,7 @@ import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
+import { useChecklists } from '@/hooks/useChecklists';
 import { useConversionAlerts } from '@/hooks/useConversionAlerts';
 import { KanbanBoardSelector } from '@/components/kanban/KanbanBoardSelector';
 import { DynamicKanbanBoard } from '@/components/kanban/DynamicKanbanBoard';
@@ -110,6 +111,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   // Stage history hook
   const { addHistoryEntry } = useLeadStageHistory();
+  const { createLeadInstances, markStageInstancesReadonly } = useChecklists();
 
   // Filter leads by selected board
   const boardLeads = useMemo(() => {
@@ -177,13 +179,11 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
 
   const handleMoveToStage = async (leadId: string, stageId: string) => {
     try {
-      // Find the current lead to get the old stage
       const currentLead = allLeads.find(l => l.id === leadId);
       const oldStage = currentLead?.status || null;
       
       await updateLead(leadId, { status: stageId as LeadStatus });
       
-      // Record history if stage actually changed
       if (oldStage !== stageId) {
         await addHistoryEntry(
           leadId,
@@ -192,6 +192,14 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           currentLead?.board_id,
           currentLead?.board_id
         );
+
+        // Mark old stage checklists as readonly and create new ones
+        if (currentLead?.board_id) {
+          if (oldStage) {
+            await markStageInstancesReadonly(leadId, currentLead.board_id, oldStage);
+          }
+          await createLeadInstances(leadId, currentLead.board_id, stageId);
+        }
       }
     } catch (error) {
       console.error('Error moving lead:', error);
@@ -213,7 +221,6 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         })
         .eq('id', leadId);
       
-      // Record history
       await addHistoryEntry(
         leadId,
         currentLead?.status || null,
@@ -221,6 +228,12 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         currentLead?.board_id || null,
         boardId
       );
+
+      // Mark old checklists readonly and create new ones
+      if (currentLead?.board_id && currentLead?.status) {
+        await markStageInstancesReadonly(leadId, currentLead.board_id, currentLead.status);
+      }
+      await createLeadInstances(leadId, boardId, newStage);
       
       toast.success('Lead movido para outro quadro');
       fetchLeads();
