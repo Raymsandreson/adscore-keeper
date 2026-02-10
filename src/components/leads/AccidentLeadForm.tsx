@@ -17,8 +17,8 @@ import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 export interface AccidentLeadFormData {
   // Basic info
   lead_name: string;
-  lead_phone: string;
-  lead_email: string;
+  lead_phone: string; // kept for backward compat but not shown in form
+  lead_email: string; // kept for backward compat but not shown in form
   source: string;
   notes: string;
   
@@ -198,25 +198,6 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
                 value={formData.lead_name}
                 onChange={(e) => updateField('lead_name', e.target.value)}
                 placeholder="Nome do lead"
-              />
-            </div>
-
-            <div>
-              <Label>Telefone</Label>
-              <Input
-                value={formData.lead_phone}
-                onChange={(e) => updateField('lead_phone', e.target.value)}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={formData.lead_email}
-                onChange={(e) => updateField('lead_email', e.target.value)}
-                placeholder="email@exemplo.com"
               />
             </div>
 
