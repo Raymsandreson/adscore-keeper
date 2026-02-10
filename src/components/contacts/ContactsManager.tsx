@@ -1396,7 +1396,7 @@ export const ContactsManager: React.FC = () => {
                   Mesclar Duplicados
                 </Button>
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-col gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
