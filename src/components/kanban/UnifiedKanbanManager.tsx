@@ -31,6 +31,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
@@ -53,6 +54,7 @@ interface UnifiedKanbanManagerProps {
 
 export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const teamProfiles = useProfilesList();
   const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -507,6 +509,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             formData={newLeadFormData}
             onChange={(data) => setNewLeadFormData(prev => ({ ...prev, ...data }))}
             onOpenExtractor={() => setShowExtractor(true)}
+            teamMembers={teamProfiles}
           />
 
           <DialogFooter>

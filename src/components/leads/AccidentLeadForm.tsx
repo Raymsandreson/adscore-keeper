@@ -55,6 +55,7 @@ interface AccidentLeadFormProps {
   formData: AccidentLeadFormData;
   onChange: (data: Partial<AccidentLeadFormData>) => void;
   onOpenExtractor: () => void;
+  teamMembers?: { id: string; full_name: string | null; email: string | null }[];
 }
 
 const brazilianStates = [
@@ -113,7 +114,7 @@ const sources = [
   { value: 'cat_import', label: 'CAT' },
 ];
 
-export function AccidentLeadForm({ formData, onChange, onOpenExtractor }: AccidentLeadFormProps) {
+export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [] }: AccidentLeadFormProps) {
   const updateField = (field: keyof AccidentLeadFormData, value: string) => {
     onChange({ [field]: value });
   };
@@ -202,11 +203,26 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor }: Accide
 
             <div>
               <Label>Acolhedor</Label>
-              <Input
-                value={formData.acolhedor}
-                onChange={(e) => updateField('acolhedor', e.target.value)}
-                placeholder="Nome do acolhedor"
-              />
+              {teamMembers.length > 0 ? (
+                <Select value={formData.acolhedor} onValueChange={(v) => updateField('acolhedor', v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o acolhedor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamMembers.map((m) => (
+                      <SelectItem key={m.id} value={m.full_name || m.email || m.id}>
+                        {m.full_name || m.email || 'Sem nome'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={formData.acolhedor}
+                  onChange={(e) => updateField('acolhedor', e.target.value)}
+                  placeholder="Nome do acolhedor"
+                />
+              )}
             </div>
 
             <div className="col-span-2">

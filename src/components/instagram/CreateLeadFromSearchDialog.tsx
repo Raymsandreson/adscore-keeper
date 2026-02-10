@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -255,6 +256,7 @@ export function CreateLeadFromSearchDialog({
     source: 'instagram',
   }));
   const [showExtractor, setShowExtractor] = useState(false);
+  const teamProfiles = useProfilesList();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset form when dialog opens with new data
@@ -387,6 +389,7 @@ export function CreateLeadFromSearchDialog({
             formData={formData}
             onChange={handleFormChange}
             onOpenExtractor={() => setShowExtractor(true)}
+            teamMembers={teamProfiles}
           />
 
           <DialogFooter>
