@@ -1426,7 +1426,38 @@ export const ContactsManager: React.FC = () => {
               </div>
             </div>
             
-            {/* Row 2: People & CRM filters */}
+            {/* Row 2: Date range - prominent */}
+            <div className="flex gap-2 items-center bg-muted/50 rounded-lg px-3 py-2 border border-border">
+              <Calendar className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-xs font-medium text-foreground whitespace-nowrap">Período:</span>
+              <Input
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+                className="w-[160px] h-9 text-sm bg-background"
+                placeholder="Data inicial"
+              />
+              <span className="text-muted-foreground text-xs font-medium">até</span>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="w-[160px] h-9 text-sm bg-background"
+                placeholder="Data final"
+              />
+              {(filterDateFrom || filterDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+
+            {/* Row 3: People & CRM filters */}
             <div className="flex flex-wrap gap-2 items-center">
               <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
                 <SelectTrigger className="w-[160px] h-8 text-xs">
@@ -1504,94 +1535,63 @@ export const ContactsManager: React.FC = () => {
               )}
             </div>
 
-            {/* Row 3: Date + Instagram status */}
-            <div className="flex flex-wrap gap-3 items-center justify-between">
-              <div className="flex gap-1.5 items-center">
-                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="w-[155px] h-8 text-xs"
-                  placeholder="De"
-                />
-                <span className="text-muted-foreground text-xs">até</span>
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="w-[155px] h-8 text-xs"
-                  placeholder="Até"
-                />
-                {(filterDateFrom || filterDateTo) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); }}
-                    className="h-7 w-7 p-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex gap-1.5 items-center">
+            {/* Row 4: Instagram status */}
+            <div className="flex gap-1.5 items-center">
+              <Button
+                variant={filterTag === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('all')}
+                className="h-7 text-xs"
+              >
+                <Users className="h-3 w-3 mr-1" />
+                Todos os status
+              </Button>
+              <Button
+                variant={filterTag === 'seguidor' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguidor')}
+                className="h-7 text-xs"
+              >
+                <UserPlus className="h-3 w-3 mr-1" />
+                Seguidores
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.seguidores}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'seguindo' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('seguindo')}
+                className="h-7 text-xs"
+              >
+                <UserMinus className="h-3 w-3 mr-1" />
+                Seguindo
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.seguindo}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterTag === 'mutual' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilterTag('mutual')}
+                className="h-7 text-xs"
+              >
+                <Users2 className="h-3 w-3 mr-1" />
+                Mútuos
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                  {tagStats.mutuos}
+                </Badge>
+              </Button>
+              {filterTag !== 'all' && (
                 <Button
-                  variant={filterTag === 'all' ? 'default' : 'outline'}
+                  variant="ghost"
                   size="sm"
                   onClick={() => setFilterTag('all')}
-                  className="h-7 text-xs"
+                  className="h-7 w-7 p-0"
                 >
-                  <Users className="h-3 w-3 mr-1" />
-                  Todos os status
+                  <X className="h-3 w-3" />
                 </Button>
-                <Button
-                  variant={filterTag === 'seguidor' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterTag('seguidor')}
-                  className="h-7 text-xs"
-                >
-                  <UserPlus className="h-3 w-3 mr-1" />
-                  Seguidores
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                    {tagStats.seguidores}
-                  </Badge>
-                </Button>
-                <Button
-                  variant={filterTag === 'seguindo' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterTag('seguindo')}
-                  className="h-7 text-xs"
-                >
-                  <UserMinus className="h-3 w-3 mr-1" />
-                  Seguindo
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                    {tagStats.seguindo}
-                  </Badge>
-                </Button>
-                <Button
-                  variant={filterTag === 'mutual' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilterTag('mutual')}
-                  className="h-7 text-xs"
-                >
-                  <Users2 className="h-3 w-3 mr-1" />
-                  Mútuos
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                    {tagStats.mutuos}
-                  </Badge>
-                </Button>
-                {filterTag !== 'all' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setFilterTag('all')}
-                    className="h-7 w-7 p-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </CardContent>
