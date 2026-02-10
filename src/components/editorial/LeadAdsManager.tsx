@@ -112,6 +112,9 @@ export function LeadAdsManager() {
   const [leadResultsImport, setLeadResultsImport] = useState<any[]>([]);
   const [isSearchingLeadsImport, setIsSearchingLeadsImport] = useState(false);
   const [importingIds, setImportingIds] = useState<Set<string>>(new Set());
+  
+  // Lead linking flow (from "Sem Anúncio" tab)
+  const [linkingLeadId, setLinkingLeadId] = useState<string | null>(null);
 
   const dummyPost: Post = {
     id: selectedLeadForAd?.id || "lead-ad",
@@ -588,6 +591,57 @@ export function LeadAdsManager() {
         </TabsContent>
 
         <TabsContent value="pending" className="mt-4">
+          {linkingLeadId ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">
+                  Vincular campanha a: {leads.find(l => l.id === linkingLeadId)?.lead_name || leads.find(l => l.id === linkingLeadId)?.victim_name || "Lead"}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">Selecione uma campanha da Meta para vincular</p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {isLoadingMeta ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-16 w-full" />
+                  </div>
+                ) : metaCampaigns.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Nenhuma campanha encontrada. Conecte sua conta Meta primeiro.
+                  </p>
+                ) : (
+                  metaCampaigns.filter(c => !importedCampaignIds.has(c.campaign_id)).map((c) => (
+                    <div key={c.campaign_id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{c.campaign_name}</p>
+                        <div className="flex flex-wrap gap-3 mt-1 text-xs text-muted-foreground">
+                          {getStatusBadge(c.status)}
+                          <span>R$ {c.spend.toFixed(2)}</span>
+                          <span>{c.reach.toLocaleString("pt-BR")} alcance</span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="gap-1 shrink-0"
+                        disabled={importingIds.has(c.campaign_id)}
+                        onClick={() => importCampaignToLead(c, linkingLeadId)}
+                      >
+                        {importingIds.has(c.campaign_id) ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Link2 className="h-3 w-3" />
+                        )}
+                        Vincular
+                      </Button>
+                    </div>
+                  ))
+                )}
+                <Button variant="outline" size="sm" onClick={() => setLinkingLeadId(null)} className="mt-2">
+                  Voltar à lista
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -606,14 +660,13 @@ export function LeadAdsManager() {
                     <TableHead>Localização</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Origem</TableHead>
-                    <TableHead>Criado em</TableHead>
                     <TableHead className="text-right">Ação</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filterLeads(leadsWithoutAds).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                         {search ? "Nenhum lead encontrado" : "Todos os leads têm anúncios! 🎉"}
                       </TableCell>
                     </TableRow>
@@ -637,24 +690,29 @@ export function LeadAdsManager() {
                         <TableCell>
                           <span className="text-sm text-muted-foreground">{lead.source || "-"}</span>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(lead.created_at).toLocaleDateString("pt-BR")}
-                          </span>
-                        </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1"
-                            onClick={() => {
-                              setSelectedLeadForAd(lead);
-                              setAdDialogOpen(true);
-                            }}
-                          >
-                            <Plus className="h-3 w-3" />
-                            Criar Anúncio
-                          </Button>
+                          <div className="flex items-center gap-1 justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              onClick={() => setLinkingLeadId(lead.id)}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              Vincular
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="gap-1"
+                              onClick={() => {
+                                setSelectedLeadForAd(lead);
+                                setAdDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3" />
+                              Criar Novo
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -663,6 +721,7 @@ export function LeadAdsManager() {
               </Table>
             </CardContent>
           </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="active" className="mt-4">
