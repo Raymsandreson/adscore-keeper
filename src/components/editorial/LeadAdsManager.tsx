@@ -179,22 +179,70 @@ export function LeadAdsManager() {
 
     setIsLoadingMeta(true);
     try {
-      console.log('Fetching Meta ads with adAccountId:', adAccountId);
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-meta-ads`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ accessToken, adAccountId }),
-      });
-      const data = await res.json();
-      console.log('Meta ads response:', data);
-      if (!res.ok) throw new Error(data.error || data.msg || 'Erro ao buscar anúncios');
-      setMetaCampaigns(data.campaigns || []);
+      const fields = 'name,status,objective,daily_budget,lifetime_budget,start_time,stop_time';
+      const insightFields = 'impressions,reach,clicks,spend,cpm,cpc,ctr,actions,cost_per_action_type';
+      
+      // Fetch campaigns directly from Graph API (same approach as Dashboard)
+      const campaignUrl = `https://graph.facebook.com/v21.0/${adAccountId}/campaigns?fields=${fields}&limit=50&access_token=${accessToken}`;
+      const campaignRes = await fetch(campaignUrl);
+      const campaignData = await campaignRes.json();
+      
+      if (campaignData.error) {
+        throw new Error(campaignData.error.message || 'Erro ao buscar campanhas');
+      }
+
+      const rawCampaigns = campaignData.data || [];
+      
+      // Fetch insights for each campaign
+      const campaignsWithInsights = await Promise.all(
+        rawCampaigns.map(async (campaign: any) => {
+          try {
+            const insightUrl = `https://graph.facebook.com/v21.0/${campaign.id}/insights?fields=${insightFields}&date_preset=maximum&access_token=${accessToken}`;
+            const insightRes = await fetch(insightUrl);
+            const insightData = await insightRes.json();
+            const insights = insightData.data?.[0] || {};
+            const actions = insights.actions || [];
+            const followAction = actions.find((a: any) => a.action_type === 'page_engagement' || a.action_type === 'like');
+            const commentAction = actions.find((a: any) => a.action_type === 'comment');
+            const likeAction = actions.find((a: any) => a.action_type === 'post_reaction' || a.action_type === 'like');
+
+            return {
+              campaign_id: campaign.id,
+              campaign_name: campaign.name,
+              status: campaign.status?.toLowerCase() || 'unknown',
+              objective: campaign.objective,
+              daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
+              lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
+              impressions: Number(insights.impressions || 0),
+              reach: Number(insights.reach || 0),
+              clicks: Number(insights.clicks || 0),
+              spend: Number(insights.spend || 0),
+              cpm: Number(insights.cpm || 0),
+              cpc: Number(insights.cpc || 0),
+              ctr: Number(insights.ctr || 0),
+              followers_gained: Number(followAction?.value || 0),
+              comments_count: Number(commentAction?.value || 0),
+              likes_count: Number(likeAction?.value || 0),
+            };
+          } catch {
+            return {
+              campaign_id: campaign.id,
+              campaign_name: campaign.name,
+              status: campaign.status?.toLowerCase() || 'unknown',
+              objective: campaign.objective,
+              daily_budget: campaign.daily_budget ? Number(campaign.daily_budget) / 100 : null,
+              lifetime_budget: campaign.lifetime_budget ? Number(campaign.lifetime_budget) / 100 : null,
+              impressions: 0, reach: 0, clicks: 0, spend: 0,
+              cpm: 0, cpc: 0, ctr: 0,
+              followers_gained: 0, comments_count: 0, likes_count: 0,
+            };
+          }
+        })
+      );
+
+      setMetaCampaigns(campaignsWithInsights);
       setImportDialogOpen(true);
-      toast.success(`${(data.campaigns || []).length} campanhas encontradas!`);
+      toast.success(`${campaignsWithInsights.length} campanhas encontradas!`);
     } catch (err) {
       console.error('Meta ads fetch error:', err);
       toast.error(err instanceof Error ? err.message : 'Erro ao buscar anúncios da Meta');
