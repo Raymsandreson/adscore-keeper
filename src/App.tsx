@@ -19,6 +19,7 @@ import TeamPage from "./pages/TeamPage";
 import WorkflowPage from "./pages/WorkflowPage";
 import ProfilePage from "./pages/ProfilePage";
 import FinancePage from "./pages/FinancePage";
+import ExpenseFormPage from "./pages/ExpenseFormPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ function AppRoutes() {
         <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
+        <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
