@@ -58,24 +58,35 @@ function parseDate(value: any): string | null {
   
   // Handle Excel serial date numbers
   if (typeof value === 'number') {
-    const excelEpoch = new Date(1899, 11, 30);
-    const date = new Date(excelEpoch.getTime() + value * 86400000);
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+    // Excel serial date number (days since 1899-12-30)
+    if (value > 1) {
+      const excelEpoch = new Date(1899, 11, 30);
+      const date = new Date(excelEpoch.getTime() + value * 86400000);
+      if (!isNaN(date.getTime()) && date.getFullYear() > 1900) return date.toISOString().split('T')[0];
+    }
     return null;
   }
   
   const str = String(value).trim();
+  if (!str || str === '0') return null;
+
   // Try DD/MM/YYYY or DD/MM/YY (Brazilian format)
-  const parts = str.split('/');
-  if (parts.length === 3) {
-    const [d, m, y] = parts;
+  const brParts = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (brParts) {
+    const [, d, m, y] = brParts;
     const year = y.length === 2 ? (parseInt(y) > 50 ? `19${y}` : `20${y}`) : y;
-    const date = new Date(`${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+    const isoStr = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T12:00:00`;
+    const date = new Date(isoStr);
+    if (!isNaN(date.getTime()) && date.getFullYear() > 1900) return date.toISOString().split('T')[0];
   }
-  // Try native parse
-  const d = new Date(value);
-  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+
+  // Try YYYY-MM-DD format
+  const isoParts = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoParts) {
+    const date = new Date(`${str}T12:00:00`);
+    if (!isNaN(date.getTime()) && date.getFullYear() > 1900) return date.toISOString().split('T')[0];
+  }
+
   return null;
 }
 
