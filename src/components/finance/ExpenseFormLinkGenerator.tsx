@@ -106,11 +106,6 @@ export function ExpenseFormLinkGenerator({ knownCards, transactions = [] }: Expe
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shareWhatsApp = () => {
-    if (!generatedLink) return;
-    const text = `Olá! Por favor, preencha a justificativa dos seus gastos do cartão ****${selectedCard}:\n\n${generatedLink}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-  };
 
   const resetForm = () => {
     setGeneratedLink(null);
@@ -246,13 +241,9 @@ export function ExpenseFormLinkGenerator({ knownCards, transactions = [] }: Expe
               <p className="text-sm font-mono break-all">{generatedLink}</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={copyLink}>
+              <Button className="flex-1" onClick={copyLink}>
                 {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                {copied ? 'Copiado!' : 'Copiar'}
-              </Button>
-              <Button className="flex-1" onClick={shareWhatsApp}>
-                <MessageCircle className="h-4 w-4 mr-2" />
-                WhatsApp
+                {copied ? 'Copiado!' : 'Copiar Link'}
               </Button>
             </div>
             <Button variant="ghost" size="sm" className="w-full" onClick={resetForm}>
