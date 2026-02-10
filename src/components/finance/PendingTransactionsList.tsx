@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   CreditCard, 
   MapPin,
@@ -18,8 +19,12 @@ import {
   User,
   Users,
   Clock,
-  Building2
+  Building2,
+  Link2,
+  MessageCircle
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -74,6 +79,7 @@ export function PendingTransactionsList({
   contacts,
   onComplete 
 }: PendingTransactionsListProps) {
+  const { user } = useAuth();
   const { 
     categories, 
     overrides,
@@ -87,6 +93,8 @@ export function PendingTransactionsList({
   
   const NONE_SELECTED = 'NONE';
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [generatingLink, setGeneratingLink] = useState(false);
   const [editData, setEditData] = useState<{
     categoryId: string | null;
     linkType: 'lead' | 'contact';
@@ -103,6 +111,62 @@ export function PendingTransactionsList({
     manualCity: ''
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === transactions.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(transactions.map(t => t.id)));
+    }
+  };
+
+  const generateLinkForSelected = async () => {
+    if (selectedIds.size === 0 || !user) return;
+    setGeneratingLink(true);
+    try {
+      const selectedTxs = transactions.filter(t => selectedIds.has(t.id));
+      const card = selectedTxs[0]?.card_last_digits;
+      if (!card) throw new Error('Cartão não identificado');
+
+      const dates = selectedTxs.map(t => t.transaction_date).sort();
+      const insertData: any = {
+        card_last_digits: card,
+        date_from: dates[0],
+        date_to: dates[dates.length - 1],
+        created_by: user.id,
+        transaction_ids: selectedTxs.map(t => t.pluggy_transaction_id),
+      };
+
+      const { data, error } = await supabase
+        .from('expense_form_tokens')
+        .insert(insertData)
+        .select('token')
+        .single();
+
+      if (error) throw error;
+
+      const link = `${window.location.origin}/expense-form/${data.token}`;
+      const text = `Olá! Por favor, preencha a justificativa dos seus gastos do cartão ****${card}:\n\n${link}`;
+      
+      await navigator.clipboard.writeText(link);
+      toast.success('Link copiado! Abrindo WhatsApp...');
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      setSelectedIds(new Set());
+    } catch (err: any) {
+      toast.error('Erro ao gerar link: ' + err.message);
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -213,9 +277,44 @@ export function PendingTransactionsList({
   );
 
   return (
-    <ScrollArea className="h-[calc(100vh-350px)]">
-      <div className="space-y-2 pr-4">
-        {transactions.map((transaction) => {
+    <div className="flex flex-col">
+      {/* Batch action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-2 mb-3 p-2 bg-muted rounded-lg">
+          <Badge variant="secondary">{selectedIds.size} selecionada(s)</Badge>
+          <Button 
+            size="sm" 
+            className="gap-1.5" 
+            onClick={generateLinkForSelected}
+            disabled={generatingLink}
+          >
+            <Link2 className="h-3.5 w-3.5" />
+            Gerar Link
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="gap-1.5" 
+            onClick={() => setSelectedIds(new Set())}
+          >
+            <X className="h-3.5 w-3.5" />
+            Limpar
+          </Button>
+        </div>
+      )}
+      
+      {/* Select all */}
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <Checkbox
+          checked={selectedIds.size === transactions.length && transactions.length > 0}
+          onCheckedChange={toggleSelectAll}
+        />
+        <span className="text-xs text-muted-foreground">Selecionar todas</span>
+      </div>
+
+      <ScrollArea className="h-[calc(100vh-400px)]">
+        <div className="space-y-2 pr-4">
+          {transactions.map((transaction) => {
           const isEditing = editingId === transaction.id;
           const isExpanded = expandedId === transaction.id || isEditing;
           const override = getTransactionOverride(transaction.id);
@@ -249,6 +348,14 @@ export function PendingTransactionsList({
                 className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/50"
                 onClick={() => !isEditing && setExpandedId(isExpanded ? null : transaction.id)}
               >
+                {/* Checkbox */}
+                <Checkbox
+                  checked={selectedIds.has(transaction.id)}
+                  onCheckedChange={() => toggleSelect(transaction.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0"
+                />
+                
                 {/* Expand Icon */}
                 <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -546,5 +653,6 @@ export function PendingTransactionsList({
         })}
       </div>
     </ScrollArea>
+    </div>
   );
 }
