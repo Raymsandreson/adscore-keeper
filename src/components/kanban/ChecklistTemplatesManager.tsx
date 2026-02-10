@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,8 +22,10 @@ import {
   GripVertical,
   X,
   ListChecks,
+  Layers,
 } from 'lucide-react';
-import { useChecklists, ChecklistTemplate, ChecklistItem } from '@/hooks/useChecklists';
+import { useChecklists, ChecklistTemplate, ChecklistItem, ChecklistStageLink } from '@/hooks/useChecklists';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface ChecklistTemplatesManagerProps {
   open: boolean;
@@ -36,7 +39,12 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
     createTemplate,
     updateTemplate,
     deleteTemplate,
+    fetchStageLinks,
+    linkChecklistToStage,
+    unlinkChecklistFromStage,
   } = useChecklists();
+
+  const { boards, fetchBoards } = useKanbanBoards();
 
   const [editingTemplate, setEditingTemplate] = useState<ChecklistTemplate | null>(null);
   const [formName, setFormName] = useState('');
@@ -45,9 +53,15 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
   const [formItems, setFormItems] = useState<ChecklistItem[]>([]);
   const [newItemLabel, setNewItemLabel] = useState('');
   const [showForm, setShowForm] = useState(false);
+  // Stage linking state: Set of "boardId::stageId" strings
+  const [linkedStages, setLinkedStages] = useState<Set<string>>(new Set());
+  const [existingLinks, setExistingLinks] = useState<ChecklistStageLink[]>([]);
 
   useEffect(() => {
-    if (open) fetchTemplates();
+    if (open) {
+      fetchTemplates();
+      fetchBoards();
+    }
   }, [open, fetchTemplates]);
 
   const resetForm = () => {
@@ -58,17 +72,31 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
     setNewItemLabel('');
     setEditingTemplate(null);
     setShowForm(false);
+    setLinkedStages(new Set());
+    setExistingLinks([]);
   };
 
-  const handleEdit = (template: ChecklistTemplate) => {
+  const loadLinksForTemplate = async (templateId: string) => {
+    // Load all stage links for all boards for this template
+    const allLinks: ChecklistStageLink[] = [];
+    for (const board of boards) {
+      const boardLinks = await fetchStageLinks(board.id);
+      const filtered = boardLinks.filter(l => l.checklist_template_id === templateId);
+      allLinks.push(...filtered);
+    }
+    setExistingLinks(allLinks);
+    setLinkedStages(new Set(allLinks.map(l => `${l.board_id}::${l.stage_id}`)));
+  };
+
+  const handleEdit = async (template: ChecklistTemplate) => {
     setEditingTemplate(template);
     setFormName(template.name);
     setFormDescription(template.description || '');
     setFormMandatory(template.is_mandatory);
     setFormItems([...template.items]);
     setShowForm(true);
+    await loadLinksForTemplate(template.id);
   };
-
   const handleNew = () => {
     resetForm();
     setShowForm(true);
@@ -87,6 +115,16 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
     setFormItems(formItems.filter(i => i.id !== id));
   };
 
+  const toggleStageLink = (boardId: string, stageId: string) => {
+    const key = `${boardId}::${stageId}`;
+    setLinkedStages(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     if (!formName.trim() || formItems.length === 0) return;
 
@@ -97,11 +135,35 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
       items: formItems,
     };
 
+    let templateId: string;
     if (editingTemplate) {
       await updateTemplate(editingTemplate.id, data);
+      templateId = editingTemplate.id;
     } else {
-      await createTemplate(data);
+      const created = await createTemplate(data);
+      templateId = created?.id;
+      if (!templateId) { resetForm(); return; }
     }
+
+    // Sync stage links
+    const currentKeys = new Set(existingLinks.map(l => `${l.board_id}::${l.stage_id}`));
+
+    // Remove unchecked links
+    for (const link of existingLinks) {
+      const key = `${link.board_id}::${link.stage_id}`;
+      if (!linkedStages.has(key)) {
+        await unlinkChecklistFromStage(link.id);
+      }
+    }
+
+    // Add new links
+    for (const key of linkedStages) {
+      if (!currentKeys.has(key)) {
+        const [boardId, stageId] = key.split('::');
+        await linkChecklistToStage(templateId, boardId, stageId);
+      }
+    }
+
     resetForm();
   };
 
@@ -181,6 +243,38 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
                 </Button>
               </div>
             </div>
+
+            {/* Stage linking section */}
+            {boards.length > 0 && (
+              <div>
+                <Label className="flex items-center gap-2">
+                  <Layers className="h-4 w-4" />
+                  Vincular às etapas do funil
+                </Label>
+                <ScrollArea className="max-h-[180px] border rounded-md p-2 mt-1">
+                  {boards.map(board => (
+                    <div key={board.id} className="mb-2 last:mb-0">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">{board.name}</p>
+                      <div className="space-y-1 pl-1">
+                        {board.stages.map(stage => {
+                          const key = `${board.id}::${stage.id}`;
+                          return (
+                            <label key={stage.id} className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 rounded px-1 py-0.5">
+                              <Checkbox
+                                checked={linkedStages.has(key)}
+                                onCheckedChange={() => toggleStageLink(board.id, stage.id)}
+                              />
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                              <span className="text-sm">{stage.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </ScrollArea>
+              </div>
+            )}
 
             <DialogFooter>
               <Button variant="outline" onClick={resetForm}>Cancelar</Button>
