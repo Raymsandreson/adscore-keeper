@@ -18,9 +18,12 @@ import {
   UserCheck,
   CheckCircle2,
   Building2,
-  Map
+  Map,
+  LocateFixed,
+  Loader2
 } from 'lucide-react';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { cn } from '@/lib/utils';
 
@@ -51,6 +54,18 @@ export function PostDmContactRegistration({
 
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { classifications } = useContactClassifications();
+  const { loading: geoLoading, fetchLocation } = useGeolocation();
+
+  const handleAutoLocation = async () => {
+    const loc = await fetchLocation();
+    if (loc) {
+      setFormData(prev => ({ ...prev, state: loc.state, city: loc.city }));
+      fetchCities(loc.state);
+      toast.success(`Localização detectada: ${loc.city}/${loc.state}`);
+    } else {
+      toast.error('Não foi possível detectar a localização');
+    }
+  };
 
   // Check if contact exists
   useEffect(() => {
@@ -264,7 +279,18 @@ export function PostDmContactRegistration({
             />
           </div>
 
-          {/* Location - State and City */}
+          {/* Location - Auto detect + State and City */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAutoLocation}
+            disabled={geoLoading}
+            className="w-full gap-2 border-dashed"
+          >
+            {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+            {geoLoading ? 'Detectando...' : 'Usar minha localização atual'}
+          </Button>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>
