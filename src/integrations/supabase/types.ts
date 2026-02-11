@@ -2884,6 +2884,66 @@ export type Database = {
         }
         Relationships: []
       }
+      weekly_evaluations: {
+        Row: {
+          comments: string | null
+          communication_score: number | null
+          created_at: string
+          evaluated_id: string
+          evaluator_id: string
+          id: string
+          improvements: string | null
+          is_self_evaluation: boolean
+          overall_score: number | null
+          proactivity_score: number | null
+          punctuality_score: number | null
+          quality_score: number | null
+          strengths: string | null
+          teamwork_score: number | null
+          updated_at: string
+          week_end: string
+          week_start: string
+        }
+        Insert: {
+          comments?: string | null
+          communication_score?: number | null
+          created_at?: string
+          evaluated_id: string
+          evaluator_id: string
+          id?: string
+          improvements?: string | null
+          is_self_evaluation?: boolean
+          overall_score?: number | null
+          proactivity_score?: number | null
+          punctuality_score?: number | null
+          quality_score?: number | null
+          strengths?: string | null
+          teamwork_score?: number | null
+          updated_at?: string
+          week_end: string
+          week_start: string
+        }
+        Update: {
+          comments?: string | null
+          communication_score?: number | null
+          created_at?: string
+          evaluated_id?: string
+          evaluator_id?: string
+          id?: string
+          improvements?: string | null
+          is_self_evaluation?: boolean
+          overall_score?: number | null
+          proactivity_score?: number | null
+          punctuality_score?: number | null
+          quality_score?: number | null
+          strengths?: string | null
+          teamwork_score?: number | null
+          updated_at?: string
+          week_end?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
       workflow_daily_goals: {
         Row: {
           created_at: string
