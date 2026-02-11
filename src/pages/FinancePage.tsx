@@ -62,6 +62,9 @@ import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelec
 import { CostAccountsManager } from "@/components/finance/CostAccountsManager";
 import { translateCategory } from "@/utils/categoryTranslations";
 import { ExpenseFormLinkGenerator } from "@/components/finance/ExpenseFormLinkGenerator";
+import { BankTransactionsView } from "@/components/finance/BankTransactionsView";
+import { InvestmentsView } from "@/components/finance/InvestmentsView";
+import { LoansView } from "@/components/finance/LoansView";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -125,6 +128,7 @@ export default function FinancePage() {
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
   const [activeTab, setActiveTab] = useState("workflow");
+  const [financialSection, setFinancialSection] = useState("credit-card");
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
@@ -827,7 +831,44 @@ export default function FinancePage() {
         {/* Main Content - Show when has connections AND permissions */}
         {connections.length > 0 && allowedCards.length > 0 && (
           <>
-            {/* Unified Global Filters - Inter Style */}
+            {/* Financial Section Tabs */}
+            <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
+              <TabsList className="grid w-full grid-cols-4 h-11">
+                <TabsTrigger value="credit-card" className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline">Cartão de Crédito</span>
+                  <span className="sm:hidden">Cartão</span>
+                </TabsTrigger>
+                <TabsTrigger value="bank" className="flex items-center gap-2">
+                  <Wallet className="h-4 w-4" />
+                  <span className="hidden sm:inline">Conta Corrente</span>
+                  <span className="sm:hidden">Conta</span>
+                </TabsTrigger>
+                <TabsTrigger value="investments" className="flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4" />
+                  <span className="hidden sm:inline">Investimentos</span>
+                  <span className="sm:hidden">Invest.</span>
+                </TabsTrigger>
+                <TabsTrigger value="loans" className="flex items-center gap-2">
+                  <Landmark className="h-4 w-4" />
+                  <span className="hidden sm:inline">Empréstimos</span>
+                  <span className="sm:hidden">Emprest.</span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="bank" className="mt-4">
+                <BankTransactionsView startDate={startDate} endDate={endDate} />
+              </TabsContent>
+
+              <TabsContent value="investments" className="mt-4">
+                <InvestmentsView />
+              </TabsContent>
+
+              <TabsContent value="loans" className="mt-4">
+                <LoansView />
+              </TabsContent>
+
+              <TabsContent value="credit-card" className="mt-4 space-y-4">
             <Card className="border-0 shadow-card">
               <CardContent className="py-4 space-y-4">
                 {/* Row 1: Period Selector + Date Range */}
@@ -1343,6 +1384,8 @@ export default function FinancePage() {
                 
                 {/* Cost Accounts Manager */}
                 <CostAccountsManager />
+              </TabsContent>
+            </Tabs>
               </TabsContent>
             </Tabs>
           </>

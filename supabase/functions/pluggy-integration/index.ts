@@ -317,38 +317,30 @@ serve(async (req) => {
 
         for (const connection of connections) {
           const accounts = await getAccounts(apiKey, connection.pluggy_item_id);
+          
+          // === CREDIT CARD TRANSACTIONS ===
           const creditAccounts = accounts.filter(a => a.type === 'CREDIT');
-
           for (const account of creditAccounts) {
             const transactions = await getTransactions(apiKey, account.id, from, to);
-            
-            console.log(`Account ${account.id}: ${transactions.length} transactions to process`);
+            console.log(`Credit Account ${account.id}: ${transactions.length} transactions to process`);
 
-            // Process transactions in batches to avoid CPU timeout
             for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
               const batch = transactions.slice(i, i + BATCH_SIZE);
-              
               const formattedBatch = batch.map(t => {
                 const city = t.merchant?.city || null;
                 const state = t.merchant?.state || null;
                 const cnpj = t.merchant?.cnpj || null;
-                
                 const installmentNumber = t.creditCardMetadata?.installmentNumber || null;
                 const totalInstallments = t.creditCardMetadata?.totalInstallments || null;
                 const originalPurchaseDate = t.creditCardMetadata?.purchaseDate 
                   ? t.creditCardMetadata.purchaseDate.split('T')[0] 
                   : null;
-                
-                // Extract time from ISO date string (e.g., "2025-01-15T14:30:00.000Z" -> "14:30:00")
                 let transactionTime = null;
                 if (t.date && t.date.includes('T')) {
                   const timePart = t.date.split('T')[1];
-                  if (timePart) {
-                    transactionTime = timePart.split('.')[0]; // Remove milliseconds and timezone
-                  }
+                  if (timePart) transactionTime = timePart.split('.')[0];
                 }
-                
-              return {
+                return {
                   user_id: user.id,
                   pluggy_account_id: account.id,
                   pluggy_transaction_id: t.id,
@@ -376,12 +368,105 @@ serve(async (req) => {
                 .upsert(formattedBatch, { onConflict: 'pluggy_transaction_id' });
 
               if (upsertError) {
-                console.error(`Error upserting batch ${i / BATCH_SIZE + 1}:`, upsertError);
-              } else {
-                console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: saved ${formattedBatch.length} transactions`);
+                console.error(`Error upserting credit batch:`, upsertError);
               }
-
               totalCount += formattedBatch.length;
+            }
+          }
+
+          // === BANK (CHECKING) ACCOUNT TRANSACTIONS ===
+          const bankAccounts = accounts.filter(a => a.type === 'BANK');
+          for (const account of bankAccounts) {
+            const transactions = await getTransactions(apiKey, account.id, from, to);
+            console.log(`Bank Account ${account.id}: ${transactions.length} transactions to process`);
+
+            for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+              const batch = transactions.slice(i, i + BATCH_SIZE);
+              const formattedBatch = batch.map(t => {
+                let transactionTime = null;
+                if (t.date && t.date.includes('T')) {
+                  const timePart = t.date.split('T')[1];
+                  if (timePart) transactionTime = timePart.split('.')[0];
+                }
+                return {
+                  user_id: user.id,
+                  pluggy_account_id: account.id,
+                  pluggy_transaction_id: t.id,
+                  pluggy_item_id: connection.pluggy_item_id,
+                  description: t.description,
+                  amount: t.amount,
+                  currency_code: 'BRL',
+                  transaction_date: t.date.split('T')[0],
+                  transaction_time: transactionTime,
+                  category: t.category || null,
+                  transaction_type: t.amount >= 0 ? 'CREDIT' : 'DEBIT',
+                  payment_data: t.paymentData || {},
+                  merchant_name: t.merchant?.name || null,
+                  merchant_cnpj: t.merchant?.cnpj || null,
+                  merchant_city: t.merchant?.city || null,
+                  merchant_state: t.merchant?.state || null,
+                };
+              });
+
+              const { error: upsertError } = await supabase
+                .from('bank_transactions')
+                .upsert(formattedBatch, { onConflict: 'pluggy_transaction_id' });
+
+              if (upsertError) {
+                console.error(`Error upserting bank batch:`, upsertError);
+              }
+              totalCount += formattedBatch.length;
+            }
+          }
+
+          // === INVESTMENT ACCOUNTS ===
+          const investmentAccounts = accounts.filter(a => a.type === 'INVESTMENT');
+          for (const account of investmentAccounts) {
+            const investData = {
+              user_id: user.id,
+              pluggy_account_id: account.id,
+              pluggy_item_id: connection.pluggy_item_id,
+              name: account.name,
+              type: (account as any).subtype || 'Investimento',
+              balance: account.balance,
+              currency_code: 'BRL',
+              status: 'active',
+              last_updated_at: new Date().toISOString(),
+            };
+
+            const { error: investError } = await supabase
+              .from('investments')
+              .upsert(investData, { onConflict: 'pluggy_account_id,user_id' });
+
+            if (investError) {
+              console.error(`Error upserting investment:`, investError);
+            } else {
+              totalCount++;
+            }
+          }
+
+          // === LOAN ACCOUNTS ===
+          const loanAccounts = accounts.filter(a => a.type === 'LOAN');
+          for (const account of loanAccounts) {
+            const loanData = {
+              user_id: user.id,
+              pluggy_account_id: account.id,
+              pluggy_item_id: connection.pluggy_item_id,
+              name: account.name,
+              loan_type: (account as any).subtype || 'Empréstimo',
+              outstanding_balance: account.balance,
+              currency_code: 'BRL',
+              status: 'active',
+            };
+
+            const { error: loanError } = await supabase
+              .from('loans')
+              .upsert(loanData, { onConflict: 'pluggy_account_id,user_id' });
+
+            if (loanError) {
+              console.error(`Error upserting loan:`, loanError);
+            } else {
+              totalCount++;
             }
           }
 
