@@ -211,7 +211,7 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
   const current = classifications.find(c => c.name === value) || { 
     name: 'none', 
     color: 'bg-slate-400', 
-    label: 'Sem classificação',
+    label: 'Sem status',
     isSystem: false 
   };
 
@@ -241,7 +241,7 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel>Classificação</DropdownMenuLabel>
+        <DropdownMenuLabel>Status</DropdownMenuLabel>
         <DropdownMenuSeparator />
         
         {/* None option */}
@@ -251,7 +251,7 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
         >
           <Badge className="bg-slate-400 text-white text-xs mr-2">
             <X className="h-3 w-3" />
-            <span className="ml-1">Sem classificação</span>
+            <span className="ml-1">Sem status</span>
           </Badge>
         </DropdownMenuItem>
         
@@ -279,7 +279,7 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nome da classificação"
+              placeholder="Nome do status"
               className="h-8 text-sm"
               autoFocus
               onKeyDown={(e) => {
@@ -310,7 +310,7 @@ const InlineClassificationSelect: React.FC<InlineClassificationSelectProps> = ({
         ) : (
           <DropdownMenuItem onClick={() => setIsAddingNew(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Nova classificação...
+            Novo status...
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -325,7 +325,7 @@ const classificationConfig: Record<NonNullable<ContactClassification> | 'none', 
   prospect: { label: 'Prospect', color: 'bg-blue-500', icon: <UserPlus className="h-3 w-3" /> },
   partner: { label: 'Parceiro', color: 'bg-purple-500', icon: <Handshake className="h-3 w-3" /> },
   supplier: { label: 'Fornecedor', color: 'bg-orange-500', icon: <Package className="h-3 w-3" /> },
-  none: { label: 'Sem classificação', color: 'bg-slate-400', icon: <X className="h-3 w-3" /> },
+  none: { label: 'Sem status', color: 'bg-slate-400', icon: <X className="h-3 w-3" /> },
 };
 
 const followerStatusConfig: Record<FollowerStatus, { label: string; color: string; icon: React.ReactNode }> = {
@@ -861,7 +861,7 @@ export const ContactsManager: React.FC = () => {
     if (errors > 0) {
       toast.warning(`${updated} atualizados, ${errors} erros`);
     } else {
-      const label = newClassification === null ? 'Sem classificação' : classificationConfig[newClassification].label;
+      const label = newClassification === null ? 'Sem status' : classificationConfig[newClassification].label;
       toast.success(`${updated} contatos classificados como ${label}!`);
     }
   };
@@ -1342,7 +1342,7 @@ export const ContactsManager: React.FC = () => {
                       </div>
                     </div>
                     <div>
-                      <Label>Classificação</Label>
+                      <Label>Status</Label>
                       <Select 
                         value={newContact.classification} 
                         onValueChange={(v) => setNewContact({ ...newContact, classification: v as ContactClassification })}
@@ -1461,7 +1461,7 @@ export const ContactsManager: React.FC = () => {
             <div className="flex flex-wrap gap-2 items-center">
               <Select value={filterClassification} onValueChange={(v) => setFilterClassification(v as any)}>
                 <SelectTrigger className="w-[160px] h-8 text-xs">
-                  <SelectValue placeholder="Classificação" />
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas classificações</SelectItem>
@@ -1663,7 +1663,7 @@ export const ContactsManager: React.FC = () => {
                     checked={visibility.classification}
                     onCheckedChange={() => toggleColumn('classification')}
                   >
-                    Classificação
+                    Status
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuCheckboxItem
                     checked={visibility.profession}
@@ -1804,7 +1804,7 @@ export const ContactsManager: React.FC = () => {
                   {(visibility.phone || visibility.email) && <TableHead>Contato</TableHead>}
                   {(visibility.instagram || visibility.followerStatus) && <TableHead>Instagram</TableHead>}
                   {(visibility.city || visibility.state) && <TableHead>Localização</TableHead>}
-                  {visibility.classification && <TableHead>Classificação</TableHead>}
+                  {visibility.classification && <TableHead>Status</TableHead>}
                   {visibility.profession && <TableHead>Profissão</TableHead>}
                   {visibility.status && <TableHead>Status</TableHead>}
                   {visibility.leads && (
@@ -2420,7 +2420,7 @@ export const ContactsManager: React.FC = () => {
                 </div>
               </div>
               <div>
-                <Label>Classificação</Label>
+                <Label>Status</Label>
                 <Select 
                   value={editingContact.classification} 
                   onValueChange={(v) => setEditingContact({ ...editingContact, classification: v as ContactClassification })}
@@ -2477,7 +2477,7 @@ export const ContactsManager: React.FC = () => {
                     <TableHead>Telefone</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Instagram</TableHead>
-                    <TableHead>Classificação</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2567,7 +2567,7 @@ export const ContactsManager: React.FC = () => {
             </div>
 
             <div>
-              <Label>Classificação inicial</Label>
+              <Label>Status inicial</Label>
               <Select value={metaImportClassification} onValueChange={(v) => setMetaImportClassification(v as ContactClassification)}>
                 <SelectTrigger>
                   <SelectValue />
