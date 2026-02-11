@@ -252,7 +252,7 @@ const ActivitiesPage = () => {
 
   const weekDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 
-  const ActivityForm = () => (
+  const activityFormContent = (
     <div className="space-y-4">
       <div>
         <Label>Assunto da atividade *</Label>
@@ -599,7 +599,7 @@ const ActivitiesPage = () => {
           </SheetHeader>
 
           <div className="mt-4">
-            <ActivityForm />
+            {activityFormContent}
           </div>
 
           {sheetMode === 'edit' && selectedActivity?.completed_at && (
