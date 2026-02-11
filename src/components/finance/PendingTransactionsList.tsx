@@ -397,7 +397,7 @@ export function PendingTransactionsList({
       categoryId: override?.category_id || null,
       linkType,
       linkId,
-      notes: '',
+      notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
       manualCity: override?.manual_city || transaction.merchant_city || ''
     });
@@ -810,11 +810,11 @@ export function PendingTransactionsList({
                       
                       {/* Notes */}
                       <div className="space-y-1">
-                        <label className="text-xs font-medium">Observações</label>
+                        <label className="text-xs font-medium">Descrição</label>
                         <Input
                           value={editData.notes}
                           onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))}
-                          placeholder="Adicionar nota..."
+                          placeholder="Descreva o que foi este gasto..."
                           className="h-8 text-xs"
                         />
                       </div>
