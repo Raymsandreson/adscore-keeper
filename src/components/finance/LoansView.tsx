@@ -3,7 +3,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Landmark, Calendar, Percent } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Landmark, Calendar, Percent, Download } from 'lucide-react';
+import { exportLoans } from '@/utils/financeExport';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
@@ -79,6 +81,13 @@ export function LoansView() {
 
   return (
     <div className="space-y-4">
+      {/* Export */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => exportLoans(loans)} disabled={loans.length === 0}>
+          <Download className="h-4 w-4 mr-2" />
+          Exportar
+        </Button>
+      </div>
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="border-0 shadow-card">

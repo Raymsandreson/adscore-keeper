@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, PiggyBank, Calendar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { TrendingUp, PiggyBank, Calendar, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { exportInvestments } from '@/utils/financeExport';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -78,6 +80,13 @@ export function InvestmentsView() {
 
   return (
     <div className="space-y-4">
+      {/* Export */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => exportInvestments(investments)} disabled={investments.length === 0}>
+          <Download className="h-4 w-4 mr-2" />
+          Exportar
+        </Button>
+      </div>
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="border-0 shadow-card">

@@ -6,7 +6,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown, Download } from 'lucide-react';
+import { exportBankTransactions } from '@/utils/financeExport';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
@@ -216,6 +217,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       {/* Transactions Table */}
       <Card className="border-0 shadow-card">
         <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
           <CardTitle className="text-base">
             Extrato ({filtered.length} movimentações)
             {flowFilter !== 'all' && (
@@ -224,6 +226,16 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
               </Badge>
             )}
           </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportBankTransactions(filtered)}
+            disabled={filtered.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Exportar
+          </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[500px]">
