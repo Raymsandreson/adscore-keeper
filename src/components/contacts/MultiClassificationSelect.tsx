@@ -72,7 +72,7 @@ export const MultiClassificationSelect: React.FC<MultiClassificationSelectProps>
           {selectedClassifications.length === 0 ? (
             <Badge className="bg-slate-400 text-white text-xs cursor-pointer">
               <Tag className="h-3 w-3" />
-              <span className="ml-1">Sem classificação</span>
+              <span className="ml-1">Sem status</span>
               <ChevronDown className="h-3 w-3 ml-1" />
             </Badge>
           ) : (
@@ -138,7 +138,7 @@ export const MultiClassificationSelect: React.FC<MultiClassificationSelectProps>
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nome da classificação"
+              placeholder="Nome do status"
               className="h-8 text-sm"
               autoFocus
               onKeyDown={(e) => {
@@ -176,7 +176,7 @@ export const MultiClassificationSelect: React.FC<MultiClassificationSelectProps>
             onClick={() => setIsAddingNew(true)}
           >
             <Plus className="h-4 w-4" />
-            <span className="text-sm">Nova classificação...</span>
+            <span className="text-sm">Novo status...</span>
           </div>
         )}
       </DropdownMenuContent>

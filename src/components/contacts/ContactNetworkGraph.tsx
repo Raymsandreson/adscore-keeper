@@ -448,7 +448,7 @@ export const ContactNetworkGraph: React.FC<ContactNetworkGraphProps> = ({
           {/* Legend */}
           <div className="px-4 py-3 border-t bg-background overflow-x-auto">
             <div className="flex items-center gap-4 text-xs">
-              <span className="text-muted-foreground font-medium">Classificação:</span>
+              <span className="text-muted-foreground font-medium">Status:</span>
               <div className="flex items-center gap-3">
                 {Object.entries(classificationColors).filter(([k]) => k !== 'default').map(([key, color]) => (
                   <span key={key} className="flex items-center gap-1.5">
