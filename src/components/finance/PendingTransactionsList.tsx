@@ -332,7 +332,8 @@ export function PendingTransactionsList({
     setGeneratingLink(true);
     try {
       const selectedTxs = transactions.filter(t => selectedIds.has(t.id));
-      const card = selectedTxs[0]?.card_last_digits;
+      const cards = [...new Set(selectedTxs.map(t => t.card_last_digits))];
+      const card = cards.length === 1 ? cards[0] : cards.join(',');
       if (!card) throw new Error('Cartão não identificado');
 
       const dates = selectedTxs.map(t => t.transaction_date).sort();
