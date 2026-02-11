@@ -43,6 +43,39 @@ export type Database = {
           },
         ]
       }
+      activity_field_settings: {
+        Row: {
+          created_at: string
+          display_order: number
+          field_key: string
+          id: string
+          include_in_message: boolean
+          label: string
+          placeholder: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          field_key: string
+          id?: string
+          include_in_message?: boolean
+          label: string
+          placeholder?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          field_key?: string
+          id?: string
+          include_in_message?: boolean
+          label?: string
+          placeholder?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ad_briefings: {
         Row: {
           approved_by: string | null

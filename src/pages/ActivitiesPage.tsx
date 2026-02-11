@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
+import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +23,6 @@ import {
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
-
 const ACTIVITY_TYPES = [
   { value: 'tarefa', label: 'Tarefa' },
   { value: 'audiencia', label: 'Audiência' },
@@ -72,6 +73,7 @@ const ActivitiesPage = () => {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -488,34 +490,33 @@ const ActivitiesPage = () => {
         )}
       </div>
 
-      <div>
-        <Label>O que foi feito?</Label>
-        <Textarea value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
-      </div>
-
-      <div>
-        <Label>Como está?</Label>
-        <Textarea value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
-      </div>
-
-      <div>
-        <Label>Próximo passo</Label>
-        <Textarea value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
-      </div>
-
-      <div>
-        <Label>Observações</Label>
-        <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
-      </div>
+      {/* Dynamic fields based on settings */}
+      {fieldSettings.map(field => {
+        const valueMap: Record<string, [string, (v: string) => void]> = {
+          what_was_done: [formWhatWasDone, setFormWhatWasDone],
+          current_status: [formCurrentStatus, setFormCurrentStatus],
+          next_steps: [formNextSteps, setFormNextSteps],
+          notes: [formNotes, setFormNotes],
+        };
+        const entry = valueMap[field.field_key];
+        if (!entry) return null;
+        const [value, setter] = entry;
+        return (
+          <div key={field.field_key}>
+            <Label>{field.label}</Label>
+            <Textarea value={value} onChange={e => setter(e.target.value)} placeholder={field.placeholder || ''} rows={2} />
+          </div>
+        );
+      })}
 
       <Separator />
 
-      <div>
+      <div className="flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
-          className="w-full gap-2"
+          className="flex-1 gap-2"
           onClick={() => {
             const notifDate = formNotificationDate ? (() => {
               const d = parseISO(formNotificationDate);
@@ -523,17 +524,25 @@ const ActivitiesPage = () => {
               return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
             })() : '';
 
+            const valueMap: Record<string, string> = {
+              what_was_done: formWhatWasDone,
+              current_status: formCurrentStatus,
+              next_steps: formNextSteps,
+              notes: formNotes,
+            };
+
+            const fieldLines = fieldSettings
+              .filter(f => f.include_in_message)
+              .map(f => `${f.label}: ${valueMap[f.field_key] || '—'}`)
+              .join('\n\n');
+
             const msg = `*Boa tarde Sr(a). *
 
 Assunto da atividade: ${formTitle.toUpperCase()}
 
 ${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
 
-O que foi feito: ${formWhatWasDone || '—'}
-
-Como está: ${formCurrentStatus || '—'}
-
-Nosso próximo passo: ${formNextSteps || '—'}
+${fieldLines}
 
 ${formAssignedToName ? `${formAssignedToName} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.` : ''}
 
@@ -552,6 +561,11 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           <Copy className="h-4 w-4" />
           Gerar mensagem WhatsApp
         </Button>
+        <ActivityFieldSettingsDialog
+          fields={fieldSettings}
+          onUpdateField={updateFieldSetting}
+          onReorder={reorderFields}
+        />
       </div>
     </div>
   );
