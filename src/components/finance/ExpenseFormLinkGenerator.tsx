@@ -89,7 +89,11 @@ export function ExpenseFormLinkGenerator({ knownCards, transactions = [] }: Expe
 
       if (error) throw error;
 
-      const link = `${window.location.origin}/expense-form/${data.token}`;
+      // Use published URL instead of preview URL so external users can access the form
+      const origin = window.location.origin.includes('preview--') 
+        ? 'https://adscore-keeper.lovable.app'
+        : window.location.origin;
+      const link = `${origin}/expense-form/${data.token}`;
       setGeneratedLink(link);
     } catch (err: any) {
       toast.error('Erro ao gerar link: ' + err.message);
