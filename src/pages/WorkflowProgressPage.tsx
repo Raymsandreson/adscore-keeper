@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, X, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
+import { ChecklistTemplatesManager } from '@/components/kanban/ChecklistTemplatesManager';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 
@@ -30,7 +31,7 @@ const WorkflowProgressPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadPicker, setShowLeadPicker] = useState(false);
-
+  const [showConfig, setShowConfig] = useState(false);
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -118,6 +119,11 @@ const WorkflowProgressPage = () => {
           </Button>
 
           <h1 className="font-semibold text-lg flex-1">Progresso do Fluxo de Trabalho</h1>
+
+          <Button variant="outline" size="sm" onClick={() => setShowConfig(true)} title="Configurar Fluxo">
+            <Settings2 className="h-4 w-4 mr-1" />
+            Configurar
+          </Button>
 
           <Button variant="outline" size="sm" onClick={() => setShowLeadPicker(true)}>
             {selectedLead ? (selectedLead.lead_name || 'Lead sem nome') : 'Selecionar Lead'}
@@ -243,6 +249,8 @@ const WorkflowProgressPage = () => {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+      {/* Workflow config (Checklist Templates Manager) */}
+      <ChecklistTemplatesManager open={showConfig} onOpenChange={setShowConfig} />
     </div>
   );
 };
