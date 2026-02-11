@@ -148,6 +148,75 @@ export type Database = {
         }
         Relationships: []
       }
+      bank_transactions: {
+        Row: {
+          amount: number
+          balance_after: number | null
+          category: string | null
+          created_at: string
+          currency_code: string | null
+          description: string | null
+          id: string
+          merchant_city: string | null
+          merchant_cnpj: string | null
+          merchant_name: string | null
+          merchant_state: string | null
+          payment_data: Json | null
+          pluggy_account_id: string
+          pluggy_item_id: string | null
+          pluggy_transaction_id: string
+          transaction_date: string
+          transaction_time: string | null
+          transaction_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after?: number | null
+          category?: string | null
+          created_at?: string
+          currency_code?: string | null
+          description?: string | null
+          id?: string
+          merchant_city?: string | null
+          merchant_cnpj?: string | null
+          merchant_name?: string | null
+          merchant_state?: string | null
+          payment_data?: Json | null
+          pluggy_account_id: string
+          pluggy_item_id?: string | null
+          pluggy_transaction_id: string
+          transaction_date: string
+          transaction_time?: string | null
+          transaction_type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number | null
+          category?: string | null
+          created_at?: string
+          currency_code?: string | null
+          description?: string | null
+          id?: string
+          merchant_city?: string | null
+          merchant_cnpj?: string | null
+          merchant_name?: string | null
+          merchant_state?: string | null
+          payment_data?: Json | null
+          pluggy_account_id?: string
+          pluggy_item_id?: string | null
+          pluggy_transaction_id?: string
+          transaction_date?: string
+          transaction_time?: string | null
+          transaction_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       campaign_action_history: {
         Row: {
           action: string
@@ -1832,6 +1901,69 @@ export type Database = {
         }
         Relationships: []
       }
+      investments: {
+        Row: {
+          amount_original: number | null
+          amount_profit: number | null
+          annual_rate: number | null
+          balance: number | null
+          created_at: string
+          currency_code: string | null
+          due_date: string | null
+          id: string
+          issuer_name: string | null
+          last_updated_at: string | null
+          metadata: Json | null
+          name: string | null
+          pluggy_account_id: string
+          pluggy_item_id: string | null
+          status: string | null
+          type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_original?: number | null
+          amount_profit?: number | null
+          annual_rate?: number | null
+          balance?: number | null
+          created_at?: string
+          currency_code?: string | null
+          due_date?: string | null
+          id?: string
+          issuer_name?: string | null
+          last_updated_at?: string | null
+          metadata?: Json | null
+          name?: string | null
+          pluggy_account_id: string
+          pluggy_item_id?: string | null
+          status?: string | null
+          type?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_original?: number | null
+          amount_profit?: number | null
+          annual_rate?: number | null
+          balance?: number | null
+          created_at?: string
+          currency_code?: string | null
+          due_date?: string | null
+          id?: string
+          issuer_name?: string | null
+          last_updated_at?: string | null
+          metadata?: Json | null
+          name?: string | null
+          pluggy_account_id?: string
+          pluggy_item_id?: string | null
+          status?: string | null
+          type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       kanban_boards: {
         Row: {
           ad_account_id: string | null
@@ -2394,6 +2526,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      loans: {
+        Row: {
+          created_at: string
+          currency_code: string | null
+          due_date: string | null
+          id: string
+          installments_paid: number | null
+          installments_total: number | null
+          interest_rate: number | null
+          loan_type: string | null
+          metadata: Json | null
+          monthly_payment: number | null
+          name: string | null
+          outstanding_balance: number | null
+          pluggy_account_id: string
+          pluggy_item_id: string | null
+          start_date: string | null
+          status: string | null
+          total_amount: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency_code?: string | null
+          due_date?: string | null
+          id?: string
+          installments_paid?: number | null
+          installments_total?: number | null
+          interest_rate?: number | null
+          loan_type?: string | null
+          metadata?: Json | null
+          monthly_payment?: number | null
+          name?: string | null
+          outstanding_balance?: number | null
+          pluggy_account_id: string
+          pluggy_item_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency_code?: string | null
+          due_date?: string | null
+          id?: string
+          installments_paid?: number | null
+          installments_total?: number | null
+          interest_rate?: number | null
+          loan_type?: string | null
+          metadata?: Json | null
+          monthly_payment?: number | null
+          name?: string | null
+          outstanding_balance?: number | null
+          pluggy_account_id?: string
+          pluggy_item_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          total_amount?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       n8n_automation_logs: {
         Row: {
