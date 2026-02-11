@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -76,7 +76,7 @@ const ActivitiesPage = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -95,6 +95,7 @@ const ActivitiesPage = () => {
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formStatus, setFormStatus] = useState('pendente');
 
   useEffect(() => {
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
@@ -124,6 +125,7 @@ const ActivitiesPage = () => {
     setFormDeadline('');
     setFormNotificationDate('');
     setFormNotes('');
+    setFormStatus('pendente');
     setLeadSearch('');
   };
 
@@ -145,8 +147,7 @@ const ActivitiesPage = () => {
       notification_date: formNotificationDate || null,
       notes: formNotes || null,
     });
-    setShowCreateDialog(false);
-    resetForm();
+    closeSheet();
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
   };
 
@@ -163,6 +164,8 @@ const ActivitiesPage = () => {
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
     setFormNotes(activity.notes || '');
+    setFormStatus(activity.status || 'pendente');
+    setSheetMode('edit');
   };
 
   const handleUpdate = async () => {
@@ -179,9 +182,9 @@ const ActivitiesPage = () => {
       deadline: formDeadline || null,
       notification_date: formNotificationDate || null,
       notes: formNotes || null,
+      status: formStatus,
     } as any);
-    setSelectedActivity(null);
-    resetForm();
+    closeSheet();
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
   };
 
@@ -192,9 +195,14 @@ const ActivitiesPage = () => {
 
   const handleDelete = async (id: string) => {
     await deleteActivity(id);
+    closeSheet();
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
+  };
+
+  const closeSheet = () => {
+    setSheetMode(null);
     setSelectedActivity(null);
     resetForm();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
   };
 
   const handleSelectLead = (leadId: string) => {
@@ -246,16 +254,16 @@ const ActivitiesPage = () => {
 
   const ActivityForm = () => (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="md:col-span-2">
-          <Label>Assunto da atividade *</Label>
-          <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
-        </div>
+      <div>
+        <Label>Assunto da atividade *</Label>
+        <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
+      </div>
 
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Assessor</Label>
           <Select value={formAssignedTo} onValueChange={handleSelectAssignee}>
-            <SelectTrigger><SelectValue placeholder="Selecionar assessor" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
             <SelectContent>
               {teamMembers.map(m => (
                 <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
@@ -275,14 +283,12 @@ const ActivitiesPage = () => {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Situação</Label>
-          <Select value={selectedActivity?.status || 'pendente'} onValueChange={val => {
-            if (selectedActivity) {
-              setSelectedActivity({ ...selectedActivity, status: val });
-            }
-          }}>
+          <Select value={formStatus} onValueChange={setFormStatus}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="pendente">Pendente</SelectItem>
@@ -303,7 +309,9 @@ const ActivitiesPage = () => {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Prazo da atividade</Label>
           <Input type="date" value={formDeadline} onChange={e => setFormDeadline(e.target.value)} />
@@ -313,50 +321,50 @@ const ActivitiesPage = () => {
           <Label>Prazo de notificação</Label>
           <Input type="date" value={formNotificationDate} onChange={e => setFormNotificationDate(e.target.value)} />
         </div>
+      </div>
 
-        <div className="md:col-span-2">
-          <Label>Nome do cliente (Lead)</Label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar lead..."
-              value={leadSearch}
-              onChange={e => setLeadSearch(e.target.value)}
-              className="pl-9"
-            />
+      <div>
+        <Label>Nome do cliente (Lead)</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar lead..."
+            value={leadSearch}
+            onChange={e => setLeadSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {(leadSearch || !formLeadId) && (
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {filteredLeads.map(l => (
+              <button
+                key={l.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formLeadId === l.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => { handleSelectLead(l.id); setLeadSearch(''); }}
+              >
+                {l.lead_name || 'Lead sem nome'}
+              </button>
+            ))}
+          </ScrollArea>
+        )}
+        {formLeadName && (
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary">{formLeadName}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormLeadId(''); setFormLeadName(''); }}>
+              <X className="h-3 w-3" />
+            </Button>
           </div>
-          {(leadSearch || !formLeadId) && (
-            <ScrollArea className="max-h-[120px] mt-1 border rounded-md">
-              {filteredLeads.map(l => (
-                <button
-                  key={l.id}
-                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formLeadId === l.id ? 'bg-accent font-medium' : ''}`}
-                  onClick={() => { handleSelectLead(l.id); setLeadSearch(''); }}
-                >
-                  {l.lead_name || 'Lead sem nome'}
-                </button>
-              ))}
-            </ScrollArea>
-          )}
-          {formLeadName && (
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="secondary">{formLeadName}</Badge>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormLeadId(''); setFormLeadName(''); }}>
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
-        </div>
+        )}
+      </div>
 
-        <div className="md:col-span-2">
-          <Label>Descrição</Label>
-          <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Detalhes da atividade..." rows={2} />
-        </div>
+      <div>
+        <Label>Descrição</Label>
+        <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Detalhes da atividade..." rows={2} />
+      </div>
 
-        <div className="md:col-span-2">
-          <Label>Observações</Label>
-          <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
-        </div>
+      <div>
+        <Label>Observações</Label>
+        <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
       </div>
     </div>
   );
@@ -373,16 +381,103 @@ const ActivitiesPage = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <h1 className="text-xl font-bold">Atividades</h1>
           <UserMenu />
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Activities List */}
-          <div className="lg:col-span-2 space-y-4">
+      <div className="max-w-7xl mx-auto p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          {/* Left: Calendar + Stats */}
+          <div className="space-y-4">
+            {/* Mini Calendar */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalendarMonth(prev => subMonths(prev, 1))}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <CardTitle className="text-sm capitalize">
+                    {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+                  </CardTitle>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="grid grid-cols-7 gap-1 text-center">
+                  {weekDays.map(d => (
+                    <div key={d} className="text-[10px] font-medium text-muted-foreground py-1">{d}</div>
+                  ))}
+                  {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
+                    <div key={`pad-${i}`} />
+                  ))}
+                  {calendarDays.map(day => {
+                    const dateKey = format(day, 'yyyy-MM-dd');
+                    const dayActivities = activitiesByDate[dateKey] || [];
+                    const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
+                    const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
+
+                    return (
+                      <div
+                        key={dateKey}
+                        className={`relative p-1 rounded-md text-xs ${
+                          isToday(day) ? 'ring-2 ring-primary font-bold' : ''
+                        } ${dayActivities.length > 0 ? 'bg-muted/50' : ''}`}
+                      >
+                        <div className="text-center">{format(day, 'd')}</div>
+                        {dayActivities.length > 0 && (
+                          <div className="flex justify-center gap-0.5 mt-0.5">
+                            {openCount > 0 && (
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                            )}
+                            {doneCount > 0 && (
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Stats */}
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Em aberto:</span>
+                  <span className="font-bold text-yellow-600">{stats.open}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span>Concluídas:</span>
+                  <span className="font-bold text-green-600">{stats.done}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span>Prazos:</span>
+                  <span className="font-bold">{stats.deadlines}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span>Audiências:</span>
+                  <span className="font-bold">{stats.hearings}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-sm">
+                  <span>Tarefas:</span>
+                  <span className="font-bold">{stats.tasks}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right: Activities List */}
+          <div className="space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3">
               <Select value={filterAssignee} onValueChange={setFilterAssignee}>
@@ -414,7 +509,7 @@ const ActivitiesPage = () => {
                 </SelectContent>
               </Select>
 
-              <Button size="icon" className="ml-auto rounded-full" onClick={() => { resetForm(); setShowCreateDialog(true); }}>
+              <Button size="icon" className="ml-auto rounded-full" onClick={() => { resetForm(); setSheetMode('create'); }}>
                 <Plus className="h-5 w-5" />
               </Button>
             </div>
@@ -426,7 +521,7 @@ const ActivitiesPage = () => {
                   <CardContent className="py-12 text-center text-muted-foreground">
                     <FileText className="h-12 w-12 mx-auto mb-3 opacity-40" />
                     <p>Nenhuma atividade encontrada</p>
-                    <Button variant="outline" className="mt-4" onClick={() => { resetForm(); setShowCreateDialog(true); }}>
+                    <Button variant="outline" className="mt-4" onClick={() => { resetForm(); setSheetMode('create'); }}>
                       Criar Atividade
                     </Button>
                   </CardContent>
@@ -493,149 +588,55 @@ const ActivitiesPage = () => {
               )}
             </div>
           </div>
-
-          {/* Right: Calendar + Stats */}
-          <div className="space-y-4">
-            {/* Mini Calendar */}
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <Button variant="ghost" size="icon" onClick={() => setCalendarMonth(prev => subMonths(prev, 1))}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <CardTitle className="text-sm capitalize">
-                    {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
-                  </CardTitle>
-                  <Button variant="ghost" size="icon" onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pb-3">
-                <div className="grid grid-cols-7 gap-1 text-center">
-                  {weekDays.map(d => (
-                    <div key={d} className="text-[10px] font-medium text-muted-foreground py-1">{d}</div>
-                  ))}
-                  {/* Pad start */}
-                  {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
-                    <div key={`pad-${i}`} />
-                  ))}
-                  {calendarDays.map(day => {
-                    const dateKey = format(day, 'yyyy-MM-dd');
-                    const dayActivities = activitiesByDate[dateKey] || [];
-                    const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
-                    const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
-
-                    return (
-                      <div
-                        key={dateKey}
-                        className={`relative p-1 rounded-md text-xs ${
-                          isToday(day) ? 'ring-2 ring-primary font-bold' : ''
-                        } ${dayActivities.length > 0 ? 'bg-muted/50' : ''}`}
-                      >
-                        <div className="text-center">{format(day, 'd')}</div>
-                        {dayActivities.length > 0 && (
-                          <div className="flex justify-center gap-0.5 mt-0.5">
-                            {openCount > 0 && (
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                            )}
-                            {doneCount > 0 && (
-                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Stats */}
-            <Card>
-              <CardContent className="p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Atividades em aberto:</span>
-                  <span className="font-bold text-yellow-600">{stats.open}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span>Atividades concluídas:</span>
-                  <span className="font-bold text-green-600">{stats.done}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span>Prazos:</span>
-                  <span className="font-bold">{stats.deadlines}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span>Audiências:</span>
-                  <span className="font-bold">{stats.hearings}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-sm">
-                  <span>Tarefas:</span>
-                  <span className="font-bold">{stats.tasks}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
 
-      {/* Create Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nova Atividade</DialogTitle>
-          </DialogHeader>
-          <ActivityForm />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancelar</Button>
-            <Button onClick={handleCreate}>Criar</Button>
+      {/* Sheet for Create / Edit */}
+      <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) closeSheet(); }}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}</SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-4">
+            <ActivityForm />
           </div>
-        </DialogContent>
-      </Dialog>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!selectedActivity} onOpenChange={open => { if (!open) { setSelectedActivity(null); resetForm(); } }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Editar Atividade</DialogTitle>
-          </DialogHeader>
-          <ActivityForm />
-
-          {selectedActivity && (
-            <div className="space-y-3 pt-2">
-              {selectedActivity.completed_at && (
-                <p className="text-xs text-muted-foreground">
-                  Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
-                  {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
-                </p>
-              )}
-            </div>
+          {sheetMode === 'edit' && selectedActivity?.completed_at && (
+            <p className="text-xs text-muted-foreground mt-3">
+              Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
+              {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
+            </p>
           )}
 
-          <div className="flex justify-between pt-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-            >
-              <Trash2 className="h-4 w-4 mr-1" /> Excluir
-            </Button>
-            <div className="flex gap-2">
-              {selectedActivity?.status !== 'concluida' && (
-                <Button variant="outline" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
-                  <CheckCircle2 className="h-4 w-4 mr-1" /> Concluir
+          <div className="flex items-center justify-between mt-6 pt-4 border-t">
+            {sheetMode === 'edit' ? (
+              <>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" /> Excluir
                 </Button>
-              )}
-              <Button onClick={handleUpdate}>Salvar</Button>
-            </div>
+                <div className="flex gap-2">
+                  {selectedActivity?.status !== 'concluida' && (
+                    <Button variant="outline" size="sm" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                      <CheckCircle2 className="h-4 w-4 mr-1" /> Concluir
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={handleUpdate}>Salvar</Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={closeSheet}>Cancelar</Button>
+                <Button size="sm" onClick={handleCreate}>Criar</Button>
+              </>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
