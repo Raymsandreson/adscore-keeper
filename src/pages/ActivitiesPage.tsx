@@ -16,7 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { UserMenu } from '@/components/auth/UserMenu';
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
-  FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight,
+  FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy,
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -85,7 +85,9 @@ const ActivitiesPage = () => {
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
-  const [formDescription, setFormDescription] = useState('');
+  const [formWhatWasDone, setFormWhatWasDone] = useState('');
+  const [formCurrentStatus, setFormCurrentStatus] = useState('');
+  const [formNextSteps, setFormNextSteps] = useState('');
   const [formType, setFormType] = useState('tarefa');
   const [formPriority, setFormPriority] = useState('normal');
   const [formLeadId, setFormLeadId] = useState<string>('');
@@ -121,7 +123,9 @@ const ActivitiesPage = () => {
 
   const resetForm = () => {
     setFormTitle('');
-    setFormDescription('');
+    setFormWhatWasDone('');
+    setFormCurrentStatus('');
+    setFormNextSteps('');
     setFormType('tarefa');
     setFormPriority('normal');
     setFormLeadId('');
@@ -145,7 +149,10 @@ const ActivitiesPage = () => {
     }
     await createActivity({
       title: formTitle,
-      description: formDescription || null,
+      description: null,
+      what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null,
+      next_steps: formNextSteps || null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
@@ -165,7 +172,9 @@ const ActivitiesPage = () => {
   const handleOpenEdit = async (activity: LeadActivity) => {
     setSelectedActivity(activity);
     setFormTitle(activity.title);
-    setFormDescription(activity.description || '');
+    setFormWhatWasDone(activity.what_was_done || '');
+    setFormCurrentStatus(activity.current_status_notes || '');
+    setFormNextSteps(activity.next_steps || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
     setFormLeadId(activity.lead_id || '');
@@ -206,7 +215,10 @@ const ActivitiesPage = () => {
     if (!selectedActivity) return;
     await updateActivity(selectedActivity.id, {
       title: formTitle,
-      description: formDescription || null,
+      description: null,
+      what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null,
+      next_steps: formNextSteps || null,
       activity_type: formType,
       priority: formPriority,
       lead_id: formLeadId || null,
@@ -477,13 +489,69 @@ const ActivitiesPage = () => {
       </div>
 
       <div>
-        <Label>Descrição</Label>
-        <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Detalhes da atividade..." rows={2} />
+        <Label>O que foi feito?</Label>
+        <Textarea value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
+      </div>
+
+      <div>
+        <Label>Como está?</Label>
+        <Textarea value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
+      </div>
+
+      <div>
+        <Label>Próximo passo</Label>
+        <Textarea value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
       </div>
 
       <div>
         <Label>Observações</Label>
         <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
+      </div>
+
+      <Separator />
+
+      <div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={() => {
+            const notifDate = formNotificationDate ? (() => {
+              const d = parseISO(formNotificationDate);
+              const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+              return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
+            })() : '';
+
+            const msg = `*Boa tarde Sr(a). *
+
+Assunto da atividade: ${formTitle.toUpperCase()}
+
+${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
+
+O que foi feito: ${formWhatWasDone || '—'}
+
+Como está: ${formCurrentStatus || '—'}
+
+Nosso próximo passo: ${formNextSteps || '—'}
+
+${formAssignedToName ? `${formAssignedToName} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.` : ''}
+
+Com Carinho, ${formAssignedToName || 'Equipe'}
+
+Estamos à disposição para quaisquer dúvidas.
+
+🚀Avante!
+
+Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+
+            navigator.clipboard.writeText(msg);
+            toast.success('Mensagem copiada para o WhatsApp!');
+          }}
+        >
+          <Copy className="h-4 w-4" />
+          Gerar mensagem WhatsApp
+        </Button>
       </div>
     </div>
   );
