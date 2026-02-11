@@ -24,11 +24,13 @@ import {
   ChevronRight,
   FolderPlus,
   Link2,
+  Landmark,
   X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useCategoryApiMappings, availableApiCategories } from '@/hooks/useCategoryApiMappings';
+import { useAccountCategoryLinks } from '@/hooks/useAccountCategoryLinks';
 import { DeleteCategoryDialog } from './DeleteCategoryDialog';
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -60,11 +62,24 @@ interface CategoryFormData {
   limit_unit: string;
   parent_id: string;
   selectedApiCategories: string[];
+  selectedAccountIds: string[];
 }
 
-export function ExpenseCategoryManager() {
+interface PluggyConnection {
+  id: string;
+  pluggy_item_id: string;
+  connector_name: string | null;
+  custom_name: string | null;
+}
+
+interface ExpenseCategoryManagerProps {
+  connections?: PluggyConnection[];
+}
+
+export function ExpenseCategoryManager({ connections = [] }: ExpenseCategoryManagerProps) {
   const { categories, loading, addCategory, updateCategory, deleteCategory, getCategoryExpenseCount, getParentCategories, getSubcategories } = useExpenseCategories();
   const { mappings, getMappingsForCategory, setMappingsForCategory } = useCategoryApiMappings();
+  const { getLinksForCategory, setLinksForCategory } = useAccountCategoryLinks();
   const [isOpen, setIsOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -80,6 +95,7 @@ export function ExpenseCategoryManager() {
     limit_unit: '',
     parent_id: '',
     selectedApiCategories: [],
+    selectedAccountIds: [],
   });
 
   const parentCategories = getParentCategories();
@@ -161,6 +177,7 @@ export function ExpenseCategoryManager() {
       limit_unit: '',
       parent_id: '',
       selectedApiCategories: [],
+      selectedAccountIds: [],
     });
     setEditingCategory(null);
   };
@@ -181,6 +198,7 @@ export function ExpenseCategoryManager() {
   const handleEdit = (category: ExpenseCategory) => {
     setEditingCategory(category);
     const currentMappings = getMappingsForCategory(category.id);
+    const currentAccountLinks = getLinksForCategory(category.id);
     setFormData({
       name: category.name,
       icon: category.icon || 'tag',
@@ -191,6 +209,7 @@ export function ExpenseCategoryManager() {
       limit_unit: category.limit_unit || '',
       parent_id: category.parent_id || '',
       selectedApiCategories: currentMappings.map(m => m.api_category_name),
+      selectedAccountIds: currentAccountLinks.map(l => l.pluggy_account_id),
     });
     setIsOpen(true);
   };
@@ -243,9 +262,10 @@ export function ExpenseCategoryManager() {
         categoryId = newCategory?.id || '';
       }
 
-      // Save API category mappings
+      // Save API category mappings and account links
       if (categoryId) {
         await setMappingsForCategory(categoryId, formData.selectedApiCategories);
+        await setLinksForCategory(categoryId, formData.selectedAccountIds);
       }
 
       setIsOpen(false);
@@ -319,6 +339,7 @@ export function ExpenseCategoryManager() {
     const hasSubcategories = subcategories.length > 0;
     const isExpanded = expandedCategories.has(category.id);
     const categoryMappings = getMappingsForCategory(category.id);
+    const accountLinks = getLinksForCategory(category.id);
 
     return (
       <div key={category.id}>
@@ -361,6 +382,19 @@ export function ExpenseCategoryManager() {
                       +{categoryMappings.length - 3}
                     </Badge>
                   )}
+                </div>
+               )}
+              {accountLinks.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {accountLinks.map((link, idx) => {
+                    const conn = connections.find(c => c.pluggy_item_id === link.pluggy_account_id);
+                    return (
+                      <Badge key={idx} variant="outline" className="text-xs py-0">
+                        <Landmark className="h-2.5 w-2.5 mr-1" />
+                        {conn?.custom_name || conn?.connector_name || link.pluggy_account_id.slice(0, 8)}
+                      </Badge>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -603,6 +637,68 @@ export function ExpenseCategoryManager() {
                     </div>
                   </ScrollArea>
                 </div>
+
+                {/* Account Links Section */}
+                {connections.length > 0 && (
+                  <div className="border-t pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Landmark className="h-4 w-4 text-primary" />
+                      <Label className="text-sm font-medium">Contas vinculadas</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Selecione em quais contas esta categoria deve aparecer. Sem seleção = aparece em todas.
+                    </p>
+                    
+                    {formData.selectedAccountIds.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {formData.selectedAccountIds.map((accId) => {
+                          const conn = connections.find(c => c.pluggy_item_id === accId);
+                          return (
+                            <Badge 
+                              key={accId} 
+                              variant="secondary" 
+                              className="cursor-pointer hover:bg-destructive/20"
+                              onClick={() => setFormData(prev => ({
+                                ...prev,
+                                selectedAccountIds: prev.selectedAccountIds.filter(id => id !== accId)
+                              }))}
+                            >
+                              <Landmark className="h-3 w-3 mr-1" />
+                              {conn?.custom_name || conn?.connector_name || accId.slice(0, 8)}
+                              <X className="h-3 w-3 ml-1" />
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="space-y-1 border rounded-md p-2">
+                      {connections.map((conn) => {
+                        const isChecked = formData.selectedAccountIds.includes(conn.pluggy_item_id);
+                        return (
+                          <label 
+                            key={conn.id} 
+                            className="flex items-center gap-2 py-1.5 px-2 hover:bg-muted rounded cursor-pointer select-none"
+                          >
+                            <Checkbox 
+                              checked={isChecked}
+                              onCheckedChange={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  selectedAccountIds: isChecked
+                                    ? prev.selectedAccountIds.filter(id => id !== conn.pluggy_item_id)
+                                    : [...prev.selectedAccountIds, conn.pluggy_item_id]
+                                }));
+                              }}
+                            />
+                            <Landmark className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-sm">{conn.custom_name || conn.connector_name || 'Sem nome'}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => { setIsOpen(false); resetForm(); }}>

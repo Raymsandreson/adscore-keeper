@@ -14,6 +14,35 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_category_links: {
+        Row: {
+          category_id: string
+          created_at: string
+          id: string
+          pluggy_account_id: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string
+          id?: string
+          pluggy_account_id: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string
+          id?: string
+          pluggy_account_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_category_links_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ad_briefings: {
         Row: {
           approved_by: string | null

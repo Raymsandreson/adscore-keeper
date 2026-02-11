@@ -23,12 +23,16 @@ import {
   Building2,
   MapPin,
   Clock,
-  Calendar
+  Calendar,
+  Plus,
+  Settings
 } from 'lucide-react';
 import { ExpenseCategory, useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useContacts } from '@/hooks/useContacts';
 import { useLeads } from '@/hooks/useLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useAccountCategoryLinks } from '@/hooks/useAccountCategoryLinks';
+import { toast } from 'sonner';
 
 interface Transaction {
   id: string;
@@ -42,12 +46,14 @@ interface Transaction {
   card_last_digits: string | null;
   transaction_date: string;
   transaction_time: string | null;
+  pluggy_account_id?: string;
 }
 
 interface TransactionCategorizerProps {
   transaction: Transaction;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenCategoryManager?: () => void;
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -62,7 +68,16 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   'car-taxi-front': Car,
 };
 
-export function TransactionCategorizer({ transaction, open, onOpenChange }: TransactionCategorizerProps) {
+const availableIcons = ['tag', 'utensils', 'car', 'bed', 'fuel', 'plane', 'briefcase', 'package'];
+const availableColors = [
+  'bg-gray-500', 'bg-red-500', 'bg-orange-500', 'bg-amber-500', 
+  'bg-yellow-500', 'bg-lime-500', 'bg-green-500', 'bg-emerald-500',
+  'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-blue-500',
+  'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500',
+  'bg-pink-500', 'bg-rose-500'
+];
+
+export function TransactionCategorizer({ transaction, open, onOpenChange, onOpenCategoryManager }: TransactionCategorizerProps) {
   const { 
     categories, 
     setTransactionOverride, 
@@ -70,11 +85,14 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     getCategoryById,
     checkLimitViolation,
     getParentCategories,
-    getSubcategories
+    getSubcategories,
+    addCategory,
+    fetchCategories,
   } = useExpenseCategories();
   const { contacts } = useContacts();
   const { leads } = useLeads();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { getCategoryIdsForAccount, addLinkForAccount } = useAccountCategoryLinks();
   
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedContact, setSelectedContact] = useState<string>('');
@@ -86,8 +104,30 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   const [activeTab, setActiveTab] = useState<'lead' | 'contact'>('lead');
   const [manualCity, setManualCity] = useState('');
   const [manualState, setManualState] = useState('');
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickAddName, setQuickAddName] = useState('');
+  const [quickAddIcon, setQuickAddIcon] = useState('tag');
+  const [quickAddColor, setQuickAddColor] = useState('bg-gray-500');
 
   const existingOverride = getTransactionOverride(transaction.id);
+
+  // Filter categories by account if links exist
+  const allowedCategoryIds = transaction.pluggy_account_id 
+    ? getCategoryIdsForAccount(transaction.pluggy_account_id) 
+    : null;
+
+  const filteredParentCategories = getParentCategories().filter(c => {
+    if (!allowedCategoryIds) return true; // No links = show all
+    // Show parent if it or any of its subcategories are allowed
+    const subs = getSubcategories(c.id);
+    return allowedCategoryIds.includes(c.id) || subs.some(s => allowedCategoryIds.includes(s.id));
+  });
+
+  const getFilteredSubcategories = (parentId: string) => {
+    const subs = getSubcategories(parentId);
+    if (!allowedCategoryIds) return subs;
+    return subs.filter(s => allowedCategoryIds.includes(s.id));
+  };
 
   // Load existing override data when opening
   useEffect(() => {
@@ -98,18 +138,15 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       setNotes(existingOverride.notes || '');
       setManualCity(existingOverride.manual_city || '');
       setManualState(existingOverride.manual_state || '');
-      // Load cities if we have a state
       if (existingOverride.manual_state) {
         fetchCities(existingOverride.manual_state);
       }
-      // Set active tab based on what's linked
       if (existingOverride.lead_id) {
         setActiveTab('lead');
       } else if (existingOverride.contact_id) {
         setActiveTab('contact');
       }
     } else if (open) {
-      // Reset when opening without override
       setSelectedCategory('');
       setSelectedContact('');
       setSelectedLead('');
@@ -117,11 +154,11 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
       setActiveTab('lead');
       setManualCity(transaction.merchant_city || '');
       setManualState(transaction.merchant_state || '');
-      // Load cities if we have a state from merchant
       if (transaction.merchant_state) {
         fetchCities(transaction.merchant_state);
       }
     }
+    setShowQuickAdd(false);
   }, [open, existingOverride, transaction, fetchCities]);
 
   const filteredContacts = contacts.filter(contact => 
@@ -140,7 +177,6 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
   const handleSubmit = async () => {
     if (!selectedCategory) return;
     
-    // Determine if user explicitly acknowledged no link
     const linkAcknowledged = (activeTab === 'lead' && !selectedLead) || 
                              (activeTab === 'contact' && !selectedContact);
     
@@ -156,6 +192,31 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     );
     
     onOpenChange(false);
+  };
+
+  const handleQuickAddCategory = async () => {
+    if (!quickAddName.trim()) return;
+    try {
+      const newCat = await addCategory({
+        name: quickAddName.trim(),
+        icon: quickAddIcon,
+        color: quickAddColor,
+      });
+      if (newCat) {
+        // If transaction has an account, auto-link the new category
+        if (transaction.pluggy_account_id) {
+          await addLinkForAccount(transaction.pluggy_account_id, newCat.id);
+        }
+        setSelectedCategory(newCat.id);
+        setShowQuickAdd(false);
+        setQuickAddName('');
+        setQuickAddIcon('tag');
+        setQuickAddColor('bg-gray-500');
+        toast.success('Categoria criada e selecionada');
+      }
+    } catch (err) {
+      console.error('Error quick adding category:', err);
+    }
   };
 
   const formatCurrency = (value: number) => {
@@ -178,7 +239,6 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
     ? checkLimitViolation(selectedCategoryData, transaction.amount) 
     : null;
 
-  // Get selected lead/contact names for display
   const selectedLeadData = leads.find(l => l.id === selectedLead);
   const selectedContactData = contacts.find(c => c.id === selectedContact);
 
@@ -274,11 +334,89 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
 
           {/* Category Selection */}
           <div>
-            <Label>Categoria</Label>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {getParentCategories().map((category) => {
+            <div className="flex items-center justify-between mb-2">
+              <Label>Categoria</Label>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setShowQuickAdd(!showQuickAdd)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Nova
+                </Button>
+                {onOpenCategoryManager && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onOpenCategoryManager();
+                    }}
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Configurar
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Add Category */}
+            {showQuickAdd && (
+              <div className="mb-3 p-3 rounded-lg border bg-muted/30 space-y-2">
+                <Input
+                  placeholder="Nome da categoria..."
+                  value={quickAddName}
+                  onChange={(e) => setQuickAddName(e.target.value)}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Select value={quickAddIcon} onValueChange={setQuickAddIcon}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableIcons.map(icon => {
+                        const Icon = iconMap[icon] || Tag;
+                        return (
+                          <SelectItem key={icon} value={icon}>
+                            <div className="flex items-center gap-2">
+                              <Icon className="h-3.5 w-3.5" />
+                              {icon}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <Select value={quickAddColor} onValueChange={setQuickAddColor}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableColors.map(color => (
+                        <SelectItem key={color} value={color}>
+                          <div className="flex items-center gap-2">
+                            <div className={`h-4 w-4 rounded ${color}`} />
+                            {color.replace('bg-', '').replace('-500', '')}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" onClick={handleQuickAddCategory} disabled={!quickAddName.trim()}>
+                    Criar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              {filteredParentCategories.map((category) => {
                 const Icon = iconMap[category.icon] || Tag;
-                const subcategories = getSubcategories(category.id);
+                const subcategories = getFilteredSubcategories(category.id);
                 const hasSubcategories = subcategories.length > 0;
                 const isExpanded = expandedParent === category.id;
                 const isSubcategorySelected = subcategories.some(sub => sub.id === selectedCategory);
@@ -337,7 +475,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                   Selecione a subcategoria:
                 </p>
                 <div className="grid grid-cols-2 gap-2">
-                  {getSubcategories(expandedParent).map((subcategory) => {
+                  {getFilteredSubcategories(expandedParent).map((subcategory) => {
                     const SubIcon = iconMap[subcategory.icon] || Tag;
                     const isSelected = selectedCategory === subcategory.id;
                     return (
@@ -440,7 +578,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                         }`}
                         onClick={() => {
                           setSelectedLead(lead.id);
-                          setSelectedContact(''); // Clear contact when selecting lead
+                          setSelectedContact('');
                         }}
                       >
                         <div className="flex flex-col">
@@ -498,7 +636,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange }: Tran
                         }`}
                         onClick={() => {
                           setSelectedContact(contact.id);
-                          setSelectedLead(''); // Clear lead when selecting contact
+                          setSelectedLead('');
                         }}
                       >
                         {getContactDisplay(contact)}
