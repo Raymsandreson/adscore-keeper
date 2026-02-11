@@ -47,6 +47,7 @@ import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { BoardComparisonMetrics } from '@/components/kanban/BoardComparisonMetrics';
 import { ConversionAlertSettings } from '@/components/kanban/ConversionAlertSettings';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
+import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -60,6 +61,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [showReport, setShowReport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showExtractor, setShowExtractor] = useState(false);
+  const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
   
   // New lead form state - expanded for accident cases
   const [newLeadFormData, setNewLeadFormData] = useState<AccidentLeadFormData>({
@@ -121,16 +123,27 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     return allLeads.filter(lead => lead.board_id === selectedBoardId);
   }, [allLeads, selectedBoardId]);
 
-  // Filter leads by search query
+  // Filter leads by search query and checklist filter
   const filteredLeads = useMemo(() => {
-    if (!searchQuery) return boardLeads;
-    const query = searchQuery.toLowerCase();
-    return boardLeads.filter(lead => 
-      lead.lead_name?.toLowerCase().includes(query) ||
-      lead.lead_phone?.includes(query) ||
-      lead.lead_email?.toLowerCase().includes(query)
-    );
-  }, [boardLeads, searchQuery]);
+    let result = boardLeads;
+    
+    // Apply checklist filter
+    if (checklistFilteredIds !== null) {
+      result = result.filter(lead => checklistFilteredIds.has(lead.id));
+    }
+    
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(lead => 
+        lead.lead_name?.toLowerCase().includes(query) ||
+        lead.lead_phone?.includes(query) ||
+        lead.lead_email?.toLowerCase().includes(query)
+      );
+    }
+    
+    return result;
+  }, [boardLeads, searchQuery, checklistFilteredIds]);
 
   // Count leads by board
   const leadsCountByBoard = useMemo(() => {
@@ -390,6 +403,14 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             <Instagram className="h-4 w-4 mr-2" />
             Importar Instagram
           </Button>
+
+          {selectedBoard && (
+            <ChecklistFilter
+              boardId={selectedBoardId}
+              leadIds={boardLeads.map(l => l.id)}
+              onFilteredLeadIds={setChecklistFilteredIds}
+            />
+          )}
           
           <Button onClick={() => setShowAddLeadDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
