@@ -50,16 +50,20 @@ serve(async (req) => {
       // Fetch transactions for this card/period
       let query = supabase
         .from("credit_card_transactions")
-        .select("id, pluggy_transaction_id, description, amount, transaction_date, merchant_name, merchant_city, merchant_state, card_last_digits, category")
-        .eq("card_last_digits", tokenData.card_last_digits)
-        .gte("transaction_date", tokenData.date_from)
-        .lte("transaction_date", tokenData.date_to)
-        .order("transaction_date", { ascending: false });
+        .select("id, pluggy_transaction_id, description, amount, transaction_date, merchant_name, merchant_city, merchant_state, card_last_digits, category");
 
-      // If specific transaction IDs, filter by them
+      // If specific transaction IDs exist, use them directly (supports multi-card)
       if (tokenData.transaction_ids && tokenData.transaction_ids.length > 0) {
         query = query.in("pluggy_transaction_id", tokenData.transaction_ids);
+      } else {
+        // Fallback: filter by card and date range
+        query = query
+          .eq("card_last_digits", tokenData.card_last_digits)
+          .gte("transaction_date", tokenData.date_from)
+          .lte("transaction_date", tokenData.date_to);
       }
+
+      query = query.order("transaction_date", { ascending: false });
 
       const { data: transactions, error: txError } = await query;
 
