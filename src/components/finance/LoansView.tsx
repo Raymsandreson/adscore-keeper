@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { Landmark, Calendar, Percent, Download } from 'lucide-react';
+import { Landmark, Calendar, Percent } from 'lucide-react';
 import { exportLoans } from '@/utils/financeExport';
+import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { format } from 'date-fns';
@@ -83,10 +84,10 @@ export function LoansView() {
     <div className="space-y-4">
       {/* Export */}
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => exportLoans(loans)} disabled={loans.length === 0}>
-          <Download className="h-4 w-4 mr-2" />
-          Exportar
-        </Button>
+        <ExportFormatMenu
+          onExport={(fmt) => exportLoans(loans, fmt)}
+          disabled={loans.length === 0}
+        />
       </div>
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">

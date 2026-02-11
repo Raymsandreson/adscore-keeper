@@ -62,6 +62,7 @@ import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelec
 import { CostAccountsManager } from "@/components/finance/CostAccountsManager";
 import { translateCategory } from "@/utils/categoryTranslations";
 import { exportCreditCardTransactions } from "@/utils/financeExport";
+import { ExportFormatMenu } from "@/components/finance/ExportFormatMenu";
 import { ExpenseFormLinkGenerator } from "@/components/finance/ExpenseFormLinkGenerator";
 import { BankTransactionsView } from "@/components/finance/BankTransactionsView";
 import { InvestmentsView } from "@/components/finance/InvestmentsView";
@@ -1228,10 +1229,10 @@ export default function FinancePage() {
                         <TableIcon className="h-5 w-5" />
                         Gastos por Dia
                       </CardTitle>
-                      <Button variant="outline" size="sm" onClick={() => exportCreditCardTransactions(filteredTransactions, formatCurrency)} disabled={filteredTransactions.length === 0}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Exportar
-                      </Button>
+                      <ExportFormatMenu
+                        onExport={(fmt) => exportCreditCardTransactions(filteredTransactions, formatCurrency, fmt)}
+                        disabled={filteredTransactions.length === 0}
+                      />
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
@@ -1299,10 +1300,10 @@ export default function FinancePage() {
                         <TrendingDown className="h-5 w-5" />
                         Transações
                       </CardTitle>
-                      <Button variant="outline" size="sm" onClick={() => exportCreditCardTransactions(filteredTransactions, formatCurrency)} disabled={filteredTransactions.length === 0}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Exportar
-                      </Button>
+                      <ExportFormatMenu
+                        onExport={(fmt) => exportCreditCardTransactions(filteredTransactions, formatCurrency, fmt)}
+                        disabled={filteredTransactions.length === 0}
+                      />
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
