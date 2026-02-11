@@ -38,6 +38,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useExpenseCategories, ExpenseCategory } from '@/hooks/useExpenseCategories';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useGeolocation } from '@/hooks/useGeolocation';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { toast } from 'sonner';
 
@@ -98,6 +99,7 @@ export function PendingTransactionsList({
   } = useExpenseCategories();
   
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { fetchLocation, loading: geoLoading } = useGeolocation();
   const teamProfiles = useProfilesList();
   
   const NONE_SELECTED = 'NONE';
@@ -765,6 +767,27 @@ export function PendingTransactionsList({
                       </div>
                       
                       {/* Manual Location */}
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium">Localização</label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs gap-1"
+                          disabled={geoLoading}
+                          onClick={async () => {
+                            const loc = await fetchLocation();
+                            if (loc) {
+                              setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city }));
+                              fetchCities(loc.state);
+                              toast.success('Localização detectada!');
+                            }
+                          }}
+                        >
+                          <MapPin className="h-3 w-3" />
+                          {geoLoading ? 'Detectando...' : 'Usar localização'}
+                        </Button>
+                      </div>
                       <div className="grid grid-cols-3 gap-2">
                         <div className="space-y-1">
                           <label className="text-xs font-medium">Estado</label>
