@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.create-meta-campaign]
 verify_jwt = false
+
+[functions.expense-form]
+verify_jwt = false

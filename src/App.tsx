@@ -63,7 +63,7 @@ function AppRoutes() {
         <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
-        <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
+        <Route path="/expense-form/:token" element={<ProtectedRoute><ExpenseFormPage /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
