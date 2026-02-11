@@ -61,6 +61,7 @@ import { PendingTransactionsWorkflow } from "@/components/finance/PendingTransac
 import { MultiSelectFilter, FilterOption } from "@/components/finance/MultiSelectFilter";
 import { CostAccountsManager } from "@/components/finance/CostAccountsManager";
 import { translateCategory } from "@/utils/categoryTranslations";
+import { exportCreditCardTransactions } from "@/utils/financeExport";
 import { ExpenseFormLinkGenerator } from "@/components/finance/ExpenseFormLinkGenerator";
 import { BankTransactionsView } from "@/components/finance/BankTransactionsView";
 import { InvestmentsView } from "@/components/finance/InvestmentsView";
@@ -1227,7 +1228,7 @@ export default function FinancePage() {
                         <TableIcon className="h-5 w-5" />
                         Gastos por Dia
                       </CardTitle>
-                      <Button variant="outline" size="sm" disabled>
+                      <Button variant="outline" size="sm" onClick={() => exportCreditCardTransactions(filteredTransactions, formatCurrency)} disabled={filteredTransactions.length === 0}>
                         <Download className="h-4 w-4 mr-2" />
                         Exportar
                       </Button>
@@ -1298,7 +1299,7 @@ export default function FinancePage() {
                         <TrendingDown className="h-5 w-5" />
                         Transações
                       </CardTitle>
-                      <Button variant="outline" size="sm" disabled>
+                      <Button variant="outline" size="sm" onClick={() => exportCreditCardTransactions(filteredTransactions, formatCurrency)} disabled={filteredTransactions.length === 0}>
                         <Download className="h-4 w-4 mr-2" />
                         Exportar
                       </Button>
