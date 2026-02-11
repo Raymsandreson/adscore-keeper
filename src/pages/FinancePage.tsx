@@ -35,7 +35,9 @@ import {
   Wallet,
   Edit2,
   Check,
-  Landmark
+  Landmark,
+  Share2,
+  Loader2
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths, subDays, subWeeks, startOfWeek, endOfWeek, startOfYear, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -126,6 +128,7 @@ export default function FinancePage() {
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
+  const [generatingLinkFor, setGeneratingLinkFor] = useState<string | null>(null);
 
   // Get unique card digits for assignment manager
   const availableCards = useMemo(() => {
@@ -583,6 +586,22 @@ export default function FinancePage() {
     return conn.custom_name || conn.connector_name || 'Sem nome';
   };
 
+  const handleGenerateShareLink = useCallback(async (itemId?: string) => {
+    const key = itemId || '__new__';
+    setGeneratingLinkFor(key);
+    try {
+      const connectToken = await createConnectToken(itemId);
+      const shareUrl = `https://connect.pluggy.ai/?connect_token=${connectToken}`;
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Link copiado para a área de transferência! Válido por 30 minutos.');
+    } catch (err: any) {
+      console.error('Error generating share link:', err);
+      toast.error('Erro ao gerar link: ' + err.message);
+    } finally {
+      setGeneratingLinkFor(null);
+    }
+  }, [createConnectToken]);
+
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -631,6 +650,20 @@ export default function FinancePage() {
               <Button size="sm" onClick={handleConnect} disabled={isConnecting} className="h-8">
                 <Link2 className="h-4 w-4 mr-2" />
                 Conectar
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleGenerateShareLink()} 
+                disabled={generatingLinkFor === '__new__'} 
+                className="h-8"
+              >
+                {generatingLinkFor === '__new__' ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Share2 className="h-4 w-4 mr-2" />
+                )}
+                Gerar Link
               </Button>
               <ExpenseFormLinkGenerator 
                 knownCards={availableCards} 
@@ -697,6 +730,20 @@ export default function FinancePage() {
                 <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'} className="text-[10px] h-4 px-1.5">
                   {conn.status === 'UPDATED' ? 'OK' : conn.status}
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  disabled={generatingLinkFor === conn.pluggy_item_id}
+                  onClick={() => handleGenerateShareLink(conn.pluggy_item_id)}
+                  title="Gerar link de autorização"
+                >
+                  {generatingLinkFor === conn.pluggy_item_id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Share2 className="h-3 w-3 text-muted-foreground" />
+                  )}
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
