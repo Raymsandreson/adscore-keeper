@@ -242,6 +242,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         const u = getUser(a.user_id);
         if (a.action_type === 'page_visit') u.pageVisits++;
         if (a.action_type === 'checklist_item_checked') u.checklistItemsChecked++;
+        if (a.action_type === 'checklist_item_unchecked') u.checklistItemsChecked--;
       });
 
       // Stage changes per user (now has changed_by)
