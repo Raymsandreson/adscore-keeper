@@ -32,7 +32,10 @@ import {
   TableIcon,
   X,
   Tag,
-  Wallet
+  Wallet,
+  Edit2,
+  Check,
+  Landmark
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths, subDays, subWeeks, startOfWeek, endOfWeek, startOfYear, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -98,6 +101,7 @@ export default function FinancePage() {
     importByItemId,
     getCategoryTotals,
     getTotalSpent,
+    updateConnectionName,
   } = useCreditCardTransactions();
 
   const { categories, cardAssignments, getCardAssignment, overrides, getTransactionOverride } = useExpenseCategories();
@@ -119,6 +123,9 @@ export default function FinancePage() {
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
   const [activeTab, setActiveTab] = useState("workflow");
+  const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
+  const [editingConnectionName, setEditingConnectionName] = useState("");
 
   // Get unique card digits for assignment manager
   const availableCards = useMemo(() => {
@@ -339,6 +346,10 @@ export default function FinancePage() {
       
       const matchesCard = filterCards.includes("all") || filterCards.includes(t.card_last_digits || '');
       
+      // Connection filter
+      const matchesConnection = filterConnections.includes("all") || 
+        (t.pluggy_item_id && filterConnections.includes(t.pluggy_item_id));
+      
       // Filter by cost accounts (multi-select)
       // Priority: override cost_account_id > card_assignment cost_account_id
       const isAllAccounts = filterAccounts.includes("all");
@@ -379,9 +390,9 @@ export default function FinancePage() {
         matchesSubcategory = localCategoryId === filterSubcategory;
       }
       
-      return matchesDate && matchesSearch && matchesCard && matchesAccount && matchesCategory && matchesSubcategory;
+      return matchesDate && matchesSearch && matchesCard && matchesConnection && matchesAccount && matchesCategory && matchesSubcategory;
     });
-  }, [permittedTransactions, searchTerm, filterCards, filterAccounts, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction, getTransactionOverride]);
+  }, [permittedTransactions, searchTerm, filterCards, filterConnections, filterAccounts, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction, getTransactionOverride]);
 
   // Calculate totals for PREVIEW in dropdown (without category filter applied)
   // This shows totals for each category based on date, search, and card filters only
@@ -546,14 +557,30 @@ export default function FinancePage() {
     return matchedRange?.value || 'custom';
   };
 
-  const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
+  const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || !filterConnections.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
 
   const clearAllFilters = () => {
     setFilterCards(['all']);
     setFilterAccounts(['all']);
     setFilterCategories(['all']);
+    setFilterConnections(['all']);
     setFilterSubcategory('all');
     setSearchTerm('');
+  };
+
+  const handleRenameConnection = async (connId: string) => {
+    if (!editingConnectionName.trim()) return;
+    try {
+      await updateConnectionName(connId, editingConnectionName.trim());
+      setEditingConnectionId(null);
+      toast.success('Nome atualizado!');
+    } catch (err: any) {
+      toast.error('Erro ao renomear: ' + err.message);
+    }
+  };
+
+  const getConnectionDisplayName = (conn: { custom_name: string | null; connector_name: string | null }) => {
+    return conn.custom_name || conn.connector_name || 'Sem nome';
   };
 
   if (!user) {
@@ -632,7 +659,41 @@ export default function FinancePage() {
                 className="flex items-center gap-2 bg-muted/50 rounded-full px-3 py-1.5"
               >
                 <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-sm font-medium">{conn.connector_name}</span>
+                {editingConnectionId === conn.id ? (
+                  <div className="flex items-center gap-1">
+                    <Input
+                      value={editingConnectionName}
+                      onChange={(e) => setEditingConnectionName(e.target.value)}
+                      className="h-6 w-32 text-sm px-2 py-0"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameConnection(conn.id);
+                        if (e.key === 'Escape') setEditingConnectionId(null);
+                      }}
+                      autoFocus
+                    />
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleRenameConnection(conn.id)}>
+                      <Check className="h-3 w-3 text-primary" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setEditingConnectionId(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm font-medium">{getConnectionDisplayName(conn)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={() => {
+                        setEditingConnectionId(conn.id);
+                        setEditingConnectionName(conn.custom_name || conn.connector_name || '');
+                      }}
+                    >
+                      <Edit2 className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                  </>
+                )}
                 <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'} className="text-[10px] h-4 px-1.5">
                   {conn.status === 'UPDATED' ? 'OK' : conn.status}
                 </Badge>
@@ -798,7 +859,21 @@ export default function FinancePage() {
                 </div>
 
                 {/* Row 2: Search + Filters */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+                  {/* Connection Filter */}
+                  {connections.length > 1 && (
+                    <MultiSelectFilter
+                      icon={<Landmark className="h-4 w-4 text-muted-foreground" />}
+                      placeholder="Instituição"
+                      allLabel="Todas as instituições"
+                      options={connections.map(conn => ({
+                        value: conn.pluggy_item_id,
+                        label: getConnectionDisplayName(conn),
+                      }))}
+                      selectedValues={filterConnections}
+                      onSelectionChange={setFilterConnections}
+                    />
+                  )}
                   {/* Search Bar */}
                   <div className="relative lg:col-span-2">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

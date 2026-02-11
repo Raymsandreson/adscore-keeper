@@ -24,6 +24,7 @@ interface Transaction {
   total_installments: number | null;
   original_purchase_date: string | null;
   purchase_group_id: string | null;
+  pluggy_item_id: string | null;
 }
 
 interface PluggyConnection {
@@ -34,6 +35,7 @@ interface PluggyConnection {
   status: string | null;
   last_sync_at: string | null;
   created_at: string;
+  custom_name: string | null;
 }
 
 interface DateRange {
@@ -183,6 +185,20 @@ export function useCreditCardTransactions() {
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
+  const updateConnectionName = useCallback(async (connectionId: string, customName: string) => {
+    const { error } = await supabase
+      .from('pluggy_connections')
+      .update({ custom_name: customName })
+      .eq('id', connectionId);
+    
+    if (error) throw error;
+    
+    // Update local state
+    setConnections(prev => prev.map(c => 
+      c.id === connectionId ? { ...c, custom_name: customName } : c
+    ));
+  }, []);
+
   return {
     transactions,
     connections,
@@ -199,5 +215,6 @@ export function useCreditCardTransactions() {
     importByItemId,
     getCategoryTotals,
     getTotalSpent,
+    updateConnectionName,
   };
 }
