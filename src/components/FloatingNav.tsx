@@ -54,6 +54,13 @@ export function FloatingNav() {
       path: "/",
     },
     {
+      id: "finance",
+      label: "Finanças",
+      icon: <CreditCard className="h-4 w-4" />,
+      path: "/finance",
+      color: "text-green-500",
+    },
+    {
       id: "leads",
       label: "Leads",
       icon: <Users className="h-4 w-4" />,
@@ -72,18 +79,18 @@ export function FloatingNav() {
       path: "/analytics",
     },
     {
-      id: "finance",
-      label: "Finanças",
-      icon: <CreditCard className="h-4 w-4" />,
-      path: "/finance",
-      color: "text-green-500",
-    },
-    {
       id: "leaderboard",
       label: "Ranking",
       icon: <Trophy className="h-4 w-4" />,
       path: "/leaderboard",
       color: "text-yellow-500",
+    },
+    {
+      id: "workflow-progress",
+      label: "Fluxo de Trabalho",
+      icon: <Zap className="h-4 w-4" />,
+      path: "/workflow-progress",
+      color: "text-purple-500",
     },
   ];
 
