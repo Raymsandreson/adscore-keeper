@@ -789,11 +789,17 @@ export function PendingTransactionsList({
                           className="h-6 text-xs gap-1"
                           disabled={geoLoading}
                           onClick={async () => {
-                            const loc = await fetchLocation();
-                            if (loc) {
-                              setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city }));
-                              fetchCities(loc.state);
-                              toast.success('Localização detectada!');
+                            try {
+                              const loc = await fetchLocation();
+                              if (loc) {
+                                setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city }));
+                                fetchCities(loc.state);
+                                toast.success('Localização detectada!');
+                              } else {
+                                toast.error('Não foi possível detectar a localização. Verifique se a permissão foi concedida.');
+                              }
+                            } catch (err) {
+                              toast.error('Erro ao acessar localização. Tente abrir o app diretamente no navegador (não no preview).');
                             }
                           }}
                         >
