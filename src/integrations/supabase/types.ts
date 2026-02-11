@@ -883,6 +883,7 @@ export type Database = {
           original_purchase_date: string | null
           payment_data: Json | null
           pluggy_account_id: string
+          pluggy_item_id: string | null
           pluggy_transaction_id: string
           purchase_group_id: string | null
           total_installments: number | null
@@ -907,6 +908,7 @@ export type Database = {
           original_purchase_date?: string | null
           payment_data?: Json | null
           pluggy_account_id: string
+          pluggy_item_id?: string | null
           pluggy_transaction_id: string
           purchase_group_id?: string | null
           total_installments?: number | null
@@ -931,6 +933,7 @@ export type Database = {
           original_purchase_date?: string | null
           payment_data?: Json | null
           pluggy_account_id?: string
+          pluggy_item_id?: string | null
           pluggy_transaction_id?: string
           purchase_group_id?: string | null
           total_installments?: number | null
@@ -2497,6 +2500,7 @@ export type Database = {
           connector_name: string | null
           connector_type: string | null
           created_at: string
+          custom_name: string | null
           id: string
           last_sync_at: string | null
           pluggy_item_id: string
@@ -2508,6 +2512,7 @@ export type Database = {
           connector_name?: string | null
           connector_type?: string | null
           created_at?: string
+          custom_name?: string | null
           id?: string
           last_sync_at?: string | null
           pluggy_item_id: string
@@ -2519,6 +2524,7 @@ export type Database = {
           connector_name?: string | null
           connector_type?: string | null
           created_at?: string
+          custom_name?: string | null
           id?: string
           last_sync_at?: string | null
           pluggy_item_id?: string

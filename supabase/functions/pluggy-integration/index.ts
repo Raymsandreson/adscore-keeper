@@ -348,10 +348,11 @@ serve(async (req) => {
                   }
                 }
                 
-                return {
+              return {
                   user_id: user.id,
                   pluggy_account_id: account.id,
                   pluggy_transaction_id: t.id,
+                  pluggy_item_id: connection.pluggy_item_id,
                   description: t.description,
                   amount: t.amount,
                   currency_code: 'BRL',
