@@ -1290,7 +1290,7 @@ export default function FinancePage() {
                 )}
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <ExpenseCategoryManager />
+                  <ExpenseCategoryManager connections={connections.map(c => ({ id: c.id, pluggy_item_id: c.pluggy_item_id, connector_name: c.connector_name, custom_name: c.custom_name }))} />
                   <CardAssignmentManager availableCards={availableCards} />
                 </div>
                 
