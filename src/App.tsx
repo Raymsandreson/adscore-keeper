@@ -17,6 +17,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import TeamPage from "./pages/TeamPage";
 import WorkflowPage from "./pages/WorkflowPage";
+import WorkflowProgressPage from "./pages/WorkflowProgressPage";
 import ProfilePage from "./pages/ProfilePage";
 import FinancePage from "./pages/FinancePage";
 import ExpenseFormPage from "./pages/ExpenseFormPage";
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
         <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
         <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
+        <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
