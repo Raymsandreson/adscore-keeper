@@ -1850,6 +1850,8 @@ export type Database = {
           completed_at: string | null
           completed_by: string | null
           completed_by_name: string | null
+          contact_id: string | null
+          contact_name: string | null
           created_at: string
           created_by: string | null
           current_status_notes: string | null
@@ -1874,6 +1876,8 @@ export type Database = {
           completed_at?: string | null
           completed_by?: string | null
           completed_by_name?: string | null
+          contact_id?: string | null
+          contact_name?: string | null
           created_at?: string
           created_by?: string | null
           current_status_notes?: string | null
@@ -1898,6 +1902,8 @@ export type Database = {
           completed_at?: string | null
           completed_by?: string | null
           completed_by_name?: string | null
+          contact_id?: string | null
+          contact_name?: string | null
           created_at?: string
           created_by?: string | null
           current_status_notes?: string | null

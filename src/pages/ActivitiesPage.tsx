@@ -155,12 +155,14 @@ const ActivitiesPage = () => {
       deadline: formDeadline || null,
       notification_date: formNotificationDate || null,
       notes: formNotes || null,
+      contact_id: formContactId || null,
+      contact_name: formContactName || null,
     });
     closeSheet();
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
   };
 
-  const handleOpenEdit = (activity: LeadActivity) => {
+  const handleOpenEdit = async (activity: LeadActivity) => {
     setSelectedActivity(activity);
     setFormTitle(activity.title);
     setFormDescription(activity.description || '');
@@ -174,6 +176,29 @@ const ActivitiesPage = () => {
     setFormNotificationDate(activity.notification_date || '');
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
+    setFormContactId(activity.contact_id || '');
+    setFormContactName(activity.contact_name || '');
+    // Load contacts for this lead
+    if (activity.lead_id) {
+      try {
+        const { data: linkedData } = await supabase
+          .from('contact_leads')
+          .select('contact_id')
+          .eq('lead_id', activity.lead_id);
+        if (linkedData && linkedData.length > 0) {
+          const contactIds = linkedData.map(cl => cl.contact_id);
+          const { data: contactsData } = await supabase
+            .from('contacts')
+            .select('id, full_name')
+            .in('id', contactIds)
+            .order('full_name');
+          setAvailableContacts(contactsData || []);
+        } else {
+          const { data: allContacts } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
+          setAvailableContacts(allContacts || []);
+        }
+      } catch { /* keep existing */ }
+    }
     setSheetMode('edit');
   };
 
@@ -192,6 +217,8 @@ const ActivitiesPage = () => {
       notification_date: formNotificationDate || null,
       notes: formNotes || null,
       status: formStatus,
+      contact_id: formContactId || null,
+      contact_name: formContactName || null,
     } as any);
     closeSheet();
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
