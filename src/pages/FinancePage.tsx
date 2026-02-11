@@ -831,6 +831,82 @@ export default function FinancePage() {
         {/* Main Content - Show when has connections AND permissions */}
         {connections.length > 0 && allowedCards.length > 0 && (
           <>
+            {/* Global Period Filter */}
+            <Card className="border-0 shadow-card mb-4">
+              <CardContent className="py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={getActivePeriodValue()} onValueChange={handlePeriodChange}>
+                    <SelectTrigger className="w-[180px] h-8">
+                      <CalendarIcon className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Selecione o período" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {quickDateRanges.map((range) => (
+                        <SelectItem key={range.value} value={range.value}>
+                          {range.label}
+                        </SelectItem>
+                      ))}
+                      {getActivePeriodValue() === 'custom' && (
+                        <SelectItem value="custom">Personalizado</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  
+                  <div className="flex items-center gap-2 ml-auto">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          {format(startDate, "dd/MM/yy")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={startDate}
+                          onSelect={(date) => {
+                            if (date) {
+                              setStartDate(date);
+                              setSelectedPeriod('custom');
+                            }
+                          }}
+                          defaultMonth={startDate}
+                          locale={ptBR}
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    
+                    <span className="text-muted-foreground text-sm">até</span>
+                    
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          {format(endDate, "dd/MM/yy")}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="single"
+                          selected={endDate}
+                          onSelect={(date) => {
+                            if (date) {
+                              setEndDate(date);
+                              setSelectedPeriod('custom');
+                            }
+                          }}
+                          defaultMonth={endDate}
+                          locale={ptBR}
+                          className="pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Financial Section Tabs */}
             <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
               <TabsList className="grid w-full grid-cols-4 h-11">
@@ -871,82 +947,7 @@ export default function FinancePage() {
               <TabsContent value="credit-card" className="mt-4 space-y-4">
             <Card className="border-0 shadow-card">
               <CardContent className="py-4 space-y-4">
-                {/* Row 1: Period Selector + Date Range */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Period Dropdown */}
-                  <Select value={getActivePeriodValue()} onValueChange={handlePeriodChange}>
-                    <SelectTrigger className="w-[180px] h-8">
-                      <CalendarIcon className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Selecione o período" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      {quickDateRanges.map((range) => (
-                        <SelectItem key={range.value} value={range.value}>
-                          {range.label}
-                        </SelectItem>
-                      ))}
-                      {getActivePeriodValue() === 'custom' && (
-                        <SelectItem value="custom">Personalizado</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                  
-                  <div className="flex items-center gap-2 ml-auto">
-                    {/* Start Date */}
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
-                          <CalendarIcon className="h-4 w-4 mr-2" />
-                          {format(startDate, "dd/MM/yy")}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={startDate}
-                          onSelect={(date) => {
-                            if (date) {
-                              setStartDate(date);
-                              setSelectedPeriod('custom');
-                            }
-                          }}
-                          defaultMonth={startDate}
-                          locale={ptBR}
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    
-                    <span className="text-muted-foreground text-sm">até</span>
-                    
-                    {/* End Date */}
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 min-w-[120px]">
-                          <CalendarIcon className="h-4 w-4 mr-2" />
-                          {format(endDate, "dd/MM/yy")}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="end">
-                        <Calendar
-                          mode="single"
-                          selected={endDate}
-                          onSelect={(date) => {
-                            if (date) {
-                              setEndDate(date);
-                              setSelectedPeriod('custom');
-                            }
-                          }}
-                          defaultMonth={endDate}
-                          locale={ptBR}
-                          className="pointer-events-auto"
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
-                {/* Row 2: Search + Filters */}
+                {/* Row 1: Search + Filters */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                   {/* Connection Filter */}
                   {connections.length > 1 && (
