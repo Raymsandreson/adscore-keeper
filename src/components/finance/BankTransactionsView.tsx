@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -30,11 +31,14 @@ interface BankTransactionsViewProps {
   endDate: Date;
 }
 
+type FlowFilter = 'all' | 'credit' | 'debit';
+
 export function BankTransactionsView({ startDate, endDate }: BankTransactionsViewProps) {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [flowFilter, setFlowFilter] = useState<FlowFilter>('all');
 
   useEffect(() => {
     if (!user) return;
@@ -67,14 +71,27 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
   };
 
   const filtered = useMemo(() => {
-    if (!searchTerm) return transactions;
-    const term = searchTerm.toLowerCase();
-    return transactions.filter(t =>
-      t.description?.toLowerCase().includes(term) ||
-      t.merchant_name?.toLowerCase().includes(term) ||
-      t.category?.toLowerCase().includes(term)
-    );
-  }, [transactions, searchTerm]);
+    let result = transactions;
+
+    if (flowFilter === 'credit') {
+      result = result.filter(t => t.amount >= 0);
+    } else if (flowFilter === 'debit') {
+      result = result.filter(t => t.amount < 0);
+    }
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(t =>
+        t.description?.toLowerCase().includes(term) ||
+        t.merchant_name?.toLowerCase().includes(term) ||
+        t.category?.toLowerCase().includes(term) ||
+        t.transaction_type?.toLowerCase().includes(term) ||
+        t.merchant_city?.toLowerCase().includes(term)
+      );
+    }
+
+    return result;
+  }, [transactions, searchTerm, flowFilter]);
 
   const totalCredits = useMemo(() => filtered.filter(t => t.amount >= 0).reduce((sum, t) => sum + t.amount, 0), [filtered]);
   const totalDebits = useMemo(() => filtered.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0), [filtered]);
@@ -106,9 +123,15 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
 
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
+      {/* Summary Cards - clickable as filters */}
       <div className="grid grid-cols-3 gap-4">
-        <Card className="border-0 shadow-card">
+        <Card
+          className={cn(
+            "border-0 shadow-card cursor-pointer transition-all",
+            flowFilter === 'credit' && "ring-2 ring-primary"
+          )}
+          onClick={() => setFlowFilter(flowFilter === 'credit' ? 'all' : 'credit')}
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <TrendingUp className="h-4 w-4 text-green-500" />
@@ -119,7 +142,13 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
             </p>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-card">
+        <Card
+          className={cn(
+            "border-0 shadow-card cursor-pointer transition-all",
+            flowFilter === 'debit' && "ring-2 ring-primary"
+          )}
+          onClick={() => setFlowFilter(flowFilter === 'debit' ? 'all' : 'debit')}
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
               <TrendingDown className="h-4 w-4 text-destructive" />
@@ -143,21 +172,58 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar movimentação..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search + Flow Filter */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por descrição, estabelecimento, categoria, cidade..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 rounded-xl bg-muted/50 border-0"
+          />
+        </div>
+        <div className="flex items-center gap-1 bg-muted rounded-xl p-1">
+          <Button
+            variant={flowFilter === 'all' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 text-xs rounded-lg"
+            onClick={() => setFlowFilter('all')}
+          >
+            Todas
+          </Button>
+          <Button
+            variant={flowFilter === 'credit' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 text-xs rounded-lg gap-1"
+            onClick={() => setFlowFilter('credit')}
+          >
+            <ArrowUpRight className="h-3 w-3" />
+            Entradas
+          </Button>
+          <Button
+            variant={flowFilter === 'debit' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 text-xs rounded-lg gap-1"
+            onClick={() => setFlowFilter('debit')}
+          >
+            <ArrowDownRight className="h-3 w-3" />
+            Saídas
+          </Button>
+        </div>
       </div>
 
       {/* Transactions Table */}
       <Card className="border-0 shadow-card">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Extrato ({filtered.length} movimentações)</CardTitle>
+          <CardTitle className="text-base">
+            Extrato ({filtered.length} movimentações)
+            {flowFilter !== 'all' && (
+              <Badge variant="secondary" className="ml-2 text-xs">
+                {flowFilter === 'credit' ? 'Só entradas' : 'Só saídas'}
+              </Badge>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[500px]">
