@@ -188,12 +188,12 @@ serve(async (req) => {
               .from("transaction_category_overrides")
               .update(updateData)
               .eq("id", existing.id);
-          } else if (r.category) {
+          } else {
             await supabase
               .from("transaction_category_overrides")
               .insert({
                 transaction_id: r.transaction_id,
-                category_id: r.category,
+                category_id: r.category || null,
                 notes: r.description || null,
                 manual_city: r.city || null,
                 manual_state: r.state || null,
