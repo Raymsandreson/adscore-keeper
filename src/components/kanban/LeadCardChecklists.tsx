@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ListChecks, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 
 interface ChecklistItem {
   id: string;
@@ -32,6 +33,7 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { logActivity } = useActivityLogger();
 
   const loadInstances = useCallback(async () => {
     const { data, error } = await supabase
@@ -73,6 +75,9 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
 
+    const targetItem = instance.items.find(i => i.id === itemId);
+    const willBeChecked = !targetItem?.checked;
+
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
@@ -85,6 +90,16 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
         ? { ...inst, items: updatedItems, is_completed: allChecked }
         : inst
     ));
+
+    // Log checklist item check to activity
+    if (willBeChecked) {
+      logActivity({
+        actionType: 'checklist_item_checked',
+        entityType: 'lead',
+        entityId: leadId,
+        metadata: { checklistId: instance.id, itemId, itemLabel: targetItem?.label },
+      });
+    }
 
     await supabase
       .from('lead_checklist_instances')

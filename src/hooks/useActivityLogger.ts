@@ -22,7 +22,8 @@ export type ActivityType =
   | 'form_submit'
   | 'filter_applied'
   | 'export_data'
-  | 'search_performed';
+  | 'search_performed'
+  | 'checklist_item_checked';
 
 export type EntityType = 'comment' | 'lead' | 'contact' | 'dm' | 'workflow';
 
