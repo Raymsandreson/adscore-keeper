@@ -30,11 +30,10 @@ interface TemplateInfo {
   items: { id: string; label: string }[];
 }
 
-// Filter: which items must be checked or unchecked
+// Filter: which items must be checked
 export interface ChecklistFilterRule {
   templateId: string;
   itemId: string;
-  mustBeChecked: boolean;
 }
 
 interface ChecklistFilterProps {
@@ -105,6 +104,9 @@ export function ChecklistFilter({ boardId, leadIds, onFilteredLeadIds }: Checkli
     load();
   }, [boardId, leadIds.join(',')]);
 
+  // Stable lead IDs string for dependency
+  const leadIdsKey = leadIds.join(',');
+
   // Apply filter whenever rules or instances change
   useEffect(() => {
     if (rules.length === 0) {
@@ -115,19 +117,17 @@ export function ChecklistFilter({ boardId, leadIds, onFilteredLeadIds }: Checkli
     const matchingLeadIds = new Set<string>();
 
     // For each lead, check if all rules match
-    const allLeadIds = new Set(leadIds);
-    allLeadIds.forEach(leadId => {
+    leadIds.forEach(leadId => {
       const leadInstances = instances.filter(i => i.lead_id === leadId);
       
       const allRulesMatch = rules.every(rule => {
         const instance = leadInstances.find(i => i.checklist_template_id === rule.templateId);
         if (!instance) {
-          // No instance = all items unchecked
-          return !rule.mustBeChecked;
+          // No instance = item unchecked → doesn't match
+          return false;
         }
         const item = instance.items.find(i => i.id === rule.itemId);
-        const isChecked = item?.checked || false;
-        return isChecked === rule.mustBeChecked;
+        return item?.checked === true;
       });
 
       if (allRulesMatch) {
@@ -136,32 +136,22 @@ export function ChecklistFilter({ boardId, leadIds, onFilteredLeadIds }: Checkli
     });
 
     onFilteredLeadIds(matchingLeadIds);
-  }, [rules, instances, leadIds]);
+  }, [rules, instances, leadIdsKey]);
 
   const toggleRule = (templateId: string, itemId: string) => {
     setRules(prev => {
       const existing = prev.find(r => r.templateId === templateId && r.itemId === itemId);
       if (!existing) {
         // Add rule: must be checked
-        return [...prev, { templateId, itemId, mustBeChecked: true }];
-      }
-      if (existing.mustBeChecked) {
-        // Switch to must be unchecked
-        return prev.map(r =>
-          r.templateId === templateId && r.itemId === itemId
-            ? { ...r, mustBeChecked: false }
-            : r
-        );
+        return [...prev, { templateId, itemId }];
       }
       // Remove rule
       return prev.filter(r => !(r.templateId === templateId && r.itemId === itemId));
     });
   };
 
-  const getRuleState = (templateId: string, itemId: string): 'checked' | 'unchecked' | 'none' => {
-    const rule = rules.find(r => r.templateId === templateId && r.itemId === itemId);
-    if (!rule) return 'none';
-    return rule.mustBeChecked ? 'checked' : 'unchecked';
+  const isActive = (templateId: string, itemId: string): boolean => {
+    return rules.some(r => r.templateId === templateId && r.itemId === itemId);
   };
 
   const clearAll = () => {
@@ -199,7 +189,7 @@ export function ChecklistFilter({ boardId, leadIds, onFilteredLeadIds }: Checkli
           )}
         </div>
         <p className="px-3 pt-2 text-[10px] text-muted-foreground">
-          Clique: ✅ preenchido → ⬜ não preenchido → sem filtro
+          Clique para filtrar leads com o item ✅ preenchido
         </p>
         <div className="p-2 max-h-[300px] overflow-y-auto space-y-3">
           {templates.map(template => (
@@ -208,23 +198,21 @@ export function ChecklistFilter({ boardId, leadIds, onFilteredLeadIds }: Checkli
                 {template.name}
               </p>
               {template.items.map(item => {
-                const state = getRuleState(template.id, item.id);
+                const active = isActive(template.id, item.id);
                 return (
                   <button
                     key={item.id}
                     className={cn(
                       "flex items-center gap-2 w-full text-left px-2 py-1 rounded text-xs hover:bg-muted/50 transition-colors",
-                      state !== 'none' && "bg-muted/30"
+                      active && "bg-muted/30"
                     )}
                     onClick={() => toggleRule(template.id, item.id)}
                   >
                     <span className={cn(
                       "flex items-center justify-center w-4 h-4 rounded border text-[10px] font-bold flex-shrink-0",
-                      state === 'checked' && "bg-green-500 border-green-500 text-white",
-                      state === 'unchecked' && "bg-red-400 border-red-400 text-white",
-                      state === 'none' && "border-muted-foreground/30"
+                      active ? "bg-green-500 border-green-500 text-white" : "border-muted-foreground/30"
                     )}>
-                      {state === 'checked' ? '✓' : state === 'unchecked' ? '✗' : ''}
+                      {active ? '✓' : ''}
                     </span>
                     <span className="truncate">{item.label}</span>
                   </button>
