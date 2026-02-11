@@ -408,6 +408,19 @@ export function PendingTransactionsList({
     if (override?.manual_state || transaction.merchant_state) {
       fetchCities(override?.manual_state || transaction.merchant_state || '');
     }
+
+    // Auto-detect geolocation if no state/city is set
+    const hasState = override?.manual_state || transaction.merchant_state;
+    const hasCity = override?.manual_city || transaction.merchant_city;
+    if (!hasState && !hasCity) {
+      fetchLocation().then((loc) => {
+        if (loc) {
+          setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city }));
+          fetchCities(loc.state);
+          toast.success('Localização detectada automaticamente!');
+        }
+      });
+    }
   };
 
   const cancelEditing = () => {
