@@ -5,14 +5,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
 import {
   Collapsible,
   CollapsibleContent,
@@ -369,19 +368,19 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const isEditingObjective = editingObjectivePhaseIdx !== null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="sm:max-w-lg w-full flex flex-col p-0">
+        <SheetHeader className="px-6 py-4 border-b">
+          <SheetTitle className="flex items-center gap-2">
             <Workflow className="h-5 w-5" />
             {viewMode === 'list' ? 'Fluxos de Trabalho' : (editingBoardId ? 'Editar Fluxo' : 'Novo Fluxo de Trabalho')}
-          </DialogTitle>
-        </DialogHeader>
+          </SheetTitle>
+        </SheetHeader>
 
         {viewMode === 'list' ? (
-          /* ===== WORKFLOW LIST ===== */
-          <div className="space-y-3">
-            <ScrollArea className="max-h-[60vh]">
+          <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="space-y-3 px-6 py-4 overflow-y-auto flex-1">
+            <div className="overflow-y-auto flex-1">
               {boards.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
                   Nenhum fluxo criado ainda
@@ -418,17 +417,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                   </Card>
                 ))
               )}
-            </ScrollArea>
+            </div>
 
             <Button className="w-full" variant="outline" onClick={handleNewWorkflow}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Fluxo de Trabalho
             </Button>
           </div>
+          </div>
         ) : isEditingObjective ? (
           /* ===== OBJECTIVE EDITOR ===== */
-          <div className="flex flex-col min-h-0 flex-1">
-            <div className="overflow-y-auto flex-1 space-y-4 pr-1" style={{ maxHeight: 'calc(90vh - 160px)' }}>
+          <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+            <div className="overflow-y-auto flex-1 space-y-4 px-6 py-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <button onClick={cancelObjectiveEdit} className="hover:text-foreground transition-colors">
                   ← Voltar ao fluxo
@@ -495,17 +495,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               </div>
             </div>
 
-            <DialogFooter className="pt-3 border-t mt-3">
+            <SheetFooter className="px-6 py-3 border-t mt-auto">
               <Button variant="outline" onClick={cancelObjectiveEdit}>Cancelar</Button>
               <Button onClick={saveObjective} disabled={!objName.trim() || objItems.length === 0}>
                 Salvar Objetivo
               </Button>
-            </DialogFooter>
+            </SheetFooter>
           </div>
         ) : (
           /* ===== WORKFLOW EDITOR ===== */
-          <div className="flex flex-col min-h-0 flex-1">
-            <div className="overflow-y-auto flex-1 space-y-4 pr-1" style={{ maxHeight: 'calc(90vh - 160px)' }}>
+          <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+            <div className="overflow-y-auto flex-1 space-y-4 px-6 py-4">
               <div>
                 <Label>Nome do Fluxo</Label>
                 <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Ex: Prospecção Outbound" />
@@ -643,7 +643,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               </div>
             </div>
 
-            <DialogFooter className="pt-3 border-t mt-3 flex justify-between">
+            <SheetFooter className="px-6 py-3 border-t mt-auto flex justify-between">
               {editingBoardId && (
                 <Button variant="destructive" size="sm" onClick={() => {
                   const board = boards.find(b => b.id === editingBoardId);
@@ -659,10 +659,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                   {saving ? 'Salvando...' : (editingBoardId ? 'Salvar' : 'Criar Fluxo')}
                 </Button>
               </div>
-            </DialogFooter>
+            </SheetFooter>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
