@@ -91,15 +91,13 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
         : inst
     ));
 
-    // Log checklist item check to activity
-    if (willBeChecked) {
-      logActivity({
-        actionType: 'checklist_item_checked',
-        entityType: 'lead',
-        entityId: leadId,
-        metadata: { checklistId: instance.id, itemId, itemLabel: targetItem?.label },
-      });
-    }
+    // Log checklist item check/uncheck to activity
+    logActivity({
+      actionType: willBeChecked ? 'checklist_item_checked' : 'checklist_item_unchecked',
+      entityType: 'lead',
+      entityId: leadId,
+      metadata: { checklistId: instance.id, itemId, itemLabel: targetItem?.label },
+    });
 
     await supabase
       .from('lead_checklist_instances')

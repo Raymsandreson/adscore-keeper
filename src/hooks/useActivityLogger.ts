@@ -23,7 +23,8 @@ export type ActivityType =
   | 'filter_applied'
   | 'export_data'
   | 'search_performed'
-  | 'checklist_item_checked';
+  | 'checklist_item_checked'
+  | 'checklist_item_unchecked';
 
 export type EntityType = 'comment' | 'lead' | 'contact' | 'dm' | 'workflow';
 
