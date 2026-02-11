@@ -145,8 +145,8 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
         stage_name: stageNameMap[d.stage_id] || d.stage_id,
       })));
 
-      // Auto-expand current phase
-      setExpandedPhase(stageId);
+      // Keep collapsed by default - user expands to tick items
+      setExpandedPhase(null);
     } catch (error) {
       console.error('Error loading checklists:', error);
     } finally {
