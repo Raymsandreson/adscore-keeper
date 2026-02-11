@@ -260,7 +260,7 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {new Date(transaction.transaction_date).toLocaleDateString('pt-BR', {
+                {new Date(transaction.transaction_date + 'T12:00:00').toLocaleDateString('pt-BR', {
                   day: '2-digit',
                   month: 'long',
                   year: 'numeric'

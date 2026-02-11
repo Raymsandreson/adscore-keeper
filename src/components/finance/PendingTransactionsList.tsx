@@ -575,7 +575,7 @@ export function PendingTransactionsList({
                 
                 {/* Date & Time */}
                 <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                  <span className="w-12">{format(new Date(transaction.transaction_date), "dd/MM", { locale: ptBR })}</span>
+                  <span className="w-12">{format(new Date(transaction.transaction_date + 'T12:00:00'), "dd/MM", { locale: ptBR })}</span>
                   {transaction.transaction_time && (
                     <span className="flex items-center gap-0.5 text-muted-foreground/70">
                       <Clock className="h-3 w-3" />
@@ -880,7 +880,7 @@ export function PendingTransactionsList({
                       <div className="flex flex-wrap gap-4 text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
-                          {format(new Date(transaction.transaction_date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+                          {format(new Date(transaction.transaction_date + 'T12:00:00'), "dd 'de' MMMM, yyyy", { locale: ptBR })}
                         </span>
                         {transaction.category && (
                           <span className="flex items-center gap-1">

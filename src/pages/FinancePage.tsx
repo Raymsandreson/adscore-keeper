@@ -498,7 +498,7 @@ export default function FinancePage() {
   const transactionsByDay = useMemo(() => {
     const grouped: Record<string, typeof filteredTransactions> = {};
     filteredTransactions.forEach(t => {
-      const date = format(new Date(t.transaction_date), 'yyyy-MM-dd');
+      const date = format(new Date(t.transaction_date + 'T12:00:00'), 'yyyy-MM-dd');
       if (!grouped[date]) grouped[date] = [];
       grouped[date].push(t);
     });
@@ -1289,7 +1289,7 @@ export default function FinancePage() {
                             {filteredTransactions.map((transaction) => (
                               <TableRow key={transaction.id}>
                                 <TableCell className="font-mono text-sm">
-                                  {format(new Date(transaction.transaction_date), "dd/MM/yy")}
+                                  {format(new Date(transaction.transaction_date + 'T12:00:00'), "dd/MM/yy")}
                                 </TableCell>
                                 <TableCell>
                                   <div>
