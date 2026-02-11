@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
-import { ChecklistTemplatesManager } from '@/components/kanban/ChecklistTemplatesManager';
+import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 
@@ -249,8 +249,8 @@ const WorkflowProgressPage = () => {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-      {/* Workflow config (Checklist Templates Manager) */}
-      <ChecklistTemplatesManager open={showConfig} onOpenChange={setShowConfig} />
+      {/* Workflow config */}
+      <WorkflowBuilder open={showConfig} onOpenChange={setShowConfig} onWorkflowSaved={fetchData} />
     </div>
   );
 };
