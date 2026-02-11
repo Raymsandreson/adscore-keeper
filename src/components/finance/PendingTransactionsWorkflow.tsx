@@ -501,7 +501,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
               <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
-                  {format(new Date(currentTransaction.transaction_date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+                  {format(new Date(currentTransaction.transaction_date + 'T12:00:00'), "dd 'de' MMMM, yyyy", { locale: ptBR })}
                 </span>
                 {currentTransaction.transaction_time && (
                   <span className="flex items-center gap-1">
