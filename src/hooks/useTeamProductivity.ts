@@ -19,6 +19,8 @@ export interface UserProductivity {
   leadsCreated: number;
   leadsClosed: number;
   checklistItemsChecked: number;
+  activitiesCompleted: number;
+  activitiesOverdue: number;
   sessionMinutes: number;
   pageVisits: number;
   totalActions: number;
@@ -107,6 +109,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         sessionsRes,
         activitiesRes,
         catContactsRes,
+        completedActivitiesRes,
+        overdueActivitiesRes,
       ] = await Promise.all([
         // Contacts created (has created_by)
         supabase.from('contacts').select('id, created_by, created_at')
@@ -143,6 +147,15 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         supabase.from('cat_lead_contacts').select('id, contacted_by, contact_channel, created_at')
           .gte('created_at', startDate).lte('created_at', endDate)
           .not('contacted_by', 'is', null),
+        // Lead activities - completed
+        supabase.from('lead_activities').select('id, assigned_to, status, deadline, completed_at, completed_by')
+          .eq('status', 'concluida')
+          .gte('completed_at', startDate).lte('completed_at', endDate),
+        // Lead activities - overdue (pendente with deadline before now)
+        supabase.from('lead_activities').select('id, assigned_to, status, deadline')
+          .eq('status', 'pendente')
+          .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
+          .not('deadline', 'is', null),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -155,6 +168,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       const sessionsData = sessionsRes.data || [];
       const activities = activitiesRes.data || [];
       const catContacts = catContactsRes.data || [];
+      const completedActivities = completedActivitiesRes.data || [];
+      const overdueActivities = overdueActivitiesRes.data || [];
 
       // Gather all user IDs
       const allUserIds = new Set<string>();
@@ -166,6 +181,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       activities.forEach(a => allUserIds.add(a.user_id));
       catContacts.forEach(c => c.contacted_by && allUserIds.add(c.contacted_by));
       stageHistory.forEach(s => (s as any).changed_by && allUserIds.add((s as any).changed_by));
+      completedActivities.forEach(a => a.completed_by && allUserIds.add(a.completed_by));
+      overdueActivities.forEach(a => a.assigned_to && allUserIds.add(a.assigned_to));
 
       // Fetch profiles
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
@@ -187,7 +204,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
             contactsCreated: 0, contactsLinked: 0, dmsSent: 0, dmsReceived: 0,
             commentReplies: 0, callsMade: 0, stageChanges: 0,
             followupsCreated: 0, followupsDone: 0, leadsCreated: 0, leadsClosed: 0,
-            checklistItemsChecked: 0, sessionMinutes: 0, pageVisits: 0, totalActions: 0,
+            checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
+            sessionMinutes: 0, pageVisits: 0, totalActions: 0,
           });
         }
         return userMap.get(userId)!;
@@ -255,11 +273,26 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       });
       // Followups (no user_id, count globally)
 
-      // Compute total actions for each user
+      // Count completed activities per user
+      completedActivities.forEach(a => {
+        if (a.completed_by) {
+          getUser(a.completed_by).activitiesCompleted++;
+        }
+      });
+
+      // Count overdue activities per user
+      overdueActivities.forEach(a => {
+        if (a.assigned_to) {
+          getUser(a.assigned_to).activitiesOverdue++;
+        }
+      });
+
+      // Compute total actions for each user (completed adds, overdue subtracts)
       userMap.forEach(u => {
         u.totalActions = u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
           u.commentReplies + u.callsMade + u.leadsCreated + u.leadsClosed +
-          u.followupsCreated + u.followupsDone + u.checklistItemsChecked;
+          u.followupsCreated + u.followupsDone + u.checklistItemsChecked +
+          u.activitiesCompleted - u.activitiesOverdue;
       });
 
       const productivityList = Array.from(userMap.values())

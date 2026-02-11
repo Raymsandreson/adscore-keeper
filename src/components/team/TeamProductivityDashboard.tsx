@@ -218,6 +218,8 @@ export function TeamProductivityDashboard() {
   const totalMinutes = productivity.reduce((sum, p) => sum + p.sessionMinutes, 0);
   const totalCalls = productivity.reduce((sum, p) => sum + p.callsMade, 0);
   const totalChecklists = productivity.reduce((sum, p) => sum + p.checklistItemsChecked, 0);
+  const totalActivitiesCompleted = productivity.reduce((sum, p) => sum + p.activitiesCompleted, 0);
+  const totalActivitiesOverdue = productivity.reduce((sum, p) => sum + p.activitiesOverdue, 0);
 
   return (
     <div className="space-y-6">
@@ -331,6 +333,22 @@ export function TeamProductivityDashboard() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalActivitiesCompleted}</p><p className="text-[10px] text-muted-foreground">Atv Concluídas</p></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className={`p-1.5 rounded-lg ${totalActivitiesOverdue > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}><Clock className="h-4 w-4" /></div>
+              <div><p className={`text-xl font-bold ${totalActivitiesOverdue > 0 ? 'text-red-600' : ''}`}>{totalActivitiesOverdue}</p><p className="text-[10px] text-muted-foreground">Atv Atrasadas</p></div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="ranking" className="space-y-4">
@@ -397,7 +415,7 @@ export function TeamProductivityDashboard() {
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
 
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 text-sm">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-11 gap-2 text-sm">
                         <div className="text-center">
                           <p className="font-semibold text-blue-600">{member.commentReplies}</p>
                           <p className="text-[10px] text-muted-foreground">comentários</p>
@@ -425,6 +443,14 @@ export function TeamProductivityDashboard() {
                         <div className="text-center">
                           <p className="font-semibold text-cyan-600">{member.checklistItemsChecked}</p>
                           <p className="text-[10px] text-muted-foreground">checklists</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-emerald-600">{member.activitiesCompleted}</p>
+                          <p className="text-[10px] text-muted-foreground">concluídas</p>
+                        </div>
+                        <div className="text-center">
+                          <p className={`font-semibold ${member.activitiesOverdue > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{member.activitiesOverdue}</p>
+                          <p className="text-[10px] text-muted-foreground">atrasadas</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-rose-600">{member.leadsClosed}</p>
