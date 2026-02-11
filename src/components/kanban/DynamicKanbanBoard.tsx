@@ -739,13 +739,11 @@ export function DynamicKanbanBoard({
                                   </div>
 
                                   {/* Checklist progress preview */}
-                                  {lead.board_id && (
-                                    <LeadCardChecklists
-                                      leadId={lead.id}
-                                      boardId={lead.board_id}
-                                      stageId={stage.id}
-                                    />
-                                  )}
+                                  <LeadCardChecklists
+                                    leadId={lead.id}
+                                    boardId={board.id}
+                                    stageId={stage.id}
+                                  />
                                 </div>
                               </div>
                             </CardContent>
