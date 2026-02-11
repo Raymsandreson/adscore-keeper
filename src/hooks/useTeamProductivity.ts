@@ -18,6 +18,7 @@ export interface UserProductivity {
   followupsDone: number;
   leadsCreated: number;
   leadsClosed: number;
+  checklistItemsChecked: number;
   sessionMinutes: number;
   pageVisits: number;
   totalActions: number;
@@ -65,6 +66,7 @@ interface TeamProductivitySummary {
   totalLeadsClosed: number;
   totalPageVisits: number;
   totalCallsMade: number;
+  totalChecklistItems: number;
 }
 
 export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
@@ -82,6 +84,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
     totalLeadsClosed: 0,
     totalPageVisits: 0,
     totalCallsMade: 0,
+    totalChecklistItems: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -184,7 +187,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
             contactsCreated: 0, contactsLinked: 0, dmsSent: 0, dmsReceived: 0,
             commentReplies: 0, callsMade: 0, stageChanges: 0,
             followupsCreated: 0, followupsDone: 0, leadsCreated: 0, leadsClosed: 0,
-            sessionMinutes: 0, pageVisits: 0, totalActions: 0,
+            checklistItemsChecked: 0, sessionMinutes: 0, pageVisits: 0, totalActions: 0,
           });
         }
         return userMap.get(userId)!;
@@ -238,6 +241,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       activities.forEach(a => {
         const u = getUser(a.user_id);
         if (a.action_type === 'page_visit') u.pageVisits++;
+        if (a.action_type === 'checklist_item_checked') u.checklistItemsChecked++;
       });
 
       // Stage changes per user (now has changed_by)
@@ -254,7 +258,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       userMap.forEach(u => {
         u.totalActions = u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
           u.commentReplies + u.callsMade + u.leadsCreated + u.leadsClosed +
-          u.followupsCreated + u.followupsDone;
+          u.followupsCreated + u.followupsDone + u.checklistItemsChecked;
       });
 
       const productivityList = Array.from(userMap.values())
@@ -272,6 +276,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         totalLeadsClosed: leads.filter(l => l.status === 'converted' || l.status === 'won' || l.status === 'closed').length,
         totalPageVisits: activities.filter(a => a.action_type === 'page_visit').length,
         totalCallsMade: catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length,
+        totalChecklistItems: activities.filter(a => a.action_type === 'checklist_item_checked').length,
       });
 
       // Timeline

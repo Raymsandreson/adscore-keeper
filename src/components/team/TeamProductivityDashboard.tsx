@@ -32,6 +32,7 @@ import {
   UserPlus,
   Link2,
   ClipboardList,
+  ListChecks,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -119,6 +120,7 @@ export function TeamProductivityDashboard() {
     contatos: p.contactsCreated,
     etapas: p.stageChanges,
     ligacoes: p.callsMade,
+    checklists: p.checklistItemsChecked,
   }));
 
   const getActionTypeLabel = (type: string) => {
@@ -215,6 +217,7 @@ export function TeamProductivityDashboard() {
   const totalContacts = productivity.reduce((sum, p) => sum + p.contactsCreated, 0);
   const totalMinutes = productivity.reduce((sum, p) => sum + p.sessionMinutes, 0);
   const totalCalls = productivity.reduce((sum, p) => sum + p.callsMade, 0);
+  const totalChecklists = productivity.reduce((sum, p) => sum + p.checklistItemsChecked, 0);
 
   return (
     <div className="space-y-6">
@@ -293,6 +296,14 @@ export function TeamProductivityDashboard() {
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700"><ArrowRightLeft className="h-4 w-4" /></div>
               <div><p className="text-xl font-bold">{summary.totalStageChanges}</p><p className="text-[10px] text-muted-foreground">Etapas</p></div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-cyan-100 text-cyan-700"><ListChecks className="h-4 w-4" /></div>
+              <div><p className="text-xl font-bold">{totalChecklists}</p><p className="text-[10px] text-muted-foreground">Checklists</p></div>
             </div>
           </CardContent>
         </Card>
@@ -386,7 +397,7 @@ export function TeamProductivityDashboard() {
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
 
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 gap-2 text-sm">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 text-sm">
                         <div className="text-center">
                           <p className="font-semibold text-blue-600">{member.commentReplies}</p>
                           <p className="text-[10px] text-muted-foreground">comentários</p>
@@ -410,6 +421,10 @@ export function TeamProductivityDashboard() {
                         <div className="text-center">
                           <p className="font-semibold text-amber-600">{member.stageChanges}</p>
                           <p className="text-[10px] text-muted-foreground">etapas</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-cyan-600">{member.checklistItemsChecked}</p>
+                          <p className="text-[10px] text-muted-foreground">checklists</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-rose-600">{member.leadsClosed}</p>
