@@ -12,12 +12,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   CreditCard, CheckCircle2, AlertCircle, Loader2, Send, 
-  MapPin, Tag, FileText, ChevronDown, ChevronUp, User, Building, UserCheck, Search
+  MapPin, Tag, FileText, ChevronDown, ChevronUp, User, Building, UserCheck, Search, LocateFixed
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useGeolocation } from '@/hooks/useGeolocation';
 
 interface Transaction {
   id: string;
@@ -115,6 +116,30 @@ export default function ExpenseFormPage() {
   const [batchContactSearch, setBatchContactSearch] = useState('');
   const [linkTabs, setLinkTabs] = useState<Record<string, 'lead' | 'contact'>>({});
   const [batchLinkTab, setBatchLinkTab] = useState<'lead' | 'contact'>('lead');
+  const { loading: geoLoading, fetchLocation } = useGeolocation();
+
+  const handleAutoLocationForTx = async (txId: string) => {
+    const loc = await fetchLocation();
+    if (loc) {
+      updateResponse(txId, 'state', loc.state);
+      updateResponse(txId, 'city', loc.city);
+      fetchCitiesForState(loc.state, txId);
+      toast.success(`Localização: ${loc.city}/${loc.state}`);
+    } else {
+      toast.error('Não foi possível detectar a localização');
+    }
+  };
+
+  const handleAutoLocationBatch = async () => {
+    const loc = await fetchLocation();
+    if (loc) {
+      setBatchData(prev => ({ ...prev, state: loc.state, city: loc.city }));
+      fetchCitiesForState(loc.state, 'batch');
+      toast.success(`Localização: ${loc.city}/${loc.state}`);
+    } else {
+      toast.error('Não foi possível detectar a localização');
+    }
+  };
 
   useEffect(() => {
     if (token) loadFormData();
@@ -342,37 +367,51 @@ export default function ExpenseFormPage() {
     onCityChange: (v: string) => void,
     cities: IBGECity[],
     isLoadingCities: boolean,
+    onAutoLocation?: () => void,
   ) => (
-    <div className="grid grid-cols-2 gap-2">
-      <div>
-        <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> Estado
-        </Label>
-        <Select value={stateValue} onValueChange={onStateChange}>
-          <SelectTrigger className="h-8 text-xs mt-1">
-            <SelectValue placeholder="UF" />
-          </SelectTrigger>
-          <SelectContent>
-            {BRAZILIAN_STATES.map(s => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div>
-        <Label className="text-xs flex items-center gap-1">
-          <MapPin className="h-3 w-3" /> Cidade
-        </Label>
-        <Select value={cityValue} onValueChange={onCityChange} disabled={!stateValue || isLoadingCities}>
-          <SelectTrigger className="h-8 text-xs mt-1">
-            <SelectValue placeholder={isLoadingCities ? "Carregando..." : "Selecione"} />
-          </SelectTrigger>
-          <SelectContent>
-            {cities.map(c => (
-              <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="space-y-2">
+      {onAutoLocation && (
+        <button
+          type="button"
+          onClick={onAutoLocation}
+          disabled={geoLoading}
+          className="w-full flex items-center justify-center gap-1.5 text-xs border border-dashed rounded-md py-1.5 hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          {geoLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <LocateFixed className="h-3 w-3" />}
+          {geoLoading ? 'Detectando...' : 'Usar minha localização'}
+        </button>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-xs flex items-center gap-1">
+            <MapPin className="h-3 w-3" /> Estado
+          </Label>
+          <Select value={stateValue} onValueChange={onStateChange}>
+            <SelectTrigger className="h-8 text-xs mt-1">
+              <SelectValue placeholder="UF" />
+            </SelectTrigger>
+            <SelectContent>
+              {BRAZILIAN_STATES.map(s => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs flex items-center gap-1">
+            <MapPin className="h-3 w-3" /> Cidade
+          </Label>
+          <Select value={cityValue} onValueChange={onCityChange} disabled={!stateValue || isLoadingCities}>
+            <SelectTrigger className="h-8 text-xs mt-1">
+              <SelectValue placeholder={isLoadingCities ? "Carregando..." : "Selecione"} />
+            </SelectTrigger>
+            <SelectContent>
+              {cities.map(c => (
+                <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
     </div>
   );
@@ -613,6 +652,7 @@ export default function ExpenseFormPage() {
                     (v) => setBatchData(p => ({ ...p, city: v })),
                     batchCities,
                     batchLoadingCities,
+                    handleAutoLocationBatch,
                   )}
 
                   <div>
@@ -731,6 +771,7 @@ export default function ExpenseFormPage() {
                           (v) => updateResponse(tx.id, 'city', v),
                           txCities,
                           isLoadingTxCities,
+                          () => handleAutoLocationForTx(tx.id),
                         )}
 
                         {renderLinkSelector(

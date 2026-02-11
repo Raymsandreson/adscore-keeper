@@ -11,8 +11,10 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { Sparkles, User, MapPin, Building, FileText, Briefcase } from 'lucide-react';
+import { Sparkles, User, MapPin, Building, FileText, Briefcase, LocateFixed, Loader2 } from 'lucide-react';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useGeolocation } from '@/hooks/useGeolocation';
+import { toast } from 'sonner';
 
 export interface AccidentLeadFormData {
   // Basic info
@@ -117,6 +119,19 @@ const sources = [
 
 export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [] }: AccidentLeadFormProps) {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { loading: geoLoading, fetchLocation } = useGeolocation();
+
+  const handleAutoLocation = async () => {
+    const loc = await fetchLocation();
+    if (loc) {
+      const region = stateToRegion[loc.state] || '';
+      onChange({ visit_state: loc.state, visit_city: loc.city, visit_region: region });
+      fetchCities(loc.state);
+      toast.success(`Localização detectada: ${loc.city}/${loc.state}`);
+    } else {
+      toast.error('Não foi possível detectar a localização');
+    }
+  };
 
   const updateField = (field: keyof AccidentLeadFormData, value: string) => {
     onChange({ [field]: value });
@@ -338,6 +353,19 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
         {/* Location Tab */}
         <TabsContent value="location" className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAutoLocation}
+                disabled={geoLoading}
+                className="w-full gap-2 border-dashed"
+              >
+                {geoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                {geoLoading ? 'Detectando localização...' : 'Usar minha localização atual'}
+              </Button>
+            </div>
             <div>
               <Label>Estado da Visita</Label>
               <Select value={formData.visit_state} onValueChange={handleStateChange}>
