@@ -94,8 +94,11 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       <Card className="border-0 shadow-card">
         <CardContent className="py-12 text-center">
           <Wallet className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-          <p className="text-muted-foreground">Nenhuma movimentação de conta corrente encontrada.</p>
-          <p className="text-sm text-muted-foreground/70 mt-2">Sincronize sua conta bancária para ver as movimentações.</p>
+          <p className="text-muted-foreground">Nenhuma movimentação no período selecionado.</p>
+          <p className="text-sm text-muted-foreground/70 mt-2">
+            Período: {format(startDate, 'dd/MM/yyyy', { locale: ptBR })} a {format(endDate, 'dd/MM/yyyy', { locale: ptBR })}. 
+            Tente alterar o período ou sincronize novamente.
+          </p>
         </CardContent>
       </Card>
     );
