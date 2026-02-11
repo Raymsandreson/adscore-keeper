@@ -37,7 +37,7 @@ const TONES = [
 
 export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onReplyPosted, isThirdPartyPost = false }: AIReplyDialogProps) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedTone, setSelectedTone] = useState("friendly");
+  const [selectedTone, setSelectedTone] = useState("casual");
   const [generatedReply, setGeneratedReply] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [editedReply, setEditedReply] = useState("");

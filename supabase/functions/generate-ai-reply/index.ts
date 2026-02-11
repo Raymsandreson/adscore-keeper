@@ -23,7 +23,7 @@ serve(async (req) => {
       professional: "Seja profissional e formal, mantendo cordialidade.",
       empathetic: "Demonstre empatia e compreensão genuína pela situação da pessoa.",
       sales: "Seja persuasivo mas não agressivo. Foque em gerar interesse e conduzir para uma conversa.",
-      casual: "Seja descontraído e casual, como se estivesse falando com um amigo."
+      casual: "Seja descontraído e casual, como se já conhecesse a pessoa. Use linguagem informal e próxima, sem ser forçado. Fale como um colega que já tem intimidade."
     };
 
     const selectedTone = toneInstructions[tone as keyof typeof toneInstructions] || toneInstructions.friendly;
