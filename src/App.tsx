@@ -11,6 +11,7 @@ import { PageTracker } from "@/components/PageTracker";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { FloatingNav } from "@/components/FloatingNav";
 import Index from "./pages/Index";
+import ActivitiesPage from "./pages/ActivitiesPage";
 import LeadsCenter from "./pages/LeadsCenter";
 import EditorialCalendarPage from "./pages/EditorialCalendarPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
@@ -51,7 +52,8 @@ function AppRoutes() {
       <GlobalDatabaseSearch />
       <FloatingNav />
       <Routes>
-        <Route path="/" element={<Index />} />
+        <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<Index />} />
         <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
         <Route path="/editorial" element={<ProtectedRoute><EditorialCalendarPage /></ProtectedRoute>} />
         <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />

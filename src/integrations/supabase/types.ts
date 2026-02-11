@@ -1842,6 +1842,89 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_activities: {
+        Row: {
+          activity_type: string
+          assigned_to: string | null
+          assigned_to_name: string | null
+          completed_at: string | null
+          completed_by: string | null
+          completed_by_name: string | null
+          created_at: string
+          created_by: string | null
+          current_status_notes: string | null
+          deadline: string | null
+          description: string | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          next_steps: string | null
+          notes: string | null
+          notification_date: string | null
+          priority: string | null
+          status: string
+          title: string
+          updated_at: string
+          what_was_done: string | null
+        }
+        Insert: {
+          activity_type?: string
+          assigned_to?: string | null
+          assigned_to_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_status_notes?: string | null
+          deadline?: string | null
+          description?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          next_steps?: string | null
+          notes?: string | null
+          notification_date?: string | null
+          priority?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          what_was_done?: string | null
+        }
+        Update: {
+          activity_type?: string
+          assigned_to?: string | null
+          assigned_to_name?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completed_by_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          current_status_notes?: string | null
+          deadline?: string | null
+          description?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          next_steps?: string | null
+          notes?: string | null
+          notification_date?: string | null
+          priority?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          what_was_done?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_checklist_instances: {
         Row: {
           board_id: string
