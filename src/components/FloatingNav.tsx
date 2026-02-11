@@ -28,6 +28,7 @@ import {
   Zap,
   Menu,
   Search,
+  ClipboardList,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
@@ -48,10 +49,17 @@ export function FloatingNav() {
 
   const mainNavItems: NavItem[] = [
     {
+      id: "activities",
+      label: "Atividades",
+      icon: <ClipboardList className="h-4 w-4" />,
+      path: "/",
+      color: "text-emerald-600",
+    },
+    {
       id: "dashboard",
       label: "Dashboard",
       icon: <LayoutDashboard className="h-4 w-4" />,
-      path: "/",
+      path: "/dashboard",
     },
     {
       id: "finance",
@@ -99,28 +107,28 @@ export function FloatingNav() {
       id: "paid",
       label: "Tráfego Pago",
       icon: <Megaphone className="h-4 w-4" />,
-      path: "/?tab=paid",
+      path: "/dashboard?tab=paid",
       color: "text-blue-500",
     },
     {
       id: "organic",
       label: "Orgânico",
       icon: <Heart className="h-4 w-4" />,
-      path: "/?tab=organic",
+      path: "/dashboard?tab=organic",
       color: "text-pink-500",
     },
     {
       id: "goals",
       label: "Metas",
       icon: <Target className="h-4 w-4" />,
-      path: "/?tab=goals",
+      path: "/dashboard?tab=goals",
       color: "text-emerald-500",
     },
     {
       id: "automation",
       label: "Automação",
       icon: <Bot className="h-4 w-4" />,
-      path: "/?tab=automation",
+      path: "/dashboard?tab=automation",
       color: "text-purple-500",
     },
   ];
@@ -130,14 +138,14 @@ export function FloatingNav() {
       id: "comments",
       label: "Comentários",
       icon: <MessageCircle className="h-4 w-4" />,
-      path: "/?tab=automation&subtab=comments",
+      path: "/dashboard?tab=automation&subtab=comments",
       color: "text-primary",
     },
     {
       id: "funnel",
       label: "Funil",
       icon: <Filter className="h-4 w-4" />,
-      path: "/?tab=automation&subtab=funnel",
+      path: "/dashboard?tab=automation&subtab=funnel",
       color: "text-orange-500",
     },
     {
@@ -168,6 +176,9 @@ export function FloatingNav() {
   const isActive = (path: string) => {
     if (path === "/") {
       return location.pathname === "/" && !location.search;
+    }
+    if (path === "/dashboard") {
+      return location.pathname === "/dashboard" && !location.search;
     }
     if (path.includes("?")) {
       return location.pathname + location.search === path;
