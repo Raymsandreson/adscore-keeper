@@ -25,6 +25,8 @@ export interface LeadActivity {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  contact_id: string | null;
+  contact_name: string | null;
 }
 
 export function useLeadActivities() {
@@ -87,7 +89,9 @@ export function useLeadActivities() {
           notification_date: activity.notification_date || null,
           notes: activity.notes || null,
           created_by: user?.id || null,
-        })
+          contact_id: activity.contact_id || null,
+          contact_name: activity.contact_name || null,
+        } as any)
         .select()
         .single();
 
