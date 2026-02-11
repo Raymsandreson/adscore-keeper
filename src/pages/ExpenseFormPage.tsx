@@ -690,8 +690,8 @@ export default function ExpenseFormPage() {
                       <div className="mt-3 pt-3 border-t space-y-3">
                         <div>
                           <Label className="text-xs flex items-center gap-1">
-                            <FileText className="h-3 w-3" /> O que foi este gasto?
-                          </Label>
+                             <FileText className="h-3 w-3" /> Descrição
+                           </Label>
                           <Textarea
                             placeholder="Descreva o que foi este gasto..."
                             value={resp.description}

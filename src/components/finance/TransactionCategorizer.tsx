@@ -659,11 +659,11 @@ export function TransactionCategorizer({ transaction, open, onOpenChange, onOpen
 
           {/* Notes */}
           <div>
-            <Label>Observações (opcional)</Label>
+            <Label>Descrição</Label>
             <Input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ex: Almoço com cliente..."
+              placeholder="Descreva o que foi este gasto..."
               className="mt-2"
             />
           </div>
