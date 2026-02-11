@@ -91,6 +91,9 @@ export function useLeadActivities() {
           created_by: user?.id || null,
           contact_id: activity.contact_id || null,
           contact_name: activity.contact_name || null,
+          what_was_done: activity.what_was_done || null,
+          current_status_notes: activity.current_status_notes || null,
+          next_steps: activity.next_steps || null,
         } as any)
         .select()
         .single();
