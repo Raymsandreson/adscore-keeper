@@ -227,6 +227,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     });
   };
 
+  const updateStepDescription = (phaseIdx: number, objIdx: number, stepId: string, description: string) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, description } : s),
+    });
+  };
+
   // Save
   const handleSave = async () => {
     if (!formName.trim() || phases.length === 0) return;
@@ -457,17 +463,28 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                   <p className="text-[11px] text-muted-foreground italic">Nenhum passo adicionado</p>
                                 ) : (
                                   obj.items.map((step) => (
-                                    <div key={step.id} className="flex items-center gap-2 ml-4 border-l-2 border-muted pl-3 py-1">
-                                      <span className="font-medium text-sm flex-1">{step.label}</span>
-                                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
-                                        const newLabel = prompt('Editar passo:', step.label);
-                                        if (newLabel) updateStepLabel(phaseIdx, objIdx, step.id, newLabel);
-                                      }}>
-                                        <Edit3 className="h-2.5 w-2.5" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
-                                        <Trash2 className="h-2.5 w-2.5" />
-                                      </Button>
+                                    <div key={step.id} className="ml-4 border-l-2 border-muted pl-3 py-2 space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-sm flex-1">{step.label}</span>
+                                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
+                                          const newLabel = prompt('Editar passo:', step.label);
+                                          if (newLabel) updateStepLabel(phaseIdx, objIdx, step.id, newLabel);
+                                        }}>
+                                          <Edit3 className="h-2.5 w-2.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
+                                          <Trash2 className="h-2.5 w-2.5" />
+                                        </Button>
+                                      </div>
+                                      {step.description && (
+                                        <p className="text-xs text-muted-foreground">{step.description}</p>
+                                      )}
+                                      <Input
+                                        value={step.description || ''}
+                                        onChange={e => updateStepDescription(phaseIdx, objIdx, step.id, e.target.value)}
+                                        placeholder="Descrição do passo (opcional)..."
+                                        className="h-6 text-[11px]"
+                                      />
                                     </div>
                                   ))
                                 )}
