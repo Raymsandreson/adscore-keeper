@@ -82,7 +82,7 @@ export function PendingTransactionsWorkflow({ transactions, onComplete }: Pendin
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { accounts: costAccounts } = useCostAccounts();
   
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [expandedParent, setExpandedParent] = useState<string | null>(null);
