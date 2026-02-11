@@ -89,10 +89,10 @@ export function ExpenseFormLinkGenerator({ knownCards, transactions = [] }: Expe
 
       if (error) throw error;
 
-      // Use published URL instead of preview URL so external users can access the form
-      const origin = window.location.origin.includes('preview--') 
-        ? 'https://adscore-keeper.lovable.app'
-        : window.location.origin;
+      // Always use the published app URL for external access
+      const isLovableDev = window.location.origin.includes('lovableproject.com') || 
+                           window.location.origin.includes('lovable.app') && window.location.origin.includes('preview');
+      const origin = isLovableDev ? 'https://adscore-keeper.lovable.app' : window.location.origin;
       const link = `${origin}/expense-form/${data.token}`;
       setGeneratedLink(link);
     } catch (err: any) {
