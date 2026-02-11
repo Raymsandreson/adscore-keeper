@@ -96,6 +96,10 @@ const ActivitiesPage = () => {
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formStatus, setFormStatus] = useState('pendente');
+  const [formContactId, setFormContactId] = useState('');
+  const [formContactName, setFormContactName] = useState('');
+  const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
 
   useEffect(() => {
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
@@ -103,12 +107,14 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     const loadSupport = async () => {
-      const [leadsRes, membersRes] = await Promise.all([
+      const [leadsRes, membersRes, contactsRes] = await Promise.all([
         supabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
+        supabase.from('contacts').select('id, full_name').order('full_name').limit(500),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
+      setAvailableContacts(contactsRes.data || []);
     };
     loadSupport();
   }, []);
@@ -127,6 +133,9 @@ const ActivitiesPage = () => {
     setFormNotes('');
     setFormStatus('pendente');
     setLeadSearch('');
+    setFormContactId('');
+    setFormContactName('');
+    setContactSearch('');
   };
 
   const handleCreate = async () => {
@@ -205,16 +214,62 @@ const ActivitiesPage = () => {
     resetForm();
   };
 
-  const handleSelectLead = (leadId: string) => {
+  const handleSelectLead = async (leadId: string) => {
     const lead = leads.find(l => l.id === leadId);
     setFormLeadId(leadId);
     setFormLeadName(lead?.lead_name || '');
+    setFormContactId('');
+    setFormContactName('');
+    setContactSearch('');
+    // Fetch contacts linked to this lead
+    try {
+      const { data: linkedData } = await supabase
+        .from('contact_leads')
+        .select('contact_id')
+        .eq('lead_id', leadId);
+      if (linkedData && linkedData.length > 0) {
+        const contactIds = linkedData.map(cl => cl.contact_id);
+        const { data: contactsData } = await supabase
+          .from('contacts')
+          .select('id, full_name')
+          .in('id', contactIds)
+          .order('full_name');
+        setAvailableContacts(contactsData || []);
+      } else {
+        // No linked contacts, load all
+        const { data: allContacts } = await supabase
+          .from('contacts')
+          .select('id, full_name')
+          .order('full_name')
+          .limit(500);
+        setAvailableContacts(allContacts || []);
+      }
+    } catch {
+      // fallback: keep existing contacts
+    }
+  };
+
+  const handleClearLead = async () => {
+    setFormLeadId('');
+    setFormLeadName('');
+    setFormContactId('');
+    setFormContactName('');
+    // Load all contacts
+    const { data } = await supabase.from('contacts').select('id, full_name').order('full_name').limit(500);
+    setAvailableContacts(data || []);
   };
 
   const handleSelectAssignee = (userId: string) => {
     const member = teamMembers.find(m => m.user_id === userId);
     setFormAssignedTo(userId);
     setFormAssignedToName(member?.full_name || '');
+  };
+
+  const handleDeadlineChange = (value: string) => {
+    setFormDeadline(value);
+    if (!formNotificationDate) {
+      setFormNotificationDate(value);
+    }
   };
 
   // Calendar data
@@ -314,7 +369,7 @@ const ActivitiesPage = () => {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <Label>Prazo da atividade</Label>
-          <Input type="date" value={formDeadline} onChange={e => setFormDeadline(e.target.value)} />
+          <Input type="date" value={formDeadline} onChange={e => handleDeadlineChange(e.target.value)} />
         </div>
 
         <div>
@@ -350,7 +405,44 @@ const ActivitiesPage = () => {
         {formLeadName && (
           <div className="flex items-center gap-2 mt-1">
             <Badge variant="secondary">{formLeadName}</Badge>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormLeadId(''); setFormLeadName(''); }}>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleClearLead()}>
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <Label>Contato vinculado</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar contato..."
+            value={contactSearch}
+            onChange={e => setContactSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {(contactSearch || !formContactId) && (
+          <ScrollArea className="max-h-[100px] mt-1 border rounded-md">
+            {(contactSearch
+              ? availableContacts.filter(c => c.full_name?.toLowerCase().includes(contactSearch.toLowerCase()))
+              : availableContacts.slice(0, 20)
+            ).map(c => (
+              <button
+                key={c.id}
+                className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${formContactId === c.id ? 'bg-accent font-medium' : ''}`}
+                onClick={() => { setFormContactId(c.id); setFormContactName(c.full_name); setContactSearch(''); }}
+              >
+                {c.full_name}
+              </button>
+            ))}
+          </ScrollArea>
+        )}
+        {formContactName && (
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary">{formContactName}</Badge>
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => { setFormContactId(''); setFormContactName(''); }}>
               <X className="h-3 w-3" />
             </Button>
           </div>
