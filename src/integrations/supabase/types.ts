@@ -3491,6 +3491,36 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_default_goals: {
+        Row: {
+          id: string
+          target_dms: number
+          target_leads: number
+          target_replies: number
+          target_session_minutes: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          target_dms?: number
+          target_leads?: number
+          target_replies?: number
+          target_session_minutes?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          target_dms?: number
+          target_leads?: number
+          target_replies?: number
+          target_session_minutes?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       workflow_reports: {
         Row: {
           actions_detail: Json | null
