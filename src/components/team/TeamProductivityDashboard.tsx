@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { CorridaMalucaDialog } from '@/components/instagram/CorridaMalucaDialog';
 import { MemberProductivitySheet } from './MemberProductivitySheet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/integrations/supabase/client';
 import {
   BarChart3,
   Trophy,
@@ -41,6 +42,7 @@ import {
   ClipboardList,
   ListChecks,
   Settings2,
+  UsersRound,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -87,6 +89,21 @@ export function TeamProductivityDashboard() {
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(defaultVisibleMetrics);
   const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
   const [usersInitialized, setUsersInitialized] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
+  const [teams, setTeams] = useState<{ id: string; name: string; color: string | null }[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ team_id: string; user_id: string }[]>([]);
+
+  useEffect(() => {
+    const fetchTeams = async () => {
+      const [teamsRes, membersRes] = await Promise.all([
+        supabase.from('teams').select('id, name, color').order('name'),
+        supabase.from('team_members').select('team_id, user_id'),
+      ]);
+      setTeams(teamsRes.data || []);
+      setTeamMembers(membersRes.data || []);
+    };
+    fetchTeams();
+  }, []);
 
   const toggleMetric = useCallback((key: string) => {
     setVisibleMetrics(prev =>
@@ -139,6 +156,12 @@ export function TeamProductivityDashboard() {
     }
   }, [allUsers, usersInitialized]);
 
+  // Get user IDs for selected team
+  const teamFilteredUserIds = useMemo(() => {
+    if (selectedTeamId === 'all') return null;
+    return teamMembers.filter(tm => tm.team_id === selectedTeamId).map(tm => tm.user_id);
+  }, [selectedTeamId, teamMembers]);
+
   if (roleLoading || loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -160,9 +183,10 @@ export function TeamProductivityDashboard() {
     );
   }
 
-  // Prepare ranking data (filtered by visible users)
+  // Prepare ranking data (filtered by visible users AND team)
   const rankingData = productivity
     .filter(p => visibleUsers.includes(p.userId))
+    .filter(p => !teamFilteredUserIds || teamFilteredUserIds.includes(p.userId))
     .map((p, index) => {
       const sessionHours = p.sessionMinutes / 60;
       const velocity = sessionHours > 0 ? Math.round((p.checklistItemsChecked / sessionHours) * 10) / 10 : 0;
@@ -452,6 +476,25 @@ export function TeamProductivityDashboard() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {teams.length > 0 && (
+                    <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+                      <SelectTrigger className="w-40 h-9 text-sm">
+                        <UsersRound className="h-4 w-4 mr-1" />
+                        <SelectValue placeholder="Time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os times</SelectItem>
+                        {teams.map(t => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <span className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#3b82f6' }} />
+                              {t.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="gap-2">
