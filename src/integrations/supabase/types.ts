@@ -3494,28 +3494,46 @@ export type Database = {
       workflow_default_goals: {
         Row: {
           id: string
+          target_activities: number
+          target_calls: number
+          target_checklist_items: number
+          target_contacts: number
           target_dms: number
           target_leads: number
+          target_leads_closed: number
           target_replies: number
           target_session_minutes: number
+          target_stage_changes: number
           updated_at: string
           updated_by: string | null
         }
         Insert: {
           id?: string
+          target_activities?: number
+          target_calls?: number
+          target_checklist_items?: number
+          target_contacts?: number
           target_dms?: number
           target_leads?: number
+          target_leads_closed?: number
           target_replies?: number
           target_session_minutes?: number
+          target_stage_changes?: number
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
           id?: string
+          target_activities?: number
+          target_calls?: number
+          target_checklist_items?: number
+          target_contacts?: number
           target_dms?: number
           target_leads?: number
+          target_leads_closed?: number
           target_replies?: number
           target_session_minutes?: number
+          target_stage_changes?: number
           updated_at?: string
           updated_by?: string | null
         }

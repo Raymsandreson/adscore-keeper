@@ -104,7 +104,7 @@ export function CommissionGoals() {
   const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
 
   // Default daily goals state
-  const [defaultGoals, setDefaultGoals] = useState({ target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60 });
+  const [defaultGoals, setDefaultGoals] = useState({ target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 });
   const [savingDefaults, setSavingDefaults] = useState(false);
 
   // Form state
@@ -195,6 +195,12 @@ export function CommissionGoals() {
           target_dms: data.target_dms,
           target_leads: data.target_leads,
           target_session_minutes: data.target_session_minutes,
+          target_contacts: (data as any).target_contacts ?? 5,
+          target_calls: (data as any).target_calls ?? 10,
+          target_activities: (data as any).target_activities ?? 5,
+          target_stage_changes: (data as any).target_stage_changes ?? 10,
+          target_leads_closed: (data as any).target_leads_closed ?? 2,
+          target_checklist_items: (data as any).target_checklist_items ?? 10,
         });
       }
     });
@@ -609,42 +615,46 @@ export function CommissionGoals() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Respostas / dia</Label>
-              <Input
-                type="number"
-                min={0}
-                value={defaultGoals.target_replies}
-                onChange={e => setDefaultGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))}
-              />
+              <Input type="number" min={0} value={defaultGoals.target_replies} onChange={e => setDefaultGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">DMs / dia</Label>
-              <Input
-                type="number"
-                min={0}
-                value={defaultGoals.target_dms}
-                onChange={e => setDefaultGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))}
-              />
+              <Input type="number" min={0} value={defaultGoals.target_dms} onChange={e => setDefaultGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Leads / dia</Label>
-              <Input
-                type="number"
-                min={0}
-                value={defaultGoals.target_leads}
-                onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))}
-              />
+              <Input type="number" min={0} value={defaultGoals.target_leads} onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Tempo online (min)</Label>
-              <Input
-                type="number"
-                min={0}
-                value={defaultGoals.target_session_minutes}
-                onChange={e => setDefaultGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))}
-              />
+              <Input type="number" min={0} value={defaultGoals.target_session_minutes} onChange={e => setDefaultGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Contatos / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_contacts} onChange={e => setDefaultGoals(prev => ({ ...prev, target_contacts: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Ligações / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_calls} onChange={e => setDefaultGoals(prev => ({ ...prev, target_calls: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Atividades / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_activities} onChange={e => setDefaultGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Etapas / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_stage_changes} onChange={e => setDefaultGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Fechados / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_leads_closed} onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads_closed: Number(e.target.value) || 0 }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Checklist / dia</Label>
+              <Input type="number" min={0} value={defaultGoals.target_checklist_items} onChange={e => setDefaultGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
             </div>
           </div>
           <div className="flex justify-end mt-3">
