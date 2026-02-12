@@ -138,7 +138,7 @@ export function LeadAdvancedFilters({
                 <SelectContent>
                   <SelectItem value="_all">Todos</SelectItem>
                   {profiles.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.full_name || p.email || p.id.slice(0, 8)}</SelectItem>
+                    <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -154,7 +154,7 @@ export function LeadAdvancedFilters({
                 <SelectContent>
                   <SelectItem value="_all">Todos</SelectItem>
                   {profiles.map(p => (
-                    <SelectItem key={p.id} value={p.id}>{p.full_name || p.email || p.id.slice(0, 8)}</SelectItem>
+                    <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
