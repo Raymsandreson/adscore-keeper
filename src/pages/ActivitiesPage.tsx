@@ -403,6 +403,11 @@ const ActivitiesPage = () => {
     return { open, done, deadlines, hearings, tasks };
   }, [activities]);
 
+  const resolveUserName = (userId: string | null) => {
+    if (!userId) return null;
+    return teamMembers.find(m => m.user_id === userId)?.full_name || null;
+  };
+
   const filteredLeads = leadSearch
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
     : leads.slice(0, 20);
@@ -597,6 +602,11 @@ const ActivitiesPage = () => {
               .map(f => `${f.label}: ${valueMap[f.field_key] || '—'}`)
               .join('\n\n');
 
+            const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
+            const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
+            const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
+            const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
+
             const msg = `*Boa tarde Sr(a). *
 
 Assunto da atividade: ${formTitle.toUpperCase()}
@@ -606,6 +616,8 @@ ${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
 ${fieldLines}
 
 ${formAssignedToName ? `${formAssignedToName} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.` : ''}
+
+Criado por: ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\nÚltima atualização por: ${updatedByName} em ${updatedAtFmt}` : ''}
 
 Com Carinho, ${formAssignedToName || 'Equipe'}
 
@@ -1006,7 +1018,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             </p>
                           )}
 
-                          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
                             {activity.deadline && (
                               <span className="flex items-center gap-1">
                                 <Calendar className="h-3 w-3" />
@@ -1019,6 +1031,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             <span>
                               {ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}
                             </span>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                            <span>Criado por: {resolveUserName(activity.created_by) || '—'} em {format(parseISO(activity.created_at), "dd/MM 'às' HH:mm")}</span>
+                            {activity.updated_at && activity.updated_at !== activity.created_at && (
+                              <span>• Atualizado por: {resolveUserName((activity as any).updated_by) || '—'} em {format(parseISO(activity.updated_at), "dd/MM 'às' HH:mm")}</span>
+                            )}
                           </div>
                         </div>
 
@@ -1058,6 +1076,15 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
               {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
             </p>
+          )}
+
+          {sheetMode === 'edit' && selectedActivity && (
+            <div className="text-xs text-muted-foreground mt-3 space-y-1">
+              <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
+                <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+              )}
+            </div>
           )}
 
           <div className="flex items-center justify-between mt-6 pt-4 border-t">

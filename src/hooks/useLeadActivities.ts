@@ -129,9 +129,10 @@ export function useLeadActivities() {
 
   const updateActivity = async (id: string, updates: Partial<LeadActivity>) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
         .from('lead_activities')
-        .update(updates as any)
+        .update({ ...updates, updated_by: user?.id || null } as any)
         .eq('id', id);
 
       if (error) throw error;
