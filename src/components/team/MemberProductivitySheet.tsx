@@ -217,6 +217,12 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
     }
   };
 
+  useEffect(() => {
+    if (open && member) {
+      fetchDetails();
+    }
+  }, [open, member, dateRange.start, dateRange.end]);
+
   const formatMinutesToHours = (totalMinutes: number) => {
     if (!totalMinutes) return '0min';
     const hours = Math.floor(totalMinutes / 60);
