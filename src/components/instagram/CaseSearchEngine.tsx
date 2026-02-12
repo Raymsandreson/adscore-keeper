@@ -58,6 +58,7 @@ import {
   CheckSquare,
   Square,
   Link2,
+  Users,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -72,6 +73,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/hooks/useSearchHistory';
 import { parseAdvancedSearch, SEARCH_TIPS } from '@/utils/advancedSearchParser';
+import { ProfileSearchEngine } from './ProfileSearchEngine';
 
 interface SearchResult {
   postId: string;
@@ -951,7 +953,7 @@ export function CaseSearchEngine() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs defaultValue="hashtag" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="hashtag" className="gap-2">
                 <Hash className="h-4 w-4" />
                 Busca por Hashtag
@@ -960,12 +962,20 @@ export function CaseSearchEngine() {
                 <Link2 className="h-4 w-4" />
                 Busca por Post
               </TabsTrigger>
+              <TabsTrigger value="profile" className="gap-2">
+                <Users className="h-4 w-4" />
+                Busca por Perfil
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="post" className="mt-0 space-y-6">
               <PostCommentsFetcher />
               <PostGroupedView />
               <PostExtractionHistory />
+            </TabsContent>
+
+            <TabsContent value="profile" className="mt-0">
+              <ProfileSearchEngine />
             </TabsContent>
             
             <TabsContent value="hashtag" className="mt-0 space-y-4">
