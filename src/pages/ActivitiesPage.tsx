@@ -1147,7 +1147,14 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   >
                     <Trash2 className="h-4 w-4 mr-1" /> Excluir
                   </Button>
-                  <Button size="sm" onClick={handleUpdate}>Salvar</Button>
+                  <div className="flex gap-2">
+                    {selectedActivity?.status !== 'concluida' && (
+                      <Button variant="outline" size="sm" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                        <CheckCircle2 className="h-4 w-4 mr-1" /> Concluir
+                      </Button>
+                    )}
+                    <Button size="sm" onClick={handleUpdate}>Salvar</Button>
+                  </div>
                 </div>
                 {selectedActivity?.status !== 'concluida' && (
                   <Button
