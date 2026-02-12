@@ -91,16 +91,19 @@ export function TeamProductivityDashboard() {
   const [usersInitialized, setUsersInitialized] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [teams, setTeams] = useState<{ id: string; name: string; color: string | null }[]>([]);
-  const [teamMembers, setTeamMembers] = useState<{ team_id: string; user_id: string }[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ team_id: string; user_id: string; evaluated_metrics: string[] }[]>([]);
 
   useEffect(() => {
     const fetchTeams = async () => {
       const [teamsRes, membersRes] = await Promise.all([
         supabase.from('teams').select('id, name, color').order('name'),
-        supabase.from('team_members').select('team_id, user_id'),
+        supabase.from('team_members').select('team_id, user_id, evaluated_metrics'),
       ]);
       setTeams(teamsRes.data || []);
-      setTeamMembers(membersRes.data || []);
+      setTeamMembers((membersRes.data || []).map(m => ({
+        ...m,
+        evaluated_metrics: (m.evaluated_metrics as string[]) || [],
+      })));
     };
     fetchTeams();
   }, []);
@@ -161,6 +164,42 @@ export function TeamProductivityDashboard() {
     if (selectedTeamId === 'all') return null;
     return teamMembers.filter(tm => tm.team_id === selectedTeamId).map(tm => tm.user_id);
   }, [selectedTeamId, teamMembers]);
+
+  // Sync visible metrics when a team is selected based on evaluated_metrics
+  const metricKeyMap: Record<string, string> = useMemo(() => ({
+    replies: 'commentReplies',
+    dms: 'dmsSent',
+    leads: 'leadsCreated',
+    session_minutes: 'sessionMinutes',
+    contacts: 'contactsCreated',
+    calls: 'callsMade',
+    activities: 'activitiesCompleted',
+    stage_changes: 'stageChanges',
+    leads_closed: 'leadsClosed',
+    checklist_items: 'checklistItemsChecked',
+  }), []);
+
+  useEffect(() => {
+    if (selectedTeamId === 'all') {
+      setVisibleMetrics(defaultVisibleMetrics);
+      return;
+    }
+    const membersOfTeam = teamMembers.filter(tm => tm.team_id === selectedTeamId);
+    if (membersOfTeam.length === 0) return;
+    // Union of all evaluated_metrics across team members
+    const evaluatedKeys = new Set<string>();
+    membersOfTeam.forEach(m => {
+      (m.evaluated_metrics || []).forEach(k => evaluatedKeys.add(k));
+    });
+    if (evaluatedKeys.size === 0) return;
+    // Map team metric keys to dashboard metric keys
+    const mapped = Array.from(evaluatedKeys)
+      .map(k => metricKeyMap[k])
+      .filter(Boolean);
+    if (mapped.length > 0) {
+      setVisibleMetrics(mapped);
+    }
+  }, [selectedTeamId, teamMembers, metricKeyMap]);
 
   if (roleLoading || loading) {
     return (

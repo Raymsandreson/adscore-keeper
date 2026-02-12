@@ -385,7 +385,32 @@ export function TeamsManager() {
                                   </Button>
                                 </PopoverTrigger>
                                 <PopoverContent align="end" className="w-56 p-3">
-                                  <p className="text-xs font-medium mb-2">Métricas avaliadas</p>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-medium">Métricas avaliadas</p>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 text-xs px-2"
+                                      onClick={async () => {
+                                        const allSelected = memberMetrics.length === ALL_METRICS.length;
+                                        const newMetrics = allSelected ? [] : ALL_METRICS.map(met => met.key);
+                                        try {
+                                          await supabase
+                                            .from('team_members')
+                                            .update({ evaluated_metrics: newMetrics })
+                                            .eq('team_id', team.id)
+                                            .eq('user_id', m.user_id);
+                                          setTeamMembers(prev => prev.map(tm =>
+                                            tm.team_id === team.id && tm.user_id === m.user_id
+                                              ? { ...tm, evaluated_metrics: newMetrics }
+                                              : tm
+                                          ));
+                                        } catch { toast.error('Erro ao atualizar métricas'); }
+                                      }}
+                                    >
+                                      {memberMetrics.length === ALL_METRICS.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                                    </Button>
+                                  </div>
                                   <div className="space-y-1.5">
                                     {ALL_METRICS.map(metric => (
                                       <label key={metric.key} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded p-1 -mx-1">
