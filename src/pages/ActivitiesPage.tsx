@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { cn } from '@/lib/utils';
@@ -1406,7 +1406,14 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                               </div>
                               <h3 className="font-medium text-sm mt-1">{activity.title}</h3>
                               {activity.lead_name && (
-                                <p className="text-xs text-muted-foreground mt-1 truncate">{activity.lead_name}</p>
+                                <p className="text-xs text-muted-foreground mt-1 truncate">
+                                  📁 {activity.lead_name}
+                                </p>
+                              )}
+                              {activity.contact_name && (
+                                <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1">
+                                  <User className="h-3 w-3" /> {activity.contact_name}
+                                </p>
                               )}
                               <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
                                 {activity.deadline && (
@@ -1419,22 +1426,48 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                 <span>{ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}</span>
                               </div>
                               <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground flex-wrap">
-                                <span>Criado por: {resolveUserName(activity.created_by) || '—'} em {format(parseISO(activity.created_at), "dd/MM 'às' HH:mm")}</span>
+                                <span>Criado: {format(parseISO(activity.created_at), "dd/MM/yyyy 'às' HH:mm")}</span>
                                 {activity.updated_at && activity.updated_at !== activity.created_at && (
-                                  <span>• Atualizado por: {resolveUserName((activity as any).updated_by) || '—'} em {format(parseISO(activity.updated_at), "dd/MM 'às' HH:mm")}</span>
+                                  <span>• Atualizado: {format(parseISO(activity.updated_at), "dd/MM 'às' HH:mm")}</span>
                                 )}
                               </div>
                             </div>
-                            {activity.status !== 'concluida' && (
+                            <div className="flex flex-col gap-1 shrink-0">
+                              {activity.status !== 'concluida' && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
+                                  title="Concluir"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const url = `${window.location.origin}/atividades?id=${activity.id}`;
+                                  navigator.clipboard.writeText(url);
+                                  toast.success('Link copiado!');
+                                }}
+                                title="Compartilhar link"
                               >
-                                <CheckCircle2 className="h-5 w-5" />
+                                <Share2 className="h-4 w-4" />
                               </Button>
-                            )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
@@ -1451,7 +1484,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <div
                         key={activity.id}
                         className={cn(
-                          "flex items-center gap-2 p-2 rounded-md cursor-pointer text-sm hover:bg-accent transition-colors",
+                          "flex items-center gap-2 p-2 rounded-md cursor-pointer text-sm hover:bg-accent transition-colors group",
                           selectedActivity?.id === activity.id && "bg-accent font-medium"
                         )}
                         onClick={() => handleOpenEdit(activity)}
@@ -1459,10 +1492,26 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         <span className={cn("w-2 h-2 rounded-full shrink-0",
                           activity.status === 'concluida' ? 'bg-green-500' : activity.status === 'em_andamento' ? 'bg-blue-500' : 'bg-yellow-500'
                         )} />
-                        <span className="truncate flex-1">{activity.title}</span>
-                        {activity.lead_name && (
-                          <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{activity.lead_name}</span>
-                        )}
+                        <div className="flex-1 min-w-0">
+                          <span className="truncate block">{activity.title}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            {activity.lead_name && <span className="truncate max-w-[120px]">📁 {activity.lead_name}</span>}
+                            {activity.contact_name && <span className="truncate max-w-[100px]">👤 {activity.contact_name}</span>}
+                            <span>{format(parseISO(activity.created_at), 'dd/MM')}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/atividades?id=${activity.id}`); toast.success('Link copiado!'); }}
+                            title="Compartilhar">
+                            <Share2 className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
+                            title="Excluir">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
