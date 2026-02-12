@@ -3156,18 +3156,21 @@ export type Database = {
       team_members: {
         Row: {
           created_at: string
+          evaluated_metrics: string[] | null
           id: string
           team_id: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          evaluated_metrics?: string[] | null
           id?: string
           team_id: string
           user_id: string
         }
         Update: {
           created_at?: string
+          evaluated_metrics?: string[] | null
           id?: string
           team_id?: string
           user_id?: string
@@ -3184,6 +3187,7 @@ export type Database = {
       }
       teams: {
         Row: {
+          board_id: string | null
           color: string | null
           created_at: string
           description: string | null
@@ -3192,6 +3196,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          board_id?: string | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -3200,6 +3205,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          board_id?: string | null
           color?: string | null
           created_at?: string
           description?: string | null
@@ -3207,7 +3213,15 @@ export type Database = {
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transaction_category_overrides: {
         Row: {
