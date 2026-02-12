@@ -51,7 +51,7 @@ const ALL_METRICS = [
   { key: 'activities', label: 'Atividades' },
   { key: 'stage_changes', label: 'Etapas' },
   { key: 'leads_closed', label: 'Fechados' },
-  { key: 'checklist_items', label: 'Checklist' },
+  { key: 'checklist_items', label: 'Passos' },
 ];
 
 interface Team {

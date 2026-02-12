@@ -696,7 +696,7 @@ export function CommissionGoals() {
               <Input type="number" min={0} value={defaultGoals.target_leads_closed} onChange={e => updateDefaultGoalField('target_leads_closed', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Checklist / dia</Label>
+              <Label className="text-xs">Passos / dia</Label>
               <Input type="number" min={0} value={defaultGoals.target_checklist_items} onChange={e => updateDefaultGoalField('target_checklist_items', Number(e.target.value) || 0)} />
             </div>
           </div>
