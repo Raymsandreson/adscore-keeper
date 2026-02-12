@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -93,6 +93,8 @@ export function CommissionGoals() {
   const [metricKey, setMetricKey] = useState('steps');
   const [targetValue, setTargetValue] = useState('');
   const [period, setPeriod] = useState('monthly');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
   const [tiers, setTiers] = useState<CommissionTier[]>(DEFAULT_TIERS);
 
   // Date range for productivity (current month)
@@ -184,6 +186,8 @@ export function CommissionGoals() {
     setMetricKey('steps');
     setTargetValue('');
     setPeriod('monthly');
+    setCustomStartDate('');
+    setCustomEndDate('');
     setTiers([...DEFAULT_TIERS]);
   };
 
@@ -195,6 +199,8 @@ export function CommissionGoals() {
     setMetricKey(goal.metric_key);
     setTargetValue(goal.target_value.toString());
     setPeriod(goal.period);
+    setCustomStartDate(goal.period === 'custom' ? goal.period_start : '');
+    setCustomEndDate(goal.period === 'custom' ? goal.period_end : '');
     setTiers(goal.tiers.length > 0 ? goal.tiers : [...DEFAULT_TIERS]);
     setDialogOpen(true);
   };
@@ -213,12 +219,23 @@ export function CommissionGoals() {
       return;
     }
 
-    const periodStart = period === 'weekly'
-      ? format(startOfWeek(now, { locale: ptBR }), 'yyyy-MM-dd')
-      : format(startOfMonth(now), 'yyyy-MM-dd');
-    const periodEnd = period === 'weekly'
-      ? format(endOfWeek(now, { locale: ptBR }), 'yyyy-MM-dd')
-      : format(endOfMonth(now), 'yyyy-MM-dd');
+    let periodStart: string;
+    let periodEnd: string;
+
+    if (period === 'custom') {
+      if (!customStartDate || !customEndDate) {
+        toast.error('Informe as datas de início e fim');
+        return;
+      }
+      periodStart = customStartDate;
+      periodEnd = customEndDate;
+    } else if (period === 'weekly') {
+      periodStart = format(startOfWeek(now, { locale: ptBR }), 'yyyy-MM-dd');
+      periodEnd = format(endOfWeek(now, { locale: ptBR }), 'yyyy-MM-dd');
+    } else {
+      periodStart = format(startOfMonth(now), 'yyyy-MM-dd');
+      periodEnd = format(endOfMonth(now), 'yyyy-MM-dd');
+    }
 
     try {
       let goalId: string;
@@ -443,7 +460,7 @@ export function CommissionGoals() {
                       <div className="min-w-0">
                         <CardTitle className="text-sm truncate">{scopeLabel}</CardTitle>
                         <CardDescription className="text-xs">
-                          {getMetricLabel(goal.metric_key)} • Meta: {goal.target_value} • {goal.period === 'weekly' ? 'Semanal' : 'Mensal'}
+                          {getMetricLabel(goal.metric_key)} • Meta: {goal.target_value} • {goal.period === 'weekly' ? 'Semanal' : goal.period === 'custom' ? `${goal.period_start} a ${goal.period_end}` : 'Mensal'}
                         </CardDescription>
                       </div>
                     </div>
@@ -520,12 +537,12 @@ export function CommissionGoals() {
       )}
 
       {/* Dialog for creating/editing goals */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingGoal ? 'Editar Meta' : 'Nova Meta de Comissão'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      <Sheet open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{editingGoal ? 'Editar Meta' : 'Nova Meta de Comissão'}</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
             {/* Scope */}
             <div className="space-y-2">
               <Label>Aplicar para</Label>
@@ -592,10 +609,24 @@ export function CommissionGoals() {
                   <SelectContent>
                     <SelectItem value="weekly">Semanal</SelectItem>
                     <SelectItem value="monthly">Mensal</SelectItem>
+                    <SelectItem value="custom">Personalizado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {period === 'custom' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Data início</Label>
+                  <Input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data fim</Label>
+                  <Input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} />
+                </div>
+              </div>
+            )}
 
             {/* Tiers */}
             <div className="space-y-2">
@@ -635,12 +666,12 @@ export function CommissionGoals() {
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter className="flex-row justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave}>{editingGoal ? 'Salvar' : 'Criar Meta'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
