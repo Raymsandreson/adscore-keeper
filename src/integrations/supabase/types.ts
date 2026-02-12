@@ -2167,6 +2167,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          updated_by: string | null
           what_was_done: string | null
         }
         Insert: {
@@ -2193,6 +2194,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          updated_by?: string | null
           what_was_done?: string | null
         }
         Update: {
@@ -2219,6 +2221,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          updated_by?: string | null
           what_was_done?: string | null
         }
         Relationships: [
