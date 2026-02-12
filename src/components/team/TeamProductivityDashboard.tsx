@@ -84,10 +84,18 @@ export function TeamProductivityDashboard() {
 
   const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges'];
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(defaultVisibleMetrics);
+  const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
+  const [usersInitialized, setUsersInitialized] = useState(false);
 
   const toggleMetric = useCallback((key: string) => {
     setVisibleMetrics(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  }, []);
+
+  const toggleUser = useCallback((userId: string) => {
+    setVisibleUsers(prev =>
+      prev.includes(userId) ? prev.filter(u => u !== userId) : [...prev, userId]
     );
   }, []);
 
@@ -116,6 +124,20 @@ export function TeamProductivityDashboard() {
 
   const { productivity, timeline, dailyMetrics, sessions, summary, loading } = useTeamProductivity(dateRange);
 
+  // Initialize visible users when productivity data loads
+  const allUsers = useMemo(() => productivity.map(p => ({
+    userId: p.userId,
+    displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
+  })), [productivity]);
+
+  // Auto-select all users on first load
+  useMemo(() => {
+    if (!usersInitialized && allUsers.length > 0) {
+      setVisibleUsers(allUsers.map(u => u.userId));
+      setUsersInitialized(true);
+    }
+  }, [allUsers, usersInitialized]);
+
   if (roleLoading || loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -137,12 +159,14 @@ export function TeamProductivityDashboard() {
     );
   }
 
-  // Prepare ranking data
-  const rankingData = productivity.map((p, index) => ({
-    ...p,
-    position: index + 1,
-    displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
-  }));
+  // Prepare ranking data (filtered by visible users)
+  const rankingData = productivity
+    .filter(p => visibleUsers.includes(p.userId))
+    .map((p, index) => ({
+      ...p,
+      position: index + 1,
+      displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
+    }));
 
   // Prepare chart data
   const comparisonData = productivity.map(p => ({
@@ -421,7 +445,29 @@ export function TeamProductivityDashboard() {
                     Ordenado por total de ações realizadas
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Users className="w-4 h-4" />
+                        Membros ({visibleUsers.length}/{allUsers.length})
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-3 bg-popover" align="end">
+                      <p className="text-sm font-medium mb-2">Membros visíveis</p>
+                      <div className="space-y-2">
+                        {allUsers.map(u => (
+                          <label key={u.userId} className="flex items-center gap-2 cursor-pointer text-sm">
+                            <Checkbox
+                              checked={visibleUsers.includes(u.userId)}
+                              onCheckedChange={() => toggleUser(u.userId)}
+                            />
+                            <span>{u.displayName}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="outline" size="sm" className="gap-2">
