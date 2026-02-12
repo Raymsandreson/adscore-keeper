@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { TeamManagement } from '@/components/team/TeamManagement';
 import { TeamProductivityDashboard } from '@/components/team/TeamProductivityDashboard';
 import { CardPermissionsManager } from '@/components/finance/CardPermissionsManager';
+import { TeamsManager } from '@/components/team/TeamsManager';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
 import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
@@ -16,6 +17,7 @@ import {
   Loader2,
   CreditCard,
   Star,
+  UsersRound,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -80,7 +82,7 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+          <TabsList className="grid w-full max-w-3xl grid-cols-5">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Produtividade
@@ -92,6 +94,10 @@ export default function TeamPage() {
             <TabsTrigger value="members" className="gap-2">
               <Users className="h-4 w-4" />
               Membros
+            </TabsTrigger>
+            <TabsTrigger value="teams" className="gap-2">
+              <UsersRound className="h-4 w-4" />
+              Times
             </TabsTrigger>
             <TabsTrigger value="permissions" className="gap-2">
               <CreditCard className="h-4 w-4" />
@@ -109,6 +115,10 @@ export default function TeamPage() {
 
           <TabsContent value="members">
             <TeamManagement />
+          </TabsContent>
+
+          <TabsContent value="teams">
+            <TeamsManager />
           </TabsContent>
 
           <TabsContent value="permissions">
