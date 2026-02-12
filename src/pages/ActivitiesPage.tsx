@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,6 +22,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
+  Play, ArrowRight, Trophy, SkipForward,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
@@ -113,6 +115,13 @@ const ActivitiesPage = () => {
   // Activity counts for filter badges
   const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+
+  // Workflow mode state
+  const [workflowMode, setWorkflowMode] = useState(false);
+  const [workflowQueue, setWorkflowQueue] = useState<LeadActivity[]>([]);
+  const [workflowIndex, setWorkflowIndex] = useState(0);
+  const [workflowCompleted, setWorkflowCompleted] = useState<{ activity: LeadActivity; action: 'completed' | 'completed_next' | 'skipped' }[]>([]);
+  const [workflowFinished, setWorkflowFinished] = useState(false);
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -363,6 +372,127 @@ const ActivitiesPage = () => {
     setSheetMode(null);
     setSelectedActivity(null);
     resetForm();
+  };
+
+  // === WORKFLOW MODE FUNCTIONS ===
+  const startWorkflow = () => {
+    const pending = activities.filter(a => a.status !== 'concluida');
+    if (pending.length === 0) {
+      toast.error('Não há atividades pendentes para processar');
+      return;
+    }
+    setWorkflowQueue(pending);
+    setWorkflowIndex(0);
+    setWorkflowCompleted([]);
+    setWorkflowFinished(false);
+    setWorkflowMode(true);
+    // Load first activity into form
+    loadActivityIntoForm(pending[0]);
+  };
+
+  const loadActivityIntoForm = async (activity: LeadActivity) => {
+    setSelectedActivity(activity);
+    setFormTitle(activity.title);
+    setFormWhatWasDone(activity.what_was_done || '');
+    setFormCurrentStatus(activity.current_status_notes || '');
+    setFormNextSteps(activity.next_steps || '');
+    setFormType(activity.activity_type);
+    setFormPriority(activity.priority || 'normal');
+    setFormLeadId(activity.lead_id || '');
+    setFormLeadName(activity.lead_name || '');
+    setFormAssignedTo(activity.assigned_to || '');
+    setFormAssignedToName(activity.assigned_to_name || '');
+    setFormDeadline(activity.deadline || '');
+    setFormNotificationDate(activity.notification_date || '');
+    setFormNotes(activity.notes || '');
+    setFormStatus(activity.status || 'pendente');
+    setFormContactId(activity.contact_id || '');
+    setFormContactName(activity.contact_name || '');
+    if (activity.lead_id) {
+      try {
+        const { data: linkedData } = await supabase
+          .from('contact_leads')
+          .select('contact_id')
+          .eq('lead_id', activity.lead_id);
+        if (linkedData && linkedData.length > 0) {
+          const contactIds = linkedData.map(cl => cl.contact_id);
+          const { data: contactsData } = await supabase
+            .from('contacts')
+            .select('id, full_name')
+            .in('id', contactIds)
+            .order('full_name');
+          setAvailableContacts(contactsData || []);
+        }
+      } catch { /* keep existing */ }
+    }
+  };
+
+  const workflowAdvance = () => {
+    const nextIdx = workflowIndex + 1;
+    if (nextIdx >= workflowQueue.length) {
+      setWorkflowFinished(true);
+      fetchActivities(getFilterParams());
+    } else {
+      setWorkflowIndex(nextIdx);
+      loadActivityIntoForm(workflowQueue[nextIdx]);
+    }
+  };
+
+  const handleWorkflowComplete = async () => {
+    if (!selectedActivity) return;
+    await updateActivity(selectedActivity.id, {
+      title: formTitle, what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
+      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
+      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
+      assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
+      notification_date: formNotificationDate || null, notes: formNotes || null,
+      status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
+    } as any);
+    await completeActivity(selectedActivity.id);
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed' }]);
+    workflowAdvance();
+  };
+
+  const handleWorkflowCompleteAndNext = async () => {
+    if (!selectedActivity) return;
+    await updateActivity(selectedActivity.id, {
+      title: formTitle, what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
+      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
+      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
+      assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
+      notification_date: formNotificationDate || null, notes: formNotes || null,
+      status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
+    } as any);
+    await completeActivity(selectedActivity.id);
+    const today = format(new Date(), 'yyyy-MM-dd');
+    await createActivity({
+      title: formTitle, what_was_done: null, current_status_notes: null, next_steps: null,
+      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
+      lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
+      assigned_to_name: formAssignedToName || null, deadline: today, notification_date: today,
+      notes: null, contact_id: formContactId || null, contact_name: formContactName || null,
+    });
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next' }]);
+    workflowAdvance();
+  };
+
+  const handleWorkflowSkip = () => {
+    if (!selectedActivity) return;
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'skipped' }]);
+    workflowAdvance();
+  };
+
+  const exitWorkflow = () => {
+    setWorkflowMode(false);
+    setWorkflowFinished(false);
+    setWorkflowQueue([]);
+    setWorkflowIndex(0);
+    setWorkflowCompleted([]);
+    resetForm();
+    setSelectedActivity(null);
+    fetchActivities(getFilterParams());
   };
 
   const handleSelectLead = async (leadId: string) => {
@@ -693,7 +823,151 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
   );
 
   if (loading && activities.length === 0) {
+  if (workflowMode) {
+    if (workflowFinished) {
+      const completedCount = workflowCompleted.filter(w => w.action === 'completed' || w.action === 'completed_next').length;
+      const nextCreated = workflowCompleted.filter(w => w.action === 'completed_next').length;
+      const skippedCount = workflowCompleted.filter(w => w.action === 'skipped').length;
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg">
+            <CardContent className="p-8 text-center space-y-6">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mx-auto">
+                <Trophy className="h-10 w-10 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">Parabéns! 🎉</h2>
+                <p className="text-muted-foreground mt-2">Você processou todas as atividades pendentes!</p>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="text-2xl font-bold text-primary">{completedCount}</div>
+                  <div className="text-xs text-muted-foreground">Concluídas</div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="text-2xl font-bold text-primary">{nextCreated}</div>
+                  <div className="text-xs text-muted-foreground">Próximas criadas</div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="text-2xl font-bold text-muted-foreground">{skippedCount}</div>
+                  <div className="text-xs text-muted-foreground">Puladas</div>
+                </div>
+              </div>
+              <Separator />
+              <div className="text-left space-y-2 max-h-60 overflow-y-auto">
+                <h3 className="text-sm font-semibold mb-2">Relatório detalhado:</h3>
+                {workflowCompleted.map((w, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm p-2 rounded bg-muted/30">
+                    {w.action === 'completed' && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
+                    {w.action === 'completed_next' && <ArrowRight className="h-4 w-4 text-blue-500 shrink-0" />}
+                    {w.action === 'skipped' && <SkipForward className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium truncate block">{w.activity.title}</span>
+                      {w.activity.lead_name && (
+                        <span className="text-xs text-muted-foreground">{w.activity.lead_name}</span>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      {w.action === 'completed' ? 'Concluída' : w.action === 'completed_next' ? 'Concluída + Próxima' : 'Pulada'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+              <Button className="w-full" onClick={exitWorkflow}>
+                Voltar para Atividades
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    const currentActivity = workflowQueue[workflowIndex];
+    const progress = workflowQueue.length > 0 ? ((workflowIndex) / workflowQueue.length) * 100 : 0;
+
     return (
+      <div className="min-h-screen bg-background">
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="sm" onClick={exitWorkflow}>
+                  <X className="h-4 w-4 mr-1" /> Sair
+                </Button>
+                <h1 className="text-lg font-bold">Workflow de Atividades</h1>
+              </div>
+              <span className="text-sm text-muted-foreground font-medium">
+                {workflowIndex + 1} de {workflowQueue.length}
+              </span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        </div>
+
+        <div className="max-w-2xl mx-auto p-4">
+          <Card className="mb-4">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">{currentActivity?.title}</CardTitle>
+                  {currentActivity?.lead_name && (
+                    <p className="text-sm text-muted-foreground mt-1">{currentActivity.lead_name}</p>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <Badge className={statusColors[currentActivity?.status] || 'bg-muted'}>
+                    {STATUS_OPTIONS.find(s => s.value === currentActivity?.status)?.label}
+                  </Badge>
+                  {currentActivity?.deadline && (
+                    <Badge variant="outline" className="text-xs">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {format(parseISO(currentActivity.deadline), 'dd/MM')}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              {activityFormContent}
+
+              <div className="flex flex-col gap-3 mt-6 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={handleWorkflowSkip}
+                  >
+                    <SkipForward className="h-4 w-4" /> Pular
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={handleWorkflowComplete}
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Concluir
+                  </Button>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={handleWorkflowCompleteAndNext}
+                >
+                  <ArrowRight className="h-4 w-4" /> Concluir e Criar Próxima Atv
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
@@ -1021,6 +1295,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   )}
                   <Button size="icon" className="rounded-full h-9 w-9" onClick={() => { resetForm(); setSheetMode('create'); }}>
                     <Plus className="h-5 w-5" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={startWorkflow}>
+                    <Play className="h-3.5 w-3.5" /> Workflow
                   </Button>
                 </div>
               </div>
