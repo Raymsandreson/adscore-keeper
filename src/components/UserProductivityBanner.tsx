@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMyProductivity } from '@/hooks/useMyProductivity';
+import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ChevronDown,
   ChevronUp,
@@ -20,6 +28,7 @@ import {
   AlertTriangle,
   ArrowRightLeft,
   Briefcase,
+  Medal,
 } from 'lucide-react';
 
 const METRICS = [
@@ -42,8 +51,23 @@ const HIDDEN_ROUTES = ['/dashboard', '/expense-form'];
 export function UserProductivityBanner() {
   const { user, profile } = useAuthContext();
   const { data, goals, goalProgress, loading } = useMyProductivity();
+  const { ranking, myTeams, selectedTeamId, selectTeam, myPosition, loading: rankingLoading, fetchRanking } = useMyTeamRanking();
   const [expanded, setExpanded] = useState(false);
+  const [rankingFetched, setRankingFetched] = useState(false);
   const location = useLocation();
+
+  // Reset expanded on navigation
+  useEffect(() => {
+    setExpanded(false);
+  }, [location.pathname]);
+
+  // Fetch ranking only when expanded for the first time
+  useEffect(() => {
+    if (expanded && !rankingFetched) {
+      fetchRanking();
+      setRankingFetched(true);
+    }
+  }, [expanded, rankingFetched, fetchRanking]);
 
   // Don't show for unauthenticated users or on certain pages
   if (!user || loading || HIDDEN_ROUTES.some(r => location.pathname.startsWith(r))) {
@@ -71,6 +95,13 @@ export function UserProductivityBanner() {
 
   const progressColor = goalProgress >= 100 ? 'text-green-500' : goalProgress >= 50 ? 'text-amber-500' : 'text-red-500';
 
+  const positionIcon = (pos: number) => {
+    if (pos === 1) return '🥇';
+    if (pos === 2) return '🥈';
+    if (pos === 3) return '🥉';
+    return `${pos}º`;
+  };
+
   return (
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {/* Compact bar - always visible */}
@@ -82,6 +113,11 @@ export function UserProductivityBanner() {
           <Badge variant="outline" className={`text-xs font-bold ${progressColor} flex-shrink-0`}>
             {goalProgress}%
           </Badge>
+          {myPosition && (
+            <Badge variant="secondary" className="text-xs font-bold flex-shrink-0">
+              {positionIcon(myPosition)}
+            </Badge>
+          )}
         </div>
 
         {/* Progress bar */}
@@ -132,7 +168,7 @@ export function UserProductivityBanner() {
       {/* Expanded detail view */}
       {expanded && (
         <div className="px-4 pb-3 border-t">
-          <div className="grid grid-cols-2 gap-4 mt-3">
+          <div className="grid grid-cols-3 gap-4 mt-3">
             {/* All metrics */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Métricas de Hoje</p>
@@ -173,6 +209,67 @@ export function UserProductivityBanner() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Team Ranking */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                  <Medal className="h-3.5 w-3.5" />
+                  Ranking do Time
+                </p>
+                {myTeams.length > 1 && (
+                  <Select value={selectedTeamId || ''} onValueChange={selectTeam}>
+                    <SelectTrigger className="h-6 text-[10px] w-auto min-w-[100px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {myTeams.map(t => (
+                        <SelectItem key={t.teamId} value={t.teamId}>
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.teamColor }} />
+                            {t.teamName}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {rankingLoading ? (
+                <div className="text-xs text-muted-foreground text-center py-4">Carregando...</div>
+              ) : ranking.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center py-4">
+                  Você não está em nenhum time
+                </div>
+              ) : (
+                <div className="space-y-1 max-h-[140px] overflow-y-auto">
+                  {ranking.map((entry, idx) => (
+                    <div
+                      key={entry.userId}
+                      className={`flex items-center gap-2 p-1.5 rounded-md text-xs ${
+                        entry.isCurrentUser ? 'bg-primary/10 ring-1 ring-primary/20' : 'bg-muted/50'
+                      }`}
+                    >
+                      <span className="w-5 text-center font-bold text-muted-foreground">
+                        {positionIcon(idx + 1)}
+                      </span>
+                      <span className={`flex-1 truncate ${entry.isCurrentUser ? 'font-semibold' : ''}`}>
+                        {entry.isCurrentUser ? 'Você' : (entry.userName?.split(' ')[0] || '?')}
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span title="Leads">{entry.leadsCreated}L</span>
+                        <span title="Passos">{entry.checklistItemsChecked}P</span>
+                        <span title="Etapas">{entry.stageChanges}E</span>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                        {entry.totalPoints} pts
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
