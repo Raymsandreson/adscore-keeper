@@ -396,6 +396,8 @@ export function TeamProductivityDashboard() {
                     total_points: m.totalActions,
                     comments_count: m.commentReplies,
                     mentions_count: m.dmsSent,
+                    leads_created: m.leadsCreated,
+                    stage_changes: m.stageChanges,
                     rank_position: m.position,
                     badge_level: m.position <= 3 ? ['gold', 'silver', 'bronze'][m.position - 1] : 'none',
                   }))}
