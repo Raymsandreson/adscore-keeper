@@ -173,18 +173,32 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     return counts;
   }, [allLeads, boards]);
 
-  // Stats for selected board
+  // Check if any filter is active
+  const hasActiveFilters = useMemo(() => {
+    return !!searchQuery || checklistFilteredIds !== null || Object.values(advancedFilters).some(v => v !== '');
+  }, [searchQuery, checklistFilteredIds, advancedFilters]);
+
+  // Stats for selected board (total from boardLeads, filtered from filteredLeads)
   const stats = useMemo(() => {
     const total = boardLeads.length;
     const converted = boardLeads.filter(l => l.status === 'converted').length;
     const inProgress = boardLeads.filter(l => !['converted', 'lost', 'not_qualified'].includes(l.status)).length;
+
+    const fTotal = filteredLeads.length;
+    const fConverted = filteredLeads.filter(l => l.status === 'converted').length;
+    const fInProgress = filteredLeads.filter(l => !['converted', 'lost', 'not_qualified'].includes(l.status)).length;
+
     return {
       total,
       converted,
       inProgress,
       conversionRate: total > 0 ? (converted / total * 100).toFixed(1) : '0',
+      fTotal,
+      fConverted,
+      fInProgress,
+      fConversionRate: fTotal > 0 ? (fConverted / fTotal * 100).toFixed(1) : '0',
     };
-  }, [boardLeads]);
+  }, [boardLeads, filteredLeads]);
 
   // Leads per stage for funnel chart
   const leadsPerStage = useMemo(() => {
@@ -450,25 +464,33 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-2xl font-bold">
+              {hasActiveFilters ? <>{stats.fTotal} <span className="text-sm font-normal text-muted-foreground">/ {stats.total}</span></> : stats.total}
+            </div>
             <p className="text-xs text-muted-foreground">Total de Leads</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-primary">{stats.inProgress}</div>
+            <div className="text-2xl font-bold text-primary">
+              {hasActiveFilters ? <>{stats.fInProgress} <span className="text-sm font-normal text-muted-foreground">/ {stats.inProgress}</span></> : stats.inProgress}
+            </div>
             <p className="text-xs text-muted-foreground">Em Andamento</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-green-500">{stats.converted}</div>
+            <div className="text-2xl font-bold text-green-500">
+              {hasActiveFilters ? <>{stats.fConverted} <span className="text-sm font-normal text-muted-foreground">/ {stats.converted}</span></> : stats.converted}
+            </div>
             <p className="text-xs text-muted-foreground">Convertidos</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold text-amber-500">{stats.conversionRate}%</div>
+            <div className="text-2xl font-bold text-amber-500">
+              {hasActiveFilters ? <>{stats.fConversionRate}% <span className="text-sm font-normal text-muted-foreground">/ {stats.conversionRate}%</span></> : <>{stats.conversionRate}%</>}
+            </div>
             <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
           </CardContent>
         </Card>
