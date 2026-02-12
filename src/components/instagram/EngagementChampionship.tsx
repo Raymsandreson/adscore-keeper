@@ -23,6 +23,7 @@ import { ptBR } from 'date-fns/locale';
 import { ChampionshipSettingsDialog } from './ChampionshipSettingsDialog';
 import { EngagementEvolutionChart } from './EngagementEvolutionChart';
 import { RankingExportCard } from './RankingExportCard';
+import { CorridaMalucaDialog } from './CorridaMalucaDialog';
 import html2canvas from 'html2canvas';
 
 interface RankingEntry {
@@ -734,6 +735,12 @@ export const EngagementChampionship: React.FC = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <CorridaMalucaDialog
+                rankings={rankings}
+                weekStart={currentWeekStart}
+                weekEnd={currentWeekEnd}
+                settings={settings}
+              />
               <Button variant="outline" size="sm" onClick={shareLeaderboard}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Compartilhar
