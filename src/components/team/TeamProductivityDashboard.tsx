@@ -14,6 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
   BarChart3,
   Trophy,
   Clock,
@@ -34,6 +40,7 @@ import {
   Link2,
   ClipboardList,
   ListChecks,
+  Settings2,
 } from 'lucide-react';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -59,6 +66,30 @@ export function TeamProductivityDashboard() {
   const [dateRangeOption, setDateRangeOption] = useState<DateRangeOption>('today');
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const allMetrics = useMemo(() => [
+    { key: 'commentReplies', label: 'comentários', color: 'text-blue-600', corridaKey: 'comments_count' },
+    { key: 'dmsSent', label: 'DMs', color: 'text-violet-600', corridaKey: 'mentions_count' },
+    { key: 'contactsCreated', label: 'contatos', color: 'text-teal-600', corridaKey: null },
+    { key: 'leadsCreated', label: 'leads', color: 'text-indigo-600', corridaKey: 'leads_created' },
+    { key: 'callsMade', label: 'ligações', color: 'text-green-600', corridaKey: null },
+    { key: 'stageChanges', label: 'etapas', color: 'text-amber-600', corridaKey: 'stage_changes' },
+    { key: 'leadsProgressed', label: 'leads progr.', color: 'text-purple-600', corridaKey: 'leads_progressed' },
+    { key: 'checklistItemsChecked', label: 'passos', color: 'text-cyan-600', corridaKey: 'checklist_items' },
+    { key: 'activitiesCompleted', label: 'concluídas', color: 'text-emerald-600', corridaKey: 'activities_completed' },
+    { key: 'activitiesOverdue', label: 'atrasadas', color: 'text-red-600', corridaKey: 'activities_overdue' },
+    { key: 'leadsClosed', label: 'fechados', color: 'text-rose-600', corridaKey: 'leads_closed' },
+    { key: 'sessionMinutes', label: 'tempo', color: 'text-orange-600', corridaKey: null },
+  ] as const, []);
+
+  const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges'];
+  const [visibleMetrics, setVisibleMetrics] = useState<string[]>(defaultVisibleMetrics);
+
+  const toggleMetric = useCallback((key: string) => {
+    setVisibleMetrics(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  }, []);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -390,21 +421,61 @@ export function TeamProductivityDashboard() {
                     Ordenado por total de ações realizadas
                   </CardDescription>
                 </div>
-                <CorridaMalucaDialog
-                  rankings={rankingData.map(m => ({
-                    username: m.displayName,
-                    total_points: m.totalActions,
-                    comments_count: m.commentReplies,
-                    mentions_count: m.dmsSent,
-                    leads_created: m.leadsCreated,
-                    stage_changes: m.stageChanges,
-                    leads_progressed: m.leadsProgressed,
-                    rank_position: m.position,
-                    badge_level: m.position <= 3 ? ['gold', 'silver', 'bronze'][m.position - 1] : 'none',
-                  }))}
-                  weekStart={dateRange.start}
-                  weekEnd={dateRange.end}
-                />
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Settings2 className="w-4 h-4" />
+                        Métricas ({visibleMetrics.length})
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-3 bg-popover" align="end">
+                      <p className="text-sm font-medium mb-2">Métricas visíveis</p>
+                      <div className="space-y-2">
+                        {allMetrics.map(m => (
+                          <label key={m.key} className="flex items-center gap-2 cursor-pointer text-sm">
+                            <Checkbox
+                              checked={visibleMetrics.includes(m.key)}
+                              onCheckedChange={() => toggleMetric(m.key)}
+                            />
+                            <span>{m.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <CorridaMalucaDialog
+                    rankings={rankingData.map(m => {
+                      const entry: any = {
+                        username: m.displayName,
+                        total_points: m.totalActions,
+                        rank_position: m.position,
+                        badge_level: m.position <= 3 ? ['gold', 'silver', 'bronze'][m.position - 1] : 'none',
+                      };
+                      // Only include metrics that are visible
+                      const metricToCorridaMap: Record<string, { key: string; memberKey: string }> = {
+                        commentReplies: { key: 'comments_count', memberKey: 'commentReplies' },
+                        dmsSent: { key: 'mentions_count', memberKey: 'dmsSent' },
+                        leadsCreated: { key: 'leads_created', memberKey: 'leadsCreated' },
+                        stageChanges: { key: 'stage_changes', memberKey: 'stageChanges' },
+                        leadsProgressed: { key: 'leads_progressed', memberKey: 'leadsProgressed' },
+                        checklistItemsChecked: { key: 'checklist_items', memberKey: 'checklistItemsChecked' },
+                        leadsClosed: { key: 'leads_closed', memberKey: 'leadsClosed' },
+                        activitiesCompleted: { key: 'activities_completed', memberKey: 'activitiesCompleted' },
+                        activitiesOverdue: { key: 'activities_overdue', memberKey: 'activitiesOverdue' },
+                      };
+                      visibleMetrics.forEach(vk => {
+                        const mapping = metricToCorridaMap[vk];
+                        if (mapping) {
+                          entry[mapping.key] = (m as any)[mapping.memberKey];
+                        }
+                      });
+                      return entry;
+                    })}
+                    weekStart={dateRange.start}
+                    weekEnd={dateRange.end}
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -435,55 +506,19 @@ export function TeamProductivityDashboard() {
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
 
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-12 gap-2 text-sm">
-                        <div className="text-center">
-                          <p className="font-semibold text-blue-600">{member.commentReplies}</p>
-                          <p className="text-[10px] text-muted-foreground">comentários</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-violet-600">{member.dmsSent}</p>
-                          <p className="text-[10px] text-muted-foreground">DMs</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-teal-600">{member.contactsCreated}</p>
-                          <p className="text-[10px] text-muted-foreground">contatos</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-indigo-600">{member.leadsCreated}</p>
-                          <p className="text-[10px] text-muted-foreground">leads</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-green-600">{member.callsMade}</p>
-                          <p className="text-[10px] text-muted-foreground">ligações</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-amber-600">{member.stageChanges}</p>
-                          <p className="text-[10px] text-muted-foreground">etapas</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-purple-600">{member.leadsProgressed}</p>
-                          <p className="text-[10px] text-muted-foreground">leads progr.</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-cyan-600">{member.checklistItemsChecked}</p>
-                          <p className="text-[10px] text-muted-foreground">passos</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-emerald-600">{member.activitiesCompleted}</p>
-                          <p className="text-[10px] text-muted-foreground">concluídas</p>
-                        </div>
-                        <div className="text-center">
-                          <p className={`font-semibold ${member.activitiesOverdue > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{member.activitiesOverdue}</p>
-                          <p className="text-[10px] text-muted-foreground">atrasadas</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-rose-600">{member.leadsClosed}</p>
-                          <p className="text-[10px] text-muted-foreground">fechados</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="font-semibold text-orange-600">{formatMinutesToHours(member.sessionMinutes)}</p>
-                          <p className="text-[10px] text-muted-foreground">tempo</p>
-                        </div>
+                      <div className={`grid gap-2 text-sm`} style={{ gridTemplateColumns: `repeat(${visibleMetrics.length}, minmax(0, 1fr))` }}>
+                        {allMetrics.filter(m => visibleMetrics.includes(m.key)).map(metric => {
+                          const value = metric.key === 'sessionMinutes'
+                            ? formatMinutesToHours((member as any)[metric.key])
+                            : (member as any)[metric.key];
+                          const isOverdue = metric.key === 'activitiesOverdue' && (member as any)[metric.key] > 0;
+                          return (
+                            <div key={metric.key} className="text-center">
+                              <p className={`font-semibold ${isOverdue ? 'text-red-600' : metric.color}`}>{value}</p>
+                              <p className="text-[10px] text-muted-foreground">{metric.label}</p>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       <Badge variant="outline" className="ml-4">
