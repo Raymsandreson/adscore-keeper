@@ -45,6 +45,11 @@ interface CommissionGoal {
   is_active: boolean;
   board_ids: string[];
   tiers: CommissionTier[];
+  ote_value: number;
+  min_threshold_percent: number;
+  calculation_mode: 'proportional' | 'tiered' | 'accelerated';
+  accelerator_multiplier: number;
+  cap_percent: number;
 }
 
 interface CommissionTier {
@@ -106,6 +111,11 @@ export function CommissionGoals() {
   const [customEndDate, setCustomEndDate] = useState('');
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([]);
   const [tiers, setTiers] = useState<CommissionTier[]>(DEFAULT_TIERS);
+  const [oteValue, setOteValue] = useState('');
+  const [minThreshold, setMinThreshold] = useState('0');
+  const [calculationMode, setCalculationMode] = useState<'proportional' | 'tiered' | 'accelerated'>('proportional');
+  const [acceleratorMultiplier, setAcceleratorMultiplier] = useState('1.5');
+  const [capPercent, setCapPercent] = useState('150');
 
   // Date range for productivity (current month)
   const now = new Date();
@@ -142,7 +152,16 @@ export function CommissionGoals() {
           tiersMap.get(t.goal_id)!.push(t);
         });
 
-        setGoals(goalsData.map(g => ({ ...g, board_ids: (g as any).board_ids || [], tiers: tiersMap.get(g.id) || [] })));
+        setGoals(goalsData.map(g => ({
+          ...g,
+          board_ids: (g as any).board_ids || [],
+          tiers: tiersMap.get(g.id) || [],
+          ote_value: (g as any).ote_value || 0,
+          min_threshold_percent: (g as any).min_threshold_percent || 0,
+          calculation_mode: (g as any).calculation_mode || 'proportional',
+          accelerator_multiplier: (g as any).accelerator_multiplier || 1.5,
+          cap_percent: (g as any).cap_percent || 150,
+        })));
       } else {
         setGoals([]);
       }
@@ -181,9 +200,31 @@ export function CommissionGoals() {
     }
   };
 
-  const getCommissionForPercent = (goalTiers: CommissionTier[], percent: number): number => {
-    const tier = goalTiers.find(t => percent >= t.min_percent && percent < t.max_percent);
-    return tier?.commission_value || 0;
+  const calculateCommission = (goal: CommissionGoal, percent: number): number => {
+    if (percent < goal.min_threshold_percent) return 0;
+
+    switch (goal.calculation_mode) {
+      case 'proportional': {
+        const cappedPercent = Math.min(percent, goal.cap_percent);
+        return (cappedPercent / 100) * goal.ote_value;
+      }
+      case 'accelerated': {
+        const cappedPercent = Math.min(percent, goal.cap_percent);
+        if (percent <= 100) {
+          return (cappedPercent / 100) * goal.ote_value;
+        }
+        // Base OTE + accelerated portion above 100%
+        const baseOte = goal.ote_value;
+        const excessPercent = cappedPercent - 100;
+        return baseOte + (excessPercent / 100) * goal.ote_value * goal.accelerator_multiplier;
+      }
+      case 'tiered': {
+        const tier = goal.tiers.find(t => percent >= t.min_percent && percent < t.max_percent);
+        return tier?.commission_value || 0;
+      }
+      default:
+        return 0;
+    }
   };
 
   const getMetricLabel = (key: string) => METRIC_OPTIONS.find(m => m.value === key)?.label || key;
@@ -202,6 +243,11 @@ export function CommissionGoals() {
     setCustomEndDate('');
     setSelectedBoardIds([]);
     setTiers([...DEFAULT_TIERS]);
+    setOteValue('');
+    setMinThreshold('0');
+    setCalculationMode('proportional');
+    setAcceleratorMultiplier('1.5');
+    setCapPercent('150');
   };
 
   const handleEdit = (goal: CommissionGoal) => {
@@ -216,6 +262,11 @@ export function CommissionGoals() {
     setCustomEndDate(goal.period === 'custom' ? goal.period_end : '');
     setSelectedBoardIds(goal.board_ids || []);
     setTiers(goal.tiers.length > 0 ? goal.tiers : [...DEFAULT_TIERS]);
+    setOteValue(goal.ote_value?.toString() || '');
+    setMinThreshold(goal.min_threshold_percent?.toString() || '0');
+    setCalculationMode(goal.calculation_mode || 'proportional');
+    setAcceleratorMultiplier(goal.accelerator_multiplier?.toString() || '1.5');
+    setCapPercent(goal.cap_percent?.toString() || '150');
     setDialogOpen(true);
   };
 
@@ -254,6 +305,14 @@ export function CommissionGoals() {
     try {
       let goalId: string;
 
+      const oteFields = {
+        ote_value: Number(oteValue) || 0,
+        min_threshold_percent: Number(minThreshold) || 0,
+        calculation_mode: calculationMode,
+        accelerator_multiplier: Number(acceleratorMultiplier) || 1.5,
+        cap_percent: Number(capPercent) || 150,
+      };
+
       if (editingGoal) {
         const { error } = await supabase.from('commission_goals').update({
           user_id: scopeType === 'user' ? selectedUserId : null,
@@ -264,6 +323,7 @@ export function CommissionGoals() {
           period_start: periodStart,
           period_end: periodEnd,
           board_ids: selectedBoardIds,
+          ...oteFields,
         }).eq('id', editingGoal.id);
         if (error) throw error;
         goalId = editingGoal.id;
@@ -281,6 +341,7 @@ export function CommissionGoals() {
           period_end: periodEnd,
           board_ids: selectedBoardIds,
           is_active: true,
+          ...oteFields,
         }).select('id').single();
         if (error) throw error;
         goalId = data.id;
@@ -337,7 +398,7 @@ export function CommissionGoals() {
       if (goal.user_id) {
         const current = getMetricValue(goal.user_id, goal.metric_key);
         const percent = goal.target_value > 0 ? (current / goal.target_value) * 100 : 0;
-        const commission = getCommissionForPercent(goal.tiers, percent);
+        const commission = calculateCommission(goal, percent);
         return {
           goal,
           entries: [{ userId: goal.user_id, name: getUserName(goal.user_id), current, percent, commission }],
@@ -348,7 +409,7 @@ export function CommissionGoals() {
         const entries = memberIds.map(uid => {
           const current = getMetricValue(uid, goal.metric_key);
           const percent = goal.target_value > 0 ? (current / goal.target_value) * 100 : 0;
-          const commission = getCommissionForPercent(goal.tiers, percent);
+          const commission = calculateCommission(goal, percent);
           return { userId: uid, name: getUserName(uid), current, percent, commission };
         });
         return {
@@ -477,6 +538,9 @@ export function CommissionGoals() {
                         <CardTitle className="text-sm truncate">{scopeLabel}</CardTitle>
                         <CardDescription className="text-xs">
                           {getMetricLabel(goal.metric_key)} • Meta: {goal.target_value} • {goal.period === 'weekly' ? 'Semanal' : goal.period === 'custom' ? `${goal.period_start} a ${goal.period_end}` : 'Mensal'}
+                          {goal.ote_value > 0 && ` • OTE: R$ ${goal.ote_value.toLocaleString('pt-BR')}`}
+                          {goal.min_threshold_percent > 0 && ` • Piso: ${goal.min_threshold_percent}%`}
+                          {` • ${goal.calculation_mode === 'proportional' ? 'Proporcional' : goal.calculation_mode === 'accelerated' ? 'Acelerado' : 'Escalonado'}`}
                           {goal.board_ids && goal.board_ids.length > 0 && ` • Funis: ${goal.board_ids.map(bid => boards.find(b => b.id === bid)?.name || '').filter(Boolean).join(', ')}`}
                         </CardDescription>
                       </div>
@@ -534,16 +598,30 @@ export function CommissionGoals() {
                       </TableBody>
                     </Table>
 
-                    {/* Tiers display */}
+                    {/* Commission info */}
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Faixas de comissão:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {goal.tiers.map((tier, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
-                            {tier.min_percent}%-{tier.max_percent === 999 ? '∞' : tier.max_percent + '%'}: R$ {tier.commission_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      <p className="text-xs font-medium text-muted-foreground mb-2">
+                        {goal.calculation_mode === 'tiered' ? 'Faixas de comissão:' : 'Configuração OTE:'}
+                      </p>
+                      {goal.calculation_mode === 'tiered' ? (
+                        <div className="flex flex-wrap gap-2">
+                          {goal.tiers.map((tier, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {tier.min_percent}%-{tier.max_percent === 999 ? '∞' : tier.max_percent + '%'}: R$ {tier.commission_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline" className="text-xs">OTE: R$ {goal.ote_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</Badge>
+                          {goal.min_threshold_percent > 0 && <Badge variant="outline" className="text-xs">Piso: {goal.min_threshold_percent}%</Badge>}
+                          <Badge variant="outline" className="text-xs">Teto: {goal.cap_percent}%</Badge>
+                          {goal.calculation_mode === 'accelerated' && <Badge variant="outline" className="text-xs">Acelerador: {goal.accelerator_multiplier}x</Badge>}
+                          <Badge variant="outline" className="text-xs">
+                            {goal.calculation_mode === 'proportional' ? 'Proporcional' : 'Com acelerador'}
                           </Badge>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 )}
@@ -685,42 +763,113 @@ export function CommissionGoals() {
               </div>
             )}
 
-            {/* Tiers */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Faixas de comissão</Label>
-                <Button variant="ghost" size="sm" onClick={addTier}>
-                  <Plus className="h-3 w-3 mr-1" /> Faixa
-                </Button>
-              </div>
+            {/* OTE Section */}
+            <div className="space-y-3 border-t pt-4">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Remuneração (OTE)
+              </Label>
+
               <div className="space-y-2">
-                {tiers.map((tier, i) => (
-                  <div key={i} className="flex items-center gap-2 p-2 rounded-md border bg-muted/30">
-                    <div className="flex-1 grid grid-cols-3 gap-2">
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">De %</p>
-                        <Input type="number" className="h-8 text-sm" value={tier.min_percent}
-                          onChange={e => updateTier(i, 'min_percent', Number(e.target.value))} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">Até %</p>
-                        <Input type="number" className="h-8 text-sm" value={tier.max_percent}
-                          onChange={e => updateTier(i, 'max_percent', Number(e.target.value))} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">R$ Comissão</p>
-                        <Input type="number" className="h-8 text-sm" value={tier.commission_value}
-                          onChange={e => updateTier(i, 'commission_value', Number(e.target.value))} />
+                <Label>Modo de cálculo</Label>
+                <Select value={calculationMode} onValueChange={(v) => setCalculationMode(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="proportional">Proporcional (linear)</SelectItem>
+                    <SelectItem value="accelerated">Proporcional com acelerador</SelectItem>
+                    <SelectItem value="tiered">Escalonado (faixas fixas)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  {calculationMode === 'proportional' && 'Ganha proporcionalmente ao % atingido. Ex: 80% da meta = 80% do OTE.'}
+                  {calculationMode === 'accelerated' && 'Proporcional até 100%, acima aplica multiplicador de aceleração.'}
+                  {calculationMode === 'tiered' && 'Valor fixo por faixa de atingimento (faixas configuráveis abaixo).'}
+                </p>
+              </div>
+
+              {calculationMode !== 'tiered' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Valor OTE (R$)</Label>
+                    <Input type="number" placeholder="Ex: 3000" value={oteValue} onChange={e => setOteValue(e.target.value)} />
+                    <p className="text-[10px] text-muted-foreground">Quanto ganha ao atingir 100%</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Piso mínimo (%)</Label>
+                    <Input type="number" placeholder="Ex: 50" value={minThreshold} onChange={e => setMinThreshold(e.target.value)} />
+                    <p className="text-[10px] text-muted-foreground">Abaixo disso, não recebe</p>
+                  </div>
+                </div>
+              )}
+
+              {calculationMode === 'accelerated' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Multiplicador acima de 100%</Label>
+                    <Input type="number" step="0.1" placeholder="Ex: 1.5" value={acceleratorMultiplier} onChange={e => setAcceleratorMultiplier(e.target.value)} />
+                    <p className="text-[10px] text-muted-foreground">Ex: 1.5x = cada 1% acima vale 1.5%</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Teto máximo (%)</Label>
+                    <Input type="number" placeholder="Ex: 150" value={capPercent} onChange={e => setCapPercent(e.target.value)} />
+                    <p className="text-[10px] text-muted-foreground">Limite de % para cálculo</p>
+                  </div>
+                </div>
+              )}
+
+              {calculationMode === 'proportional' && (
+                <div className="space-y-2">
+                  <Label>Teto máximo (%)</Label>
+                  <Input type="number" placeholder="Ex: 150" value={capPercent} onChange={e => setCapPercent(e.target.value)} className="max-w-[200px]" />
+                  <p className="text-[10px] text-muted-foreground">Limite máximo de % considerado no cálculo</p>
+                </div>
+              )}
+
+              {/* Tiers - only for tiered mode */}
+              {calculationMode === 'tiered' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Faixas de comissão</Label>
+                    <Button variant="ghost" size="sm" onClick={addTier}>
+                      <Plus className="h-3 w-3 mr-1" /> Faixa
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-3 mb-2">
+                      <div className="space-y-2">
+                        <Label className="text-xs">Piso mínimo (%)</Label>
+                        <Input type="number" placeholder="Ex: 50" value={minThreshold} onChange={e => setMinThreshold(e.target.value)} />
                       </div>
                     </div>
-                    {tiers.length > 1 && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeTier(i)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
+                    {tiers.map((tier, i) => (
+                      <div key={i} className="flex items-center gap-2 p-2 rounded-md border bg-muted/30">
+                        <div className="flex-1 grid grid-cols-3 gap-2">
+                          <div>
+                            <p className="text-[10px] text-muted-foreground">De %</p>
+                            <Input type="number" className="h-8 text-sm" value={tier.min_percent}
+                              onChange={e => updateTier(i, 'min_percent', Number(e.target.value))} />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground">Até %</p>
+                            <Input type="number" className="h-8 text-sm" value={tier.max_percent}
+                              onChange={e => updateTier(i, 'max_percent', Number(e.target.value))} />
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-muted-foreground">R$ Comissão</p>
+                            <Input type="number" className="h-8 text-sm" value={tier.commission_value}
+                              onChange={e => updateTier(i, 'commission_value', Number(e.target.value))} />
+                          </div>
+                        </div>
+                        {tiers.length > 1 && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeTier(i)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
           <SheetFooter className="flex-row justify-end gap-2 pt-4">

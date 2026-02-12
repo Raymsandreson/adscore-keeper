@@ -695,11 +695,16 @@ export type Database = {
       }
       commission_goals: {
         Row: {
+          accelerator_multiplier: number | null
           board_ids: string[] | null
+          calculation_mode: string
+          cap_percent: number | null
           created_at: string
           id: string
           is_active: boolean
           metric_key: string
+          min_threshold_percent: number
+          ote_value: number
           period: string
           period_end: string
           period_start: string
@@ -709,11 +714,16 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          accelerator_multiplier?: number | null
           board_ids?: string[] | null
+          calculation_mode?: string
+          cap_percent?: number | null
           created_at?: string
           id?: string
           is_active?: boolean
           metric_key: string
+          min_threshold_percent?: number
+          ote_value?: number
           period?: string
           period_end?: string
           period_start?: string
@@ -723,11 +733,16 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          accelerator_multiplier?: number | null
           board_ids?: string[] | null
+          calculation_mode?: string
+          cap_percent?: number | null
           created_at?: string
           id?: string
           is_active?: boolean
           metric_key?: string
+          min_threshold_percent?: number
+          ote_value?: number
           period?: string
           period_end?: string
           period_start?: string
