@@ -35,10 +35,10 @@ export function useLeadActivities() {
 
   const fetchActivities = useCallback(async (filters?: {
     status?: string;
-    activity_type?: string;
-    assigned_to?: string;
-    lead_id?: string;
-    contact_id?: string;
+    activity_type?: string | string[];
+    assigned_to?: string | string[];
+    lead_id?: string | string[];
+    contact_id?: string | string[];
   }) => {
     setLoading(true);
     try {
@@ -50,17 +50,29 @@ export function useLeadActivities() {
       if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status);
       }
-      if (filters?.activity_type && filters.activity_type !== 'all') {
-        query = query.eq('activity_type', filters.activity_type);
+      if (filters?.activity_type) {
+        const vals = Array.isArray(filters.activity_type) ? filters.activity_type : [filters.activity_type];
+        const filtered = vals.filter(v => v !== 'all');
+        if (filtered.length === 1) query = query.eq('activity_type', filtered[0]);
+        else if (filtered.length > 1) query = query.in('activity_type', filtered);
       }
-      if (filters?.assigned_to && filters.assigned_to !== 'all') {
-        query = query.eq('assigned_to', filters.assigned_to);
+      if (filters?.assigned_to) {
+        const vals = Array.isArray(filters.assigned_to) ? filters.assigned_to : [filters.assigned_to];
+        const filtered = vals.filter(v => v !== 'all');
+        if (filtered.length === 1) query = query.eq('assigned_to', filtered[0]);
+        else if (filtered.length > 1) query = query.in('assigned_to', filtered);
       }
-      if (filters?.lead_id && filters.lead_id !== 'all') {
-        query = query.eq('lead_id', filters.lead_id);
+      if (filters?.lead_id) {
+        const vals = Array.isArray(filters.lead_id) ? filters.lead_id : [filters.lead_id];
+        const filtered = vals.filter(v => v !== 'all');
+        if (filtered.length === 1) query = query.eq('lead_id', filtered[0]);
+        else if (filtered.length > 1) query = query.in('lead_id', filtered);
       }
-      if (filters?.contact_id && filters.contact_id !== 'all') {
-        query = query.eq('contact_id', filters.contact_id);
+      if (filters?.contact_id) {
+        const vals = Array.isArray(filters.contact_id) ? filters.contact_id : [filters.contact_id];
+        const filtered = vals.filter(v => v !== 'all');
+        if (filtered.length === 1) query = query.eq('contact_id', filtered[0]);
+        else if (filtered.length > 1) query = query.in('contact_id', filtered);
       }
 
       const { data, error } = await query;

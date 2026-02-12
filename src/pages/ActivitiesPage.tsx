@@ -79,10 +79,10 @@ const ActivitiesPage = () => {
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterType, setFilterType] = useState('all');
-  const [filterAssignee, setFilterAssignee] = useState('all');
-  const [filterLead, setFilterLead] = useState('all');
-  const [filterContact, setFilterContact] = useState('all');
+  const [filterType, setFilterType] = useState<string[]>([]);
+  const [filterAssignee, setFilterAssignee] = useState<string[]>([]);
+  const [filterLead, setFilterLead] = useState<string[]>([]);
+  const [filterContact, setFilterContact] = useState<string[]>([]);
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
@@ -114,9 +114,21 @@ const ActivitiesPage = () => {
   const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
 
+  const getFilterParams = () => ({
+    status: filterStatus,
+    activity_type: filterType.length > 0 ? filterType : 'all',
+    assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
+    lead_id: filterLead.length > 0 ? filterLead : 'all',
+    contact_id: filterContact.length > 0 ? filterContact : 'all',
+  });
+
   useEffect(() => {
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+    fetchActivities(getFilterParams());
   }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
+
+  const toggleFilter = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], value: string) => {
+    setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
+  };
 
   // Fetch raw counts (lightweight)
   useEffect(() => {
@@ -198,7 +210,7 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
     });
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+    fetchActivities(getFilterParams());
   };
 
   const handleOpenEdit = async (activity: LeadActivity) => {
@@ -265,18 +277,18 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
     } as any);
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+    fetchActivities(getFilterParams());
   };
 
   const handleComplete = async (id: string) => {
     await completeActivity(id);
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+    fetchActivities(getFilterParams());
   };
 
   const handleDelete = async (id: string) => {
     await deleteActivity(id);
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+    fetchActivities(getFilterParams());
   };
 
   const closeSheet = () => {
@@ -717,7 +729,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" role="combobox" className="w-[180px] h-9 justify-between text-sm font-normal">
-                      {filterAssignee === 'all' ? 'Todos' : (teamMembers.find(m => m.user_id === filterAssignee)?.full_name || 'Sem nome')}
+                      {filterAssignee.length === 0 ? 'Todos' : filterAssignee.length === 1 ? (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name || 'Sem nome') : `${filterAssignee.length} selecionados`}
                       <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -727,15 +739,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <CommandList>
                         <CommandEmpty>Nenhum encontrado</CommandEmpty>
                         <CommandGroup>
-                          <CommandItem value="all" onSelect={() => { setFilterAssignee('all'); setOpenFilterKey(null); }}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee === 'all' ? "opacity-100" : "opacity-0")} />
+                          <CommandItem value="__clear_all_assessor" onSelect={() => setFilterAssignee([])}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.length === 0 ? "opacity-100" : "opacity-0")} />
                             Todos
                           </CommandItem>
                           {teamMembers.map(m => {
                             const c = countByField('assigned_to', m.user_id);
+                            const isSelected = filterAssignee.includes(m.user_id);
                             return (
-                              <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => { setFilterAssignee(m.user_id); setOpenFilterKey(null); }}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee === m.user_id ? "opacity-100" : "opacity-0")} />
+                              <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                                 <span className="ml-2 flex gap-1 text-[10px]">
                                   <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
@@ -757,7 +770,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 <Popover open={openFilterKey === 'type'} onOpenChange={o => setOpenFilterKey(o ? 'type' : null)}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" role="combobox" className="w-[160px] h-9 justify-between text-sm font-normal">
-                      {filterType === 'all' ? 'Todos' : (ACTIVITY_TYPES.find(t => t.value === filterType)?.label || filterType)}
+                      {filterType.length === 0 ? 'Todos' : filterType.length === 1 ? (ACTIVITY_TYPES.find(t => t.value === filterType[0])?.label || filterType[0]) : `${filterType.length} selecionados`}
                       <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -767,15 +780,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <CommandList>
                         <CommandEmpty>Nenhum encontrado</CommandEmpty>
                         <CommandGroup>
-                          <CommandItem value="all" onSelect={() => { setFilterType('all'); setOpenFilterKey(null); }}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterType === 'all' ? "opacity-100" : "opacity-0")} />
+                          <CommandItem value="__clear_all_type" onSelect={() => setFilterType([])}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterType.length === 0 ? "opacity-100" : "opacity-0")} />
                             Todos
                           </CommandItem>
                           {ACTIVITY_TYPES.map(t => {
                             const c = countByField('activity_type', t.value);
+                            const isSelected = filterType.includes(t.value);
                             return (
-                              <CommandItem key={t.value} value={t.label} onSelect={() => { setFilterType(t.value); setOpenFilterKey(null); }}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", filterType === t.value ? "opacity-100" : "opacity-0")} />
+                              <CommandItem key={t.value} value={t.label} onSelect={() => toggleFilter(setFilterType, filterType, t.value)}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1">{t.label}</span>
                                 <span className="ml-2 flex gap-1 text-[10px]">
                                   <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
@@ -810,7 +824,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
-                      <span className="truncate">{filterLead === 'all' ? 'Todos' : (leads.find(l => l.id === filterLead)?.lead_name || 'Sem nome')}</span>
+                      <span className="truncate">{filterLead.length === 0 ? 'Todos' : filterLead.length === 1 ? (leads.find(l => l.id === filterLead[0])?.lead_name || 'Sem nome') : `${filterLead.length} selecionados`}</span>
                       <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -820,15 +834,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <CommandList>
                         <CommandEmpty>Nenhum encontrado</CommandEmpty>
                         <CommandGroup>
-                          <CommandItem value="all" onSelect={() => { setFilterLead('all'); setOpenFilterKey(null); }}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterLead === 'all' ? "opacity-100" : "opacity-0")} />
+                          <CommandItem value="__clear_all_lead" onSelect={() => setFilterLead([])}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterLead.length === 0 ? "opacity-100" : "opacity-0")} />
                             Todos
                           </CommandItem>
                           {leads.map(l => {
                             const c = countByField('lead_id', l.id);
+                            const isSelected = filterLead.includes(l.id);
                             return (
-                              <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => { setFilterLead(l.id); setOpenFilterKey(null); }}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", filterLead === l.id ? "opacity-100" : "opacity-0")} />
+                              <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => toggleFilter(setFilterLead, filterLead, l.id)}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1 truncate">{l.lead_name || 'Sem nome'}</span>
                                 {(c.open > 0 || c.done > 0) && (
                                   <span className="ml-2 flex gap-1 text-[10px]">
@@ -852,7 +867,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 <Popover open={openFilterKey === 'contact'} onOpenChange={o => setOpenFilterKey(o ? 'contact' : null)}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
-                      <span className="truncate">{filterContact === 'all' ? 'Todos' : (availableContacts.find(c => c.id === filterContact)?.full_name || 'Sem nome')}</span>
+                      <span className="truncate">{filterContact.length === 0 ? 'Todos' : filterContact.length === 1 ? (availableContacts.find(c => c.id === filterContact[0])?.full_name || 'Sem nome') : `${filterContact.length} selecionados`}</span>
                       <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
@@ -862,15 +877,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <CommandList>
                         <CommandEmpty>Nenhum encontrado</CommandEmpty>
                         <CommandGroup>
-                          <CommandItem value="all" onSelect={() => { setFilterContact('all'); setOpenFilterKey(null); }}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterContact === 'all' ? "opacity-100" : "opacity-0")} />
+                          <CommandItem value="__clear_all_contact" onSelect={() => setFilterContact([])}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterContact.length === 0 ? "opacity-100" : "opacity-0")} />
                             Todos
                           </CommandItem>
                           {availableContacts.map(c => {
                             const ct = countByField('contact_id', c.id);
+                            const isSelected = filterContact.includes(c.id);
                             return (
-                              <CommandItem key={c.id} value={c.full_name} onSelect={() => { setFilterContact(c.id); setOpenFilterKey(null); }}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", filterContact === c.id ? "opacity-100" : "opacity-0")} />
+                              <CommandItem key={c.id} value={c.full_name} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1 truncate">{c.full_name}</span>
                                 {(ct.open > 0 || ct.done > 0) && (
                                   <span className="ml-2 flex gap-1 text-[10px]">
