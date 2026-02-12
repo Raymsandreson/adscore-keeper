@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,6 +32,7 @@ interface DetailItem {
 export function MemberProductivitySheet({ member, open, onOpenChange, dateRange }: MemberProductivitySheetProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('comments');
   const [comments, setComments] = useState<DetailItem[]>([]);
   const [dms, setDms] = useState<DetailItem[]>([]);
   const [contacts, setContacts] = useState<DetailItem[]>([]);
@@ -243,6 +242,18 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
 
   if (!member) return null;
 
+  const summaryCards: { key: string; value: string | number; label: string; bg: string; text: string }[] = [
+    { key: 'comments', value: member.commentReplies, label: 'Comentários', bg: 'bg-blue-50', text: 'text-blue-700' },
+    { key: 'dms', value: member.dmsSent, label: 'DMs', bg: 'bg-violet-50', text: 'text-violet-700' },
+    { key: 'contacts', value: member.contactsCreated, label: 'Contatos', bg: 'bg-teal-50', text: 'text-teal-700' },
+    { key: 'leads', value: member.leadsCreated, label: 'Leads', bg: 'bg-indigo-50', text: 'text-indigo-700' },
+    { key: 'calls', value: member.callsMade, label: 'Ligações', bg: 'bg-green-50', text: 'text-green-700' },
+    { key: 'stages', value: member.stageChanges, label: 'Etapas', bg: 'bg-amber-50', text: 'text-amber-700' },
+    { key: 'closed', value: member.leadsClosed, label: 'Fechados', bg: 'bg-rose-50', text: 'text-rose-700' },
+    { key: 'refused', value: refusedCases.length, label: 'Recusados', bg: 'bg-gray-50', text: 'text-gray-700' },
+    { key: 'sessions', value: formatMinutesToHours(member.sessionMinutes), label: 'Tempo', bg: 'bg-orange-50', text: 'text-orange-700' },
+  ];
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
@@ -251,40 +262,18 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           <SheetDescription>{member.email}</SheetDescription>
         </SheetHeader>
 
-        {/* Summary row */}
+        {/* Clickable summary cards - clicking switches the detail list below */}
         <div className="grid grid-cols-4 gap-2 mt-4 mb-4">
-          <div className="text-center p-2 rounded-lg bg-blue-50">
-            <p className="text-lg font-bold text-blue-700">{member.commentReplies}</p>
-            <p className="text-[10px] text-muted-foreground">Comentários</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-violet-50">
-            <p className="text-lg font-bold text-violet-700">{member.dmsSent}</p>
-            <p className="text-[10px] text-muted-foreground">DMs</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-teal-50">
-            <p className="text-lg font-bold text-teal-700">{member.contactsCreated}</p>
-            <p className="text-[10px] text-muted-foreground">Contatos</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-indigo-50">
-            <p className="text-lg font-bold text-indigo-700">{member.leadsCreated}</p>
-            <p className="text-[10px] text-muted-foreground">Leads</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-green-50">
-            <p className="text-lg font-bold text-green-700">{member.callsMade}</p>
-            <p className="text-[10px] text-muted-foreground">Ligações</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-amber-50">
-            <p className="text-lg font-bold text-amber-700">{member.stageChanges}</p>
-            <p className="text-[10px] text-muted-foreground">Etapas</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-rose-50">
-            <p className="text-lg font-bold text-rose-700">{member.leadsClosed}</p>
-            <p className="text-[10px] text-muted-foreground">Fechados</p>
-          </div>
-          <div className="text-center p-2 rounded-lg bg-orange-50">
-            <p className="text-lg font-bold text-orange-700">{formatMinutesToHours(member.sessionMinutes)}</p>
-            <p className="text-[10px] text-muted-foreground">Tempo</p>
-          </div>
+          {summaryCards.map(card => (
+            <div
+              key={card.key}
+              className={`text-center p-2 rounded-lg cursor-pointer transition-all ${card.bg} ${activeTab === card.key ? 'ring-2 ring-primary shadow-sm scale-[1.02]' : 'hover:opacity-80'}`}
+              onClick={() => setActiveTab(card.key)}
+            >
+              <p className={`text-lg font-bold ${card.text}`}>{card.value}</p>
+              <p className="text-[10px] text-muted-foreground">{card.label}</p>
+            </div>
+          ))}
         </div>
 
         {loading ? (
@@ -292,51 +281,17 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <Tabs defaultValue="comments" className="flex-1">
-            <TabsList className="grid grid-cols-4 w-full">
-              <TabsTrigger value="comments" className="text-xs">Comentários</TabsTrigger>
-              <TabsTrigger value="dms" className="text-xs">DMs</TabsTrigger>
-              <TabsTrigger value="contacts" className="text-xs">Contatos</TabsTrigger>
-              <TabsTrigger value="leads" className="text-xs">Leads</TabsTrigger>
-            </TabsList>
-            <TabsList className="grid grid-cols-5 w-full mt-1">
-              <TabsTrigger value="calls" className="text-xs">Ligações</TabsTrigger>
-              <TabsTrigger value="stages" className="text-xs">Etapas</TabsTrigger>
-              <TabsTrigger value="closed" className="text-xs">Fechados</TabsTrigger>
-              <TabsTrigger value="refused" className="text-xs">Recusados</TabsTrigger>
-              <TabsTrigger value="sessions" className="text-xs">Sessões</TabsTrigger>
-            </TabsList>
-
-            <ScrollArea className="h-[calc(100vh-380px)] mt-3">
-              <TabsContent value="comments" className="mt-0">
-                {renderList(comments, <MessageSquare className="h-4 w-4 text-blue-600" />, 'Nenhum comentário no período')}
-              </TabsContent>
-              <TabsContent value="dms" className="mt-0">
-                {renderList(dms, <Send className="h-4 w-4 text-violet-600" />, 'Nenhuma DM no período')}
-              </TabsContent>
-              <TabsContent value="contacts" className="mt-0">
-                {renderList(contacts, <UserPlus className="h-4 w-4 text-teal-600" />, 'Nenhum contato no período')}
-              </TabsContent>
-              <TabsContent value="leads" className="mt-0">
-                {renderList(leads, <Target className="h-4 w-4 text-indigo-600" />, 'Nenhum lead no período')}
-              </TabsContent>
-              <TabsContent value="calls" className="mt-0">
-                {renderList(calls, <Phone className="h-4 w-4 text-green-600" />, 'Nenhuma ligação no período')}
-              </TabsContent>
-              <TabsContent value="stages" className="mt-0">
-                {renderList(stageChanges, <ArrowRightLeft className="h-4 w-4 text-amber-600" />, 'Nenhuma mudança de etapa')}
-              </TabsContent>
-              <TabsContent value="closed" className="mt-0">
-                {renderList(closedCases, <CheckCircle2 className="h-4 w-4 text-rose-600" />, 'Nenhum caso fechado')}
-              </TabsContent>
-              <TabsContent value="refused" className="mt-0">
-                {renderList(refusedCases, <XCircle className="h-4 w-4 text-gray-600" />, 'Nenhum caso recusado')}
-              </TabsContent>
-              <TabsContent value="sessions" className="mt-0">
-                {renderList(sessions, <Clock className="h-4 w-4 text-orange-600" />, 'Nenhuma sessão no período')}
-              </TabsContent>
-            </ScrollArea>
-          </Tabs>
+          <ScrollArea className="h-[calc(100vh-320px)]">
+            {activeTab === 'comments' && renderList(comments, <MessageSquare className="h-4 w-4 text-blue-600" />, 'Nenhum comentário no período')}
+            {activeTab === 'dms' && renderList(dms, <Send className="h-4 w-4 text-violet-600" />, 'Nenhuma DM no período')}
+            {activeTab === 'contacts' && renderList(contacts, <UserPlus className="h-4 w-4 text-teal-600" />, 'Nenhum contato no período')}
+            {activeTab === 'leads' && renderList(leads, <Target className="h-4 w-4 text-indigo-600" />, 'Nenhum lead no período')}
+            {activeTab === 'calls' && renderList(calls, <Phone className="h-4 w-4 text-green-600" />, 'Nenhuma ligação no período')}
+            {activeTab === 'stages' && renderList(stageChanges, <ArrowRightLeft className="h-4 w-4 text-amber-600" />, 'Nenhuma mudança de etapa')}
+            {activeTab === 'closed' && renderList(closedCases, <CheckCircle2 className="h-4 w-4 text-rose-600" />, 'Nenhum caso fechado')}
+            {activeTab === 'refused' && renderList(refusedCases, <XCircle className="h-4 w-4 text-gray-600" />, 'Nenhum caso recusado')}
+            {activeTab === 'sessions' && renderList(sessions, <Clock className="h-4 w-4 text-orange-600" />, 'Nenhuma sessão no período')}
+          </ScrollArea>
         )}
       </SheetContent>
     </Sheet>
