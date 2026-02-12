@@ -40,6 +40,8 @@ import {
   X,
   LayoutGrid,
   ChevronRight,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -49,6 +51,7 @@ import { LeadContactsManager } from './LeadContactsManager';
 import { LeadCardChecklists } from './LeadCardChecklists';
 import { ProfessionBadgePopover } from '@/components/instagram/ProfessionBadgePopover';
 import { toast } from 'sonner';
+import { findClosedStageId, findRefusedStageId, isClosedStage, isRefusedStage } from '@/utils/kanbanStageTypes';
 
 interface DynamicKanbanBoardProps {
   board: KanbanBoard;
@@ -651,6 +654,37 @@ export function DynamicKanbanBoard({
                                             }
                                           </>
                                         )}
+
+                                        {/* Quick actions: Fechado / Recusado */}
+                                        {(() => {
+                                          const closedId = findClosedStageId(board.stages);
+                                          const refusedId = findRefusedStageId(board.stages);
+                                          const showSection = (closedId && lead.status !== closedId) || (refusedId && lead.status !== refusedId);
+                                          if (!showSection) return null;
+                                          return (
+                                            <>
+                                              <DropdownMenuSeparator />
+                                              {closedId && lead.status !== closedId && (
+                                                <DropdownMenuItem
+                                                  onClick={() => onMoveToStage(lead.id, closedId)}
+                                                  className="text-green-600"
+                                                >
+                                                  <CheckCircle2 className="h-3 w-3 mr-2" />
+                                                  Marcar como Fechado
+                                                </DropdownMenuItem>
+                                              )}
+                                              {refusedId && lead.status !== refusedId && (
+                                                <DropdownMenuItem
+                                                  onClick={() => onMoveToStage(lead.id, refusedId)}
+                                                  className="text-red-600"
+                                                >
+                                                  <XCircle className="h-3 w-3 mr-2" />
+                                                  Marcar como Recusado
+                                                </DropdownMenuItem>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
                                         
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem

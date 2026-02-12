@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { getStageType } from '@/utils/kanbanStageTypes';
 import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters } from './LeadAdvancedFilters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -178,27 +179,27 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     return !!searchQuery || checklistFilteredIds !== null || Object.values(advancedFilters).some(v => v !== '');
   }, [searchQuery, checklistFilteredIds, advancedFilters]);
 
-  // Stats for selected board (total from boardLeads, filtered from filteredLeads)
+  // Stats for selected board using stage type classification
   const stats = useMemo(() => {
-    const total = boardLeads.length;
-    const converted = boardLeads.filter(l => l.status === 'converted').length;
-    const inProgress = boardLeads.filter(l => !['converted', 'lost', 'not_qualified'].includes(l.status)).length;
-
-    const fTotal = filteredLeads.length;
-    const fConverted = filteredLeads.filter(l => l.status === 'converted').length;
-    const fInProgress = filteredLeads.filter(l => !['converted', 'lost', 'not_qualified'].includes(l.status)).length;
-
-    return {
-      total,
-      converted,
-      inProgress,
-      conversionRate: total > 0 ? (converted / total * 100).toFixed(1) : '0',
-      fTotal,
-      fConverted,
-      fInProgress,
-      fConversionRate: fTotal > 0 ? (fConverted / fTotal * 100).toFixed(1) : '0',
+    const stages = selectedBoard?.stages || [];
+    const classify = (leads: typeof boardLeads) => {
+      let inbox = 0, funnel = 0, closed = 0, refused = 0;
+      leads.forEach(l => {
+        const type = getStageType(l.status || stages[0]?.id || '', stages);
+        if (type === 'inbox') inbox++;
+        else if (type === 'closed') closed++;
+        else if (type === 'refused') refused++;
+        else funnel++;
+      });
+      const enteredFunnel = funnel + closed + refused;
+      const conversionRate = enteredFunnel > 0 ? (closed / enteredFunnel * 100).toFixed(1) : '0';
+      return { total: leads.length, inbox, funnel, closed, refused, conversionRate };
     };
-  }, [boardLeads, filteredLeads]);
+    return {
+      board: classify(boardLeads),
+      filtered: classify(filteredLeads),
+    };
+  }, [boardLeads, filteredLeads, selectedBoard]);
 
   // Leads per stage for funnel chart
   const leadsPerStage = useMemo(() => {
@@ -461,19 +462,27 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         availableCaseTypes={filterOptions.caseTypes}
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="text-2xl font-bold">
-              {hasActiveFilters ? <>{stats.fTotal} <span className="text-sm font-normal text-muted-foreground">/ {stats.total}</span></> : stats.total}
+              {hasActiveFilters ? <>{stats.filtered.total} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.total}</span></> : stats.board.total}
             </div>
             <p className="text-xs text-muted-foreground">Total de Leads</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
+            <div className="text-2xl font-bold text-muted-foreground">
+              {hasActiveFilters ? <>{stats.filtered.inbox} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.inbox}</span></> : stats.board.inbox}
+            </div>
+            <p className="text-xs text-muted-foreground">Caixa de Entrada</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
             <div className="text-2xl font-bold text-primary">
-              {hasActiveFilters ? <>{stats.fInProgress} <span className="text-sm font-normal text-muted-foreground">/ {stats.inProgress}</span></> : stats.inProgress}
+              {hasActiveFilters ? <>{stats.filtered.funnel} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.funnel}</span></> : stats.board.funnel}
             </div>
             <p className="text-xs text-muted-foreground">Em Andamento</p>
           </CardContent>
@@ -481,15 +490,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         <Card>
           <CardContent className="pt-4">
             <div className="text-2xl font-bold text-green-500">
-              {hasActiveFilters ? <>{stats.fConverted} <span className="text-sm font-normal text-muted-foreground">/ {stats.converted}</span></> : stats.converted}
+              {hasActiveFilters ? <>{stats.filtered.closed} <span className="text-sm font-normal text-muted-foreground">/ {stats.board.closed}</span></> : stats.board.closed}
             </div>
-            <p className="text-xs text-muted-foreground">Convertidos</p>
+            <p className="text-xs text-muted-foreground">Fechados</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="text-2xl font-bold text-amber-500">
-              {hasActiveFilters ? <>{stats.fConversionRate}% <span className="text-sm font-normal text-muted-foreground">/ {stats.conversionRate}%</span></> : <>{stats.conversionRate}%</>}
+              {hasActiveFilters ? <>{stats.filtered.conversionRate}% <span className="text-sm font-normal text-muted-foreground">/ {stats.board.conversionRate}%</span></> : <>{stats.board.conversionRate}%</>}
             </div>
             <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
           </CardContent>
