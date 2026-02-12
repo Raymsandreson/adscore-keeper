@@ -24,6 +24,7 @@ interface RankingEntry {
   comments_count?: number;
   leads_created?: number;
   stage_changes?: number;
+  leads_progressed?: number;
   total_points: number;
   badge_level?: string;
   rank_position?: number | null;

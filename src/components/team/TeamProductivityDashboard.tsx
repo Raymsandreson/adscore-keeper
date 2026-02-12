@@ -398,6 +398,7 @@ export function TeamProductivityDashboard() {
                     mentions_count: m.dmsSent,
                     leads_created: m.leadsCreated,
                     stage_changes: m.stageChanges,
+                    leads_progressed: m.leadsProgressed,
                     rank_position: m.position,
                     badge_level: m.position <= 3 ? ['gold', 'silver', 'bronze'][m.position - 1] : 'none',
                   }))}
@@ -434,7 +435,7 @@ export function TeamProductivityDashboard() {
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                       </div>
 
-                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-11 gap-2 text-sm">
+                      <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-12 gap-2 text-sm">
                         <div className="text-center">
                           <p className="font-semibold text-blue-600">{member.commentReplies}</p>
                           <p className="text-[10px] text-muted-foreground">comentários</p>
@@ -458,6 +459,10 @@ export function TeamProductivityDashboard() {
                         <div className="text-center">
                           <p className="font-semibold text-amber-600">{member.stageChanges}</p>
                           <p className="text-[10px] text-muted-foreground">etapas</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="font-semibold text-purple-600">{member.leadsProgressed}</p>
+                          <p className="text-[10px] text-muted-foreground">leads progr.</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-cyan-600">{member.checklistItemsChecked}</p>
