@@ -24,6 +24,12 @@ export interface MyDailyGoals {
   target_dms: number;
   target_leads: number;
   target_session_minutes: number;
+  target_contacts: number;
+  target_calls: number;
+  target_activities: number;
+  target_stage_changes: number;
+  target_leads_closed: number;
+  target_checklist_items: number;
 }
 
 const emptyProductivity: MyProductivity = {
@@ -35,6 +41,8 @@ const emptyProductivity: MyProductivity = {
 
 const hardcodedDefaults: MyDailyGoals = {
   target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60,
+  target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10,
+  target_leads_closed: 2, target_checklist_items: 10,
 };
 
 export function useMyProductivity() {
@@ -132,6 +140,12 @@ export function useMyProductivity() {
         target_dms: dg.target_dms ?? 10,
         target_leads: dg.target_leads ?? 5,
         target_session_minutes: dg.target_session_minutes ?? 60,
+        target_contacts: (dg as any).target_contacts ?? 5,
+        target_calls: (dg as any).target_calls ?? 10,
+        target_activities: (dg as any).target_activities ?? 5,
+        target_stage_changes: (dg as any).target_stage_changes ?? 10,
+        target_leads_closed: (dg as any).target_leads_closed ?? 2,
+        target_checklist_items: (dg as any).target_checklist_items ?? 10,
       } : hardcodedDefaults;
 
       if (goalsRes.data) {
@@ -140,6 +154,12 @@ export function useMyProductivity() {
           target_dms: goalsRes.data.target_dms ?? fallback.target_dms,
           target_leads: goalsRes.data.target_leads ?? fallback.target_leads,
           target_session_minutes: goalsRes.data.target_session_minutes ?? fallback.target_session_minutes,
+          target_contacts: (goalsRes.data as any).target_contacts ?? fallback.target_contacts,
+          target_calls: (goalsRes.data as any).target_calls ?? fallback.target_calls,
+          target_activities: (goalsRes.data as any).target_activities ?? fallback.target_activities,
+          target_stage_changes: (goalsRes.data as any).target_stage_changes ?? fallback.target_stage_changes,
+          target_leads_closed: (goalsRes.data as any).target_leads_closed ?? fallback.target_leads_closed,
+          target_checklist_items: (goalsRes.data as any).target_checklist_items ?? fallback.target_checklist_items,
         });
       } else {
         setGoals(fallback);
