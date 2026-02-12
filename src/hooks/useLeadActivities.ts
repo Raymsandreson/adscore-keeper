@@ -34,7 +34,7 @@ export function useLeadActivities() {
   const [loading, setLoading] = useState(false);
 
   const fetchActivities = useCallback(async (filters?: {
-    status?: string;
+    status?: string | string[];
     activity_type?: string | string[];
     assigned_to?: string | string[];
     lead_id?: string | string[];
@@ -47,8 +47,11 @@ export function useLeadActivities() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status);
+      if (filters?.status) {
+        const vals = Array.isArray(filters.status) ? filters.status : [filters.status];
+        const filtered = vals.filter(v => v !== 'all');
+        if (filtered.length === 1) query = query.eq('status', filtered[0]);
+        else if (filtered.length > 1) query = query.in('status', filtered);
       }
       if (filters?.activity_type) {
         const vals = Array.isArray(filters.activity_type) ? filters.activity_type : [filters.activity_type];
