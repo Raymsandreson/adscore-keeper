@@ -33,14 +33,14 @@ const emptyProductivity: MyProductivity = {
   sessionMinutes: 0, totalActions: 0,
 };
 
-const defaultGoals: MyDailyGoals = {
+const hardcodedDefaults: MyDailyGoals = {
   target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60,
 };
 
 export function useMyProductivity() {
   const { user } = useAuthContext();
   const [data, setData] = useState<MyProductivity>(emptyProductivity);
-  const [goals, setGoals] = useState<MyDailyGoals>(defaultGoals);
+  const [goals, setGoals] = useState<MyDailyGoals>(hardcodedDefaults);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -55,7 +55,7 @@ export function useMyProductivity() {
       const [
         contactsRes, dmsRes, repliesRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
-        completedActivitiesRes, overdueActivitiesRes, goalsRes,
+        completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
@@ -83,6 +83,7 @@ export function useMyProductivity() {
           .not('deadline', 'is', null),
         supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
+        supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -124,13 +125,24 @@ export function useMyProductivity() {
 
       setData(prod);
 
+      // Use user-specific goals if set, otherwise fall back to configurable defaults
+      const dg = defaultGoalsRes.data;
+      const fallback: MyDailyGoals = dg ? {
+        target_replies: dg.target_replies ?? 20,
+        target_dms: dg.target_dms ?? 10,
+        target_leads: dg.target_leads ?? 5,
+        target_session_minutes: dg.target_session_minutes ?? 60,
+      } : hardcodedDefaults;
+
       if (goalsRes.data) {
         setGoals({
-          target_replies: goalsRes.data.target_replies ?? 20,
-          target_dms: goalsRes.data.target_dms ?? 10,
-          target_leads: goalsRes.data.target_leads ?? 5,
-          target_session_minutes: goalsRes.data.target_session_minutes ?? 60,
+          target_replies: goalsRes.data.target_replies ?? fallback.target_replies,
+          target_dms: goalsRes.data.target_dms ?? fallback.target_dms,
+          target_leads: goalsRes.data.target_leads ?? fallback.target_leads,
+          target_session_minutes: goalsRes.data.target_session_minutes ?? fallback.target_session_minutes,
         });
+      } else {
+        setGoals(fallback);
       }
     } catch (error) {
       console.error('Error fetching my productivity:', error);

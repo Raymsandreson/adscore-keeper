@@ -103,6 +103,10 @@ export function CommissionGoals() {
   const [memberObjects, setMemberObjects] = useState<Record<string, any[]>>({});
   const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
 
+  // Default daily goals state
+  const [defaultGoals, setDefaultGoals] = useState({ target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60 });
+  const [savingDefaults, setSavingDefaults] = useState(false);
+
   // Form state
   const [scopeType, setScopeType] = useState<'user' | 'team'>('user');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -181,6 +185,37 @@ export function CommissionGoals() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch default daily goals
+  useEffect(() => {
+    supabase.from('workflow_default_goals').select('*').limit(1).single().then(({ data }) => {
+      if (data) {
+        setDefaultGoals({
+          target_replies: data.target_replies,
+          target_dms: data.target_dms,
+          target_leads: data.target_leads,
+          target_session_minutes: data.target_session_minutes,
+        });
+      }
+    });
+  }, []);
+
+  const saveDefaultGoals = async () => {
+    setSavingDefaults(true);
+    try {
+      const { data: existing } = await supabase.from('workflow_default_goals').select('id').limit(1).single();
+      if (existing) {
+        await supabase.from('workflow_default_goals').update({ ...defaultGoals, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      } else {
+        await supabase.from('workflow_default_goals').insert(defaultGoals);
+      }
+      toast.success('Metas padrão salvas!');
+    } catch (err) {
+      toast.error('Erro ao salvar metas padrão');
+    } finally {
+      setSavingDefaults(false);
+    }
+  };
 
   const getMetricValue = (userId: string, metricKey: string): number => {
     const p = productivity.find(u => u.userId === userId);
@@ -561,6 +596,65 @@ export function CommissionGoals() {
           Nova Meta
         </Button>
       </div>
+
+      {/* Default daily goals config */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            Metas Diárias Padrão
+          </CardTitle>
+          <CardDescription>
+            Valores mínimos aplicados quando não há meta específica cadastrada para o período
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Respostas / dia</Label>
+              <Input
+                type="number"
+                min={0}
+                value={defaultGoals.target_replies}
+                onChange={e => setDefaultGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">DMs / dia</Label>
+              <Input
+                type="number"
+                min={0}
+                value={defaultGoals.target_dms}
+                onChange={e => setDefaultGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Leads / dia</Label>
+              <Input
+                type="number"
+                min={0}
+                value={defaultGoals.target_leads}
+                onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tempo online (min)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={defaultGoals.target_session_minutes}
+                onChange={e => setDefaultGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end mt-3">
+            <Button size="sm" onClick={saveDefaultGoals} disabled={savingDefaults}>
+              {savingDefaults ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Salvar Padrão
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
