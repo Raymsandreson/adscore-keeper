@@ -826,15 +826,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           </CommandItem>
                           {leads.map(l => {
                             const c = countByField('lead_id', l.id);
-                            if (c.open === 0 && c.done === 0) return null;
                             return (
                               <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => { setFilterLead(l.id); setOpenFilterKey(null); }}>
                                 <Check className={cn("mr-2 h-3.5 w-3.5", filterLead === l.id ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1 truncate">{l.lead_name || 'Sem nome'}</span>
-                                <span className="ml-2 flex gap-1 text-[10px]">
-                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                                </span>
+                                {(c.open > 0 || c.done > 0) && (
+                                  <span className="ml-2 flex gap-1 text-[10px]">
+                                    <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                    <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                                  </span>
+                                )}
                               </CommandItem>
                             );
                           })}
@@ -867,15 +868,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           </CommandItem>
                           {availableContacts.map(c => {
                             const ct = countByField('contact_id', c.id);
-                            if (ct.open === 0 && ct.done === 0) return null;
                             return (
                               <CommandItem key={c.id} value={c.full_name} onSelect={() => { setFilterContact(c.id); setOpenFilterKey(null); }}>
                                 <Check className={cn("mr-2 h-3.5 w-3.5", filterContact === c.id ? "opacity-100" : "opacity-0")} />
                                 <span className="flex-1 truncate">{c.full_name}</span>
-                                <span className="ml-2 flex gap-1 text-[10px]">
-                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{ct.open}⏳</Badge>
-                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{ct.done}✓</Badge>
-                                </span>
+                                {(ct.open > 0 || ct.done > 0) && (
+                                  <span className="ml-2 flex gap-1 text-[10px]">
+                                    <Badge variant="outline" className="px-1 py-0 text-[10px]">{ct.open}⏳</Badge>
+                                    <Badge variant="secondary" className="px-1 py-0 text-[10px]">{ct.done}✓</Badge>
+                                  </span>
+                                )}
                               </CommandItem>
                             );
                           })}
