@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMyProductivity } from '@/hooks/useMyProductivity';
 import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
+import { MemberProductivitySheet } from '@/components/team/MemberProductivitySheet';
+import type { UserProductivity } from '@/hooks/useTeamProductivity';
+import { startOfDay, endOfDay } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,7 +57,38 @@ export function UserProductivityBanner() {
   const { ranking, myTeams, selectedTeamId, selectTeam, myPosition, loading: rankingLoading, fetchRanking } = useMyTeamRanking();
   const [expanded, setExpanded] = useState(false);
   const [rankingFetched, setRankingFetched] = useState(false);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const location = useLocation();
+
+  const today = useMemo(() => ({ start: startOfDay(new Date()), end: endOfDay(new Date()) }), []);
+
+  const memberForSheet = useMemo<(UserProductivity & { displayName: string }) | null>(() => {
+    if (!user) return null;
+    return {
+      userId: user.id,
+      userName: profile?.full_name || null,
+      email: user.email || null,
+      displayName: profile?.full_name?.split(' ')[0] || 'Você',
+      commentReplies: data.commentReplies,
+      dmsSent: data.dmsSent,
+      contactsCreated: data.contactsCreated,
+      leadsCreated: data.leadsCreated,
+      leadsClosed: data.leadsClosed,
+      leadsProgressed: data.leadsProgressed,
+      callsMade: data.callsMade,
+      stageChanges: data.stageChanges,
+      checklistItemsChecked: data.checklistItemsChecked,
+      activitiesCompleted: data.activitiesCompleted,
+      activitiesOverdue: data.activitiesOverdue,
+      sessionMinutes: data.sessionMinutes,
+      totalActions: data.totalActions,
+      contactsLinked: 0,
+      dmsReceived: 0,
+      followupsCreated: 0,
+      followupsDone: 0,
+      pageVisits: 0,
+    };
+  }, [user, profile, data]);
 
   // Reset expanded on navigation
   useEffect(() => {
@@ -103,6 +137,7 @@ export function UserProductivityBanner() {
   };
 
   return (
+    <>
     <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       {/* Compact bar - always visible */}
       <div className="flex items-center gap-3 px-4 py-2">
@@ -131,7 +166,11 @@ export function UserProductivityBanner() {
         {/* Compact metrics */}
         <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
           {compactMetrics.map(m => (
-            <div key={m.label} className="flex items-center gap-1 flex-shrink-0">
+            <div
+              key={m.label}
+              className="flex items-center gap-1 flex-shrink-0 cursor-pointer hover:opacity-70 transition-opacity"
+              onClick={() => setDetailSheetOpen(true)}
+            >
               <m.icon className={`h-3.5 w-3.5 ${m.color}`} />
               <span className="text-sm font-semibold">{m.value}</span>
               <span className="text-xs text-muted-foreground hidden sm:inline">{m.label}</span>
@@ -275,5 +314,13 @@ export function UserProductivityBanner() {
         </div>
       )}
     </div>
+
+    <MemberProductivitySheet
+      member={memberForSheet}
+      open={detailSheetOpen}
+      onOpenChange={setDetailSheetOpen}
+      dateRange={today}
+    />
+    </>
   );
 }
