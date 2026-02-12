@@ -22,8 +22,9 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward,
+  Play, ArrowRight, Trophy, SkipForward, Timer,
 } from 'lucide-react';
+import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -120,8 +121,10 @@ const ActivitiesPage = () => {
   const [workflowMode, setWorkflowMode] = useState(false);
   const [workflowQueue, setWorkflowQueue] = useState<LeadActivity[]>([]);
   const [workflowIndex, setWorkflowIndex] = useState(0);
-  const [workflowCompleted, setWorkflowCompleted] = useState<{ activity: LeadActivity; action: 'completed' | 'completed_next' | 'skipped' }[]>([]);
+  const [workflowCompleted, setWorkflowCompleted] = useState<{ activity: LeadActivity; action: 'completed' | 'completed_next' | 'skipped'; timeSpent: number }[]>([]);
   const [workflowFinished, setWorkflowFinished] = useState(false);
+  const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
+  const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -386,6 +389,8 @@ const ActivitiesPage = () => {
     setWorkflowCompleted([]);
     setWorkflowFinished(false);
     setWorkflowMode(true);
+    setWorkflowStartTime(new Date());
+    setActivityStartTime(new Date());
     // Load first activity into form
     loadActivityIntoForm(pending[0]);
   };
@@ -427,13 +432,20 @@ const ActivitiesPage = () => {
     }
   };
 
+  const getActivityTimeSpent = () => {
+    if (!activityStartTime) return 0;
+    return Math.floor((Date.now() - activityStartTime.getTime()) / 1000);
+  };
+
   const workflowAdvance = () => {
     const nextIdx = workflowIndex + 1;
     if (nextIdx >= workflowQueue.length) {
       setWorkflowFinished(true);
+      setActivityStartTime(null);
       fetchActivities(getFilterParams());
     } else {
       setWorkflowIndex(nextIdx);
+      setActivityStartTime(new Date());
       loadActivityIntoForm(workflowQueue[nextIdx]);
     }
   };
@@ -450,7 +462,8 @@ const ActivitiesPage = () => {
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
     } as any);
     await completeActivity(selectedActivity.id);
-    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed' }]);
+    const timeSpent = getActivityTimeSpent();
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed', timeSpent }]);
     workflowAdvance();
   };
 
@@ -474,13 +487,15 @@ const ActivitiesPage = () => {
       assigned_to_name: formAssignedToName || null, deadline: today, notification_date: today,
       notes: null, contact_id: formContactId || null, contact_name: formContactName || null,
     });
-    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next' }]);
+    const timeSpent = getActivityTimeSpent();
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'completed_next', timeSpent }]);
     workflowAdvance();
   };
 
   const handleWorkflowSkip = () => {
     if (!selectedActivity) return;
-    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'skipped' }]);
+    const timeSpent = getActivityTimeSpent();
+    setWorkflowCompleted(prev => [...prev, { activity: selectedActivity, action: 'skipped', timeSpent }]);
     workflowAdvance();
   };
 
@@ -490,9 +505,20 @@ const ActivitiesPage = () => {
     setWorkflowQueue([]);
     setWorkflowIndex(0);
     setWorkflowCompleted([]);
+    setWorkflowStartTime(null);
+    setActivityStartTime(null);
     resetForm();
     setSelectedActivity(null);
     fetchActivities(getFilterParams());
+  };
+
+  const formatDuration = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
   };
 
   const handleSelectLead = async (leadId: string) => {
@@ -828,6 +854,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
       const completedCount = workflowCompleted.filter(w => w.action === 'completed' || w.action === 'completed_next').length;
       const nextCreated = workflowCompleted.filter(w => w.action === 'completed_next').length;
       const skippedCount = workflowCompleted.filter(w => w.action === 'skipped').length;
+      const totalTime = workflowCompleted.reduce((sum, w) => sum + w.timeSpent, 0);
+      const totalWorkflowTime = workflowStartTime ? Math.floor((Date.now() - workflowStartTime.getTime()) / 1000) : totalTime;
+      const avgTime = workflowCompleted.length > 0 ? Math.round(totalTime / workflowCompleted.length) : 0;
       return (
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
           <Card className="w-full max-w-lg">
@@ -853,6 +882,24 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   <div className="text-xs text-muted-foreground">Puladas</div>
                 </div>
               </div>
+              {/* Time metrics */}
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-center gap-1">
+                    <Timer className="h-4 w-4 text-primary" />
+                    <div className="text-lg font-bold text-primary">{formatDuration(totalWorkflowTime)}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">Tempo total</div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="text-lg font-bold text-primary">{formatDuration(avgTime)}</div>
+                  <div className="text-xs text-muted-foreground">Média por atv</div>
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50">
+                  <div className="text-lg font-bold text-primary">{formatDuration(totalTime)}</div>
+                  <div className="text-xs text-muted-foreground">Tempo em atvs</div>
+                </div>
+              </div>
               <Separator />
               <div className="text-left space-y-2 max-h-60 overflow-y-auto">
                 <h3 className="text-sm font-semibold mb-2">Relatório detalhado:</h3>
@@ -867,6 +914,10 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         <span className="text-xs text-muted-foreground">{w.activity.lead_name}</span>
                       )}
                     </div>
+                    <Badge variant="outline" className="text-[10px] shrink-0 gap-1 font-mono tabular-nums">
+                      <Clock className="h-3 w-3" />
+                      {formatDuration(w.timeSpent)}
+                    </Badge>
                     <Badge variant="outline" className="text-[10px] shrink-0">
                       {w.action === 'completed' ? 'Concluída' : w.action === 'completed_next' ? 'Concluída + Próxima' : 'Pulada'}
                     </Badge>
@@ -896,9 +947,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 </Button>
                 <h1 className="text-lg font-bold">Workflow de Atividades</h1>
               </div>
-              <span className="text-sm text-muted-foreground font-medium">
-                {workflowIndex + 1} de {workflowQueue.length}
-              </span>
+              <div className="flex items-center gap-3">
+                <WorkflowTimer isRunning={!workflowFinished} startTime={activityStartTime} />
+                <span className="text-sm text-muted-foreground font-medium">
+                  {workflowIndex + 1} de {workflowQueue.length}
+                </span>
+              </div>
             </div>
             <Progress value={progress} className="h-2" />
           </div>
