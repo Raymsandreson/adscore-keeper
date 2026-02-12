@@ -8,12 +8,22 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { Loader2, ExternalLink, Target, MessageSquare, Send, Phone, ArrowRightLeft, ListChecks, CheckCircle2, AlertTriangle, Trophy, Users, Briefcase, CalendarIcon, Check, X } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { AnimatedNumber } from '@/components/ui/animated-number';
+import {
+  Loader2, ExternalLink, Target, MessageSquare, Send, Phone, ArrowRightLeft,
+  ListChecks, CheckCircle2, AlertTriangle, Trophy, Users, Briefcase, CalendarIcon,
+  Check, X, ChevronRight, TrendingUp, History,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { startOfDay, endOfDay, format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, eachDayOfInterval, isToday as isTodayFn, subWeeks } from 'date-fns';
+import {
+  startOfDay, endOfDay, format, subDays, startOfWeek, endOfWeek, startOfMonth,
+  endOfMonth, startOfYear, endOfYear, eachDayOfInterval,
+} from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 export type MetricKey =
   | 'commentReplies' | 'dmsSent' | 'contactsCreated' | 'leadsCreated'
@@ -67,6 +77,7 @@ interface DaySummary {
   count: number;
   goalMet: boolean;
   target: number;
+  pct: number;
 }
 
 function getDateRange(period: PeriodKey, lastXDays: number, customFrom?: Date, customTo?: Date): { start: Date; end: Date } {
@@ -83,7 +94,6 @@ function getDateRange(period: PeriodKey, lastXDays: number, customFrom?: Date, c
   }
 }
 
-// Map metric keys to goal target keys
 const METRIC_TO_GOAL: Partial<Record<MetricKey, string>> = {
   commentReplies: 'target_replies',
   dmsSent: 'target_dms',
@@ -106,10 +116,10 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [dailyTarget, setDailyTarget] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Reset period when opening
   useEffect(() => {
-    if (open) setPeriod('today');
+    if (open) { setPeriod('today'); setHistoryOpen(false); }
   }, [open]);
 
   const dateRange = useMemo(() => getDateRange(period, lastXDays, customFrom, customTo), [period, lastXDays, customFrom, customTo]);
@@ -123,7 +133,6 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
     fetchItems(metricKey);
   }, [open, metricKey, user, dateRange]);
 
-  // Fetch daily goal target for this metric
   useEffect(() => {
     if (!open || !metricKey || !user) return;
     fetchGoalTarget(metricKey);
@@ -133,24 +142,18 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
     if (!user) return;
     const goalKey = METRIC_TO_GOAL[key];
     if (!goalKey) { setDailyTarget(0); return; }
-
     try {
       const today = format(new Date(), 'yyyy-MM-dd');
       const { data: userGoal } = await supabase.from('workflow_daily_goals')
         .select('*').eq('user_id', user.id).eq('goal_date', today).maybeSingle();
-      
       if (userGoal && (userGoal as any)[goalKey] != null) {
-        setDailyTarget((userGoal as any)[goalKey]);
-        return;
+        setDailyTarget((userGoal as any)[goalKey]); return;
       }
-
       const { data: defaults } = await supabase.from('workflow_default_goals')
         .select('*').limit(1).maybeSingle();
-      
       if (defaults && (defaults as any)[goalKey] != null) {
         setDailyTarget((defaults as any)[goalKey]);
       } else {
-        // Hardcoded fallback
         const fallbacks: Record<string, number> = {
           target_replies: 20, target_dms: 10, target_leads: 5, target_contacts: 5,
           target_calls: 10, target_stage_changes: 10, target_leads_closed: 2,
@@ -165,14 +168,11 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
     if (!user) return;
     setLoading(true);
     setItems([]);
-
     const startDate = dateRange.start.toISOString();
     const endDate = dateRange.end.toISOString();
     const userId = user.id;
-
     try {
       let result: ListItem[] = [];
-
       switch (key) {
         case 'contactsCreated': {
           const { data } = await supabase.from('contacts').select('id, full_name, instagram_username, phone, created_at')
@@ -333,7 +333,6 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
           break;
         }
       }
-
       setItems(result);
     } catch (error) {
       console.error('Error fetching metric detail:', error);
@@ -342,175 +341,297 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
     }
   };
 
-  // Daily summary for multi-day periods
+  // Daily summaries
   const daySummaries = useMemo<DaySummary[]>(() => {
-    if (!isMultiDay || dailyTarget === 0) return [];
-    const days = eachDayOfInterval({ start: dateRange.start, end: dateRange.end > new Date() ? new Date() : dateRange.end });
+    if (dailyTarget === 0) return [];
+    const endLimit = dateRange.end > new Date() ? new Date() : dateRange.end;
+    const days = eachDayOfInterval({ start: dateRange.start, end: endLimit });
     return days.map(day => {
       const dayStr = format(day, 'yyyy-MM-dd');
       const count = items.filter(i => i.date === dayStr).length;
-      return { date: day, count, goalMet: count >= dailyTarget, target: dailyTarget };
-    }).reverse(); // most recent first
-  }, [items, isMultiDay, dailyTarget, dateRange]);
+      const pct = dailyTarget > 0 ? Math.min(Math.round((count / dailyTarget) * 100), 999) : 0;
+      return { date: day, count, goalMet: count >= dailyTarget, target: dailyTarget, pct };
+    }).reverse();
+  }, [items, dailyTarget, dateRange]);
 
+  // Aggregated stats
+  const totalCount = items.length;
+  const totalTarget = useMemo(() => {
+    if (dailyTarget === 0) return 0;
+    const endLimit = dateRange.end > new Date() ? new Date() : dateRange.end;
+    const days = eachDayOfInterval({ start: dateRange.start, end: endLimit });
+    return days.length * dailyTarget;
+  }, [dailyTarget, dateRange]);
+  const overallPct = totalTarget > 0 ? Math.min(Math.round((totalCount / totalTarget) * 100), 999) : 0;
   const metDays = daySummaries.filter(d => d.goalMet).length;
   const totalDays = daySummaries.length;
 
   const config = metricKey ? METRIC_CONFIG[metricKey] : null;
   const Icon = config?.icon || Target;
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            {config && <Icon className={`h-5 w-5 ${config.color}`} />}
-            {config?.label || 'Detalhes'}
-            <Badge variant="secondary" className="ml-auto">{items.length}</Badge>
-          </SheetTitle>
-        </SheetHeader>
+  const pctColor = overallPct >= 100 ? 'text-emerald-500' : overallPct >= 50 ? 'text-amber-500' : 'text-red-500';
 
-        {/* Period selector */}
-        <div className="mt-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
-              <SelectTrigger className="h-8 text-xs flex-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PERIOD_OPTIONS.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              {config && <Icon className={`h-5 w-5 ${config.color}`} />}
+              {config?.label || 'Detalhes'}
+            </SheetTitle>
+          </SheetHeader>
+
+          {/* Period selector */}
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Select value={period} onValueChange={(v) => setPeriod(v as PeriodKey)}>
+                <SelectTrigger className="h-8 text-xs flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PERIOD_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {period === 'last_x_days' && (
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Últimos</Label>
+                <Input type="number" min={1} max={365} value={lastXDays}
+                  onChange={e => setLastXDays(Math.max(1, parseInt(e.target.value) || 7))}
+                  className="h-8 w-20 text-xs" />
+                <span className="text-xs text-muted-foreground">dias</span>
+              </div>
+            )}
+
+            {period === 'custom' && (
+              <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 text-xs flex-1">
+                      {customFrom ? format(customFrom, 'dd/MM/yyyy') : 'De'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} locale={ptBR} className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-xs text-muted-foreground">até</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 text-xs flex-1">
+                      {customTo ? format(customTo, 'dd/MM/yyyy') : 'Até'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="end">
+                    <Calendar mode="single" selected={customTo} onSelect={setCustomTo} locale={ptBR} className="p-3 pointer-events-auto" />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground">
+              {format(dateRange.start, "dd/MM/yyyy")} — {format(dateRange.end, "dd/MM/yyyy")}
+            </p>
           </div>
 
-          {period === 'last_x_days' && (
-            <div className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground whitespace-nowrap">Últimos</Label>
-              <Input
-                type="number" min={1} max={365} value={lastXDays}
-                onChange={e => setLastXDays(Math.max(1, parseInt(e.target.value) || 7))}
-                className="h-8 w-20 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">dias</span>
+          {/* Summary card */}
+          {!loading && (
+            <div className="mt-4 p-4 rounded-xl border bg-muted/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn("h-12 w-12 rounded-xl flex items-center justify-center", config?.color === 'text-blue-500' ? 'bg-blue-500/10' : config?.color === 'text-violet-500' ? 'bg-violet-500/10' : config?.color === 'text-teal-500' ? 'bg-teal-500/10' : config?.color === 'text-indigo-500' ? 'bg-indigo-500/10' : config?.color === 'text-yellow-500' ? 'bg-yellow-500/10' : config?.color === 'text-purple-500' ? 'bg-purple-500/10' : config?.color === 'text-green-500' ? 'bg-green-500/10' : config?.color === 'text-amber-500' ? 'bg-amber-500/10' : config?.color === 'text-cyan-500' ? 'bg-cyan-500/10' : config?.color === 'text-emerald-500' ? 'bg-emerald-500/10' : config?.color === 'text-red-500' ? 'bg-red-500/10' : 'bg-muted')}>
+                    <Icon className={`h-6 w-6 ${config?.color}`} />
+                  </div>
+                  <div>
+                    <AnimatedNumber value={totalCount} className="text-3xl font-bold leading-none" />
+                    {totalTarget > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        de {totalTarget} ({isMultiDay ? `${totalDays} dias × ${dailyTarget}` : `meta: ${dailyTarget}`})
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {totalTarget > 0 && (
+                  <div className="text-right">
+                    <AnimatedNumber value={overallPct} suffix="%" className={cn("text-2xl font-bold", pctColor)} />
+                    <p className="text-[10px] text-muted-foreground">atingimento</p>
+                  </div>
+                )}
+              </div>
+
+              {totalTarget > 0 && (
+                <Progress value={Math.min(overallPct, 100)} className="h-2" />
+              )}
+
+              {/* Mini day streak for multi-day */}
+              {isMultiDay && dailyTarget > 0 && daySummaries.length > 0 && (
+                <div
+                  className="flex items-center justify-between p-2.5 rounded-lg border bg-background cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => setHistoryOpen(true)}
+                >
+                  <div className="flex items-center gap-2">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs font-semibold">Histórico por dia</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {metDays}/{totalDays} dias com meta atingida
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Mini indicators (last 7 days max) */}
+                    <div className="flex gap-0.5">
+                      {daySummaries.slice(0, 7).reverse().map(d => (
+                        <div
+                          key={d.date.toISOString()}
+                          className={cn(
+                            "h-3 w-3 rounded-sm",
+                            d.goalMet ? "bg-emerald-500" : "bg-red-400"
+                          )}
+                          title={`${format(d.date, 'dd/MM')} — ${d.count}/${d.target}`}
+                        />
+                      ))}
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+              )}
+
+              {/* Single day goal status */}
+              {!isMultiDay && dailyTarget > 0 && (
+                <div className="flex items-center gap-2 text-xs">
+                  {totalCount >= dailyTarget ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">Meta diária atingida! 🎉</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Faltam <strong>{dailyTarget - totalCount}</strong> para a meta</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {period === 'custom' && (
-            <div className="flex items-center gap-2">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs flex-1">
-                    {customFrom ? format(customFrom, 'dd/MM/yyyy') : 'De'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={customFrom} onSelect={setCustomFrom} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
-              <span className="text-xs text-muted-foreground">até</span>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs flex-1">
-                    {customTo ? format(customTo, 'dd/MM/yyyy') : 'Até'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar mode="single" selected={customTo} onSelect={setCustomTo} locale={ptBR} />
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
+          {/* Items list */}
+          <ScrollArea className="h-[calc(100vh-420px)] mt-3 -mx-2 px-2">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                <Icon className="h-10 w-10 mb-3 opacity-30" />
+                <p className="text-sm">Nenhum item encontrado neste período</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {items.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-default animate-fade-in"
+                    style={{ animationDelay: `${idx * 30}ms`, animationFillMode: 'backwards' }}
+                    onClick={() => {
+                      if (item.navigateTo) { onOpenChange(false); navigate(item.navigateTo); }
+                    }}
+                  >
+                    <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                      <Icon className={`h-4 w-4 ${config?.color || 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      {item.subtitle && <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>}
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {isMultiDay && item.date && (
+                        <span className="text-[10px] text-muted-foreground">{format(new Date(item.date), 'dd/MM')}</span>
+                      )}
+                      {item.badge && (
+                        <Badge variant={item.badgeVariant || 'outline'} className="text-[10px]">{item.badge}</Badge>
+                      )}
+                    </div>
+                    {item.navigateTo && <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
 
-          {/* Period label */}
-          <p className="text-[10px] text-muted-foreground">
-            {format(dateRange.start, "dd/MM/yyyy")} — {format(dateRange.end, "dd/MM/yyyy")}
-          </p>
-        </div>
+      {/* History detail sheet (nested) */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetContent className="sm:max-w-sm" side="right">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-muted-foreground" />
+              Histórico Diário
+            </SheetTitle>
+          </SheetHeader>
 
-        {/* Daily goal summary for multi-day */}
-        {isMultiDay && dailyTarget > 0 && !loading && daySummaries.length > 0 && (
-          <div className="mt-3 p-3 rounded-lg border bg-muted/30 space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold">Resumo de Metas Diárias</p>
-              <Badge variant={metDays === totalDays ? 'default' : 'secondary'} className="text-[10px]">
-                {metDays}/{totalDays} dias atingidos
-              </Badge>
+          <div className="mt-3 flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+            <div>
+              <p className="text-2xl font-bold">{metDays}<span className="text-sm font-normal text-muted-foreground">/{totalDays}</span></p>
+              <p className="text-xs text-muted-foreground">dias com meta atingida</p>
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div className="text-right">
+              <p className={cn("text-2xl font-bold", totalDays > 0 && (metDays / totalDays) >= 0.7 ? 'text-emerald-500' : (metDays / totalDays) >= 0.4 ? 'text-amber-500' : 'text-red-500')}>
+                {totalDays > 0 ? Math.round((metDays / totalDays) * 100) : 0}%
+              </p>
+              <p className="text-xs text-muted-foreground">consistência</p>
+            </div>
+          </div>
+
+          <ScrollArea className="h-[calc(100vh-200px)] mt-3 -mx-2 px-2">
+            <div className="space-y-1.5">
               {daySummaries.map(day => (
                 <div
                   key={day.date.toISOString()}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border ${
+                  className={cn(
+                    "flex items-center gap-3 p-3 rounded-lg border transition-colors",
                     day.goalMet
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
-                      : 'bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400'
-                  }`}
-                  title={`${format(day.date, 'dd/MM')} — ${day.count}/${day.target}`}
+                      ? "bg-emerald-500/5 border-emerald-500/20"
+                      : "bg-red-500/5 border-red-500/20"
+                  )}
                 >
-                  {day.goalMet ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                  <span>{format(day.date, 'dd/MM')}</span>
-                  <span className="opacity-70">{day.count}/{day.target}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <ScrollArea className="h-[calc(100vh-320px)] mt-3 -mx-2 px-2">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-              <Icon className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm">Nenhum item encontrado neste período</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {items.map((item, idx) => (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-default animate-fade-in"
-                  style={{ animationDelay: `${idx * 30}ms`, animationFillMode: 'backwards' }}
-                  onClick={() => {
-                    if (item.navigateTo) {
-                      onOpenChange(false);
-                      navigate(item.navigateTo);
+                  <div className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0",
+                    day.goalMet ? "bg-emerald-500/20" : "bg-red-500/20"
+                  )}>
+                    {day.goalMet
+                      ? <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      : <X className="h-4 w-4 text-red-600 dark:text-red-400" />
                     }
-                  }}
-                >
-                  <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                    <Icon className={`h-4 w-4 ${config?.color || 'text-muted-foreground'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.title}</p>
-                    {item.subtitle && (
-                      <p className="text-xs text-muted-foreground truncate">{item.subtitle}</p>
-                    )}
+                    <p className="text-sm font-medium">
+                      {format(day.date, "EEEE, dd/MM", { locale: ptBR })}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Progress value={Math.min(day.pct, 100)} className="h-1.5 flex-1" />
+                      <span className={cn("text-xs font-semibold min-w-[36px] text-right", day.goalMet ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                        {day.pct}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {isMultiDay && item.date && (
-                      <span className="text-[10px] text-muted-foreground">{format(new Date(item.date), 'dd/MM')}</span>
-                    )}
-                    {item.badge && (
-                      <Badge variant={item.badgeVariant || 'outline'} className="text-[10px]">
-                        {item.badge}
-                      </Badge>
-                    )}
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold">{day.count}</p>
+                    <p className="text-[10px] text-muted-foreground">/{day.target}</p>
                   </div>
-                  {item.navigateTo && (
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                  )}
                 </div>
               ))}
             </div>
-          )}
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
