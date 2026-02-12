@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -85,6 +85,27 @@ export function DynamicKanbanBoard({
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncing = useRef(false);
+
+  const handleTopScroll = useCallback(() => {
+    if (isSyncing.current) return;
+    isSyncing.current = true;
+    if (bottomScrollRef.current && topScrollRef.current) {
+      bottomScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+    isSyncing.current = false;
+  }, []);
+
+  const handleBottomScroll = useCallback(() => {
+    if (isSyncing.current) return;
+    isSyncing.current = true;
+    if (topScrollRef.current && bottomScrollRef.current) {
+      topScrollRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+    }
+    isSyncing.current = false;
+  }, []);
 
   // Fetch contacts for all leads (using contact_leads junction + legacy lead_id)
   useEffect(() => {
@@ -334,7 +355,17 @@ export function DynamicKanbanBoard({
           </div>
         )}
 
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        {/* Top scrollbar */}
+        <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
+          className="overflow-x-auto"
+          style={{ height: '12px' }}
+        >
+          <div style={{ width: `${board.stages.length * 340}px`, height: '1px' }} />
+        </div>
+
+        <div ref={bottomScrollRef} onScroll={handleBottomScroll} className="flex gap-4 overflow-x-auto pb-4">
           {board.stages.map((stage) => {
             const stageFilter = stageFilters[stage.id] || '';
             const allStageLeads = leadsByStage[stage.id] || [];
