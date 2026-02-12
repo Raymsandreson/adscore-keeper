@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { rankings, weekStart, weekEnd, settings } = await req.json();
+    const { rankings, weekStart, weekEnd, settings, refineRequest, currentMessage } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -122,6 +122,19 @@ ${gaps.join('\n')}
 
 Agora crie o diálogo Galvão + Arnaldo narrando essa corrida!`;
 
+    // Build messages based on whether this is a refine request or initial generation
+    const aiMessages: any[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
+
+    if (refineRequest && currentMessage) {
+      aiMessages.push(
+        { role: "assistant", content: currentMessage },
+        { role: "user", content: `Ajuste a mensagem anterior conforme pedido: ${refineRequest}\n\nRetorne APENAS a mensagem ajustada, sem explicações.` }
+      );
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -130,10 +143,7 @@ Agora crie o diálogo Galvão + Arnaldo narrando essa corrida!`;
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
+        messages: aiMessages,
         max_tokens: 1500,
         temperature: 0.9,
       }),
