@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin } from 'lucide-react';
 import { ProfileItem } from '@/hooks/useProfilesList';
 
 export interface LeadFilters {
@@ -174,10 +174,13 @@ export function LeadAdvancedFilters({
       </div>
 
       <CollapsibleContent className="mt-3">
-        <div className="rounded-lg border bg-muted/30 p-4 space-y-5">
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
           {/* Section: Auditoria */}
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Auditoria</h4>
+          <div className="rounded-md border bg-background p-3">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+              <ClipboardList className="h-4 w-4 text-primary" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider">Auditoria</h4>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Criado por</Label>
@@ -232,8 +235,11 @@ export function LeadAdvancedFilters({
           </div>
 
           {/* Section: Vítima & Caso */}
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Vítima & Caso</h4>
+          <div className="rounded-md border bg-background p-3">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+              <UserSearch className="h-4 w-4 text-primary" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider">Vítima & Caso</h4>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Nome da Vítima</Label>
@@ -283,8 +289,11 @@ export function LeadAdvancedFilters({
           </div>
 
           {/* Section: Localização */}
-          <div>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Localização da Visita</h4>
+          <div className="rounded-md border bg-background p-3">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+              <MapPin className="h-4 w-4 text-primary" />
+              <h4 className="text-xs font-semibold uppercase tracking-wider">Localização da Visita</h4>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Estado</Label>
