@@ -163,7 +163,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
       <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
-            🏎️🏁 Corrida Maluca do Engajamento
+            🏎️🏁 Corrida Maluca da Abraci
           </DialogTitle>
           <DialogDescription>
             Gere uma narração e refine com o chat
