@@ -322,7 +322,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
       onOpenChange={(v) => { setLeadSheetOpen(v); if (!v) setSelectedLead(null); }}
       lead={selectedLead}
       onSave={handleLeadSave}
-      mode="sheet"
+      mode="dialog"
     />
 
     {/* Contact detail - left side sheet */}
