@@ -33,7 +33,28 @@ serve(async (req) => {
            r.previous_rank_position < position ? `caiu ${position - r.previous_rank_position} posição(ões)` : 'manteve posição')
         : 'nova entrada';
       
-      return `${position}º lugar: @${r.username} - ${r.total_points} ações (${r.comments_count || 0} comentários, ${r.mentions_count || 0} DMs, ${r.leads_created || 0} leads, ${r.stage_changes || 0} etapas mudadas, ${r.leads_progressed || 0} leads progredidos, badge: ${r.badge_level || 'none'}, ${posChange})`;
+      const parts = [`${position}º lugar: @${r.username} - ${r.total_points} ações`];
+      if (r.comments_count !== undefined) parts.push(`${r.comments_count} comentários`);
+      if (r.mentions_count !== undefined) parts.push(`${r.mentions_count} DMs`);
+      if (r.contacts_created !== undefined) parts.push(`${r.contacts_created} contatos`);
+      if (r.leads_created !== undefined) parts.push(`${r.leads_created} leads`);
+      if (r.calls_made !== undefined) parts.push(`${r.calls_made} ligações`);
+      if (r.stage_changes !== undefined) parts.push(`${r.stage_changes} etapas mudadas`);
+      if (r.leads_progressed !== undefined) parts.push(`${r.leads_progressed} leads progredidos`);
+      if (r.checklist_items !== undefined) parts.push(`${r.checklist_items} passos`);
+      if (r.activities_completed !== undefined) parts.push(`${r.activities_completed} atividades concluídas`);
+      if (r.activities_overdue !== undefined) parts.push(`${r.activities_overdue} atividades atrasadas`);
+      if (r.leads_closed !== undefined) parts.push(`${r.leads_closed} leads fechados`);
+      if (r.session_minutes !== undefined) {
+        const hours = Math.floor(r.session_minutes / 60);
+        const mins = r.session_minutes % 60;
+        parts.push(`tempo: ${hours}h${mins}min`);
+      }
+      if (r.velocity !== undefined) parts.push(`velocidade: ${r.velocity} passos/hora`);
+      parts.push(`badge: ${r.badge_level || 'none'}`);
+      parts.push(posChange);
+      
+      return `${parts[0]} (${parts.slice(1).join(', ')})`;
     }).join('\n');
 
     // Calculate interesting stats

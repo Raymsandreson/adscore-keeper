@@ -70,16 +70,17 @@ export function TeamProductivityDashboard() {
   const allMetrics = useMemo(() => [
     { key: 'commentReplies', label: 'comentários', color: 'text-blue-600', corridaKey: 'comments_count' },
     { key: 'dmsSent', label: 'DMs', color: 'text-violet-600', corridaKey: 'mentions_count' },
-    { key: 'contactsCreated', label: 'contatos', color: 'text-teal-600', corridaKey: null },
+    { key: 'contactsCreated', label: 'contatos', color: 'text-teal-600', corridaKey: 'contacts_created' },
     { key: 'leadsCreated', label: 'leads', color: 'text-indigo-600', corridaKey: 'leads_created' },
-    { key: 'callsMade', label: 'ligações', color: 'text-green-600', corridaKey: null },
+    { key: 'callsMade', label: 'ligações', color: 'text-green-600', corridaKey: 'calls_made' },
     { key: 'stageChanges', label: 'etapas', color: 'text-amber-600', corridaKey: 'stage_changes' },
     { key: 'leadsProgressed', label: 'leads progr.', color: 'text-purple-600', corridaKey: 'leads_progressed' },
     { key: 'checklistItemsChecked', label: 'passos', color: 'text-cyan-600', corridaKey: 'checklist_items' },
     { key: 'activitiesCompleted', label: 'concluídas', color: 'text-emerald-600', corridaKey: 'activities_completed' },
     { key: 'activitiesOverdue', label: 'atrasadas', color: 'text-red-600', corridaKey: 'activities_overdue' },
     { key: 'leadsClosed', label: 'fechados', color: 'text-rose-600', corridaKey: 'leads_closed' },
-    { key: 'sessionMinutes', label: 'tempo', color: 'text-orange-600', corridaKey: null },
+    { key: 'sessionMinutes', label: 'tempo', color: 'text-orange-600', corridaKey: 'session_minutes' },
+    { key: 'velocity', label: 'velocidade', color: 'text-pink-600', corridaKey: 'velocity' },
   ] as const, []);
 
   const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges'];
@@ -162,11 +163,16 @@ export function TeamProductivityDashboard() {
   // Prepare ranking data (filtered by visible users)
   const rankingData = productivity
     .filter(p => visibleUsers.includes(p.userId))
-    .map((p, index) => ({
-      ...p,
-      position: index + 1,
-      displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
-    }));
+    .map((p, index) => {
+      const sessionHours = p.sessionMinutes / 60;
+      const velocity = sessionHours > 0 ? Math.round((p.checklistItemsChecked / sessionHours) * 10) / 10 : 0;
+      return {
+        ...p,
+        velocity,
+        position: index + 1,
+        displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
+      };
+    });
 
   // Prepare chart data
   const comparisonData = productivity.map(p => ({
@@ -502,13 +508,17 @@ export function TeamProductivityDashboard() {
                       const metricToCorridaMap: Record<string, { key: string; memberKey: string }> = {
                         commentReplies: { key: 'comments_count', memberKey: 'commentReplies' },
                         dmsSent: { key: 'mentions_count', memberKey: 'dmsSent' },
+                        contactsCreated: { key: 'contacts_created', memberKey: 'contactsCreated' },
                         leadsCreated: { key: 'leads_created', memberKey: 'leadsCreated' },
+                        callsMade: { key: 'calls_made', memberKey: 'callsMade' },
                         stageChanges: { key: 'stage_changes', memberKey: 'stageChanges' },
                         leadsProgressed: { key: 'leads_progressed', memberKey: 'leadsProgressed' },
                         checklistItemsChecked: { key: 'checklist_items', memberKey: 'checklistItemsChecked' },
                         leadsClosed: { key: 'leads_closed', memberKey: 'leadsClosed' },
                         activitiesCompleted: { key: 'activities_completed', memberKey: 'activitiesCompleted' },
                         activitiesOverdue: { key: 'activities_overdue', memberKey: 'activitiesOverdue' },
+                        sessionMinutes: { key: 'session_minutes', memberKey: 'sessionMinutes' },
+                        velocity: { key: 'velocity', memberKey: 'velocity' },
                       };
                       visibleMetrics.forEach(vk => {
                         const mapping = metricToCorridaMap[vk];
@@ -556,6 +566,8 @@ export function TeamProductivityDashboard() {
                         {allMetrics.filter(m => visibleMetrics.includes(m.key)).map(metric => {
                           const value = metric.key === 'sessionMinutes'
                             ? formatMinutesToHours((member as any)[metric.key])
+                            : metric.key === 'velocity'
+                            ? `${(member as any)[metric.key]}/h`
                             : (member as any)[metric.key];
                           const isOverdue = metric.key === 'activitiesOverdue' && (member as any)[metric.key] > 0;
                           return (
