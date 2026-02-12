@@ -16,10 +16,13 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { UserMenu } from '@/components/auth/UserMenu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
-  FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy,
+  FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -107,9 +110,22 @@ const ActivitiesPage = () => {
   const [availableContacts, setAvailableContacts] = useState<{id: string; full_name: string}[]>([]);
   const [contactSearch, setContactSearch] = useState('');
 
+  // Activity counts for filter badges
+  const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string }[]>([]);
+  const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+
   useEffect(() => {
     fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
   }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
+
+  // Fetch raw counts (lightweight)
+  useEffect(() => {
+    const loadCounts = async () => {
+      const { data } = await supabase.from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status');
+      setAllActivitiesRaw(data || []);
+    };
+    loadCounts();
+  }, [activities]); // refresh when activities change
 
   useEffect(() => {
     const loadSupport = async () => {
@@ -124,6 +140,18 @@ const ActivitiesPage = () => {
     };
     loadSupport();
   }, []);
+
+  // Count helpers
+  const countByField = useMemo(() => {
+    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status', value: string) => {
+      const matching = allActivitiesRaw.filter(a => a[fieldKey] === value);
+      return {
+        open: matching.filter(a => a.status !== 'concluida').length,
+        done: matching.filter(a => a.status === 'concluida').length,
+      };
+    };
+    return countFor;
+  }, [allActivitiesRaw]);
 
   const resetForm = () => {
     setFormTitle('');
@@ -683,32 +711,87 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           <div className="space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3">
+              {/* Assessor */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Assessor</span>
-                <Select value={filterAssignee} onValueChange={setFilterAssignee}>
-                  <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {teamMembers.map(m => (
-                      <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-[180px] h-9 justify-between text-sm font-normal">
+                      {filterAssignee === 'all' ? 'Todos' : (teamMembers.find(m => m.user_id === filterAssignee)?.full_name || 'Sem nome')}
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[260px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar assessor..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setFilterAssignee('all'); setOpenFilterKey(null); }}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee === 'all' ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {teamMembers.map(m => {
+                            const c = countByField('assigned_to', m.user_id);
+                            return (
+                              <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => { setFilterAssignee(m.user_id); setOpenFilterKey(null); }}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee === m.user_id ? "opacity-100" : "opacity-0")} />
+                                <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
+                                <span className="ml-2 flex gap-1 text-[10px]">
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
+              {/* Tipo */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Tipo</span>
-                <Select value={filterType} onValueChange={setFilterType}>
-                  <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {ACTIVITY_TYPES.map(t => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openFilterKey === 'type'} onOpenChange={o => setOpenFilterKey(o ? 'type' : null)}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-[160px] h-9 justify-between text-sm font-normal">
+                      {filterType === 'all' ? 'Todos' : (ACTIVITY_TYPES.find(t => t.value === filterType)?.label || filterType)}
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[240px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar tipo..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setFilterType('all'); setOpenFilterKey(null); }}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterType === 'all' ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {ACTIVITY_TYPES.map(t => {
+                            const c = countByField('activity_type', t.value);
+                            return (
+                              <CommandItem key={t.value} value={t.label} onSelect={() => { setFilterType(t.value); setOpenFilterKey(null); }}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", filterType === t.value ? "opacity-100" : "opacity-0")} />
+                                <span className="flex-1">{t.label}</span>
+                                <span className="ml-2 flex gap-1 text-[10px]">
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
+              {/* Status */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Status</span>
                 <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -721,30 +804,86 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 </Select>
               </div>
 
+              {/* Lead */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Lead</span>
-                <Select value={filterLead} onValueChange={setFilterLead}>
-                  <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {leads.map(l => (
-                      <SelectItem key={l.id} value={l.id}>{l.lead_name || 'Sem nome'}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
+                      <span className="truncate">{filterLead === 'all' ? 'Todos' : (leads.find(l => l.id === filterLead)?.lead_name || 'Sem nome')}</span>
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar lead..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setFilterLead('all'); setOpenFilterKey(null); }}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterLead === 'all' ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {leads.map(l => {
+                            const c = countByField('lead_id', l.id);
+                            if (c.open === 0 && c.done === 0) return null;
+                            return (
+                              <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => { setFilterLead(l.id); setOpenFilterKey(null); }}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", filterLead === l.id ? "opacity-100" : "opacity-0")} />
+                                <span className="flex-1 truncate">{l.lead_name || 'Sem nome'}</span>
+                                <span className="ml-2 flex gap-1 text-[10px]">
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
+              {/* Contato */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Contato</span>
-                <Select value={filterContact} onValueChange={setFilterContact}>
-                  <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {availableContacts.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openFilterKey === 'contact'} onOpenChange={o => setOpenFilterKey(o ? 'contact' : null)}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
+                      <span className="truncate">{filterContact === 'all' ? 'Todos' : (availableContacts.find(c => c.id === filterContact)?.full_name || 'Sem nome')}</span>
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar contato..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem value="all" onSelect={() => { setFilterContact('all'); setOpenFilterKey(null); }}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterContact === 'all' ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {availableContacts.map(c => {
+                            const ct = countByField('contact_id', c.id);
+                            if (ct.open === 0 && ct.done === 0) return null;
+                            return (
+                              <CommandItem key={c.id} value={c.full_name} onSelect={() => { setFilterContact(c.id); setOpenFilterKey(null); }}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", filterContact === c.id ? "opacity-100" : "opacity-0")} />
+                                <span className="flex-1 truncate">{c.full_name}</span>
+                                <span className="ml-2 flex gap-1 text-[10px]">
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{ct.open}⏳</Badge>
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{ct.done}✓</Badge>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="space-y-1">
