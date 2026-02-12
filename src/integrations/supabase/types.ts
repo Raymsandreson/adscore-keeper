@@ -693,6 +693,91 @@ export type Database = {
         }
         Relationships: []
       }
+      commission_goals: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          metric_key: string
+          period: string
+          period_end: string
+          period_start: string
+          target_value: number
+          team_id: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metric_key: string
+          period?: string
+          period_end?: string
+          period_start?: string
+          target_value?: number
+          team_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metric_key?: string
+          period?: string
+          period_end?: string
+          period_start?: string
+          target_value?: number
+          team_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_goals_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_tiers: {
+        Row: {
+          commission_value: number
+          created_at: string
+          goal_id: string
+          id: string
+          max_percent: number
+          min_percent: number
+        }
+        Insert: {
+          commission_value?: number
+          created_at?: string
+          goal_id: string
+          id?: string
+          max_percent?: number
+          min_percent?: number
+        }
+        Update: {
+          commission_value?: number
+          created_at?: string
+          goal_id?: string
+          id?: string
+          max_percent?: number
+          min_percent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_tiers_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "commission_goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_classifications: {
         Row: {
           color: string

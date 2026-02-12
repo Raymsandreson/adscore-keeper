@@ -9,6 +9,7 @@ import { TeamsManager } from '@/components/team/TeamsManager';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
 import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
+import { CommissionGoals } from '@/components/team/CommissionGoals';
 import {
   Users,
   BarChart3,
@@ -18,6 +19,7 @@ import {
   CreditCard,
   Star,
   UsersRound,
+  DollarSign,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -82,10 +84,14 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-3xl grid-cols-5">
+          <TabsList className="grid w-full max-w-4xl grid-cols-6">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               Produtividade
+            </TabsTrigger>
+            <TabsTrigger value="commission" className="gap-2">
+              <DollarSign className="h-4 w-4" />
+              Metas
             </TabsTrigger>
             <TabsTrigger value="evaluations" className="gap-2">
               <Star className="h-4 w-4" />
@@ -107,6 +113,10 @@ export default function TeamPage() {
 
           <TabsContent value="productivity">
             <TeamProductivityDashboard />
+          </TabsContent>
+
+          <TabsContent value="commission">
+            <CommissionGoals />
           </TabsContent>
 
           <TabsContent value="evaluations">
