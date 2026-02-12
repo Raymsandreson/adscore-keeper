@@ -16,25 +16,25 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface RankingEntry {
-  id: string;
+  id?: string;
   username: string;
-  user_id: string | null;
-  profile_picture_url: string | null;
-  mentions_count: number;
-  comments_count: number;
+  user_id?: string | null;
+  profile_picture_url?: string | null;
+  mentions_count?: number;
+  comments_count?: number;
   total_points: number;
-  badge_level: string;
-  rank_position: number | null;
-  previous_rank_position: number | null;
-  week_start: string;
-  week_end: string;
+  badge_level?: string;
+  rank_position?: number | null;
+  previous_rank_position?: number | null;
+  week_start?: string;
+  week_end?: string;
 }
 
 interface CorridaMalucaDialogProps {
   rankings: RankingEntry[];
-  weekStart: Date;
-  weekEnd: Date;
-  settings: {
+  weekStart?: Date;
+  weekEnd?: Date;
+  settings?: {
     points_per_mention: number;
     points_per_comment: number;
   };
@@ -42,9 +42,9 @@ interface CorridaMalucaDialogProps {
 
 export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
   rankings,
-  weekStart,
-  weekEnd,
-  settings,
+  weekStart = new Date(),
+  weekEnd = new Date(),
+  settings = { points_per_mention: 1, points_per_comment: 1 },
 }) => {
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
