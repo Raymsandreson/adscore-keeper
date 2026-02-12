@@ -695,6 +695,7 @@ export type Database = {
       }
       commission_goals: {
         Row: {
+          board_ids: string[] | null
           created_at: string
           id: string
           is_active: boolean
@@ -708,6 +709,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          board_ids?: string[] | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -721,6 +723,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          board_ids?: string[] | null
           created_at?: string
           id?: string
           is_active?: boolean
