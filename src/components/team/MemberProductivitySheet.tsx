@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare, Send, UserPlus, Target, Phone,
-  ArrowRightLeft, CheckCircle2, Clock, Loader2,
+  ArrowRightLeft, CheckCircle2, Clock, Loader2, ExternalLink, XCircle,
 } from 'lucide-react';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
 
@@ -19,14 +20,19 @@ interface MemberProductivitySheetProps {
   dateRange: { start: Date; end: Date };
 }
 
+type EntityNav = 'lead' | 'contact' | 'comment' | 'none';
+
 interface DetailItem {
   id: string;
   time: string;
   description: string;
   extra?: string;
+  entityType: EntityNav;
+  entityId?: string;
 }
 
 export function MemberProductivitySheet({ member, open, onOpenChange, dateRange }: MemberProductivitySheetProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [comments, setComments] = useState<DetailItem[]>([]);
   const [dms, setDms] = useState<DetailItem[]>([]);
@@ -35,12 +41,27 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
   const [calls, setCalls] = useState<DetailItem[]>([]);
   const [stageChanges, setStageChanges] = useState<DetailItem[]>([]);
   const [closedCases, setClosedCases] = useState<DetailItem[]>([]);
+  const [refusedCases, setRefusedCases] = useState<DetailItem[]>([]);
   const [sessions, setSessions] = useState<DetailItem[]>([]);
 
   useEffect(() => {
     if (!member || !open) return;
     fetchDetails();
   }, [member, open]);
+
+  const handleNavigate = (item: DetailItem) => {
+    if (item.entityType === 'none' || !item.entityId) return;
+    onOpenChange(false);
+    setTimeout(() => {
+      if (item.entityType === 'lead') {
+        navigate(`/leads?leadId=${item.entityId}`);
+      } else if (item.entityType === 'contact') {
+        navigate(`/leads?contactId=${item.entityId}`);
+      } else if (item.entityType === 'comment') {
+        navigate(`/?commentId=${item.entityId}`);
+      }
+    }, 200);
+  };
 
   const fetchDetails = async () => {
     if (!member) return;
@@ -53,44 +74,37 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
       const [
         commentsRes, dmsRes, contactsRes, leadsRes, callsRes, stageRes, sessionsRes
       ] = await Promise.all([
-        // Comments replied by this user
         supabase.from('instagram_comments')
           .select('id, author_username, comment_text, replied_at, post_url')
           .eq('replied_by', userId)
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .order('replied_at', { ascending: false }),
-        // DMs sent by this user
         supabase.from('dm_history')
-          .select('id, instagram_username, dm_message, action_type, created_at')
+          .select('id, instagram_username, dm_message, action_type, created_at, comment_id')
           .eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        // Contacts created by this user
         supabase.from('contacts')
           .select('id, full_name, instagram_username, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        // Leads created by this user
         supabase.from('leads')
           .select('id, lead_name, status, created_at')
           .eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        // Calls made by this user
         supabase.from('cat_lead_contacts')
           .select('id, contact_channel, contact_result, notes, created_at, cat_lead_id')
           .eq('contacted_by', userId)
           .in('contact_channel', ['phone', 'ligacao'])
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
-        // Stage changes (global - no user field, show all)
         supabase.from('lead_stage_history')
           .select('id, lead_id, from_stage, to_stage, changed_at')
           .gte('changed_at', startDate).lte('changed_at', endDate)
           .order('changed_at', { ascending: false })
           .limit(50),
-        // Sessions for this user
         supabase.from('user_sessions')
           .select('id, started_at, ended_at, duration_seconds, end_reason')
           .eq('user_id', userId)
@@ -98,64 +112,79 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           .order('started_at', { ascending: false }),
       ]);
 
-      // Map comments
       setComments((commentsRes.data || []).map(c => ({
         id: c.id,
         time: c.replied_at ? format(new Date(c.replied_at), "HH:mm", { locale: ptBR }) : '',
         description: `@${c.author_username || 'desconhecido'}`,
         extra: c.comment_text?.slice(0, 80) || '',
+        entityType: 'comment' as EntityNav,
+        entityId: c.id,
       })));
 
-      // Map DMs
       setDms((dmsRes.data || []).map(d => ({
         id: d.id,
         time: format(new Date(d.created_at), "HH:mm", { locale: ptBR }),
         description: `@${d.instagram_username}`,
         extra: `${d.action_type === 'sent' ? 'Enviada' : 'Recebida'}: ${d.dm_message?.slice(0, 60) || ''}`,
+        entityType: 'comment' as EntityNav,
+        entityId: d.comment_id || d.id,
       })));
 
-      // Map contacts
       setContacts((contactsRes.data || []).map(c => ({
         id: c.id,
         time: format(new Date(c.created_at), "HH:mm", { locale: ptBR }),
         description: c.full_name,
         extra: c.instagram_username ? `@${c.instagram_username}` : '',
+        entityType: 'contact' as EntityNav,
+        entityId: c.id,
       })));
 
-      // Map leads
       const allLeads = leadsRes.data || [];
       setLeads(allLeads.map(l => ({
         id: l.id,
         time: format(new Date(l.created_at), "HH:mm", { locale: ptBR }),
         description: l.lead_name || 'Sem nome',
         extra: l.status || '',
+        entityType: 'lead' as EntityNav,
+        entityId: l.id,
       })));
 
-      // Closed cases
-      setClosedCases(allLeads.filter(l => l.status === 'converted' || l.status === 'won' || l.status === 'closed').map(l => ({
+      setClosedCases(allLeads.filter(l => ['converted', 'won', 'closed', 'fechado', 'done'].includes(l.status || '')).map(l => ({
         id: l.id,
         time: format(new Date(l.created_at), "HH:mm", { locale: ptBR }),
         description: l.lead_name || 'Sem nome',
         extra: l.status || '',
+        entityType: 'lead' as EntityNav,
+        entityId: l.id,
       })));
 
-      // Map calls
+      setRefusedCases(allLeads.filter(l => ['recusado', 'refused', 'lost'].includes(l.status || '')).map(l => ({
+        id: l.id,
+        time: format(new Date(l.created_at), "HH:mm", { locale: ptBR }),
+        description: l.lead_name || 'Sem nome',
+        extra: l.status || '',
+        entityType: 'lead' as EntityNav,
+        entityId: l.id,
+      })));
+
       setCalls((callsRes.data || []).map(c => ({
         id: c.id,
         time: format(new Date(c.created_at), "HH:mm", { locale: ptBR }),
         description: c.contact_result || 'Ligação',
         extra: c.notes?.slice(0, 60) || '',
+        entityType: 'lead' as EntityNav,
+        entityId: c.cat_lead_id,
       })));
 
-      // Map stage changes
       setStageChanges((stageRes.data || []).map(s => ({
         id: s.id,
         time: format(new Date(s.changed_at), "HH:mm", { locale: ptBR }),
         description: `${s.from_stage || '?'} → ${s.to_stage || '?'}`,
         extra: `Lead: ${s.lead_id?.slice(0, 8)}...`,
+        entityType: 'lead' as EntityNav,
+        entityId: s.lead_id,
       })));
 
-      // Map sessions
       setSessions((sessionsRes.data || []).map(s => {
         const dur = s.duration_seconds;
         const hours = dur ? Math.floor(dur / 3600) : 0;
@@ -166,6 +195,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           time: format(new Date(s.started_at), "HH:mm", { locale: ptBR }),
           description: `${format(new Date(s.started_at), "HH:mm")} - ${s.ended_at ? format(new Date(s.ended_at), "HH:mm") : 'agora'}`,
           extra: `Duração: ${durStr} | ${s.end_reason || 'ativa'}`,
+          entityType: 'none' as EntityNav,
         };
       }));
     } catch (err) {
@@ -187,18 +217,26 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
       <p className="text-sm text-muted-foreground text-center py-4">{emptyMsg}</p>
     ) : (
       <div className="space-y-2">
-        {items.map(item => (
-          <div key={item.id} className="flex items-start gap-3 p-2.5 rounded-lg border bg-card text-sm">
-            <div className="shrink-0 mt-0.5">{icon}</div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{item.description}</span>
-                <span className="text-xs text-muted-foreground ml-auto shrink-0">{item.time}</span>
+        {items.map(item => {
+          const isClickable = item.entityType !== 'none' && !!item.entityId;
+          return (
+            <div
+              key={item.id}
+              className={`flex items-start gap-3 p-2.5 rounded-lg border bg-card text-sm transition-colors ${isClickable ? 'cursor-pointer hover:bg-accent/50' : ''}`}
+              onClick={isClickable ? () => handleNavigate(item) : undefined}
+            >
+              <div className="shrink-0 mt-0.5">{icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{item.description}</span>
+                  {isClickable && <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />}
+                  <span className="text-xs text-muted-foreground ml-auto shrink-0">{item.time}</span>
+                </div>
+                {item.extra && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.extra}</p>}
               </div>
-              {item.extra && <p className="text-xs text-muted-foreground truncate mt-0.5">{item.extra}</p>}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     )
   );
@@ -261,10 +299,11 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
               <TabsTrigger value="contacts" className="text-xs">Contatos</TabsTrigger>
               <TabsTrigger value="leads" className="text-xs">Leads</TabsTrigger>
             </TabsList>
-            <TabsList className="grid grid-cols-4 w-full mt-1">
+            <TabsList className="grid grid-cols-5 w-full mt-1">
               <TabsTrigger value="calls" className="text-xs">Ligações</TabsTrigger>
               <TabsTrigger value="stages" className="text-xs">Etapas</TabsTrigger>
               <TabsTrigger value="closed" className="text-xs">Fechados</TabsTrigger>
+              <TabsTrigger value="refused" className="text-xs">Recusados</TabsTrigger>
               <TabsTrigger value="sessions" className="text-xs">Sessões</TabsTrigger>
             </TabsList>
 
@@ -289,6 +328,9 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
               </TabsContent>
               <TabsContent value="closed" className="mt-0">
                 {renderList(closedCases, <CheckCircle2 className="h-4 w-4 text-rose-600" />, 'Nenhum caso fechado')}
+              </TabsContent>
+              <TabsContent value="refused" className="mt-0">
+                {renderList(refusedCases, <XCircle className="h-4 w-4 text-gray-600" />, 'Nenhum caso recusado')}
               </TabsContent>
               <TabsContent value="sessions" className="mt-0">
                 {renderList(sessions, <Clock className="h-4 w-4 text-orange-600" />, 'Nenhuma sessão no período')}
