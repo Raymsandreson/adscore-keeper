@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters } from './LeadAdvancedFilters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +62,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [showReport, setShowReport] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showExtractor, setShowExtractor] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<LeadFilters>(emptyFilters);
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
   
   // New lead form state - expanded for accident cases
@@ -123,7 +125,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     return allLeads.filter(lead => lead.board_id === selectedBoardId);
   }, [allLeads, selectedBoardId]);
 
-  // Filter leads by search query and checklist filter
+  // Filter leads by search query, checklist filter, and advanced filters
   const filteredLeads = useMemo(() => {
     let result = boardLeads;
     
@@ -141,9 +143,24 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         lead.lead_email?.toLowerCase().includes(query)
       );
     }
+
+    // Apply advanced filters
+    const hasAdvanced = Object.values(advancedFilters).some(v => v !== '');
+    if (hasAdvanced) {
+      result = applyLeadFilters(result, advancedFilters);
+    }
     
     return result;
-  }, [boardLeads, searchQuery, checklistFilteredIds]);
+  }, [boardLeads, searchQuery, checklistFilteredIds, advancedFilters]);
+
+  // Derive available filter options from all leads in the board
+  const filterOptions = useMemo(() => {
+    const states = [...new Set(boardLeads.map(l => (l as any).visit_state).filter(Boolean))].sort();
+    const cities = [...new Set(boardLeads.map(l => (l as any).visit_city).filter(Boolean))].sort();
+    const regions = [...new Set(boardLeads.map(l => (l as any).visit_region).filter(Boolean))].sort();
+    const caseTypes = [...new Set(boardLeads.map(l => (l as any).case_type).filter(Boolean))].sort();
+    return { states, cities, regions, caseTypes };
+  }, [boardLeads]);
 
   // Count leads by board
   const leadsCountByBoard = useMemo(() => {
@@ -419,7 +436,17 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Advanced Filters */}
+      <LeadAdvancedFilters
+        filters={advancedFilters}
+        onChange={setAdvancedFilters}
+        profiles={teamProfiles}
+        availableStates={filterOptions.states}
+        availableCities={filterOptions.cities}
+        availableRegions={filterOptions.regions}
+        availableCaseTypes={filterOptions.caseTypes}
+      />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">

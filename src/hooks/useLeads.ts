@@ -52,6 +52,28 @@ export interface Lead {
   board_id: string | null;
   // News link
   news_link: string | null;
+  // Attribution
+  created_by: string | null;
+  updated_by: string | null;
+  // Accident fields
+  victim_name: string | null;
+  victim_age: number | null;
+  case_type: string | null;
+  accident_date: string | null;
+  acolhedor: string | null;
+  visit_state: string | null;
+  visit_city: string | null;
+  visit_region: string | null;
+  visit_address: string | null;
+  accident_address: string | null;
+  damage_description: string | null;
+  contractor_company: string | null;
+  main_company: string | null;
+  sector: string | null;
+  company_size_justification: string | null;
+  liability_type: string | null;
+  legal_viability: string | null;
+  group_link: string | null;
 }
 
 export interface LeadStats {
