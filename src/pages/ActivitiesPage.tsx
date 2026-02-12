@@ -78,6 +78,8 @@ const ActivitiesPage = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
+  const [filterLead, setFilterLead] = useState('all');
+  const [filterContact, setFilterContact] = useState('all');
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
@@ -106,8 +108,8 @@ const ActivitiesPage = () => {
   const [contactSearch, setContactSearch] = useState('');
 
   useEffect(() => {
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
-  }, [fetchActivities, filterStatus, filterType, filterAssignee]);
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
 
   useEffect(() => {
     const loadSupport = async () => {
@@ -168,7 +170,7 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
     });
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
   };
 
   const handleOpenEdit = async (activity: LeadActivity) => {
@@ -235,18 +237,18 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
     } as any);
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
   };
 
   const handleComplete = async (id: string) => {
     await completeActivity(id);
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
   };
 
   const handleDelete = async (id: string) => {
     await deleteActivity(id);
     closeSheet();
-    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee });
+    fetchActivities({ status: filterStatus, activity_type: filterType, assigned_to: filterAssignee, lead_id: filterLead, contact_id: filterContact });
   };
 
   const closeSheet = () => {
@@ -681,38 +683,76 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           <div className="space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3">
-              <Select value={filterAssignee} onValueChange={setFilterAssignee}>
-                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Usuários" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {teamMembers.map(m => (
-                    <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Assessor</span>
+                <Select value={filterAssignee} onValueChange={setFilterAssignee}>
+                  <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {teamMembers.map(m => (
+                      <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  {ACTIVITY_TYPES.map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Tipo</span>
+                <Select value={filterType} onValueChange={setFilterType}>
+                  <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {ACTIVITY_TYPES.map(t => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  {STATUS_OPTIONS.map(s => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Status</span>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(s => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <Button size="icon" className="ml-auto rounded-full" onClick={() => { resetForm(); setSheetMode('create'); }}>
-                <Plus className="h-5 w-5" />
-              </Button>
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Lead</span>
+                <Select value={filterLead} onValueChange={setFilterLead}>
+                  <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {leads.map(l => (
+                      <SelectItem key={l.id} value={l.id}>{l.lead_name || 'Sem nome'}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">Contato</span>
+                <Select value={filterContact} onValueChange={setFilterContact}>
+                  <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {availableContacts.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium text-muted-foreground uppercase">&nbsp;</span>
+                <Button size="icon" className="rounded-full h-9 w-9" onClick={() => { resetForm(); setSheetMode('create'); }}>
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
 
             {/* Activity Cards */}
