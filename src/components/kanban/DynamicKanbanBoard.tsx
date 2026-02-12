@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { AnimatedNumber } from '@/components/ui/animated-number';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -409,8 +410,8 @@ export function DynamicKanbanBoard({
                       </h3>
                       <Badge variant="secondary" className="text-xs">
                         {stageFilter && stageLeads.length !== allStageLeads.length
-                          ? `${stageLeads.length}/${allStageLeads.length}`
-                          : allStageLeads.length}
+                          ? <><AnimatedNumber value={stageLeads.length} />/<AnimatedNumber value={allStageLeads.length} /></>
+                          : <AnimatedNumber value={allStageLeads.length} />}
                       </Badge>
                     </div>
                   </div>

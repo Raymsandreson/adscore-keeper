@@ -7,6 +7,7 @@ import { MemberProductivitySheet } from '@/components/team/MemberProductivityShe
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
 import { startOfDay, endOfDay } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
+import { AnimatedNumber } from '@/components/ui/animated-number';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -146,7 +147,7 @@ export function UserProductivityBanner() {
           <Trophy className="h-4 w-4 text-primary flex-shrink-0" />
           <span className="text-sm font-medium truncate">{firstName}</span>
           <Badge variant="outline" className={`text-xs font-bold ${progressColor} flex-shrink-0`}>
-            {goalProgress}%
+            <AnimatedNumber value={goalProgress} suffix="%" />
           </Badge>
           {myPosition && (
             <Badge variant="secondary" className="text-xs font-bold flex-shrink-0">
@@ -172,7 +173,7 @@ export function UserProductivityBanner() {
               onClick={() => setDetailSheetOpen(true)}
             >
               <m.icon className={`h-3.5 w-3.5 ${m.color}`} />
-              <span className="text-sm font-semibold">{m.value}</span>
+              <AnimatedNumber value={m.value} className="text-sm font-semibold" />
               <span className="text-xs text-muted-foreground hidden sm:inline">{m.label}</span>
             </div>
           ))}
@@ -190,7 +191,7 @@ export function UserProductivityBanner() {
 
         {/* Points */}
         <Badge variant="secondary" className="text-xs font-bold flex-shrink-0">
-          {data.totalActions} pts
+          <AnimatedNumber value={data.totalActions} suffix=" pts" />
         </Badge>
 
         {/* Expand/collapse */}
@@ -218,7 +219,7 @@ export function UserProductivityBanner() {
                     <div key={m.key} className="flex items-center gap-1.5 p-1.5 rounded-md bg-muted/50">
                       <m.icon className={`h-3.5 w-3.5 ${m.color} flex-shrink-0`} />
                       <div className="min-w-0">
-                        <p className="text-sm font-bold leading-none">{value}</p>
+                        <AnimatedNumber value={value} className="text-sm font-bold leading-none" />
                         <p className="text-[10px] text-muted-foreground truncate">{m.label}</p>
                       </div>
                     </div>
@@ -230,7 +231,7 @@ export function UserProductivityBanner() {
             {/* Goal progress */}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Meta Diária — <span className={progressColor}>{goalProgress}%</span>
+                Meta Diária — <AnimatedNumber value={goalProgress} suffix="%" className={progressColor} />
               </p>
               <div className="space-y-2">
                 {goalItems.map(g => {
