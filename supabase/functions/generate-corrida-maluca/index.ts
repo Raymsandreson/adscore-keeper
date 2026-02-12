@@ -33,7 +33,7 @@ serve(async (req) => {
            r.previous_rank_position < position ? `caiu ${position - r.previous_rank_position} posição(ões)` : 'manteve posição')
         : 'nova entrada';
       
-      return `${position}º lugar: @${r.username} - ${r.total_points} pontos (${r.mentions_count} menções, ${r.comments_count} comentários, badge: ${r.badge_level}, ${posChange})`;
+      return `${position}º lugar: @${r.username} - ${r.total_points} ações (${r.comments_count || 0} comentários, ${r.mentions_count || 0} DMs, ${r.leads_created || 0} leads, ${r.stage_changes || 0} etapas mudadas, badge: ${r.badge_level || 'none'}, ${posChange})`;
     }).join('\n');
 
     // Calculate interesting stats

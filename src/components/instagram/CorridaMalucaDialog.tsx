@@ -22,6 +22,8 @@ interface RankingEntry {
   profile_picture_url?: string | null;
   mentions_count?: number;
   comments_count?: number;
+  leads_created?: number;
+  stage_changes?: number;
   total_points: number;
   badge_level?: string;
   rank_position?: number | null;
