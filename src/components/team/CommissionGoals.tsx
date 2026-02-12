@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Target, Plus, Edit2, Trash2, DollarSign, TrendingUp, Users, Award,
-  ChevronDown, ChevronUp, Loader2, UsersRound, LayoutGrid, X,
+  ChevronDown, ChevronUp, Loader2, UsersRound, LayoutGrid, X, List,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
@@ -99,6 +99,9 @@ export function CommissionGoals() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<CommissionGoal | null>(null);
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+  const [expandedMember, setExpandedMember] = useState<string | null>(null); // "goalId:userId"
+  const [memberObjects, setMemberObjects] = useState<Record<string, any[]>>({});
+  const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
 
   // Form state
   const [scopeType, setScopeType] = useState<'user' | 'team'>('user');
@@ -197,6 +200,110 @@ export function CommissionGoals() {
       case 'contacts_created': return p.contactsCreated;
       case 'activities_completed': return p.activitiesCompleted;
       default: return 0;
+    }
+  };
+
+  const fetchMemberObjects = async (goalId: string, userId: string, metricKey: string, periodStart: string, periodEnd: string) => {
+    const key = `${goalId}:${userId}`;
+    if (expandedMember === key) {
+      setExpandedMember(null);
+      return;
+    }
+
+    // If already fetched, just expand
+    if (memberObjects[key]) {
+      setExpandedMember(key);
+      return;
+    }
+
+    setLoadingObjects(key);
+    try {
+      const startDate = new Date(periodStart).toISOString();
+      const endDate = new Date(periodEnd + 'T23:59:59').toISOString();
+      let items: any[] = [];
+
+      switch (metricKey) {
+        case 'deals_closed': {
+          const { data } = await supabase.from('leads')
+            .select('id, lead_name, status, created_at, converted_at')
+            .eq('created_by', userId)
+            .in('status', ['converted', 'won', 'closed'])
+            .gte('created_at', startDate).lte('created_at', endDate)
+            .order('created_at', { ascending: false });
+          items = (data || []).map(l => ({ id: l.id, label: l.lead_name || 'Sem nome', sublabel: l.status, date: l.converted_at || l.created_at }));
+          break;
+        }
+        case 'leads_created': {
+          const { data } = await supabase.from('leads')
+            .select('id, lead_name, status, created_at')
+            .eq('created_by', userId)
+            .gte('created_at', startDate).lte('created_at', endDate)
+            .order('created_at', { ascending: false });
+          items = (data || []).map(l => ({ id: l.id, label: l.lead_name || 'Sem nome', sublabel: l.status, date: l.created_at }));
+          break;
+        }
+        case 'contacts_created': {
+          const { data } = await supabase.from('contacts')
+            .select('id, full_name, classification, created_at')
+            .eq('created_by', userId)
+            .gte('created_at', startDate).lte('created_at', endDate)
+            .order('created_at', { ascending: false });
+          items = (data || []).map(c => ({ id: c.id, label: c.full_name, sublabel: c.classification, date: c.created_at }));
+          break;
+        }
+        case 'replies': {
+          const { data } = await supabase.from('instagram_comments')
+            .select('id, author_username, comment_text, replied_at')
+            .eq('replied_by', userId)
+            .gte('replied_at', startDate).lte('replied_at', endDate)
+            .order('replied_at', { ascending: false })
+            .limit(50);
+          items = (data || []).map(c => ({ id: c.id, label: `@${c.author_username}`, sublabel: (c.comment_text || '').slice(0, 60), date: c.replied_at }));
+          break;
+        }
+        case 'dms_sent': {
+          const { data } = await supabase.from('dm_history')
+            .select('id, instagram_username, dm_message, created_at')
+            .eq('user_id', userId)
+            .eq('action_type', 'sent')
+            .gte('created_at', startDate).lte('created_at', endDate)
+            .order('created_at', { ascending: false })
+            .limit(50);
+          items = (data || []).map(d => ({ id: d.id, label: `@${d.instagram_username}`, sublabel: (d.dm_message || '').slice(0, 60), date: d.created_at }));
+          break;
+        }
+        case 'activities_completed': {
+          const { data } = await supabase.from('lead_activities')
+            .select('id, title, lead_name, completed_at')
+            .eq('completed_by', userId)
+            .eq('status', 'concluida')
+            .gte('completed_at', startDate).lte('completed_at', endDate)
+            .order('completed_at', { ascending: false });
+          items = (data || []).map(a => ({ id: a.id, label: a.title, sublabel: a.lead_name, date: a.completed_at }));
+          break;
+        }
+        case 'stages':
+        case 'leads_progressed': {
+          const { data } = await supabase.from('lead_stage_history')
+            .select('id, lead_id, from_stage, to_stage, changed_at')
+            .eq('changed_by', userId)
+            .gte('changed_at', startDate).lte('changed_at', endDate)
+            .order('changed_at', { ascending: false })
+            .limit(50);
+          items = (data || []).map(s => ({ id: s.id, label: `Lead`, sublabel: `${s.from_stage || '?'} → ${s.to_stage}`, date: s.changed_at }));
+          break;
+        }
+        default:
+          items = [];
+      }
+
+      setMemberObjects(prev => ({ ...prev, [key]: items }));
+      setExpandedMember(key);
+    } catch (err) {
+      console.error('Error fetching member objects:', err);
+      toast.error('Erro ao carregar detalhes');
+    } finally {
+      setLoadingObjects(null);
     }
   };
 
@@ -580,21 +687,74 @@ export function CommissionGoals() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {entries.map(entry => (
-                          <TableRow key={entry.userId}>
-                            <TableCell className="font-medium">{entry.name}</TableCell>
-                            <TableCell className="text-right">{entry.current}</TableCell>
-                            <TableCell className="text-right">{goal.target_value}</TableCell>
-                            <TableCell className="text-right">
-                              <Badge variant={entry.percent >= 100 ? 'default' : entry.percent >= 50 ? 'secondary' : 'destructive'}>
-                                {Math.round(entry.percent)}%
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right font-semibold">
-                              R$ {entry.commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {entries.map(entry => {
+                          const memberKey = `${goal.id}:${entry.userId}`;
+                          const isMemberExpanded = expandedMember === memberKey;
+                          const objects = memberObjects[memberKey] || [];
+                          const isLoadingThis = loadingObjects === memberKey;
+
+                          return (
+                            <React.Fragment key={entry.userId}>
+                              <TableRow 
+                                className="cursor-pointer hover:bg-muted/50"
+                                onClick={() => fetchMemberObjects(goal.id, entry.userId, goal.metric_key, goal.period_start, goal.period_end)}
+                              >
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
+                                    {isLoadingThis ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <List className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                    {entry.name}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">{entry.current}</TableCell>
+                                <TableCell className="text-right">{goal.target_value}</TableCell>
+                                <TableCell className="text-right">
+                                  <Badge variant={entry.percent >= 100 ? 'default' : entry.percent >= 50 ? 'secondary' : 'destructive'}>
+                                    {Math.round(entry.percent)}%
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  R$ {entry.commission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </TableCell>
+                              </TableRow>
+                              {isMemberExpanded && (
+                                <TableRow>
+                                  <TableCell colSpan={5} className="p-0">
+                                    <div className="bg-muted/30 border-t border-b px-4 py-2 max-h-60 overflow-y-auto">
+                                      {objects.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground py-2">Nenhum registro encontrado no período.</p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                                            {objects.length} {objects.length === 1 ? 'registro' : 'registros'}
+                                          </p>
+                                          {objects.map((obj, idx) => (
+                                            <div key={obj.id || idx} className="flex items-center justify-between py-1 text-xs border-b border-border/30 last:border-0">
+                                              <div className="min-w-0 flex-1">
+                                                <span className="font-medium">{obj.label}</span>
+                                                {obj.sublabel && (
+                                                  <span className="text-muted-foreground ml-2 truncate">{obj.sublabel}</span>
+                                                )}
+                                              </div>
+                                              {obj.date && (
+                                                <span className="text-muted-foreground shrink-0 ml-2">
+                                                  {new Date(obj.date).toLocaleDateString('pt-BR')}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </TableBody>
                     </Table>
 
