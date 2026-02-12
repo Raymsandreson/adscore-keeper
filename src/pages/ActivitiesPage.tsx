@@ -153,17 +153,36 @@ const ActivitiesPage = () => {
     loadSupport();
   }, []);
 
-  // Count helpers
+  // Pre-filter raw activities based on OTHER active filters (excluding the field being counted)
+  const getFilteredRaw = useMemo(() => {
+    return (excludeField: string) => {
+      let filtered = allActivitiesRaw;
+      if (excludeField !== 'assigned_to' && filterAssignee.length > 0)
+        filtered = filtered.filter(a => a.assigned_to && filterAssignee.includes(a.assigned_to));
+      if (excludeField !== 'activity_type' && filterType.length > 0)
+        filtered = filtered.filter(a => filterType.includes(a.activity_type));
+      if (excludeField !== 'status' && filterStatus.length > 0)
+        filtered = filtered.filter(a => filterStatus.includes(a.status));
+      if (excludeField !== 'lead_id' && filterLead.length > 0)
+        filtered = filtered.filter(a => a.lead_id && filterLead.includes(a.lead_id));
+      if (excludeField !== 'contact_id' && filterContact.length > 0)
+        filtered = filtered.filter(a => a.contact_id && filterContact.includes(a.contact_id));
+      return filtered;
+    };
+  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact]);
+
+  // Count helpers - contextual to other active filters
   const countByField = useMemo(() => {
     const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status', value: string) => {
-      const matching = allActivitiesRaw.filter(a => a[fieldKey] === value);
+      const filtered = getFilteredRaw(fieldKey);
+      const matching = filtered.filter(a => a[fieldKey] === value);
       return {
         open: matching.filter(a => a.status !== 'concluida').length,
         done: matching.filter(a => a.status === 'concluida').length,
       };
     };
     return countFor;
-  }, [allActivitiesRaw]);
+  }, [getFilteredRaw]);
 
   const resetForm = () => {
     setFormTitle('');
