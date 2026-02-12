@@ -38,6 +38,7 @@ export function useLeadActivities() {
     activity_type?: string;
     assigned_to?: string;
     lead_id?: string;
+    contact_id?: string;
   }) => {
     setLoading(true);
     try {
@@ -55,8 +56,11 @@ export function useLeadActivities() {
       if (filters?.assigned_to && filters.assigned_to !== 'all') {
         query = query.eq('assigned_to', filters.assigned_to);
       }
-      if (filters?.lead_id) {
+      if (filters?.lead_id && filters.lead_id !== 'all') {
         query = query.eq('lead_id', filters.lead_id);
+      }
+      if (filters?.contact_id && filters.contact_id !== 'all') {
+        query = query.eq('contact_id', filters.contact_id);
       }
 
       const { data, error } = await query;
