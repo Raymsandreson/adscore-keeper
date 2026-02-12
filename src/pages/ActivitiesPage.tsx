@@ -78,7 +78,7 @@ const ActivitiesPage = () => {
   const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [filterType, setFilterType] = useState<string[]>([]);
   const [filterAssignee, setFilterAssignee] = useState<string[]>([]);
   const [filterLead, setFilterLead] = useState<string[]>([]);
@@ -115,7 +115,7 @@ const ActivitiesPage = () => {
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
 
   const getFilterParams = () => ({
-    status: filterStatus,
+    status: filterStatus.length > 0 ? filterStatus : 'all',
     activity_type: filterType.length > 0 ? filterType : 'all',
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
@@ -808,14 +808,40 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               {/* Status */}
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">Status</span>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Todos" /></SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map(s => (
-                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={openFilterKey === 'status'} onOpenChange={o => setOpenFilterKey(o ? 'status' : null)}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-[160px] h-9 justify-between text-sm font-normal">
+                      {filterStatus.length === 0 ? 'Todos' : filterStatus.length === 1 ? (STATUS_OPTIONS.find(s => s.value === filterStatus[0])?.label || filterStatus[0]) : `${filterStatus.length} selecionados`}
+                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[220px] p-0" align="start">
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          <CommandItem value="__clear_all_status" onSelect={() => setFilterStatus([])}>
+                            <Check className={cn("mr-2 h-3.5 w-3.5", filterStatus.length === 0 ? "opacity-100" : "opacity-0")} />
+                            Todos
+                          </CommandItem>
+                          {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => {
+                            const isSelected = filterStatus.includes(s.value);
+                            const c = countByField('status', s.value);
+                            return (
+                              <CommandItem key={s.value} value={s.label} onSelect={() => toggleFilter(setFilterStatus, filterStatus, s.value)}>
+                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                                <span className="flex-1">{s.label}</span>
+                                <span className="ml-2 flex gap-1 text-[10px]">
+                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                                </span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Lead */}
@@ -906,9 +932,17 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
               <div className="space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground uppercase">&nbsp;</span>
-                <Button size="icon" className="rounded-full h-9 w-9" onClick={() => { resetForm(); setSheetMode('create'); }}>
-                  <Plus className="h-5 w-5" />
-                </Button>
+                <div className="flex gap-1">
+                  {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0) && (
+                    <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-destructive" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); }}>
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Limpar
+                    </Button>
+                  )}
+                  <Button size="icon" className="rounded-full h-9 w-9" onClick={() => { resetForm(); setSheetMode('create'); }}>
+                    <Plus className="h-5 w-5" />
+                  </Button>
+                </div>
               </div>
             </div>
 
