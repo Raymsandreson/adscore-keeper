@@ -331,6 +331,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
       open={contactSheetOpen}
       onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setSelectedContact(null); }}
       onContactUpdated={() => { setContactSheetOpen(false); setSelectedContact(null); }}
+      mode="dialog"
     />
     </>
   );

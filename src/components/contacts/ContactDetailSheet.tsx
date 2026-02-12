@@ -5,6 +5,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,6 +64,7 @@ interface ContactDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onContactUpdated?: () => void;
+  mode?: 'sheet' | 'dialog';
 }
 
 // ViaCEP integration
@@ -93,6 +100,7 @@ export function ContactDetailSheet({
   open,
   onOpenChange,
   onContactUpdated,
+  mode = 'sheet',
 }: ContactDetailSheetProps) {
   const [isEditing, setIsEditing] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,15 +251,24 @@ export function ContactDetailSheet({
 
   if (!contact) return null;
 
+  const Wrapper = mode === 'dialog' ? Dialog : Sheet;
+  const Content = mode === 'dialog' ? DialogContent : SheetContent;
+  const Header = mode === 'dialog' ? DialogHeader : SheetHeader;
+  const Title = mode === 'dialog' ? DialogTitle : SheetTitle;
+
+  const contentClassName = mode === 'dialog'
+    ? 'max-w-lg max-h-[90vh] overflow-hidden flex flex-col'
+    : 'w-full sm:max-w-lg overflow-hidden flex flex-col';
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-lg overflow-hidden flex flex-col">
-         <SheetHeader className="pb-4">
+    <Wrapper open={open} onOpenChange={onOpenChange}>
+      <Content className={contentClassName}>
+         <Header className="pb-4">
           <div className="flex items-center justify-between">
-            <SheetTitle className="flex items-center gap-2 text-xl">
+            <Title className="flex items-center gap-2 text-xl">
               <User className="h-5 w-5" />
               {fullName || contact.full_name}
-            </SheetTitle>
+            </Title>
             <Button
               size="sm"
               onClick={handleSave}
@@ -277,7 +294,7 @@ export function ContactDetailSheet({
               </Badge>
             )}
           </div>
-        </SheetHeader>
+        </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="grid w-full grid-cols-5">
@@ -777,7 +794,7 @@ export function ContactDetailSheet({
             </TabsContent>
           </ScrollArea>
         </Tabs>
-      </SheetContent>
-    </Sheet>
+      </Content>
+    </Wrapper>
   );
 }
