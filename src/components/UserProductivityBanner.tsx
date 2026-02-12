@@ -8,6 +8,7 @@ import type { UserProductivity } from '@/hooks/useTeamProductivity';
 import { startOfDay, endOfDay } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
 import { AnimatedNumber } from '@/components/ui/animated-number';
+import { MetricDetailSheet, type MetricKey } from '@/components/MetricDetailSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -59,6 +60,8 @@ export function UserProductivityBanner() {
   const [expanded, setExpanded] = useState(false);
   const [rankingFetched, setRankingFetched] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
+  const [metricSheetOpen, setMetricSheetOpen] = useState(false);
+  const [selectedMetricKey, setSelectedMetricKey] = useState<MetricKey | null>(null);
   const location = useLocation();
 
   const today = useMemo(() => ({ start: startOfDay(new Date()), end: endOfDay(new Date()) }), []);
@@ -111,13 +114,18 @@ export function UserProductivityBanner() {
 
   const firstName = profile?.full_name?.split(' ')[0] || 'Usuário';
 
+  const openMetricSheet = (key: MetricKey) => {
+    setSelectedMetricKey(key);
+    setMetricSheetOpen(true);
+  };
+
   // Key metrics for compact view
   const compactMetrics = [
-    { label: 'Leads', value: data.leadsCreated, icon: Target, color: 'text-indigo-500' },
-    { label: 'Passos', value: data.checklistItemsChecked, icon: ListChecks, color: 'text-cyan-500' },
-    { label: 'Etapas', value: data.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
-    { label: 'Fechados', value: data.leadsClosed, icon: Trophy, color: 'text-yellow-500' },
-    { label: 'Contatos', value: data.contactsCreated, icon: Users, color: 'text-teal-500' },
+    { key: 'leadsCreated' as MetricKey, label: 'Leads', value: data.leadsCreated, icon: Target, color: 'text-indigo-500' },
+    { key: 'checklistItemsChecked' as MetricKey, label: 'Passos', value: data.checklistItemsChecked, icon: ListChecks, color: 'text-cyan-500' },
+    { key: 'stageChanges' as MetricKey, label: 'Etapas', value: data.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
+    { key: 'leadsClosed' as MetricKey, label: 'Fechados', value: data.leadsClosed, icon: Trophy, color: 'text-yellow-500' },
+    { key: 'contactsCreated' as MetricKey, label: 'Contatos', value: data.contactsCreated, icon: Users, color: 'text-teal-500' },
   ];
 
   // Goal items for detail view
@@ -169,8 +177,8 @@ export function UserProductivityBanner() {
           {compactMetrics.map(m => (
             <div
               key={m.label}
-              className="flex items-center gap-1 flex-shrink-0 cursor-pointer hover:opacity-70 transition-opacity"
-              onClick={() => setDetailSheetOpen(true)}
+              className="flex items-center gap-1 flex-shrink-0 cursor-pointer hover:bg-muted/50 rounded-md px-1.5 py-0.5 transition-colors"
+              onClick={() => openMetricSheet(m.key)}
             >
               <m.icon className={`h-3.5 w-3.5 ${m.color}`} />
               <AnimatedNumber value={m.value} className="text-sm font-semibold" />
@@ -216,7 +224,7 @@ export function UserProductivityBanner() {
                 {METRICS.map(m => {
                   const value = data[m.key as keyof typeof data] as number;
                   return (
-                    <div key={m.key} className="flex items-center gap-1.5 p-1.5 rounded-md bg-muted/50">
+                    <div key={m.key} className="flex items-center gap-1.5 p-1.5 rounded-md bg-muted/50 cursor-pointer hover:bg-muted transition-colors" onClick={() => openMetricSheet(m.key as MetricKey)}>
                       <m.icon className={`h-3.5 w-3.5 ${m.color} flex-shrink-0`} />
                       <div className="min-w-0">
                         <AnimatedNumber value={value} className="text-sm font-bold leading-none" />
@@ -321,6 +329,11 @@ export function UserProductivityBanner() {
       open={detailSheetOpen}
       onOpenChange={setDetailSheetOpen}
       dateRange={today}
+    />
+    <MetricDetailSheet
+      open={metricSheetOpen}
+      onOpenChange={setMetricSheetOpen}
+      metricKey={selectedMetricKey}
     />
     </>
   );
