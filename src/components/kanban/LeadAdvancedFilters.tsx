@@ -52,14 +52,6 @@ const AGE_RANGES = [
   { value: '65+', label: '65+ anos', min: 65, max: 999 },
 ];
 
-const CASE_TYPES = [
-  'acidente_trabalho',
-  'acidente_transito',
-  'erro_medico',
-  'queda',
-  'outro',
-];
-
 const CASE_TYPE_LABELS: Record<string, string> = {
   acidente_trabalho: 'Acidente de Trabalho',
   acidente_transito: 'Acidente de Trânsito',
@@ -77,6 +69,24 @@ interface LeadAdvancedFiltersProps {
   availableRegions: string[];
   availableCaseTypes: string[];
 }
+
+// Map filter keys to human-readable labels
+const FILTER_LABELS: Record<keyof LeadFilters, string> = {
+  createdBy: 'Criado por',
+  updatedBy: 'Atualizado por',
+  createdFrom: 'Criado de',
+  createdTo: 'Criado até',
+  updatedFrom: 'Atualizado de',
+  updatedTo: 'Atualizado até',
+  victimName: 'Vítima',
+  ageRange: 'Faixa Etária',
+  caseType: 'Tipo de Caso',
+  accidentDateFrom: 'Acidente de',
+  accidentDateTo: 'Acidente até',
+  visitState: 'Estado',
+  visitCity: 'Cidade',
+  visitRegion: 'Região',
+};
 
 export function LeadAdvancedFilters({
   filters,
@@ -101,185 +111,225 @@ export function LeadAdvancedFilters({
     onChange(emptyFilters);
   };
 
+  const removeFilter = (key: keyof LeadFilters) => {
+    onChange({ ...filters, [key]: '' });
+  };
+
+  // Build active filter chips with display values
+  const activeFilters = useMemo(() => {
+    const chips: { key: keyof LeadFilters; label: string; value: string }[] = [];
+    (Object.keys(filters) as (keyof LeadFilters)[]).forEach(key => {
+      if (!filters[key]) return;
+      let displayValue = filters[key];
+
+      if (key === 'createdBy' || key === 'updatedBy') {
+        const profile = profiles.find(p => p.user_id === filters[key]);
+        displayValue = profile?.full_name || profile?.email || filters[key].slice(0, 8);
+      } else if (key === 'ageRange') {
+        const range = AGE_RANGES.find(r => r.value === filters[key]);
+        displayValue = range?.label || filters[key];
+      } else if (key === 'caseType') {
+        displayValue = CASE_TYPE_LABELS[filters[key]] || filters[key];
+      }
+
+      chips.push({ key, label: FILTER_LABELS[key], value: displayValue });
+    });
+    return chips;
+  }, [filters, profiles]);
+
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Filter className="h-4 w-4" />
-          Filtros
-          {activeCount > 0 && (
-            <Badge variant="default" className="h-5 min-w-[20px] px-1.5 text-[10px]">
-              {activeCount}
-            </Badge>
-          )}
-          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </Button>
-      </CollapsibleTrigger>
+      <div className="flex items-center gap-2 flex-wrap">
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-2">
+            <Filter className="h-4 w-4" />
+            Filtros
+            {activeCount > 0 && (
+              <Badge variant="default" className="h-5 min-w-[20px] px-1.5 text-[10px]">
+                {activeCount}
+              </Badge>
+            )}
+            {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        </CollapsibleTrigger>
+
+        {/* Active filter chips */}
+        {activeFilters.map(f => (
+          <Badge
+            key={f.key}
+            variant="secondary"
+            className="gap-1 pl-2 pr-1 py-1 text-xs cursor-pointer hover:bg-destructive/10"
+            onClick={() => removeFilter(f.key)}
+          >
+            <span className="text-muted-foreground">{f.label}:</span> {f.value}
+            <X className="h-3 w-3 ml-0.5" />
+          </Badge>
+        ))}
+
+        {activeCount > 1 && (
+          <Button variant="ghost" size="sm" onClick={clearAll} className="h-6 text-xs gap-1 text-muted-foreground">
+            <X className="h-3 w-3" /> Limpar todos
+          </Button>
+        )}
+      </div>
 
       <CollapsibleContent className="mt-3">
-        <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Filtros Avançados</span>
-            {activeCount > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearAll} className="h-7 text-xs gap-1">
-                <X className="h-3 w-3" /> Limpar todos
-              </Button>
-            )}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-5">
+          {/* Section: Auditoria */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Auditoria</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Criado por</Label>
+                <Select value={filters.createdBy} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Atualizado por</Label>
+                <Select value={filters.updatedBy} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Criado de</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.createdFrom} onChange={e => update('createdFrom', e.target.value)} />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Criado até</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.createdTo} onChange={e => update('createdTo', e.target.value)} />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Atualizado de</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.updatedFrom} onChange={e => update('updatedFrom', e.target.value)} />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Atualizado até</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.updatedTo} onChange={e => update('updatedTo', e.target.value)} />
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Criado por */}
-            <div className="space-y-1">
-              <Label className="text-xs">Criado por</Label>
-              <Select value={filters.createdBy} onValueChange={v => update('createdBy', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todos</SelectItem>
-                  {profiles.map(p => (
-                    <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Section: Vítima & Caso */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Vítima & Caso</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nome da Vítima</Label>
+                <Input className="h-8 text-xs" placeholder="Buscar..." value={filters.victimName} onChange={e => update('victimName', e.target.value)} />
+              </div>
 
-            {/* Atualizado por */}
-            <div className="space-y-1">
-              <Label className="text-xs">Atualizado por</Label>
-              <Select value={filters.updatedBy} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todos</SelectItem>
-                  {profiles.map(p => (
-                    <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Faixa Etária</Label>
+                <Select value={filters.ageRange} onValueChange={v => update('ageRange', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas</SelectItem>
+                    {AGE_RANGES.map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Data Criação De */}
-            <div className="space-y-1">
-              <Label className="text-xs">Criado de</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.createdFrom} onChange={e => update('createdFrom', e.target.value)} />
-            </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tipo de Caso</Label>
+                <Select value={filters.caseType} onValueChange={v => update('caseType', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {availableCaseTypes.map(ct => (
+                      <SelectItem key={ct} value={ct}>{CASE_TYPE_LABELS[ct] || ct}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Data Criação Até */}
-            <div className="space-y-1">
-              <Label className="text-xs">Criado até</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.createdTo} onChange={e => update('createdTo', e.target.value)} />
-            </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Acidente de</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.accidentDateFrom} onChange={e => update('accidentDateFrom', e.target.value)} />
+              </div>
 
-            {/* Data Atualização De */}
-            <div className="space-y-1">
-              <Label className="text-xs">Atualizado de</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.updatedFrom} onChange={e => update('updatedFrom', e.target.value)} />
+              <div className="space-y-1">
+                <Label className="text-xs">Acidente até</Label>
+                <Input type="date" className="h-8 text-xs" value={filters.accidentDateTo} onChange={e => update('accidentDateTo', e.target.value)} />
+              </div>
             </div>
+          </div>
 
-            {/* Data Atualização Até */}
-            <div className="space-y-1">
-              <Label className="text-xs">Atualizado até</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.updatedTo} onChange={e => update('updatedTo', e.target.value)} />
-            </div>
+          {/* Section: Localização */}
+          <div>
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Localização da Visita</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Estado</Label>
+                <Select value={filters.visitState} onValueChange={v => update('visitState', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {availableStates.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Nome da Vítima */}
-            <div className="space-y-1">
-              <Label className="text-xs">Nome da Vítima</Label>
-              <Input className="h-8 text-xs" placeholder="Buscar..." value={filters.victimName} onChange={e => update('victimName', e.target.value)} />
-            </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Cidade</Label>
+                <Select value={filters.visitCity} onValueChange={v => update('visitCity', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas</SelectItem>
+                    {availableCities.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Faixa Etária */}
-            <div className="space-y-1">
-              <Label className="text-xs">Faixa Etária</Label>
-              <Select value={filters.ageRange} onValueChange={v => update('ageRange', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todas</SelectItem>
-                  {AGE_RANGES.map(r => (
-                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Tipo de Caso */}
-            <div className="space-y-1">
-              <Label className="text-xs">Tipo de Caso</Label>
-              <Select value={filters.caseType} onValueChange={v => update('caseType', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todos</SelectItem>
-                  {availableCaseTypes.map(ct => (
-                    <SelectItem key={ct} value={ct}>{CASE_TYPE_LABELS[ct] || ct}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Data Acidente De */}
-            <div className="space-y-1">
-              <Label className="text-xs">Acidente de</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.accidentDateFrom} onChange={e => update('accidentDateFrom', e.target.value)} />
-            </div>
-
-            {/* Data Acidente Até */}
-            <div className="space-y-1">
-              <Label className="text-xs">Acidente até</Label>
-              <Input type="date" className="h-8 text-xs" value={filters.accidentDateTo} onChange={e => update('accidentDateTo', e.target.value)} />
-            </div>
-
-            {/* Estado da Visita */}
-            <div className="space-y-1">
-              <Label className="text-xs">Estado (Visita)</Label>
-              <Select value={filters.visitState} onValueChange={v => update('visitState', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todos</SelectItem>
-                  {availableStates.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Cidade da Visita */}
-            <div className="space-y-1">
-              <Label className="text-xs">Cidade (Visita)</Label>
-              <Select value={filters.visitCity} onValueChange={v => update('visitCity', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todas</SelectItem>
-                  {availableCities.map(c => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Região da Visita */}
-            <div className="space-y-1">
-              <Label className="text-xs">Região (Visita)</Label>
-              <Select value={filters.visitRegion} onValueChange={v => update('visitRegion', v === '_all' ? '' : v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all">Todas</SelectItem>
-                  {availableRegions.map(r => (
-                    <SelectItem key={r} value={r}>{r}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1">
+                <Label className="text-xs">Região</Label>
+                <Select value={filters.visitRegion} onValueChange={v => update('visitRegion', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todas</SelectItem>
+                    {availableRegions.map(r => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </div>
@@ -288,7 +338,7 @@ export function LeadAdvancedFilters({
   );
 }
 
-// Helper to apply filters to a leads array (leads must have extended fields)
+// Helper to apply filters to a leads array
 export function applyLeadFilters(leads: any[], filters: LeadFilters): any[] {
   return leads.filter(lead => {
     if (filters.createdBy && lead.created_by !== filters.createdBy) return false;
