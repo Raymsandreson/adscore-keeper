@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +9,10 @@ import {
   ArrowRightLeft, CheckCircle2, Clock, Loader2, ExternalLink, XCircle,
 } from 'lucide-react';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import type { Lead } from '@/hooks/useLeads';
+import type { Contact } from '@/hooks/useContacts';
 
 interface MemberProductivitySheetProps {
   member: (UserProductivity & { displayName: string }) | null;
@@ -30,7 +33,6 @@ interface DetailItem {
 }
 
 export function MemberProductivitySheet({ member, open, onOpenChange, dateRange }: MemberProductivitySheetProps) {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('comments');
   const [comments, setComments] = useState<DetailItem[]>([]);
@@ -42,24 +44,35 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
   const [closedCases, setClosedCases] = useState<DetailItem[]>([]);
   const [refusedCases, setRefusedCases] = useState<DetailItem[]>([]);
   const [sessions, setSessions] = useState<DetailItem[]>([]);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [leadSheetOpen, setLeadSheetOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
 
-  useEffect(() => {
-    if (!member || !open) return;
-    fetchDetails();
-  }, [member, open]);
-
-  const handleNavigate = (item: DetailItem) => {
+  const handleNavigate = async (item: DetailItem) => {
     if (item.entityType === 'none' || !item.entityId) return;
-    onOpenChange(false);
-    setTimeout(() => {
-      if (item.entityType === 'lead') {
-        navigate(`/leads?leadId=${item.entityId}`);
-      } else if (item.entityType === 'contact') {
-        navigate(`/leads?contactId=${item.entityId}`);
-      } else if (item.entityType === 'comment') {
-        navigate(`/?commentId=${item.entityId}`);
+
+    if (item.entityType === 'lead' || item.entityType === 'comment') {
+      // For leads, stage changes, closed, refused, calls - fetch lead and open sheet
+      const entityId = item.entityId;
+      const { data } = await supabase.from('leads').select('*').eq('id', entityId).maybeSingle();
+      if (data) {
+        setSelectedLead(data as Lead);
+        setLeadSheetOpen(true);
       }
-    }, 200);
+    } else if (item.entityType === 'contact') {
+      const { data } = await supabase.from('contacts').select('*').eq('id', item.entityId).maybeSingle();
+      if (data) {
+        setSelectedContact(data as Contact);
+        setContactSheetOpen(true);
+      }
+    }
+  };
+
+  const handleLeadSave = async (leadId: string, updates: Partial<Lead>) => {
+    await supabase.from('leads').update(updates).eq('id', leadId);
+    setLeadSheetOpen(false);
+    setSelectedLead(null);
   };
 
   const fetchDetails = async () => {
@@ -255,6 +268,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
   ];
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
@@ -295,5 +309,23 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Lead detail - left side sheet */}
+    <LeadEditDialog
+      open={leadSheetOpen}
+      onOpenChange={(v) => { setLeadSheetOpen(v); if (!v) setSelectedLead(null); }}
+      lead={selectedLead}
+      onSave={handleLeadSave}
+      mode="sheet"
+    />
+
+    {/* Contact detail - left side sheet */}
+    <ContactDetailSheet
+      contact={selectedContact}
+      open={contactSheetOpen}
+      onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setSelectedContact(null); }}
+      onContactUpdated={() => { setContactSheetOpen(false); setSelectedContact(null); }}
+    />
+    </>
   );
 }
