@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { CorridaMalucaDialog } from '@/components/instagram/CorridaMalucaDialog';
 import { MemberProductivitySheet } from './MemberProductivitySheet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -120,7 +121,7 @@ export function TeamProductivityDashboard() {
     contatos: p.contactsCreated,
     etapas: p.stageChanges,
     ligacoes: p.callsMade,
-    checklists: p.checklistItemsChecked,
+    passos: p.checklistItemsChecked,
   }));
 
   const getActionTypeLabel = (type: string) => {
@@ -305,7 +306,7 @@ export function TeamProductivityDashboard() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-cyan-100 text-cyan-700"><ListChecks className="h-4 w-4" /></div>
-              <div><p className="text-xl font-bold">{totalChecklists}</p><p className="text-[10px] text-muted-foreground">Checklists</p></div>
+              <div><p className="text-xl font-bold">{totalChecklists}</p><p className="text-[10px] text-muted-foreground">Passos</p></div>
             </div>
           </CardContent>
         </Card>
@@ -379,13 +380,29 @@ export function TeamProductivityDashboard() {
         <TabsContent value="ranking">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Trophy className="h-5 w-5 text-yellow-500" />
-                Ranking de Produtividade
-              </CardTitle>
-              <CardDescription>
-                Ordenado por total de ações realizadas
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-yellow-500" />
+                    Ranking de Produtividade
+                  </CardTitle>
+                  <CardDescription>
+                    Ordenado por total de ações realizadas
+                  </CardDescription>
+                </div>
+                <CorridaMalucaDialog
+                  rankings={rankingData.map(m => ({
+                    username: m.displayName,
+                    total_points: m.totalActions,
+                    comments_count: m.commentReplies,
+                    mentions_count: m.dmsSent,
+                    rank_position: m.position,
+                    badge_level: m.position <= 3 ? ['gold', 'silver', 'bronze'][m.position - 1] : 'none',
+                  }))}
+                  weekStart={dateRange.start}
+                  weekEnd={dateRange.end}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {rankingData.length === 0 ? (
@@ -442,7 +459,7 @@ export function TeamProductivityDashboard() {
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-cyan-600">{member.checklistItemsChecked}</p>
-                          <p className="text-[10px] text-muted-foreground">checklists</p>
+                          <p className="text-[10px] text-muted-foreground">passos</p>
                         </div>
                         <div className="text-center">
                           <p className="font-semibold text-emerald-600">{member.activitiesCompleted}</p>
