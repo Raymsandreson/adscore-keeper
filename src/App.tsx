@@ -9,6 +9,7 @@ import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PageTracker } from "@/components/PageTracker";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
+import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { FloatingNav } from "@/components/FloatingNav";
 import Index from "./pages/Index";
 import ActivitiesPage from "./pages/ActivitiesPage";
@@ -50,6 +51,7 @@ function AppRoutes() {
     <>
       <PageTracker />
       <GlobalDatabaseSearch />
+      <UserProductivityBanner />
       <FloatingNav />
       <Routes>
         <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
