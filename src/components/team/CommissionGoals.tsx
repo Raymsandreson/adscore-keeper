@@ -11,8 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Target, Plus, Edit2, Trash2, DollarSign, TrendingUp, Users, Award,
-  ChevronDown, ChevronUp, Loader2, UsersRound,
+  ChevronDown, ChevronUp, Loader2, UsersRound, LayoutGrid, X,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useTeamProductivity } from '@/hooks/useTeamProductivity';
 import { toast } from 'sonner';
@@ -42,6 +43,7 @@ interface CommissionGoal {
   period_start: string;
   period_end: string;
   is_active: boolean;
+  board_ids: string[];
   tiers: CommissionTier[];
 }
 
@@ -69,6 +71,12 @@ interface TeamMember {
   user_id: string;
 }
 
+interface BoardInfo {
+  id: string;
+  name: string;
+  color: string;
+}
+
 const DEFAULT_TIERS: CommissionTier[] = [
   { min_percent: 0, max_percent: 50, commission_value: 0 },
   { min_percent: 50, max_percent: 80, commission_value: 200 },
@@ -79,6 +87,7 @@ const DEFAULT_TIERS: CommissionTier[] = [
 export function CommissionGoals() {
   const [goals, setGoals] = useState<CommissionGoal[]>([]);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
+  const [boards, setBoards] = useState<BoardInfo[]>([]);
   const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +104,7 @@ export function CommissionGoals() {
   const [period, setPeriod] = useState('monthly');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([]);
   const [tiers, setTiers] = useState<CommissionTier[]>(DEFAULT_TIERS);
 
   // Date range for productivity (current month)
@@ -108,11 +118,12 @@ export function CommissionGoals() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [goalsRes, teamsRes, profilesRes, membersRes] = await Promise.all([
+      const [goalsRes, teamsRes, profilesRes, membersRes, boardsRes] = await Promise.all([
         supabase.from('commission_goals').select('*').eq('is_active', true).order('created_at', { ascending: false }),
         supabase.from('teams').select('id, name, color').order('name'),
         supabase.from('profiles').select('user_id, full_name, email'),
         supabase.from('team_members').select('team_id, user_id'),
+        supabase.from('kanban_boards').select('id, name, color').order('display_order'),
       ]);
 
       const goalsData = goalsRes.data || [];
@@ -131,12 +142,13 @@ export function CommissionGoals() {
           tiersMap.get(t.goal_id)!.push(t);
         });
 
-        setGoals(goalsData.map(g => ({ ...g, tiers: tiersMap.get(g.id) || [] })));
+        setGoals(goalsData.map(g => ({ ...g, board_ids: (g as any).board_ids || [], tiers: tiersMap.get(g.id) || [] })));
       } else {
         setGoals([]);
       }
 
       setTeams(teamsRes.data || []);
+      setBoards(boardsRes.data || []);
       setProfiles(profilesRes.data || []);
       setTeamMembers(membersRes.data || []);
     } catch (err) {
@@ -188,6 +200,7 @@ export function CommissionGoals() {
     setPeriod('monthly');
     setCustomStartDate('');
     setCustomEndDate('');
+    setSelectedBoardIds([]);
     setTiers([...DEFAULT_TIERS]);
   };
 
@@ -201,6 +214,7 @@ export function CommissionGoals() {
     setPeriod(goal.period);
     setCustomStartDate(goal.period === 'custom' ? goal.period_start : '');
     setCustomEndDate(goal.period === 'custom' ? goal.period_end : '');
+    setSelectedBoardIds(goal.board_ids || []);
     setTiers(goal.tiers.length > 0 ? goal.tiers : [...DEFAULT_TIERS]);
     setDialogOpen(true);
   };
@@ -249,6 +263,7 @@ export function CommissionGoals() {
           period,
           period_start: periodStart,
           period_end: periodEnd,
+          board_ids: selectedBoardIds,
         }).eq('id', editingGoal.id);
         if (error) throw error;
         goalId = editingGoal.id;
@@ -264,6 +279,7 @@ export function CommissionGoals() {
           period,
           period_start: periodStart,
           period_end: periodEnd,
+          board_ids: selectedBoardIds,
           is_active: true,
         }).select('id').single();
         if (error) throw error;
@@ -461,6 +477,7 @@ export function CommissionGoals() {
                         <CardTitle className="text-sm truncate">{scopeLabel}</CardTitle>
                         <CardDescription className="text-xs">
                           {getMetricLabel(goal.metric_key)} • Meta: {goal.target_value} • {goal.period === 'weekly' ? 'Semanal' : goal.period === 'custom' ? `${goal.period_start} a ${goal.period_end}` : 'Mensal'}
+                          {goal.board_ids && goal.board_ids.length > 0 && ` • Funis: ${goal.board_ids.map(bid => boards.find(b => b.id === bid)?.name || '').filter(Boolean).join(', ')}`}
                         </CardDescription>
                       </div>
                     </div>
@@ -584,6 +601,46 @@ export function CommissionGoals() {
                 </Select>
               </div>
             )}
+
+            {/* Funis (Boards) multi-select */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <LayoutGrid className="h-3 w-3" />
+                Funis (opcional)
+              </Label>
+              <p className="text-xs text-muted-foreground">Selecione os funis para filtrar a métrica. Vazio = todos.</p>
+              <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-2">
+                {boards.map(board => (
+                  <label key={board.id} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/50 cursor-pointer">
+                    <Checkbox
+                      checked={selectedBoardIds.includes(board.id)}
+                      onCheckedChange={(checked) => {
+                        setSelectedBoardIds(prev =>
+                          checked
+                            ? [...prev, board.id]
+                            : prev.filter(id => id !== board.id)
+                        );
+                      }}
+                    />
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                    <span className="text-sm">{board.name}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedBoardIds.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {selectedBoardIds.map(bid => {
+                    const b = boards.find(x => x.id === bid);
+                    return b ? (
+                      <Badge key={bid} variant="secondary" className="text-xs gap-1">
+                        {b.name}
+                        <X className="h-3 w-3 cursor-pointer" onClick={() => setSelectedBoardIds(prev => prev.filter(id => id !== bid))} />
+                      </Badge>
+                    ) : null;
+                  })}
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label>Métrica</Label>

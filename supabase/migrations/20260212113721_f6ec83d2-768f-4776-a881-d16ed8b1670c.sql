@@ -1,0 +1,1 @@
+ALTER TABLE public.commission_goals ADD COLUMN board_ids text[] DEFAULT '{}'::text[];
