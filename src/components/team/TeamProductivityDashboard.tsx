@@ -76,14 +76,14 @@ export function TeamProductivityDashboard() {
     { key: 'stageChanges', label: 'etapas', color: 'text-amber-600', corridaKey: 'stage_changes' },
     { key: 'leadsProgressed', label: 'leads progr.', color: 'text-purple-600', corridaKey: 'leads_progressed' },
     { key: 'checklistItemsChecked', label: 'passos', color: 'text-cyan-600', corridaKey: 'checklist_items' },
-    { key: 'activitiesCompleted', label: 'concluídas', color: 'text-emerald-600', corridaKey: 'activities_completed' },
+    { key: 'activitiesCompleted', label: 'ativ. concluídas', color: 'text-emerald-600', corridaKey: 'activities_completed' },
     { key: 'activitiesOverdue', label: 'atrasadas', color: 'text-red-600', corridaKey: 'activities_overdue' },
     { key: 'leadsClosed', label: 'fechados', color: 'text-rose-600', corridaKey: 'leads_closed' },
     { key: 'sessionMinutes', label: 'tempo', color: 'text-orange-600', corridaKey: 'session_minutes' },
     { key: 'velocity', label: 'passos/h', color: 'text-pink-600', corridaKey: 'velocity' },
   ] as const, []);
 
-  const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges'];
+  const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges', 'velocity'];
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(defaultVisibleMetrics);
   const [visibleUsers, setVisibleUsers] = useState<string[]>([]);
   const [usersInitialized, setUsersInitialized] = useState(false);
