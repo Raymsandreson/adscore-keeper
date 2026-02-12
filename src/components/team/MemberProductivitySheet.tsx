@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   MessageSquare, Send, UserPlus, Target, Phone,
@@ -78,8 +78,8 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
   const fetchDetails = async () => {
     if (!member) return;
     setLoading(true);
-    const startDate = dateRange.start.toISOString();
-    const endDate = dateRange.end.toISOString();
+    const startDate = startOfDay(dateRange.start).toISOString();
+    const endDate = endOfDay(dateRange.end).toISOString();
     const userId = member.userId;
 
     try {
