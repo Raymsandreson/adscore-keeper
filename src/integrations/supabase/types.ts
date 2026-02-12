@@ -3493,6 +3493,7 @@ export type Database = {
       }
       workflow_default_goals: {
         Row: {
+          board_id: string | null
           id: string
           target_activities: number
           target_calls: number
@@ -3508,6 +3509,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          board_id?: string | null
           id?: string
           target_activities?: number
           target_calls?: number
@@ -3523,6 +3525,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          board_id?: string | null
           id?: string
           target_activities?: number
           target_calls?: number
@@ -3537,7 +3540,15 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "workflow_default_goals_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workflow_reports: {
         Row: {
