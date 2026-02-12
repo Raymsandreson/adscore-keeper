@@ -83,7 +83,7 @@ const ActivitiesPage = () => {
 
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
   const [filterType, setFilterType] = useState<string[]>([]);
-  const [filterAssignee, setFilterAssignee] = useState<string[]>([]);
+  const [filterAssignee, setFilterAssignee] = useState<string[]>(() => user?.id ? [user.id] : []);
   const [filterLead, setFilterLead] = useState<string[]>([]);
   const [filterContact, setFilterContact] = useState<string[]>([]);
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
@@ -848,7 +848,6 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
     </div>
   );
 
-  if (loading && activities.length === 0) {
   if (workflowMode) {
     if (workflowFinished) {
       const completedCount = workflowCompleted.filter(w => w.action === 'completed' || w.action === 'completed_next').length;
@@ -1021,7 +1020,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
     );
   }
 
-  return (
+
+  if (loading && activities.length === 0) {
+    return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
