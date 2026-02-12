@@ -525,7 +525,23 @@ export function TeamProductivityDashboard() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-56 p-3 bg-popover" align="end">
-                      <p className="text-sm font-medium mb-2">Métricas visíveis</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium">Métricas visíveis</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={() => {
+                            if (visibleMetrics.length === allMetrics.length) {
+                              setVisibleMetrics([]);
+                            } else {
+                              setVisibleMetrics(allMetrics.map(m => m.key));
+                            }
+                          }}
+                        >
+                          {visibleMetrics.length === allMetrics.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                        </Button>
+                      </div>
                       <div className="space-y-2">
                         {allMetrics.map(m => (
                           <label key={m.key} className="flex items-center gap-2 cursor-pointer text-sm">
