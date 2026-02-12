@@ -304,6 +304,55 @@ const ActivitiesPage = () => {
     fetchActivities(getFilterParams());
   };
 
+  const handleCompleteAndCreateNext = async () => {
+    if (!selectedActivity) return;
+    // Save current edits first
+    await updateActivity(selectedActivity.id, {
+      title: formTitle,
+      description: null,
+      what_was_done: formWhatWasDone || null,
+      current_status_notes: formCurrentStatus || null,
+      next_steps: formNextSteps || null,
+      activity_type: formType,
+      priority: formPriority,
+      lead_id: formLeadId || null,
+      lead_name: formLeadName || null,
+      assigned_to: formAssignedTo || null,
+      assigned_to_name: formAssignedToName || null,
+      deadline: formDeadline || null,
+      notification_date: formNotificationDate || null,
+      notes: formNotes || null,
+      status: formStatus,
+      contact_id: formContactId || null,
+      contact_name: formContactName || null,
+    } as any);
+    // Complete it
+    await completeActivity(selectedActivity.id);
+    // Create next activity keeping context
+    const today = format(new Date(), 'yyyy-MM-dd');
+    await createActivity({
+      title: formTitle,
+      description: null,
+      what_was_done: null,
+      current_status_notes: null,
+      next_steps: null,
+      activity_type: formType,
+      priority: formPriority,
+      lead_id: formLeadId || null,
+      lead_name: formLeadName || null,
+      assigned_to: formAssignedTo || null,
+      assigned_to_name: formAssignedToName || null,
+      deadline: today,
+      notification_date: today,
+      notes: null,
+      contact_id: formContactId || null,
+      contact_name: formContactName || null,
+    });
+    toast.success('Atividade concluída e próxima criada!');
+    closeSheet();
+    fetchActivities(getFilterParams());
+  };
+
   const handleDelete = async (id: string) => {
     await deleteActivity(id);
     closeSheet();
@@ -1087,29 +1136,36 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             </div>
           )}
 
-          <div className="flex items-center justify-between mt-6 pt-4 border-t">
+          <div className="flex flex-col gap-3 mt-6 pt-4 border-t">
             {sheetMode === 'edit' ? (
               <>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" /> Excluir
-                </Button>
-                <div className="flex gap-2">
-                  {selectedActivity?.status !== 'concluida' && (
-                    <Button variant="outline" size="sm" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
-                      <CheckCircle2 className="h-4 w-4 mr-1" /> Concluir
-                    </Button>
-                  )}
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" /> Excluir
+                  </Button>
                   <Button size="sm" onClick={handleUpdate}>Salvar</Button>
                 </div>
+                {selectedActivity?.status !== 'concluida' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={handleCompleteAndCreateNext}
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Concluir e Criar Próxima Atv
+                  </Button>
+                )}
               </>
             ) : (
               <>
-                <Button variant="outline" size="sm" onClick={closeSheet}>Cancelar</Button>
-                <Button size="sm" onClick={handleCreate}>Criar</Button>
+                <div className="flex items-center justify-between">
+                  <Button variant="outline" size="sm" onClick={closeSheet}>Cancelar</Button>
+                  <Button size="sm" onClick={handleCreate}>Criar</Button>
+                </div>
               </>
             )}
           </div>
