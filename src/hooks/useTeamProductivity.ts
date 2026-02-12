@@ -18,6 +18,7 @@ export interface UserProductivity {
   followupsDone: number;
   leadsCreated: number;
   leadsClosed: number;
+  leadsProgressed: number;
   checklistItemsChecked: number;
   activitiesCompleted: number;
   activitiesOverdue: number;
@@ -127,7 +128,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('replied_at', startDate).lte('replied_at', endDate)
           .not('replied_by', 'is', null),
         // Stage changes (now with changed_by for per-user tracking)
-        supabase.from('lead_stage_history').select('id, changed_at, to_stage, changed_by')
+        supabase.from('lead_stage_history').select('id, lead_id, changed_at, to_stage, changed_by')
           .gte('changed_at', startDate).lte('changed_at', endDate),
         // Followups
         supabase.from('lead_followups').select('id, created_at, followup_type, outcome')
@@ -202,7 +203,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
             userName: profileMap.get(userId)?.full_name || null,
             email: profileMap.get(userId)?.email || null,
             contactsCreated: 0, contactsLinked: 0, dmsSent: 0, dmsReceived: 0,
-            commentReplies: 0, callsMade: 0, stageChanges: 0,
+            commentReplies: 0, callsMade: 0, stageChanges: 0, leadsProgressed: 0,
             followupsCreated: 0, followupsDone: 0, leadsCreated: 0, leadsClosed: 0,
             checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
             sessionMinutes: 0, pageVisits: 0, totalActions: 0,
@@ -263,13 +264,22 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         if (a.action_type === 'checklist_item_unchecked') u.checklistItemsChecked--;
       });
 
-      // Stage changes per user (now has changed_by)
+      // Stage changes per user (now has changed_by) + unique leads progressed
+      const userLeadsProgressedMap = new Map<string, Set<string>>();
       stageHistory.forEach(s => {
         const changedBy = (s as any).changed_by;
+        const leadId = (s as any).lead_id;
         if (changedBy) {
           getUser(changedBy).stageChanges++;
           allUserIds.add(changedBy);
+          if (leadId) {
+            if (!userLeadsProgressedMap.has(changedBy)) userLeadsProgressedMap.set(changedBy, new Set());
+            userLeadsProgressedMap.get(changedBy)!.add(leadId);
+          }
         }
+      });
+      userLeadsProgressedMap.forEach((leadSet, userId) => {
+        getUser(userId).leadsProgressed = leadSet.size;
       });
       // Followups (no user_id, count globally)
 
