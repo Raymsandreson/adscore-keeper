@@ -103,9 +103,12 @@ export function CommissionGoals() {
   const [memberObjects, setMemberObjects] = useState<Record<string, any[]>>({});
   const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
 
-  // Default daily goals state
-  const [defaultGoals, setDefaultGoals] = useState({ target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 });
+  // Default daily goals state - keyed by board_id ('global' for no board)
+  const emptyGoalValues = { target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 };
+  const [defaultGoalsMap, setDefaultGoalsMap] = useState<Record<string, typeof emptyGoalValues>>({ global: { ...emptyGoalValues } });
+  const [selectedDefaultBoard, setSelectedDefaultBoard] = useState('global');
   const [savingDefaults, setSavingDefaults] = useState(false);
+  const defaultGoals = defaultGoalsMap[selectedDefaultBoard] || { ...emptyGoalValues };
 
   // Form state
   const [scopeType, setScopeType] = useState<'user' | 'team'>('user');
@@ -188,32 +191,53 @@ export function CommissionGoals() {
 
   // Fetch default daily goals
   useEffect(() => {
-    supabase.from('workflow_default_goals').select('*').limit(1).single().then(({ data }) => {
-      if (data) {
-        setDefaultGoals({
-          target_replies: data.target_replies,
-          target_dms: data.target_dms,
-          target_leads: data.target_leads,
-          target_session_minutes: data.target_session_minutes,
-          target_contacts: (data as any).target_contacts ?? 5,
-          target_calls: (data as any).target_calls ?? 10,
-          target_activities: (data as any).target_activities ?? 5,
-          target_stage_changes: (data as any).target_stage_changes ?? 10,
-          target_leads_closed: (data as any).target_leads_closed ?? 2,
-          target_checklist_items: (data as any).target_checklist_items ?? 10,
+    supabase.from('workflow_default_goals').select('*').then(({ data }) => {
+      if (data && data.length > 0) {
+        const map: Record<string, typeof emptyGoalValues> = {};
+        data.forEach((d: any) => {
+          const key = d.board_id || 'global';
+          map[key] = {
+            target_replies: d.target_replies,
+            target_dms: d.target_dms,
+            target_leads: d.target_leads,
+            target_session_minutes: d.target_session_minutes,
+            target_contacts: d.target_contacts ?? 5,
+            target_calls: d.target_calls ?? 10,
+            target_activities: d.target_activities ?? 5,
+            target_stage_changes: d.target_stage_changes ?? 10,
+            target_leads_closed: d.target_leads_closed ?? 2,
+            target_checklist_items: d.target_checklist_items ?? 10,
+          };
         });
+        setDefaultGoalsMap(prev => ({ ...prev, ...map }));
       }
     });
   }, []);
 
+  const updateDefaultGoalField = (field: string, value: number) => {
+    setDefaultGoalsMap(prev => ({
+      ...prev,
+      [selectedDefaultBoard]: { ...(prev[selectedDefaultBoard] || emptyGoalValues), [field]: value },
+    }));
+  };
+
   const saveDefaultGoals = async () => {
     setSavingDefaults(true);
     try {
-      const { data: existing } = await supabase.from('workflow_default_goals').select('id').limit(1).single();
-      if (existing) {
-        await supabase.from('workflow_default_goals').update({ ...defaultGoals, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      const boardId = selectedDefaultBoard === 'global' ? null : selectedDefaultBoard;
+      const payload = { ...defaultGoals, board_id: boardId, updated_at: new Date().toISOString() };
+      let query = supabase.from('workflow_default_goals').select('id');
+      if (boardId) {
+        query = query.eq('board_id', boardId);
       } else {
-        await supabase.from('workflow_default_goals').insert(defaultGoals);
+        query = query.is('board_id', null);
+      }
+      const { data: existing } = await query.maybeSingle();
+      
+      if (existing) {
+        await supabase.from('workflow_default_goals').update(payload as any).eq('id', existing.id);
+      } else {
+        await supabase.from('workflow_default_goals').insert(payload as any);
       }
       toast.success('Metas padrão salvas!');
     } catch (err) {
@@ -611,50 +635,69 @@ export function CommissionGoals() {
             Metas Diárias Padrão
           </CardTitle>
           <CardDescription>
-            Valores mínimos aplicados quando não há meta específica cadastrada para o período
+            Valores mínimos aplicados quando não há meta específica cadastrada para o período. Selecione o funil para personalizar.
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <Label className="text-xs mb-1.5 block">Funil</Label>
+            <Select value={selectedDefaultBoard} onValueChange={setSelectedDefaultBoard}>
+              <SelectTrigger className="w-full md:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="global">🌐 Padrão Global (todos os funis)</SelectItem>
+                {boards.map(b => (
+                  <SelectItem key={b.id} value={b.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
+                      {b.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Respostas / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_replies} onChange={e => setDefaultGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_replies} onChange={e => updateDefaultGoalField('target_replies', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">DMs / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_dms} onChange={e => setDefaultGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_dms} onChange={e => updateDefaultGoalField('target_dms', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Leads / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_leads} onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_leads} onChange={e => updateDefaultGoalField('target_leads', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Tempo online (min)</Label>
-              <Input type="number" min={0} value={defaultGoals.target_session_minutes} onChange={e => setDefaultGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_session_minutes} onChange={e => updateDefaultGoalField('target_session_minutes', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Contatos / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_contacts} onChange={e => setDefaultGoals(prev => ({ ...prev, target_contacts: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_contacts} onChange={e => updateDefaultGoalField('target_contacts', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Ligações / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_calls} onChange={e => setDefaultGoals(prev => ({ ...prev, target_calls: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_calls} onChange={e => updateDefaultGoalField('target_calls', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Atividades / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_activities} onChange={e => setDefaultGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_activities} onChange={e => updateDefaultGoalField('target_activities', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Etapas / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_stage_changes} onChange={e => setDefaultGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_stage_changes} onChange={e => updateDefaultGoalField('target_stage_changes', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Fechados / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_leads_closed} onChange={e => setDefaultGoals(prev => ({ ...prev, target_leads_closed: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_leads_closed} onChange={e => updateDefaultGoalField('target_leads_closed', Number(e.target.value) || 0)} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Checklist / dia</Label>
-              <Input type="number" min={0} value={defaultGoals.target_checklist_items} onChange={e => setDefaultGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
+              <Input type="number" min={0} value={defaultGoals.target_checklist_items} onChange={e => updateDefaultGoalField('target_checklist_items', Number(e.target.value) || 0)} />
             </div>
           </div>
           <div className="flex justify-end mt-3">
