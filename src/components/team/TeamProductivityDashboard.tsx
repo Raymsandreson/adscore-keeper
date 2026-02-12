@@ -80,7 +80,7 @@ export function TeamProductivityDashboard() {
     { key: 'activitiesOverdue', label: 'atrasadas', color: 'text-red-600', corridaKey: 'activities_overdue' },
     { key: 'leadsClosed', label: 'fechados', color: 'text-rose-600', corridaKey: 'leads_closed' },
     { key: 'sessionMinutes', label: 'tempo', color: 'text-orange-600', corridaKey: 'session_minutes' },
-    { key: 'velocity', label: 'velocidade', color: 'text-pink-600', corridaKey: 'velocity' },
+    { key: 'velocity', label: 'passos/h', color: 'text-pink-600', corridaKey: 'velocity' },
   ] as const, []);
 
   const defaultVisibleMetrics = ['checklistItemsChecked', 'leadsCreated', 'leadsProgressed', 'leadsClosed', 'stageChanges'];
@@ -445,10 +445,10 @@ export function TeamProductivityDashboard() {
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <Trophy className="h-5 w-5 text-yellow-500" />
-                    Ranking de Produtividade
+                   Ranking de Produtividade
                   </CardTitle>
                   <CardDescription>
-                    Ordenado por total de ações realizadas
+                    Ordenado por pontuação total (soma das métricas selecionadas)
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -580,7 +580,7 @@ export function TeamProductivityDashboard() {
                       </div>
 
                       <Badge variant="outline" className="ml-4">
-                        {member.totalActions} ações
+                        {member.totalActions} pts
                       </Badge>
                     </div>
                   ))}
