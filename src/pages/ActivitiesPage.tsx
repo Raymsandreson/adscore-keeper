@@ -22,10 +22,12 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
+import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -128,6 +130,7 @@ const ActivitiesPage = () => {
   const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -377,6 +380,7 @@ const ActivitiesPage = () => {
   const closeSheet = () => {
     setSheetMode(null);
     setSelectedActivity(null);
+    setRightPanelTab('form');
     resetForm();
   };
 
@@ -1441,45 +1445,71 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         {/* RIGHT: Form panel (WhatsApp chat-detail style) */}
         {isEditing && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Form header */}
+            {/* Form header with lead preview */}
             <div className="bg-primary/5 border-b px-4 py-2.5 flex items-center justify-between shrink-0">
-              <div>
+              <div className="flex-1 min-w-0">
                 <h2 className="text-sm font-semibold">
                   {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
                 </h2>
-                {selectedActivity?.lead_name && (
-                  <p className="text-xs text-muted-foreground">📁 {selectedActivity.lead_name}</p>
+                {formLeadName && (
+                  <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
                 )}
               </div>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                {formLeadId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn("h-7 text-xs gap-1", rightPanelTab === 'context' && "bg-primary/10")}
+                    onClick={() => setRightPanelTab(rightPanelTab === 'context' ? 'form' : 'context')}
+                    title="Ver detalhes do lead"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {rightPanelTab === 'context' ? 'Formulário' : 'Lead'}
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
-            {/* Form body - scrollable */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="max-w-2xl">
-                {activityFormContent}
+            {/* Switchable content: Form or Lead Context */}
+            {rightPanelTab === 'form' ? (
+              <>
+                {/* Form body - scrollable */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  <div className="max-w-2xl">
+                    {activityFormContent}
 
-                {sheetMode === 'edit' && selectedActivity?.completed_at && (
-                  <p className="text-xs text-muted-foreground mt-3">
-                    Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
-                    {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
-                  </p>
-                )}
+                    {sheetMode === 'edit' && selectedActivity?.completed_at && (
+                      <p className="text-xs text-muted-foreground mt-3">
+                        Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
+                        {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
+                      </p>
+                    )}
 
-                {sheetMode === 'edit' && selectedActivity && (
-                  <div className="text-xs text-muted-foreground mt-3 space-y-1">
-                    <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
-                    {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
-                      <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                    {sheetMode === 'edit' && selectedActivity && (
+                      <div className="text-xs text-muted-foreground mt-3 space-y-1">
+                        <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                        {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
+                          <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              </>
+            ) : (
+              <ActivityDetailPanel
+                leadId={formLeadId}
+                leadName={formLeadName}
+                currentActivityId={selectedActivity?.id || null}
+                onNavigateToLead={(id) => navigate(`/leads?id=${id}`)}
+              />
+            )}
 
-            {/* Action bar - sticky at bottom like WhatsApp input bar */}
+            {/* Action bar - sticky at bottom */}
             <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
               {sheetMode === 'edit' ? (
                 <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">
