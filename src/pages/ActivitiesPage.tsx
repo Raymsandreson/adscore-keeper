@@ -1492,7 +1492,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     </Button>
                     <div className="flex gap-2">
                       {selectedActivity?.status !== 'concluida' && (
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                        <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
                         </Button>
                       )}
@@ -1501,9 +1501,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                   {selectedActivity?.status !== 'concluida' && (
                     <Button
-                      variant="outline"
                       size="sm"
-                      className="w-full h-8 text-xs gap-1"
+                      className="w-full h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground"
                       onClick={handleCompleteAndCreateNext}
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
@@ -1512,7 +1511,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 </div>
               ) : (
                 <div className="flex items-center justify-between max-w-2xl">
-                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={closeSheet}>Cancelar</Button>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
                   <Button size="sm" className="h-8 text-xs" onClick={handleCreate}>Criar</Button>
                 </div>
               )}
