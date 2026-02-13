@@ -143,8 +143,23 @@ export function FloatingNav() {
     },
   ];
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setExpandedSection(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
   const handleNavigate = (path: string) => {
     navigate(path);
+    setOpen(false);
+    setExpandedSection(null);
   };
 
   const openCommandPalette = () => {
