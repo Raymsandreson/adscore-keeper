@@ -50,42 +50,51 @@ export function FloatingNav() {
   // Draggable state
   const containerRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const dragStart = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
-  const hasMoved = useRef(false);
+  const posRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem('floatingNavPos');
       if (saved) {
         const parsed = JSON.parse(saved);
-        setPosition({ x: parsed.x || 0, y: parsed.y || 0 });
+        const pos = { x: parsed.x || 0, y: parsed.y || 0 };
+        setPosition(pos);
+        posRef.current = pos;
       }
     } catch {}
   }, []);
 
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!isDraggingRef.current || !dragStart.current) return;
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      const newPos = { x: dragStart.current.posX + dx, y: dragStart.current.posY + dy };
+      posRef.current = newPos;
+      setPosition(newPos);
+    };
+    const onUp = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        dragStart.current = null;
+        try { localStorage.setItem('floatingNavPos', JSON.stringify(posRef.current)); } catch {}
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, []);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
-    setIsDragging(true);
-    hasMoved.current = false;
-    dragStart.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
-  }, [position]);
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging || !dragStart.current) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
-    setPosition({ x: dragStart.current.posX + dx, y: dragStart.current.posY + dy });
-  }, [isDragging]);
-
-  const handlePointerUp = useCallback(() => {
-    if (isDragging) {
-      setIsDragging(false);
-      dragStart.current = null;
-      try { localStorage.setItem('floatingNavPos', JSON.stringify(position)); } catch {}
-    }
-  }, [isDragging, position]);
+    isDraggingRef.current = true;
+    dragStart.current = { x: e.clientX, y: e.clientY, posX: posRef.current.x, posY: posRef.current.y };
+  }, []);
 
   // Top-level quick links (always visible when menu open)
   const quickLinks: NavItem[] = [
@@ -156,7 +165,7 @@ export function FloatingNav() {
     setExpandedSection(prev => prev === sectionId ? null : sectionId);
   };
 
-  return (
+   return (
     <div
       ref={containerRef}
       className="fixed z-50 touch-none select-none"
@@ -165,8 +174,6 @@ export function FloatingNav() {
         right: `${24 - position.x}px`,
       }}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
     >
       {/* Expanded Menu Panel */}
       {open && (
