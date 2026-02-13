@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
+import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
@@ -11,12 +12,15 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
+  const { createActivity } = useLeadActivities();
+  const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
 
@@ -116,6 +120,28 @@ export function WhatsAppInbox() {
     }
   };
 
+  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string) => {
+    try {
+      const activity = await createActivity({
+        title: 'Nova Atividade - WhatsApp',
+        lead_id: leadId,
+        lead_name: leadName,
+        contact_id: contactId || null,
+        contact_name: contactName || null,
+        activity_type: 'tarefa',
+      });
+      if (activity) {
+        navigate(`/atividades?activityId=${activity.id}`);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleNavigateToLead = (leadId: string) => {
+    navigate(`/leads?leadId=${leadId}`);
+  };
+
   if (showSetup) {
     return (
       <div className="h-screen flex flex-col">
@@ -189,6 +215,8 @@ export function WhatsAppInbox() {
               onLinkToContact={linkToContact}
               onCreateLead={handleCreateLead}
               onCreateContact={handleCreateContact}
+              onCreateActivity={handleCreateActivity}
+              onNavigateToLead={handleNavigateToLead}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">

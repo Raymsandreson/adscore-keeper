@@ -1,0 +1,166 @@
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { 
+  MapPin, Building2, User, Calendar, FileText, ExternalLink, 
+  ChevronDown, ChevronUp, ClipboardPlus
+} from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
+
+interface LeadData {
+  id: string;
+  lead_name: string | null;
+  status: string | null;
+  city: string | null;
+  state: string | null;
+  case_type: string | null;
+  acolhedor: string | null;
+  victim_name: string | null;
+  victim_age: number | null;
+  accident_date: string | null;
+  damage_description: string | null;
+  main_company: string | null;
+  contractor_company: string | null;
+  visit_city: string | null;
+  visit_state: string | null;
+  board_id: string | null;
+}
+
+interface WhatsAppLeadPreviewProps {
+  leadId: string;
+  contactId?: string | null;
+  contactName?: string | null;
+  onCreateActivity: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
+  onNavigateToLead?: (leadId: string) => void;
+}
+
+const statusLabels: Record<string, string> = {
+  new: 'Novo', qualified: 'Qualificado', contacted: 'Contatado',
+  converted: 'Convertido', lost: 'Perdido',
+};
+
+export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateActivity, onNavigateToLead }: WhatsAppLeadPreviewProps) {
+  const [lead, setLead] = useState<LeadData | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const fetchLead = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('leads')
+      .select('id, lead_name, status, city, state, case_type, acolhedor, victim_name, victim_age, accident_date, damage_description, main_company, contractor_company, visit_city, visit_state, board_id')
+      .eq('id', leadId)
+      .single();
+    setLead(data as LeadData | null);
+    setLoading(false);
+  }, [leadId]);
+
+  useEffect(() => { fetchLead(); }, [fetchLead]);
+
+  if (loading || !lead) return null;
+
+  const summaryParts: string[] = [];
+  if (lead.victim_name) summaryParts.push(lead.victim_name);
+  if (lead.main_company) summaryParts.push(lead.main_company);
+  const summaryLine = summaryParts.length > 1 ? summaryParts.join(' x ') : summaryParts[0] || '';
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <div className="shrink-0 bg-card border-b">
+        {/* Compact header - always visible */}
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold truncate">{lead.lead_name || 'Lead'}</span>
+              {lead.status && (
+                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">
+                  {statusLabels[lead.status] || lead.status}
+                </Badge>
+              )}
+              {summaryLine && (
+                <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">
+                  — {summaryLine}
+                </span>
+              )}
+            </div>
+            {/* Key badges row */}
+            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground flex-wrap">
+              {lead.case_type && (
+                <span className="flex items-center gap-0.5">
+                  <FileText className="h-2.5 w-2.5" /> {lead.case_type}
+                </span>
+              )}
+              {lead.damage_description && (
+                <span className="flex items-center gap-0.5 truncate max-w-[120px]" title={lead.damage_description}>
+                  🩹 {lead.damage_description}
+                </span>
+              )}
+              {lead.accident_date && (
+                <span className="flex items-center gap-0.5">
+                  <Calendar className="h-2.5 w-2.5" /> {format(parseISO(lead.accident_date), 'dd/MM/yyyy')}
+                </span>
+              )}
+              {(lead.city || lead.visit_city) && (
+                <span className="flex items-center gap-0.5">
+                  <MapPin className="h-2.5 w-2.5" /> {lead.visit_city || lead.city}/{lead.visit_state || lead.state}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] gap-1 px-2 text-green-600 hover:text-green-700"
+              onClick={() => onCreateActivity(lead.id, lead.lead_name || 'Lead', contactId || undefined, contactName || undefined)}
+            >
+              <ClipboardPlus className="h-3 w-3" /> Atividade
+            </Button>
+            {onNavigateToLead && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => onNavigateToLead(lead.id)}
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+            )}
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6">
+                {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </div>
+
+        {/* Expanded details */}
+        <CollapsibleContent>
+          <div className="px-3 pb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground border-t pt-2">
+            {lead.victim_name && (
+              <span className="flex items-center gap-1"><User className="h-3 w-3" /> Vítima: {lead.victim_name}</span>
+            )}
+            {lead.victim_age && (
+              <span className="flex items-center gap-1">🎂 {lead.victim_age} anos</span>
+            )}
+            {lead.main_company && (
+              <span className="flex items-center gap-1 truncate"><Building2 className="h-3 w-3" /> {lead.main_company}</span>
+            )}
+            {lead.contractor_company && (
+              <span className="flex items-center gap-1 truncate"><Building2 className="h-3 w-3" /> {lead.contractor_company}</span>
+            )}
+            {lead.acolhedor && (
+              <span className="flex items-center gap-1"><User className="h-3 w-3" /> Acolhedor: {lead.acolhedor}</span>
+            )}
+            {lead.visit_city && lead.visit_state && (
+              <span className="flex items-center gap-1">📍 Visita: {lead.visit_city}/{lead.visit_state}</span>
+            )}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
