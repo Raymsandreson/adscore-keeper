@@ -32,12 +32,7 @@ serve(async (req) => {
 
     // Mode: describe_file - auto-analyze a single uploaded file (image, pdf, audio)
     if (mode === "describe_file") {
-      const { file_url, file_type, file_name, audio_duration } = await req.json().catch(() => ({})) || {};
-      const body = await req.clone().json();
-      const fUrl = body.file_url;
-      const fType = body.file_type;
-      const fName = body.file_name;
-      const fDuration = body.audio_duration;
+      const { file_url: fUrl, file_type: fType, file_name: fName, audio_duration: fDuration } = context || {};
 
       let descriptionPrompt = "";
       const contentParts: any[] = [];
