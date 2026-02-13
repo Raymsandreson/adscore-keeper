@@ -282,6 +282,7 @@ export function PendingTransactionsList({
           setSavingSheet(false);
           return;
         }
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const payload = {
           full_name: contactSheetData.name.trim(),
           phone: contactSheetData.phone || null,
@@ -290,6 +291,7 @@ export function PendingTransactionsList({
           state: contactSheetData.state || null,
           instagram_username: contactSheetData.instagram || null,
           notes: contactSheetData.notes || null,
+          created_by: currentUser?.id || null,
         };
         if (sheetMode === 'create') {
           const { data, error } = await supabase.from('contacts').insert(payload).select('id, full_name, city, state').single();

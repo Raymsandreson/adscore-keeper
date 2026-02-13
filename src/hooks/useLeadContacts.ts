@@ -84,6 +84,7 @@ export const useLeadContacts = (leadId?: string) => {
     if (!leadId) return;
 
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('contacts')
         .insert([{
@@ -96,6 +97,7 @@ export const useLeadContacts = (leadId?: string) => {
           city: contact.city || null,
           state: contact.state || null,
           lead_id: leadId,
+          created_by: currentUser?.id || null,
         }])
         .select()
         .single();
