@@ -40,19 +40,21 @@ Deno.serve(async (req) => {
         )
       }
 
-      // Phone from chat.id (format: "5511999999999@s.whatsapp.net")
-      const chatId = body.chat?.id || ''
+      // Phone from chat.wa_chatid or message.chatid (format: "5511999999999@s.whatsapp.net")
+      const chatId = body.chat?.wa_chatid || body.message?.chatid || body.chat?.id || ''
       rawPhone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '')
       
       // Contact name from chat or message
       contactName = body.chat?.name || body.chat?.pushName || body.senderName || null
       
-      // Message content - UazAPI nests message in different fields
+      // Message content - UazAPI puts text in message.text or message.content
       const msg = body.message || body.chat?.message || {}
       if (typeof msg === 'string') {
         messageText = msg
       } else {
-        messageText = msg.conversation 
+        messageText = msg.text
+          || msg.content
+          || msg.conversation 
           || msg.extendedTextMessage?.text 
           || msg.imageMessage?.caption 
           || msg.videoMessage?.caption
@@ -80,8 +82,8 @@ Deno.serve(async (req) => {
       }
 
       // Direction: if fromMe is true, it's outbound
-      direction = body.chat?.fromMe === true ? 'outbound' : 'inbound'
-      externalMessageId = body.chat?.id_message || body.chat?.messageId || null
+      direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
+      externalMessageId = body.message?.messageid || body.message?.id || body.chat?.id_message || null
     } else {
       // Generic / custom format
       rawPhone = body.phone || body.from || body.sender || body.remoteJid || ''
