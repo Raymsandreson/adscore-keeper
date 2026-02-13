@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2 } from 'lucide-react';
+import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -19,9 +20,11 @@ interface Props {
   onLinkToContact: (phone: string, contactId: string) => void;
   onCreateLead: () => void;
   onCreateContact: () => void;
+  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
+  onNavigateToLead?: (leadId: string) => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead }: Props) {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -140,6 +143,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           )}
         </div>
       </div>
+
+      {/* Lead Preview Card */}
+      {conversation.lead_id && onCreateActivity && (
+        <WhatsAppLeadPreview
+          leadId={conversation.lead_id}
+          contactId={conversation.contact_id}
+          contactName={conversation.contact_name}
+          onCreateActivity={onCreateActivity}
+          onNavigateToLead={onNavigateToLead}
+        />
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
