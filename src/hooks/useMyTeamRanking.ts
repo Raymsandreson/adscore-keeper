@@ -13,6 +13,7 @@ export interface TeamRankingEntry {
   leadsClosed: number;
   contactsCreated: number;
   callsMade: number;
+  dmsSent: number;
   isCurrentUser: boolean;
 }
 
@@ -89,7 +90,7 @@ export function useMyTeamRanking() {
       const startDate = startOfDay(now).toISOString();
       const endDate = endOfDay(now).toISOString();
 
-      const [contactsRes, leadsRes, activityRes, stageRes, callsRes] = await Promise.all([
+      const [contactsRes, leadsRes, activityRes, stageRes, callsRes, dmsRes] = await Promise.all([
         supabase.from('contacts').select('id, created_by')
           .in('created_by', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
@@ -105,11 +106,14 @@ export function useMyTeamRanking() {
         supabase.from('call_records').select('id, user_id')
           .in('user_id', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
+        supabase.from('dm_history').select('id, user_id')
+          .in('user_id', memberIds)
+          .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
       // Build per-member stats
-      const statsMap = new Map<string, { leads: number; checklist: number; stages: number; closed: number; contacts: number; calls: number }>();
-      memberIds.forEach(id => statsMap.set(id, { leads: 0, checklist: 0, stages: 0, closed: 0, contacts: 0, calls: 0 }));
+      const statsMap = new Map<string, { leads: number; checklist: number; stages: number; closed: number; contacts: number; calls: number; dms: number }>();
+      memberIds.forEach(id => statsMap.set(id, { leads: 0, checklist: 0, stages: 0, closed: 0, contacts: 0, calls: 0, dms: 0 }));
 
       (contactsRes.data || []).forEach(c => {
         if (c.created_by && statsMap.has(c.created_by)) statsMap.get(c.created_by)!.contacts++;
@@ -135,6 +139,9 @@ export function useMyTeamRanking() {
       (callsRes.data || []).forEach(c => {
         if (c.user_id && statsMap.has(c.user_id)) statsMap.get(c.user_id)!.calls++;
       });
+      (dmsRes.data || []).forEach(d => {
+        if (d.user_id && statsMap.has(d.user_id)) statsMap.get(d.user_id)!.dms++;
+      });
 
       // Build ranking
       const entries: TeamRankingEntry[] = memberIds.map(id => {
@@ -142,13 +149,14 @@ export function useMyTeamRanking() {
         return {
           userId: id,
           userName: profileMap.get(id) || null,
-          totalPoints: s.leads + s.checklist + s.stages + s.contacts + s.closed + s.calls,
+          totalPoints: s.leads + s.checklist + s.stages + s.contacts + s.closed + s.calls + s.dms,
           leadsCreated: s.leads,
           checklistItemsChecked: s.checklist,
           stageChanges: s.stages,
           leadsClosed: s.closed,
           contactsCreated: s.contacts,
           callsMade: s.calls,
+          dmsSent: s.dms,
           isCurrentUser: id === user.id,
         };
       }).sort((a, b) => b.totalPoints - a.totalPoints);
