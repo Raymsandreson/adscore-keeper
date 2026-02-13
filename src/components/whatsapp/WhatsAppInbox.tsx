@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
-import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
+import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,7 +19,6 @@ import type { Contact } from '@/hooks/useContacts';
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
-  const { createActivity } = useLeadActivities();
   const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
@@ -29,6 +28,10 @@ export function WhatsAppInbox() {
   const [showLeadPanel, setShowLeadPanel] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [showContactPanel, setShowContactPanel] = useState(false);
+
+  // Activity sheet state
+  const [showActivitySheet, setShowActivitySheet] = useState(false);
+  const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
 
   const selectedConversation = conversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
@@ -120,22 +123,9 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string) => {
-    try {
-      const activity = await createActivity({
-        title: 'Nova Atividade - WhatsApp',
-        lead_id: leadId,
-        lead_name: leadName,
-        contact_id: contactId || null,
-        contact_name: contactName || null,
-        activity_type: 'tarefa',
-      });
-      if (activity) {
-        navigate(`/atividades?activityId=${activity.id}`);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string) => {
+    setActivityDefaults({ leadId, leadName, contactId, contactName });
+    setShowActivitySheet(true);
   };
 
   const handleNavigateToLead = (leadId: string) => {
@@ -253,6 +243,16 @@ export function WhatsAppInbox() {
         onOpenChange={handleCloseContactPanel}
         onContactUpdated={() => refetch()}
         mode="sheet"
+      />
+
+      {/* Activity Creation Sheet */}
+      <WhatsAppActivitySheet
+        open={showActivitySheet}
+        onOpenChange={setShowActivitySheet}
+        defaultLeadId={activityDefaults.leadId}
+        defaultLeadName={activityDefaults.leadName}
+        defaultContactId={activityDefaults.contactId}
+        defaultContactName={activityDefaults.contactName}
       />
     </div>
   );
