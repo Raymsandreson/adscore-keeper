@@ -10,14 +10,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
+import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
+import { CardAssignmentManager } from '@/components/finance/CardAssignmentManager';
 import {
   ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown,
   MapPin, Calendar, Tag, CheckCircle2, X, Edit2, Save, ChevronDown, ChevronUp,
-  User, Users, Clock, Building2, Link2, Plus, Eye
+  User, Users, Clock, Building2, Link2, Plus, Eye, AlertCircle, LayoutGrid,
+  Settings, TableIcon
 } from 'lucide-react';
 import { exportBankTransactions } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
@@ -53,6 +58,7 @@ interface Lead {
   lead_name: string | null;
   city: string | null;
   state: string | null;
+  acolhedor?: string | null;
 }
 
 interface Contact {
@@ -77,6 +83,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('all');
+  const [activeTab, setActiveTab] = useState('workflow');
 
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -153,7 +160,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
 
   const fetchLeadsAndContacts = async () => {
     const [leadsRes, contactsRes] = await Promise.all([
-      supabase.from('leads').select('id, lead_name, city, state').order('created_at', { ascending: false }).limit(200),
+      supabase.from('leads').select('id, lead_name, city, state, acolhedor').order('created_at', { ascending: false }).limit(200),
       supabase.from('contacts').select('id, full_name, city, state').order('full_name').limit(200),
     ]);
     setLeads(leadsRes.data || []);
@@ -188,6 +195,82 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
     }).length;
   }, [filtered, getTransactionOverride]);
+
+  // Pending transactions
+  const pendingTransactions = useMemo(() => {
+    return filtered.filter(t => {
+      const ov = getTransactionOverride(t.id);
+      return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
+    });
+  }, [filtered, getTransactionOverride]);
+
+  // Group by day
+  const transactionsByDay = useMemo(() => {
+    const grouped: Record<string, BankTransaction[]> = {};
+    filtered.forEach(t => {
+      const date = t.transaction_date;
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(t);
+    });
+    return Object.entries(grouped)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, txs]) => ({
+        date,
+        transactions: txs,
+        total: txs.reduce((sum, t) => sum + t.amount, 0),
+        count: txs.length,
+      }));
+  }, [filtered]);
+
+  // Group by acolhedor (via linked lead)
+  const transactionsByAcolhedor = useMemo(() => {
+    const grouped: Record<string, { name: string; transactions: BankTransaction[]; total: number }> = {};
+    const unlinked: BankTransaction[] = [];
+
+    filtered.forEach(t => {
+      const override = getTransactionOverride(t.id);
+      if (override?.lead_id) {
+        const lead = leads.find(l => l.id === override.lead_id);
+        const acolhedor = lead?.acolhedor || 'Sem acolhedor';
+        if (!grouped[acolhedor]) grouped[acolhedor] = { name: acolhedor, transactions: [], total: 0 };
+        grouped[acolhedor].transactions.push(t);
+        grouped[acolhedor].total += Math.abs(t.amount);
+      } else {
+        unlinked.push(t);
+      }
+    });
+
+    const result = Object.values(grouped).sort((a, b) => b.total - a.total);
+    if (unlinked.length > 0) {
+      result.push({ name: 'Não vinculados', transactions: unlinked, total: unlinked.reduce((s, t) => s + Math.abs(t.amount), 0) });
+    }
+    return result;
+  }, [filtered, getTransactionOverride, leads]);
+
+  // Group by category
+  const transactionsByCategory = useMemo(() => {
+    const grouped: Record<string, { name: string; color: string; transactions: BankTransaction[]; total: number }> = {};
+    const uncategorized: BankTransaction[] = [];
+
+    filtered.forEach(t => {
+      const override = getTransactionOverride(t.id);
+      if (override?.category_id) {
+        const cat = getCategoryById(override.category_id);
+        const catName = cat?.name || 'Desconhecida';
+        if (!grouped[override.category_id]) grouped[override.category_id] = { name: catName, color: cat?.color || 'bg-muted', transactions: [], total: 0 };
+        grouped[override.category_id].transactions.push(t);
+        grouped[override.category_id].total += Math.abs(t.amount);
+      } else {
+        uncategorized.push(t);
+      }
+    });
+
+    const result = Object.values(grouped).sort((a, b) => b.total - a.total);
+    if (uncategorized.length > 0) {
+      result.push({ name: 'Sem categoria', color: 'bg-muted', transactions: uncategorized, total: uncategorized.reduce((s, t) => s + Math.abs(t.amount), 0) });
+    }
+    return result;
+  }, [filtered, getTransactionOverride, getCategoryById]);
 
   const startEditing = (transaction: BankTransaction) => {
     const override = getTransactionOverride(transaction.id);
@@ -364,7 +447,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
           city: leadFormData.visit_city || null, state: leadFormData.visit_state || null,
         };
         if (sheetMode === 'create') {
-          const { data, error } = await supabase.from('leads').insert(payload).select('id, lead_name, city, state').single();
+          const { data, error } = await supabase.from('leads').insert(payload).select('id, lead_name, city, state, acolhedor').single();
           if (error) throw error;
           setLeads(prev => [...prev, data]);
           setEditData(prev => ({ ...prev, linkType: 'lead', linkId: data.id }));
@@ -406,6 +489,213 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
   };
 
   const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  // Render a single transaction row (reused across tabs)
+  const renderTransactionRow = (t: BankTransaction, showCheckbox = true) => {
+    const isEditing = editingId === t.id;
+    const isExpanded = expandedId === t.id || isEditing;
+    const override = getTransactionOverride(t.id);
+    const isPending = !override || (!override.lead_id && !override.contact_id && !override.link_acknowledged);
+    const category = override?.category_id ? getCategoryById(override.category_id) : null;
+
+    let linkedName = '';
+    if (override?.lead_id) { const lead = leads.find(l => l.id === override.lead_id); linkedName = lead?.lead_name || ''; }
+    else if (override?.contact_id) { const contact = contacts.find(c => c.id === override.contact_id); linkedName = contact?.full_name || ''; }
+
+    return (
+      <div key={t.id} className={cn("border rounded-lg transition-all", isPending ? "border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10" : "bg-card", isEditing && "ring-2 ring-primary")}>
+        {/* Main Row */}
+        <div className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/50" onClick={() => !isEditing && setExpandedId(isExpanded ? null : t.id)}>
+          {showCheckbox && (
+            <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} onClick={(e) => e.stopPropagation()} className="shrink-0" />
+          )}
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+
+          <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+            <span className="w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM', { locale: ptBR })}</span>
+            {t.transaction_time && (
+              <span className="flex items-center gap-0.5 text-muted-foreground/70">
+                <Clock className="h-3 w-3" />{t.transaction_time.slice(0, 5)}
+              </span>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {t.amount >= 0 ? <ArrowUpRight className="h-4 w-4 text-green-500 shrink-0" /> : <ArrowDownRight className="h-4 w-4 text-destructive shrink-0" />}
+              <p className="font-medium truncate text-sm">{t.description || t.merchant_name || 'Sem descrição'}</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+              {t.merchant_cnpj && (
+                <span className="flex items-center gap-1 font-mono">
+                  <Building2 className="h-3 w-3" />
+                  {t.merchant_cnpj.length === 14 ? t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : t.merchant_cnpj}
+                </span>
+              )}
+              {(t.merchant_city || t.merchant_state) && (
+                <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[t.merchant_city, t.merchant_state].filter(Boolean).join('-')}</span>
+              )}
+            </div>
+          </div>
+
+          {category && (
+            <Badge variant="outline" className="shrink-0 text-xs">
+              <div className={cn("w-2 h-2 rounded-full mr-1", category.color)} />{category.name}
+            </Badge>
+          )}
+
+          {linkedName && (
+            <Badge variant="secondary" className="shrink-0 text-xs">
+              {override?.lead_id ? <User className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}{linkedName}
+            </Badge>
+          )}
+
+          {isPending ? (
+            <Badge variant="outline" className="shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendente</Badge>
+          ) : (
+            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+          )}
+
+          <span className={cn("font-bold text-sm w-24 text-right shrink-0", t.amount >= 0 ? "text-green-600" : "text-destructive")}>
+            {formatCurrency(t.amount)}
+          </span>
+
+          {!isEditing && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); startEditing(t); }}>
+              <Edit2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* Expanded/Edit Row */}
+        {isExpanded && (
+          <div className="px-3 pb-3 pt-1 border-t space-y-3">
+            {isEditing ? (
+              <>
+                {/* Category Selection */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Categoria</label>
+                  <div className="flex flex-wrap gap-1">
+                    {parentCategories.map(cat => (
+                      <Button key={cat.id} variant={editData.categoryId === cat.id ? 'default' : 'outline'} size="sm" onClick={() => setEditData(prev => ({ ...prev, categoryId: cat.id }))} className="h-7 text-xs gap-1">
+                        <div className={cn("w-2 h-2 rounded", cat.color)} />{cat.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Link Type & Selection */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Vincular a</label>
+                    <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact') => setEditData(prev => ({ ...prev, linkType: v, linkId: null }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="lead">Lead</SelectItem>
+                        <SelectItem value="contact">Contato</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium">{editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
+                      <div className="flex gap-1">
+                        {editData.linkId && editData.linkId !== NONE_SELECTED && (
+                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType, editData.linkId!); }} title="Visualizar"><Eye className="h-3 w-3" /></Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }} title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}><Plus className="h-3 w-3" /></Button>
+                      </div>
+                    </div>
+                    <Select value={editData.linkId || ''} onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
+                          <div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum Vinculado</div>
+                        </SelectItem>
+                        {editData.linkType === 'lead'
+                          ? leads.map(lead => (
+                            <SelectItem key={lead.id} value={lead.id}>
+                              <div className="flex items-center gap-2">
+                                <span>{lead.lead_name || 'Sem nome'}</span>
+                                {(lead.city || lead.state) && <span className="text-xs text-muted-foreground">({[lead.city, lead.state].filter(Boolean).join('-')})</span>}
+                              </div>
+                            </SelectItem>
+                          ))
+                          : contacts.map(contact => (
+                            <SelectItem key={contact.id} value={contact.id}>
+                              <div className="flex items-center gap-2">
+                                <span>{contact.full_name}</span>
+                                {(contact.city || contact.state) && <span className="text-xs text-muted-foreground">({[contact.city, contact.state].filter(Boolean).join('-')})</span>}
+                              </div>
+                            </SelectItem>
+                          ))
+                        }
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Location */}
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium">Localização</label>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs gap-1" disabled={geoLoading}
+                    onClick={async () => {
+                      try {
+                        const loc = await fetchLocation();
+                        if (loc) { setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city })); fetchCities(loc.state); toast.success('Localização detectada!'); }
+                        else { toast.error('Não foi possível detectar a localização.'); }
+                      } catch { toast.error('Erro ao acessar localização.'); }
+                    }}>
+                    <MapPin className="h-3 w-3" />{geoLoading ? 'Detectando...' : 'Usar localização'}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Estado</label>
+                    <Select value={editData.manualState} onValueChange={(v) => { setEditData(prev => ({ ...prev, manualState: v, manualCity: '' })); fetchCities(v); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="UF" /></SelectTrigger>
+                      <SelectContent>{states.map(s => <SelectItem key={s.sigla} value={s.sigla}>{s.sigla}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs font-medium">Cidade</label>
+                    <Select value={editData.manualCity} onValueChange={(v) => setEditData(prev => ({ ...prev, manualCity: v }))} disabled={!editData.manualState || loadingCities}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={loadingCities ? 'Carregando...' : 'Cidade'} /></SelectTrigger>
+                      <SelectContent>{cities.map(c => <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium">Descrição</label>
+                  <Input value={editData.notes} onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Descreva o que foi este gasto..." className="h-8 text-xs" />
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={cancelEditing}><X className="h-4 w-4 mr-1" /> Cancelar</Button>
+                  <Button size="sm" onClick={() => saveTransaction(t.id)}><Save className="h-4 w-4 mr-1" /> Salvar</Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-sm space-y-2">
+                <div className="flex flex-wrap gap-4 text-muted-foreground">
+                  <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{format(new Date(t.transaction_date + 'T12:00:00'), "dd 'de' MMMM, yyyy", { locale: ptBR })}</span>
+                  {t.category && <span className="flex items-center gap-1"><Tag className="h-4 w-4" />{translateCategory(t.category)}</span>}
+                  {t.merchant_cnpj && <span className="font-mono text-xs">CNPJ: {t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}</span>}
+                </div>
+                {override?.notes && <p className="text-xs text-muted-foreground">📝 {override.notes}</p>}
+                <Button variant="outline" size="sm" onClick={() => startEditing(t)} className="mt-2"><Edit2 className="h-4 w-4 mr-1" /> Editar</Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -467,18 +757,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
         </div>
       </div>
 
-      {/* Pending info + batch actions */}
-      {pendingCount > 0 && (
-        <div className="flex items-center gap-2 text-sm">
-          <Badge variant="outline" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-            {pendingCount} pendentes
-          </Badge>
-          <span className="text-muted-foreground text-xs">
-            {overrides.length > 0 ? `${filtered.length - pendingCount} / ${filtered.length} vinculados` : '0 vinculados'}
-          </span>
-        </div>
-      )}
-
+      {/* Batch Actions */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
           <Badge variant="secondary">{selectedIds.size} selecionada(s)</Badge>
@@ -491,233 +770,224 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
         </div>
       )}
 
-      {/* Transactions List */}
-      <Card className="border-0 shadow-card">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">
-              Extrato ({filtered.length} movimentações)
-              {flowFilter !== 'all' && <Badge variant="secondary" className="ml-2 text-xs">{flowFilter === 'credit' ? 'Só entradas' : 'Só saídas'}</Badge>}
-            </CardTitle>
-            <ExportFormatMenu onExport={(fmt) => exportBankTransactions(filtered, fmt)} disabled={filtered.length === 0} />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Select all */}
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <Checkbox checked={selectedIds.size === filtered.length && filtered.length > 0} onCheckedChange={toggleSelectAll} />
-            <span className="text-xs text-muted-foreground">Selecionar todas</span>
-          </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-6 h-10">
+          <TabsTrigger value="workflow" className="flex items-center gap-2 text-xs sm:text-sm">
+            <AlertCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">Pendentes</span>
+            {pendingCount > 0 && (
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                {pendingCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="acolhedores" className="flex items-center gap-2 text-xs sm:text-sm">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Acolhedores</span>
+          </TabsTrigger>
+          <TabsTrigger value="agrupado" className="flex items-center gap-2 text-xs sm:text-sm">
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Agrupado</span>
+          </TabsTrigger>
+          <TabsTrigger value="por-dia" className="flex items-center gap-2 text-xs sm:text-sm">
+            <TableIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Por Dia</span>
+          </TabsTrigger>
+          <TabsTrigger value="lista" className="flex items-center gap-2 text-xs sm:text-sm">
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">Lista</span>
+          </TabsTrigger>
+          <TabsTrigger value="config" className="flex items-center gap-2 text-xs sm:text-sm">
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Config</span>
+          </TabsTrigger>
+        </TabsList>
 
-          <ScrollArea className="h-[500px]">
-            <div className="space-y-2 pr-4">
-              {filtered.map(t => {
-                const isEditing = editingId === t.id;
-                const isExpanded = expandedId === t.id || isEditing;
-                const override = getTransactionOverride(t.id);
-                const isPending = !override || (!override.lead_id && !override.contact_id && !override.link_acknowledged);
-                const category = override?.category_id ? getCategoryById(override.category_id) : null;
-
-                let linkedName = '';
-                if (override?.lead_id) { const lead = leads.find(l => l.id === override.lead_id); linkedName = lead?.lead_name || ''; }
-                else if (override?.contact_id) { const contact = contacts.find(c => c.id === override.contact_id); linkedName = contact?.full_name || ''; }
-
-                return (
-                  <div key={t.id} className={cn("border rounded-lg transition-all", isPending ? "border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10" : "bg-card", isEditing && "ring-2 ring-primary")}>
-                    {/* Main Row */}
-                    <div className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/50" onClick={() => !isEditing && setExpandedId(isExpanded ? null : t.id)}>
-                      <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} onClick={(e) => e.stopPropagation()} className="shrink-0" />
-                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </Button>
-
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                        <span className="w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM', { locale: ptBR })}</span>
-                        {t.transaction_time && (
-                          <span className="flex items-center gap-0.5 text-muted-foreground/70">
-                            <Clock className="h-3 w-3" />{t.transaction_time.slice(0, 5)}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {t.amount >= 0 ? <ArrowUpRight className="h-4 w-4 text-green-500 shrink-0" /> : <ArrowDownRight className="h-4 w-4 text-destructive shrink-0" />}
-                          <p className="font-medium truncate text-sm">{t.description || t.merchant_name || 'Sem descrição'}</p>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                          {t.merchant_cnpj && (
-                            <span className="flex items-center gap-1 font-mono">
-                              <Building2 className="h-3 w-3" />
-                              {t.merchant_cnpj.length === 14 ? t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : t.merchant_cnpj}
-                            </span>
-                          )}
-                          {(t.merchant_city || t.merchant_state) && (
-                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[t.merchant_city, t.merchant_state].filter(Boolean).join('-')}</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {category && (
-                        <Badge variant="outline" className="shrink-0 text-xs">
-                          <div className={cn("w-2 h-2 rounded-full mr-1", category.color)} />{category.name}
-                        </Badge>
-                      )}
-
-                      {linkedName && (
-                        <Badge variant="secondary" className="shrink-0 text-xs">
-                          {override?.lead_id ? <User className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}{linkedName}
-                        </Badge>
-                      )}
-
-                      {isPending ? (
-                        <Badge variant="outline" className="shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendente</Badge>
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                      )}
-
-                      <span className={cn("font-bold text-sm w-24 text-right shrink-0", t.amount >= 0 ? "text-green-600" : "text-destructive")}>
-                        {formatCurrency(t.amount)}
-                      </span>
-
-                      {!isEditing && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); startEditing(t); }}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Expanded/Edit Row */}
-                    {isExpanded && (
-                      <div className="px-3 pb-3 pt-1 border-t space-y-3">
-                        {isEditing ? (
-                          <>
-                            {/* Category Selection */}
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium">Categoria</label>
-                              <div className="flex flex-wrap gap-1">
-                                {parentCategories.map(cat => (
-                                  <Button key={cat.id} variant={editData.categoryId === cat.id ? 'default' : 'outline'} size="sm" onClick={() => setEditData(prev => ({ ...prev, categoryId: cat.id }))} className="h-7 text-xs gap-1">
-                                    <div className={cn("w-2 h-2 rounded", cat.color)} />{cat.name}
-                                  </Button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Link Type & Selection */}
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <label className="text-xs font-medium">Vincular a</label>
-                                <Select value={editData.linkType} onValueChange={(v: 'lead' | 'contact') => setEditData(prev => ({ ...prev, linkType: v, linkId: null }))}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="lead">Lead</SelectItem>
-                                    <SelectItem value="contact">Contato</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <label className="text-xs font-medium">{editData.linkType === 'lead' ? 'Lead' : 'Contato'}</label>
-                                  <div className="flex gap-1">
-                                    {editData.linkId && editData.linkId !== NONE_SELECTED && (
-                                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openViewSheet(editData.linkType, editData.linkId!); }} title="Visualizar"><Eye className="h-3 w-3" /></Button>
-                                    )}
-                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }} title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}><Plus className="h-3 w-3" /></Button>
-                                  </div>
-                                </div>
-                                <Select value={editData.linkId || ''} onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">
-                                      <div className="flex items-center gap-2"><X className="h-3 w-3" /> Nenhum Vinculado</div>
-                                    </SelectItem>
-                                    {editData.linkType === 'lead'
-                                      ? leads.map(lead => (
-                                        <SelectItem key={lead.id} value={lead.id}>
-                                          <div className="flex items-center gap-2">
-                                            <span>{lead.lead_name || 'Sem nome'}</span>
-                                            {(lead.city || lead.state) && <span className="text-xs text-muted-foreground">({[lead.city, lead.state].filter(Boolean).join('-')})</span>}
-                                          </div>
-                                        </SelectItem>
-                                      ))
-                                      : contacts.map(contact => (
-                                        <SelectItem key={contact.id} value={contact.id}>
-                                          <div className="flex items-center gap-2">
-                                            <span>{contact.full_name}</span>
-                                            {(contact.city || contact.state) && <span className="text-xs text-muted-foreground">({[contact.city, contact.state].filter(Boolean).join('-')})</span>}
-                                          </div>
-                                        </SelectItem>
-                                      ))
-                                    }
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            {/* Location */}
-                            <div className="flex items-center justify-between">
-                              <label className="text-xs font-medium">Localização</label>
-                              <Button type="button" variant="ghost" size="sm" className="h-6 text-xs gap-1" disabled={geoLoading}
-                                onClick={async () => {
-                                  try {
-                                    const loc = await fetchLocation();
-                                    if (loc) { setEditData(prev => ({ ...prev, manualState: loc.state, manualCity: loc.city })); fetchCities(loc.state); toast.success('Localização detectada!'); }
-                                    else { toast.error('Não foi possível detectar a localização.'); }
-                                  } catch { toast.error('Erro ao acessar localização.'); }
-                                }}>
-                                <MapPin className="h-3 w-3" />{geoLoading ? 'Detectando...' : 'Usar localização'}
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="space-y-1">
-                                <label className="text-xs font-medium">Estado</label>
-                                <Select value={editData.manualState} onValueChange={(v) => { setEditData(prev => ({ ...prev, manualState: v, manualCity: '' })); fetchCities(v); }}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="UF" /></SelectTrigger>
-                                  <SelectContent>{states.map(s => <SelectItem key={s.sigla} value={s.sigla}>{s.sigla}</SelectItem>)}</SelectContent>
-                                </Select>
-                              </div>
-                              <div className="col-span-2 space-y-1">
-                                <label className="text-xs font-medium">Cidade</label>
-                                <Select value={editData.manualCity} onValueChange={(v) => setEditData(prev => ({ ...prev, manualCity: v }))} disabled={!editData.manualState || loadingCities}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={loadingCities ? 'Carregando...' : 'Cidade'} /></SelectTrigger>
-                                  <SelectContent>{cities.map(c => <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>)}</SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            {/* Notes */}
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium">Descrição</label>
-                              <Input value={editData.notes} onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Descreva o que foi este gasto..." className="h-8 text-xs" />
-                            </div>
-
-                            {/* Actions */}
-                            <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="sm" onClick={cancelEditing}><X className="h-4 w-4 mr-1" /> Cancelar</Button>
-                              <Button size="sm" onClick={() => saveTransaction(t.id)}><Save className="h-4 w-4 mr-1" /> Salvar</Button>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-sm space-y-2">
-                            <div className="flex flex-wrap gap-4 text-muted-foreground">
-                              <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{format(new Date(t.transaction_date + 'T12:00:00'), "dd 'de' MMMM, yyyy", { locale: ptBR })}</span>
-                              {t.category && <span className="flex items-center gap-1"><Tag className="h-4 w-4" />{translateCategory(t.category)}</span>}
-                              {t.merchant_cnpj && <span className="font-mono text-xs">CNPJ: {t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}</span>}
-                            </div>
-                            {override?.notes && <p className="text-xs text-muted-foreground">📝 {override.notes}</p>}
-                            <Button variant="outline" size="sm" onClick={() => startEditing(t)} className="mt-2"><Edit2 className="h-4 w-4 mr-1" /> Editar</Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+        {/* Pendentes Tab */}
+        <TabsContent value="workflow" className="mt-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                  <span className="font-medium">{pendingCount} pendentes</span>
+                </div>
+                <Badge variant="secondary" className="rounded-full">
+                  {filtered.length - pendingCount} / {filtered.length} vinculados
+                </Badge>
+              </div>
             </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+            <Progress value={filtered.length > 0 ? ((filtered.length - pendingCount) / filtered.length) * 100 : 0} className="h-1.5" />
+
+            {pendingCount === 0 ? (
+              <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <CheckCircle2 className="h-16 w-16 text-green-500 mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Tudo Categorizado!</h3>
+                  <p className="text-muted-foreground text-center">
+                    Todos os {filtered.length} gastos foram vinculados.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-0 shadow-card">
+                <CardContent className="py-4">
+                  <ScrollArea className="h-[500px]">
+                    <div className="space-y-2 pr-4">
+                      {pendingTransactions.map(t => renderTransactionRow(t, false))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Acolhedores Tab */}
+        <TabsContent value="acolhedores" className="mt-4">
+          <div className="space-y-4">
+            {transactionsByAcolhedor.map(group => (
+              <Card key={group.name} className="border-0 shadow-card">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {group.name}
+                    </CardTitle>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-destructive">{formatCurrency(group.total)}</p>
+                      <p className="text-xs text-muted-foreground">{group.transactions.length} transações</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="max-h-[300px]">
+                    <div className="space-y-1">
+                      {group.transactions.map(t => (
+                        <div key={t.id} className="flex items-center justify-between py-2 px-2 hover:bg-muted/50 rounded text-sm">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-xs text-muted-foreground w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM')}</span>
+                            <span className="truncate">{t.description || t.merchant_name || 'Sem descrição'}</span>
+                          </div>
+                          <span className={cn("font-medium shrink-0", t.amount < 0 ? "text-destructive" : "text-green-600")}>{formatCurrency(t.amount)}</span>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 ml-1" onClick={() => startEditing(t)}><Edit2 className="h-3 w-3" /></Button>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Agrupado Tab - by category */}
+        <TabsContent value="agrupado" className="mt-4">
+          <div className="space-y-4">
+            {transactionsByCategory.map(group => (
+              <Card key={group.name} className="border-0 shadow-card">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <div className={cn("w-3 h-3 rounded", group.color)} />
+                      {group.name}
+                    </CardTitle>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-destructive">{formatCurrency(group.total)}</p>
+                      <p className="text-xs text-muted-foreground">{group.transactions.length} transações</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="max-h-[300px]">
+                    <div className="space-y-1">
+                      {group.transactions.map(t => {
+                        const override = getTransactionOverride(t.id);
+                        let linkedName = '';
+                        if (override?.lead_id) { const lead = leads.find(l => l.id === override.lead_id); linkedName = lead?.lead_name || ''; }
+                        else if (override?.contact_id) { const contact = contacts.find(c => c.id === override.contact_id); linkedName = contact?.full_name || ''; }
+
+                        return (
+                          <div key={t.id} className="flex items-center justify-between py-2 px-2 hover:bg-muted/50 rounded text-sm">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="text-xs text-muted-foreground w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM')}</span>
+                              <span className="truncate">{t.description || t.merchant_name || 'Sem descrição'}</span>
+                              {linkedName && <Badge variant="secondary" className="text-[10px] shrink-0">{linkedName}</Badge>}
+                            </div>
+                            <span className={cn("font-medium shrink-0", t.amount < 0 ? "text-destructive" : "text-green-600")}>{formatCurrency(t.amount)}</span>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 ml-1" onClick={() => startEditing(t)}><Edit2 className="h-3 w-3" /></Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Por Dia Tab */}
+        <TabsContent value="por-dia" className="mt-4">
+          <div className="space-y-4">
+            {transactionsByDay.map(group => (
+              <Card key={group.date} className="border-0 shadow-card">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {format(new Date(group.date + 'T12:00:00'), "EEEE, dd 'de' MMMM", { locale: ptBR })}
+                    </CardTitle>
+                    <div className="text-right">
+                      <p className={cn("text-lg font-bold", group.total >= 0 ? "text-green-600" : "text-destructive")}>{formatCurrency(group.total)}</p>
+                      <p className="text-xs text-muted-foreground">{group.count} transações</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-1">
+                    {group.transactions.map(t => renderTransactionRow(t, true))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Lista Tab */}
+        <TabsContent value="lista" className="mt-4">
+          <Card className="border-0 shadow-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">
+                  Extrato ({filtered.length} movimentações)
+                  {flowFilter !== 'all' && <Badge variant="secondary" className="ml-2 text-xs">{flowFilter === 'credit' ? 'Só entradas' : 'Só saídas'}</Badge>}
+                </CardTitle>
+                <ExportFormatMenu onExport={(fmt) => exportBankTransactions(filtered, fmt)} disabled={filtered.length === 0} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <Checkbox checked={selectedIds.size === filtered.length && filtered.length > 0} onCheckedChange={toggleSelectAll} />
+                <span className="text-xs text-muted-foreground">Selecionar todas</span>
+              </div>
+              <ScrollArea className="h-[500px]">
+                <div className="space-y-2 pr-4">
+                  {filtered.map(t => renderTransactionRow(t))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Config Tab */}
+        <TabsContent value="config" className="mt-4">
+          <div className="space-y-6">
+            <ExpenseCategoryManager />
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Sheet for Create/Edit/View Lead or Contact */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
