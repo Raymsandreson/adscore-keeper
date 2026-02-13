@@ -27,6 +27,7 @@ import {
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
+import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
@@ -136,6 +137,7 @@ const ActivitiesPage = () => {
     damage_description?: string | null;
     accident_date?: string | null;
     updated_at?: string | null;
+    board_id?: string | null;
   } | null>(null);
 
   const getFilterParams = () => ({
@@ -279,7 +281,7 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at').eq('id', activity.lead_id).maybeSingle(),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
         ]);
         setLeadPreview(leadPreviewRes.data || null);
         if (linkedData.data && linkedData.data.length > 0) {
@@ -434,7 +436,7 @@ const ActivitiesPage = () => {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
-          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at').eq('id', activity.lead_id).maybeSingle(),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
         ]);
         setLeadPreview(leadPreviewRes.data || null);
         if (linkedData.data && linkedData.data.length > 0) {
@@ -1511,6 +1513,10 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     </span>
                   )}
                 </div>
+              )}
+              {/* Funnel progress bar */}
+              {formLeadId && leadPreview?.board_id && (
+                <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />
               )}
             </div>
 
