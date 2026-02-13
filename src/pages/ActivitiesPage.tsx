@@ -131,6 +131,12 @@ const ActivitiesPage = () => {
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [leadPreview, setLeadPreview] = useState<{
+    case_type?: string | null;
+    damage_description?: string | null;
+    accident_date?: string | null;
+    updated_at?: string | null;
+  } | null>(null);
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -268,15 +274,16 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
-    // Load contacts for this lead
+    // Load contacts and lead preview for this lead
     if (activity.lead_id) {
       try {
-        const { data: linkedData } = await supabase
-          .from('contact_leads')
-          .select('contact_id')
-          .eq('lead_id', activity.lead_id);
-        if (linkedData && linkedData.length > 0) {
-          const contactIds = linkedData.map(cl => cl.contact_id);
+        const [linkedData, leadPreviewRes] = await Promise.all([
+          supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at').eq('id', activity.lead_id).maybeSingle(),
+        ]);
+        setLeadPreview(leadPreviewRes.data || null);
+        if (linkedData.data && linkedData.data.length > 0) {
+          const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await supabase
             .from('contacts')
             .select('id, full_name')
@@ -288,6 +295,8 @@ const ActivitiesPage = () => {
           setAvailableContacts(allContacts || []);
         }
       } catch { /* keep existing */ }
+    } else {
+      setLeadPreview(null);
     }
     setSheetMode('edit');
   };
@@ -381,6 +390,7 @@ const ActivitiesPage = () => {
     setSheetMode(null);
     setSelectedActivity(null);
     setRightPanelTab('form');
+    setLeadPreview(null);
     resetForm();
   };
 
@@ -422,12 +432,13 @@ const ActivitiesPage = () => {
     setFormContactName(activity.contact_name || '');
     if (activity.lead_id) {
       try {
-        const { data: linkedData } = await supabase
-          .from('contact_leads')
-          .select('contact_id')
-          .eq('lead_id', activity.lead_id);
-        if (linkedData && linkedData.length > 0) {
-          const contactIds = linkedData.map(cl => cl.contact_id);
+        const [linkedData, leadPreviewRes] = await Promise.all([
+          supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
+          supabase.from('leads').select('case_type, damage_description, accident_date, updated_at').eq('id', activity.lead_id).maybeSingle(),
+        ]);
+        setLeadPreview(leadPreviewRes.data || null);
+        if (linkedData.data && linkedData.data.length > 0) {
+          const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await supabase
             .from('contacts')
             .select('id, full_name')
@@ -436,6 +447,8 @@ const ActivitiesPage = () => {
           setAvailableContacts(contactsData || []);
         }
       } catch { /* keep existing */ }
+    } else {
+      setLeadPreview(null);
     }
   };
 
@@ -1446,32 +1459,59 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         {isEditing && (
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Form header with lead preview */}
-            <div className="bg-primary/5 border-b px-4 py-2.5 flex items-center justify-between shrink-0">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-sm font-semibold">
-                  {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
-                </h2>
-                {formLeadName && (
-                  <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {formLeadId && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn("h-7 text-xs gap-1", rightPanelTab === 'context' && "bg-primary/10")}
-                    onClick={() => setRightPanelTab(rightPanelTab === 'context' ? 'form' : 'context')}
-                    title="Ver detalhes do lead"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    {rightPanelTab === 'context' ? 'Formulário' : 'Lead'}
+            <div className="bg-primary/5 border-b px-4 py-2.5 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold">
+                    {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
+                  </h2>
+                  {formLeadName && (
+                    <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {formLeadId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn("h-7 text-xs gap-1", rightPanelTab === 'context' && "bg-primary/10")}
+                      onClick={() => setRightPanelTab(rightPanelTab === 'context' ? 'form' : 'context')}
+                      title="Ver detalhes do lead"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {rightPanelTab === 'context' ? 'Formulário' : 'Lead'}
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
+                    <X className="h-4 w-4" />
                   </Button>
-                )}
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
-                  <X className="h-4 w-4" />
-                </Button>
+                </div>
               </div>
+              {/* Lead preview info */}
+              {formLeadId && leadPreview && (
+                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+                  {leadPreview.case_type && (
+                    <span className="flex items-center gap-0.5">
+                      <FileText className="h-3 w-3" /> {leadPreview.case_type}
+                    </span>
+                  )}
+                  {leadPreview.damage_description && (
+                    <span className="flex items-center gap-0.5 truncate max-w-[150px]" title={leadPreview.damage_description}>
+                      🩹 {leadPreview.damage_description}
+                    </span>
+                  )}
+                  {leadPreview.accident_date && (
+                    <span className="flex items-center gap-0.5">
+                      <Calendar className="h-3 w-3" /> {format(parseISO(leadPreview.accident_date), 'dd/MM/yyyy')}
+                    </span>
+                  )}
+                  {leadPreview.updated_at && (
+                    <span className="flex items-center gap-0.5">
+                      <Clock className="h-3 w-3" /> Últ: {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Switchable content: Form or Lead Context */}
