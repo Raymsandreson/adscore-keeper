@@ -1482,8 +1482,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             {/* Action bar - sticky at bottom like WhatsApp input bar */}
             <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
               {sheetMode === 'edit' ? (
-                <div className="flex flex-col gap-2 max-w-2xl">
-                  <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 max-w-2xl flex-wrap">
                     <div className="flex gap-2">
                       <Button
                         variant="destructive"
@@ -1502,25 +1501,20 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         <MessageCircle className="h-3.5 w-3.5" /> Chat
                       </Button>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {selectedActivity?.status !== 'concluida' && (
                         <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
                         </Button>
                       )}
+                      {selectedActivity?.status !== 'concluida' && (
+                        <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={handleCompleteAndCreateNext}>
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Próxima Atv
+                        </Button>
+                      )}
                       <Button size="sm" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
                     </div>
                   </div>
-                  {selectedActivity?.status !== 'concluida' && (
-                    <Button
-                      size="sm"
-                      className="w-full h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground"
-                      onClick={handleCompleteAndCreateNext}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
-                    </Button>
-                  )}
-                </div>
               ) : (
                 <div className="flex items-center justify-between max-w-2xl">
                   <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
