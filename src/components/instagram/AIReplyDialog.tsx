@@ -9,6 +9,7 @@ import { Bot, RefreshCw, Sparkles, Copy, Check, MessageCircle, FileText, AlertTr
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 interface Comment {
   id: string;
@@ -36,6 +37,7 @@ const TONES = [
 ];
 
 export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onReplyPosted, isThirdPartyPost = false }: AIReplyDialogProps) => {
+  const { user } = useAuthContext();
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedTone, setSelectedTone] = useState("casual");
   const [generatedReply, setGeneratedReply] = useState("");
@@ -145,6 +147,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     try {
       // Log to dm_history
       await supabase.from('dm_history').insert({
+        user_id: user?.id,
         instagram_username: username,
         dm_message: editedDm.trim(),
         original_suggestion: dmSuggestion || '',

@@ -632,6 +632,7 @@ export const WorkflowFullscreen = ({
     if (!currentComment?.author_username) return;
     
     await supabase.from('dm_history').insert({
+      user_id: user?.id,
       instagram_username: currentComment.author_username.replace('@', ''),
       dm_message: editedDmSuggestion,
       original_suggestion: dmSuggestion,
