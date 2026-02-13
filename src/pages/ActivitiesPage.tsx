@@ -138,6 +138,7 @@ const ActivitiesPage = () => {
     accident_date?: string | null;
     updated_at?: string | null;
     board_id?: string | null;
+    board_name?: string | null;
   } | null>(null);
 
   const getFilterParams = () => ({
@@ -283,7 +284,12 @@ const ActivitiesPage = () => {
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
         ]);
-        setLeadPreview(leadPreviewRes.data || null);
+        let boardName: string | null = null;
+        if (leadPreviewRes.data?.board_id) {
+          const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
+          boardName = boardData?.name || null;
+        }
+        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
         if (linkedData.data && linkedData.data.length > 0) {
           const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await supabase
@@ -438,7 +444,12 @@ const ActivitiesPage = () => {
           supabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           supabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id').eq('id', activity.lead_id).maybeSingle(),
         ]);
-        setLeadPreview(leadPreviewRes.data || null);
+        let boardName: string | null = null;
+        if (leadPreviewRes.data?.board_id) {
+          const { data: boardData } = await supabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
+          boardName = boardData?.name || null;
+        }
+        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
         if (linkedData.data && linkedData.data.length > 0) {
           const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await supabase
@@ -1511,6 +1522,11 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     <span className="flex items-center gap-0.5">
                       <Clock className="h-3 w-3" /> Últ: {format(parseISO(leadPreview.updated_at), 'dd/MM HH:mm')}
                     </span>
+                  )}
+                  {leadPreview.board_name && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                      🎯 {leadPreview.board_name}
+                    </Badge>
                   )}
                 </div>
               )}
