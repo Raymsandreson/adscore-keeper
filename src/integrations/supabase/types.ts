@@ -3700,6 +3700,68 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_instance_users: {
+        Row: {
+          created_at: string
+          id: string
+          instance_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_instance_users_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_instances: {
+        Row: {
+          base_url: string | null
+          created_at: string
+          id: string
+          instance_name: string
+          instance_token: string
+          is_active: boolean | null
+          owner_phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          instance_name: string
+          instance_token: string
+          is_active?: boolean | null
+          owner_phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          instance_name?: string
+          instance_token?: string
+          is_active?: boolean | null
+          owner_phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           contact_id: string | null
@@ -3708,6 +3770,8 @@ export type Database = {
           direction: string
           external_message_id: string | null
           id: string
+          instance_name: string | null
+          instance_token: string | null
           lead_id: string | null
           media_type: string | null
           media_url: string | null
@@ -3725,6 +3789,8 @@ export type Database = {
           direction?: string
           external_message_id?: string | null
           id?: string
+          instance_name?: string | null
+          instance_token?: string | null
           lead_id?: string | null
           media_type?: string | null
           media_url?: string | null
@@ -3742,6 +3808,8 @@ export type Database = {
           direction?: string
           external_message_id?: string | null
           id?: string
+          instance_name?: string | null
+          instance_token?: string | null
           lead_id?: string | null
           media_type?: string | null
           media_url?: string | null

@@ -15,16 +15,8 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const n8nWebhookUrl = Deno.env.get('N8N_WHATSAPP_WEBHOOK_URL')
-    if (!n8nWebhookUrl) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'N8N_WHATSAPP_WEBHOOK_URL not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
     const body = await req.json()
-    const { phone, message, contact_id, lead_id } = body
+    const { phone, message, contact_id, lead_id, instance_id } = body
 
     if (!phone || !message) {
       return new Response(
@@ -33,23 +25,56 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send to n8n which will forward to UazAPI
-    const n8nResponse = await fetch(n8nWebhookUrl, {
+    // Get instance info - either from instance_id or use first active instance
+    let instance: any = null
+    if (instance_id) {
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('id', instance_id)
+        .eq('is_active', true)
+        .single()
+      instance = data
+    }
+    
+    if (!instance) {
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('is_active', true)
+        .limit(1)
+        .single()
+      instance = data
+    }
+
+    if (!instance) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Send directly to UazAPI using the instance token
+    const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+    const sendUrl = `${baseUrl}/sendText/${instance.instance_token}`
+    
+    console.log('Sending via instance:', instance.instance_name, 'to phone:', phone)
+
+    const uazResponse = await fetch(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'send_message',
-        phone,
-        message,
+        phone: phone,
+        message: message,
       }),
     })
 
-    if (!n8nResponse.ok) {
-      const errorText = await n8nResponse.text()
-      throw new Error(`n8n error: ${n8nResponse.status} - ${errorText}`)
+    if (!uazResponse.ok) {
+      const errorText = await uazResponse.text()
+      throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
     }
 
-    // Save outbound message to database
+    // Save outbound message to database with instance info
     const { data: savedMessage, error } = await supabase
       .from('whatsapp_messages')
       .insert({
@@ -60,6 +85,8 @@ Deno.serve(async (req) => {
         status: 'sent',
         contact_id: contact_id || null,
         lead_id: lead_id || null,
+        instance_name: instance.instance_name,
+        instance_token: instance.instance_token,
       })
       .select()
       .single()
@@ -69,7 +96,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message_id: savedMessage?.id }),
+      JSON.stringify({ success: true, message_id: savedMessage?.id, instance_name: instance.instance_name }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

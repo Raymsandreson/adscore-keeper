@@ -19,6 +19,8 @@ export interface WhatsAppMessage {
   metadata: any;
   created_at: string;
   read_at: string | null;
+  instance_name: string | null;
+  instance_token: string | null;
 }
 
 export interface WhatsAppConversation {
@@ -30,22 +32,55 @@ export interface WhatsAppConversation {
   last_message_at: string;
   unread_count: number;
   messages: WhatsAppMessage[];
+  instance_name: string | null;
 }
 
-export function useWhatsAppMessages() {
+export interface WhatsAppInstance {
+  id: string;
+  instance_name: string;
+  instance_token: string;
+  owner_phone: string | null;
+  base_url: string | null;
+  is_active: boolean;
+}
+
+export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
+
+  const fetchInstances = async () => {
+    const { data, error } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('is_active', true)
+      .order('instance_name');
+    
+    if (!error && data) {
+      setInstances(data as WhatsAppInstance[]);
+    }
+  };
 
   const fetchMessages = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('whatsapp_messages')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(500);
+
+      // Filter by selected instance
+      if (selectedInstanceId && selectedInstanceId !== 'all') {
+        const inst = instances.find(i => i.id === selectedInstanceId);
+        if (inst) {
+          query = query.eq('instance_name', inst.instance_name);
+        }
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -67,13 +102,13 @@ export function useWhatsAppMessages() {
             last_message_at: msg.created_at,
             unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
             messages: [msg],
+            instance_name: msg.instance_name,
           });
         } else {
           existing.messages.push(msg);
           if (!msg.read_at && msg.direction === 'inbound') {
             existing.unread_count++;
           }
-          // Update contact info if missing
           if (!existing.contact_name && msg.contact_name) {
             existing.contact_name = msg.contact_name;
           }
@@ -100,7 +135,13 @@ export function useWhatsAppMessages() {
   const sendMessage = async (phone: string, message: string, contactId?: string, leadId?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
-        body: { phone, message, contact_id: contactId, lead_id: leadId },
+        body: { 
+          phone, 
+          message, 
+          contact_id: contactId, 
+          lead_id: leadId,
+          instance_id: selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined,
+        },
       });
 
       if (error) throw error;
@@ -164,10 +205,20 @@ export function useWhatsAppMessages() {
     }
   };
 
-  // Subscribe to realtime
+  // Fetch instances on mount
   useEffect(() => {
-    fetchMessages();
+    fetchInstances();
+  }, []);
 
+  // Fetch messages when instance filter changes
+  useEffect(() => {
+    if (instances.length > 0 || !selectedInstanceId) {
+      fetchMessages();
+    }
+  }, [selectedInstanceId, instances]);
+
+  // Realtime subscription
+  useEffect(() => {
     const channel = supabase
       .channel('whatsapp-messages')
       .on(
@@ -182,12 +233,13 @@ export function useWhatsAppMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [selectedInstanceId, instances]);
 
   return {
     messages,
     conversations,
     loading,
+    instances,
     sendMessage,
     markAsRead,
     linkToLead,
