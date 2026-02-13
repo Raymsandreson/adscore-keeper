@@ -348,7 +348,20 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Determine supported mimeType
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : '';
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       setRecordingTime(0);
@@ -360,17 +373,25 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const recordedMime = mediaRecorder.mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: recordedMime });
         const duration = recordingTimeRef.current;
+
+        if (audioBlob.size === 0) {
+          console.error('Audio blob is empty, no data recorded');
+          toast.error('Nenhum áudio capturado');
+          return;
+        }
 
         setSending(true);
         try {
-          const filePath = `${activityId || leadId}/${Date.now()}_audio.webm`;
+          const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
+          const filePath = `${activityId || leadId}/${Date.now()}_audio.${ext}`;
           const { error: uploadError } = await supabase.storage.from('activity-chat').upload(filePath, audioBlob);
           if (uploadError) throw uploadError;
 
           const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
-          await sendMessage('audio', `Áudio (${duration}s)`, publicUrl, 'audio.webm', audioBlob.size, duration);
+          await sendMessage('audio', `Áudio (${duration}s)`, publicUrl, `audio.${ext}`, audioBlob.size, duration);
         } catch (e) {
           console.error('Error uploading audio:', e);
           toast.error('Erro ao enviar áudio');
@@ -379,7 +400,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         }
       };
 
-      mediaRecorder.start(10000); // Collect data every 10s to support long recordings
+      mediaRecorder.start(1000); // Collect data every second for reliability
       setRecording(true);
       timerRef.current = setInterval(() => {
         recordingTimeRef.current += 1;
