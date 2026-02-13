@@ -239,7 +239,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     setAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
-        body: { messages: messages.map(m => ({ content: m.content, message_type: m.message_type, sender_name: m.sender_name, file_name: m.file_name })) },
+        body: { messages: messages.map(m => ({ content: m.content, message_type: m.message_type, sender_name: m.sender_name, file_name: m.file_name, file_url: m.file_url, audio_duration: m.audio_duration })) },
       });
       if (error) throw error;
       if (data?.suggestion) {
