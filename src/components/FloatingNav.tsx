@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +46,50 @@ export function FloatingNav() {
   const location = useLocation();
   const { isAdmin } = useUserRole();
   const [open, setOpen] = useState(false);
+
+  // Draggable state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
+  const hasMoved = useRef(false);
+
+  // Load saved position
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('floatingNavPos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setPosition({ x: parsed.x || 0, y: parsed.y || 0 });
+      }
+    } catch {}
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+    setIsDragging(true);
+    hasMoved.current = false;
+    dragStart.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }, [position]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging || !dragStart.current) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
+    const newX = dragStart.current.posX + dx;
+    const newY = dragStart.current.posY + dy;
+    setPosition({ x: newX, y: newY });
+  }, [isDragging]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (isDragging) {
+      setIsDragging(false);
+      dragStart.current = null;
+      try { localStorage.setItem('floatingNavPos', JSON.stringify(position)); } catch {}
+    }
+  }, [isDragging, position]);
 
   const mainNavItems: NavItem[] = [
     {
@@ -158,6 +202,7 @@ export function FloatingNav() {
   ];
 
   const handleNavigate = (path: string) => {
+    if (hasMoved.current) return;
     navigate(path);
     setOpen(false);
   };
@@ -187,19 +232,30 @@ export function FloatingNav() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+    <div
+      ref={containerRef}
+      className="fixed z-50 flex flex-col gap-2 touch-none select-none"
+      style={{
+        bottom: `${24 - position.y}px`,
+        right: `${24 - position.x}px`,
+        cursor: isDragging ? 'grabbing' : 'grab',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+    >
       {/* Search Button */}
       <Button
         variant="outline"
         size="icon"
         className="h-12 w-12 rounded-full shadow-lg bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-primary/20 hover:border-primary/50"
-        onClick={openCommandPalette}
+        onClick={() => { if (!hasMoved.current) openCommandPalette(); }}
       >
         <Search className="h-5 w-5" />
       </Button>
 
       {/* Nav Menu */}
-      <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenu open={open} onOpenChange={(v) => { if (!hasMoved.current) setOpen(v); }}>
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
