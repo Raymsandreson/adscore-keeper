@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { exportInvestments } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
+import { CategorySelector } from '@/components/finance/CategorySelector';
 import { useAuth } from '@/hooks/useAuth';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { format } from 'date-fns';
@@ -157,16 +158,11 @@ export function InvestmentsView() {
             <div className="border-t pt-3 space-y-3">
               {isEditing ? (
                 <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium">Categoria</label>
-                    <div className="flex flex-wrap gap-1">
-                      {parentCategories.map(cat => (
-                        <Button key={cat.id} variant={editData.categoryId === cat.id ? 'default' : 'outline'} size="sm" onClick={() => setEditData(prev => ({ ...prev, categoryId: cat.id }))} className="h-7 text-xs gap-1">
-                          <div className={cn("w-2 h-2 rounded", cat.color)} />{cat.name}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
+                  <CategorySelector
+                    categories={categories}
+                    selectedCategoryId={editData.categoryId}
+                    onSelect={(id) => setEditData(prev => ({ ...prev, categoryId: id }))}
+                  />
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Vincular a</label>
