@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
   ExternalLink, MapPin, Building2, Phone, Mail, User, Calendar,
-  ArrowRight, Clock, FileText, Instagram,
+  ArrowRight, Clock, FileText, Instagram, Heart,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -23,6 +23,7 @@ interface LeadData {
   case_type: string | null;
   acolhedor: string | null;
   victim_name: string | null;
+  victim_age: number | null;
   accident_date: string | null;
   damage_description: string | null;
   main_company: string | null;
@@ -33,6 +34,9 @@ interface LeadData {
   board_id: string | null;
   group_link: string | null;
   news_link: string | null;
+  visit_city: string | null;
+  visit_state: string | null;
+  accident_address: string | null;
 }
 
 interface ContactData {
@@ -161,12 +165,19 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
     );
   }
 
+  // Build summary line: Vítima x Empresa
+  const summaryParts: string[] = [];
+  if (lead?.victim_name) summaryParts.push(lead.victim_name);
+  if (lead?.main_company) summaryParts.push(lead.main_company);
+  const summaryLine = summaryParts.length > 1 ? summaryParts.join(' x ') : summaryParts[0] || '';
+
   return (
     <div className="flex flex-col h-full">
-      {/* Fixed Lead Header */}
+      {/* Fixed Lead Card Header */}
       <div className="shrink-0 bg-card border-b px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
+            {/* Lead name + status */}
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-sm truncate">{leadName}</h3>
               {lead?.status && (
@@ -175,26 +186,59 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
                 </Badge>
               )}
             </div>
-            {/* Quick info row */}
-            <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
-              {lead?.city && lead?.state && (
-                <span className="flex items-center gap-0.5">
-                  <MapPin className="h-3 w-3" /> {lead.city}/{lead.state}
+
+            {/* Vítima x Empresa */}
+            {summaryLine && (
+              <p className="text-xs font-medium text-foreground/80 mt-0.5 truncate">
+                {summaryLine}
+              </p>
+            )}
+
+            {/* Key info grid */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+              {lead?.case_type && (
+                <span className="flex items-center gap-1">
+                  <FileText className="h-3 w-3 shrink-0" /> {lead.case_type}
                 </span>
               )}
-              {lead?.case_type && (
-                <span className="flex items-center gap-0.5">
-                  <FileText className="h-3 w-3" /> {lead.case_type}
+              {lead?.damage_description && (
+                <span className="flex items-center gap-1 truncate" title={lead.damage_description}>
+                  🩹 {lead.damage_description}
+                </span>
+              )}
+              {lead?.accident_date && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3 shrink-0" /> {format(parseISO(lead.accident_date), 'dd/MM/yyyy')}
+                </span>
+              )}
+              {lead?.city && lead?.state && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3 shrink-0" /> {lead.city}/{lead.state}
                 </span>
               )}
               {lead?.acolhedor && (
-                <span className="flex items-center gap-0.5">
-                  <User className="h-3 w-3" /> {lead.acolhedor}
+                <span className="flex items-center gap-1">
+                  <User className="h-3 w-3 shrink-0" /> {lead.acolhedor}
                 </span>
               )}
               {contacts.length > 0 && (
-                <span className="flex items-center gap-0.5">
+                <span className="flex items-center gap-1">
                   👥 {contacts.length} contato{contacts.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {lead?.contractor_company && (
+                <span className="flex items-center gap-1 truncate" title={lead.contractor_company}>
+                  <Building2 className="h-3 w-3 shrink-0" /> {lead.contractor_company}
+                </span>
+              )}
+              {lead?.victim_age && (
+                <span className="flex items-center gap-1">
+                  🎂 {lead.victim_age} anos
+                </span>
+              )}
+              {lead?.visit_city && lead?.visit_state && (
+                <span className="flex items-center gap-1">
+                  📍 Visita: {lead.visit_city}/{lead.visit_state}
                 </span>
               )}
             </div>
@@ -236,19 +280,39 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
               <div className="text-center text-muted-foreground text-sm py-8">Carregando...</div>
             ) : lead ? (
               <>
-                {lead.victim_name && (
-                  <div>
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Vítima</span>
-                    <p className="text-sm font-medium">{lead.victim_name}</p>
+                {/* Vítima + Idade */}
+                {(lead.victim_name || lead.victim_age) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {lead.victim_name && (
+                      <div>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Vítima</span>
+                        <p className="text-sm font-medium">{lead.victim_name}</p>
+                      </div>
+                    )}
+                    {lead.victim_age && (
+                      <div>
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Idade</span>
+                        <p className="text-sm">{lead.victim_age} anos</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {lead.accident_date && (
-                  <div>
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Data do Acidente</span>
-                    <p className="text-sm">{format(parseISO(lead.accident_date), 'dd/MM/yyyy')}</p>
-                  </div>
-                )}
+                {/* Acidente info */}
+                <div className="grid grid-cols-2 gap-3">
+                  {lead.accident_date && (
+                    <div>
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Data do Acidente</span>
+                      <p className="text-sm">{format(parseISO(lead.accident_date), 'dd/MM/yyyy')}</p>
+                    </div>
+                  )}
+                  {lead.case_type && (
+                    <div>
+                      <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Tipo de Caso</span>
+                      <p className="text-sm">{lead.case_type}</p>
+                    </div>
+                  )}
+                </div>
 
                 {lead.damage_description && (
                   <div>
@@ -257,11 +321,28 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
                   </div>
                 )}
 
+                {lead.accident_address && (
+                  <div>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Local do Acidente</span>
+                    <p className="text-sm">{lead.accident_address}</p>
+                  </div>
+                )}
+
                 {(lead.main_company || lead.contractor_company) && (
                   <div>
                     <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Empresas</span>
                     {lead.main_company && <p className="text-sm flex items-center gap-1"><Building2 className="h-3 w-3" /> {lead.main_company}</p>}
                     {lead.contractor_company && <p className="text-sm text-muted-foreground ml-4">Terceirizada: {lead.contractor_company}</p>}
+                  </div>
+                )}
+
+                {/* Local da Visita */}
+                {(lead.visit_city || lead.visit_state) && (
+                  <div>
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Local da Visita</span>
+                    <p className="text-sm flex items-center gap-1">
+                      <MapPin className="h-3 w-3" /> {[lead.visit_city, lead.visit_state].filter(Boolean).join('/')}
+                    </p>
                   </div>
                 )}
 
