@@ -523,7 +523,14 @@ export function ContactDetailSheet({
                     {contact.instagram_username && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Instagram className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1">@{contact.instagram_username.replace('@', '')}</span>
+                        <a 
+                          href={`https://instagram.com/${contact.instagram_username?.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 text-primary hover:underline truncate"
+                        >
+                          https://instagram.com/{contact.instagram_username?.replace('@', '')}
+                        </a>
                         <Button
                           variant="ghost"
                           size="icon"
