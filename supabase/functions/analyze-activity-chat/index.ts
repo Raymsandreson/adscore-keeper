@@ -30,6 +30,93 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    // Mode: describe_file - auto-analyze a single uploaded file (image, pdf, audio)
+    if (mode === "describe_file") {
+      const { file_url, file_type, file_name, audio_duration } = await req.json().catch(() => ({})) || {};
+      const body = await req.clone().json();
+      const fUrl = body.file_url;
+      const fType = body.file_type;
+      const fName = body.file_name;
+      const fDuration = body.audio_duration;
+
+      let descriptionPrompt = "";
+      const contentParts: any[] = [];
+
+      if (fType === "audio" && fUrl) {
+        descriptionPrompt = `Você recebeu uma gravação de áudio${fDuration ? ` com duração de ${Math.floor(fDuration / 60)}min ${fDuration % 60}s` : ''}. 
+Transcreva o áudio e faça um resumo objetivo da ligação/conversa em formato de bullet points. 
+Inclua: participantes identificados, assuntos tratados, decisões tomadas e próximos passos mencionados.
+Responda em português do Brasil.`;
+        const fileData = await fetchFileAsBase64(fUrl);
+        if (fileData) {
+          contentParts.push({
+            type: "input_audio",
+            input_audio: { data: fileData.base64, format: "wav" }
+          });
+        }
+      } else if (fType === "image" && fUrl) {
+        descriptionPrompt = `Você recebeu uma imagem chamada "${fName || 'imagem'}". 
+Descreva o conteúdo da imagem de forma objetiva. Se for um documento, extraia o texto. Se for uma captura de tela de conversa, resuma os pontos principais.
+Responda em português do Brasil.`;
+        const fileData = await fetchFileAsBase64(fUrl);
+        if (fileData) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
+          });
+        }
+      } else if (fType === "pdf" && fUrl) {
+        descriptionPrompt = `Você recebeu um documento PDF chamado "${fName || 'documento'}". 
+Analise o conteúdo do documento e faça um resumo objetivo dos pontos principais. Se for um documento jurídico, destaque prazos, partes envolvidas e obrigações.
+Responda em português do Brasil.`;
+        const fileData = await fetchFileAsBase64(fUrl);
+        if (fileData) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
+          });
+        }
+      }
+
+      if (contentParts.length === 0) {
+        return new Response(JSON.stringify({ description: "Não foi possível analisar o arquivo." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const userContent: any[] = [{ type: "text", text: descriptionPrompt }, ...contentParts];
+
+      const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia trabalhista. Analise o arquivo recebido e forneça uma descrição/resumo útil." },
+            { role: "user", content: userContent },
+          ],
+        }),
+      });
+
+      if (!descResponse.ok) {
+        const t = await descResponse.text();
+        console.error("AI describe error:", descResponse.status, t);
+        return new Response(JSON.stringify({ description: "Erro ao analisar arquivo com IA." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const descData = await descResponse.json();
+      const description = descData.choices?.[0]?.message?.content || "Não foi possível gerar uma descrição.";
+
+      return new Response(JSON.stringify({ description }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Mode: suggest_actions - generate 3 actionable suggestions from context
     if (mode === "suggest_actions" && context) {
       const actionsPrompt = `Você é um assistente jurídico de um CRM de advocacia trabalhista. Com base no contexto abaixo, gere exatamente 3 ações práticas e objetivas que o usuário pode tomar agora para dar continuidade ao caso.
