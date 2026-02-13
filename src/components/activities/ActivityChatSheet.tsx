@@ -598,11 +598,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           {msg.message_type === 'text' && <p className="whitespace-pre-wrap">{msg.content}</p>}
 
           {msg.message_type === 'audio' && (
-            <div className="flex items-center gap-2">
-              <Mic className="h-4 w-4 shrink-0" />
-              <div className="flex-1">
-                <audio src={msg.file_url || ''} controls className="h-8 w-full" style={{ maxWidth: 200 }} />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Mic className="h-4 w-4 shrink-0" />
+                <span className="text-xs opacity-80">{msg.content || 'Áudio'}</span>
               </div>
+              <audio src={msg.file_url || ''} controls preload="metadata" className="w-full min-w-[220px]" style={{ height: 36 }} />
             </div>
           )}
 
