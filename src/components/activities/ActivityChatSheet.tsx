@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download,
+  Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -56,6 +56,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [analyzing, setAnalyzing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [callRecording, setCallRecording] = useState(false);
+  const [callRecordingTime, setCallRecordingTime] = useState(0);
   const [pendingSuggestion, setPendingSuggestion] = useState<AISuggestion | null>(null);
   const [userName, setUserName] = useState<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -63,6 +65,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const callMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const callAudioChunksRef = useRef<Blob[]>([]);
+  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const callStreamsRef = useRef<MediaStream[]>([]);
 
   // Fetch user name
   useEffect(() => {
@@ -227,6 +233,102 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       setRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
       setRecordingTime(0);
+    }
+  };
+
+  // Call Recording (system audio + mic)
+  const startCallRecording = async () => {
+    try {
+      // Capture system audio (what you hear)
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: false,
+        audio: true,
+      } as any);
+
+      // Capture microphone (what you say)
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+
+      callStreamsRef.current = [displayStream, micStream];
+
+      // Mix both audio streams
+      const audioContext = new AudioContext();
+      const destination = audioContext.createMediaStreamDestination();
+      const systemSource = audioContext.createMediaStreamSource(displayStream);
+      const micSource = audioContext.createMediaStreamSource(micStream);
+      systemSource.connect(destination);
+      micSource.connect(destination);
+
+      const mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm' });
+      callMediaRecorderRef.current = mediaRecorder;
+      callAudioChunksRef.current = [];
+      setCallRecordingTime(0);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) callAudioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        callStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
+        callStreamsRef.current = [];
+        audioContext.close();
+        const audioBlob = new Blob(callAudioChunksRef.current, { type: 'audio/webm' });
+        const duration = callRecordingTime;
+
+        setSending(true);
+        try {
+          const filePath = `${activityId || leadId}/${Date.now()}_call.webm`;
+          const { error: uploadError } = await supabase.storage.from('activity-chat').upload(filePath, audioBlob);
+          if (uploadError) throw uploadError;
+
+          const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
+          await sendMessage('audio', `📞 Gravação de chamada (${Math.floor(duration / 60)}min ${duration % 60}s)`, publicUrl, 'call_recording.webm', audioBlob.size, duration);
+        } catch (e) {
+          console.error('Error uploading call recording:', e);
+          toast.error('Erro ao enviar gravação da chamada');
+        } finally {
+          setSending(false);
+        }
+      };
+
+      // Stop if user stops sharing
+      displayStream.getAudioTracks()[0].onended = () => {
+        if (callRecording) stopCallRecording();
+      };
+
+      mediaRecorder.start();
+      setCallRecording(true);
+      callTimerRef.current = setInterval(() => setCallRecordingTime(t => t + 1), 1000);
+      toast.success('Gravação de chamada iniciada! Áudio do sistema + microfone.');
+    } catch (e: any) {
+      console.error('Error starting call recording:', e);
+      if (e.name === 'NotAllowedError') {
+        toast.error('Permissão negada. Selecione a aba do WhatsApp Web e marque "Compartilhar áudio".');
+      } else {
+        toast.error('Erro ao iniciar gravação de chamada');
+      }
+    }
+  };
+
+  const stopCallRecording = () => {
+    if (callMediaRecorderRef.current && callRecording) {
+      callMediaRecorderRef.current.stop();
+      setCallRecording(false);
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    }
+  };
+
+  const cancelCallRecording = () => {
+    if (callMediaRecorderRef.current && callRecording) {
+      callMediaRecorderRef.current.ondataavailable = null;
+      callMediaRecorderRef.current.onstop = null;
+      callMediaRecorderRef.current.stop();
+      callStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
+      callStreamsRef.current = [];
+      setCallRecording(false);
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      setCallRecordingTime(0);
     }
   };
 
@@ -405,7 +507,24 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
         {/* Input area */}
         <div className="shrink-0 px-3 py-2 border-t bg-muted/60">
-          {recording ? (
+          {callRecording ? (
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={cancelCallRecording}>
+                <X className="h-4 w-4" />
+              </Button>
+              <div className="flex-1 flex items-center gap-2">
+                <Phone className="h-4 w-4 text-green-500 animate-pulse" />
+                <span className="text-xs font-mono text-green-600">{formatTime(callRecordingTime)}</span>
+                <span className="text-[10px] text-muted-foreground">Gravando chamada...</span>
+                <div className="flex-1 h-1 bg-green-500/20 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 animate-pulse" style={{ width: `${Math.min(callRecordingTime, 100)}%` }} />
+                </div>
+              </div>
+              <Button size="icon" className="h-8 w-8 rounded-full bg-green-600 hover:bg-green-700" onClick={stopCallRecording}>
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : recording ? (
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={cancelRecording}>
                 <X className="h-4 w-4" />
@@ -426,6 +545,16 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileUpload} />
               <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => fileInputRef.current?.click()} disabled={sending}>
                 <Paperclip className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={startCallRecording}
+                disabled={sending}
+                title="Gravar chamada (sistema + mic)"
+              >
+                <Phone className="h-4 w-4" />
               </Button>
               <Input
                 value={inputText}
