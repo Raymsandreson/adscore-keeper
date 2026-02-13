@@ -189,6 +189,31 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
   }, [messages]);
 
+  const autoAnalyzeFile = async (fileType: string, fileUrl: string, fileName: string, audioDuration?: number) => {
+    try {
+      setAnalyzing(true);
+      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+        body: { mode: 'describe_file', file_url: fileUrl, file_type: fileType, file_name: fileName, audio_duration: audioDuration },
+      });
+      if (error) throw error;
+      if (data?.description) {
+        await supabase.from('activity_chat_messages').insert({
+          activity_id: activityId,
+          lead_id: leadId,
+          message_type: 'ai_suggestion',
+          content: data.description,
+          sender_id: null,
+          sender_name: 'IA Abraci',
+        } as any);
+        await fetchMessages();
+      }
+    } catch (e) {
+      console.error('Error auto-analyzing file:', e);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
     if (!activityId && !leadId) return;
     setSending(true);
@@ -208,6 +233,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
       await fetchMessages();
       setInputText('');
+
+      // Auto-analyze files (image, pdf, audio) with AI
+      if (['image', 'pdf', 'audio'].includes(type) && fileUrl) {
+        autoAnalyzeFile(type, fileUrl, fileName || '', audioDuration);
+      }
     } catch (e) {
       console.error('Error sending message:', e);
       toast.error('Erro ao enviar mensagem');
