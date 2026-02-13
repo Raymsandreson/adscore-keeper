@@ -2,16 +2,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   LayoutDashboard,
   Users,
   CalendarDays,
@@ -27,8 +17,10 @@ import {
   Megaphone,
   Zap,
   Menu,
+  X,
   Search,
   ClipboardList,
+  ChevronRight,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
@@ -41,11 +33,19 @@ interface NavItem {
   color?: string;
 }
 
+interface NavSection {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  items: NavItem[];
+}
+
 export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin } = useUserRole();
   const [open, setOpen] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   // Draggable state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,7 +54,6 @@ export function FloatingNav() {
   const dragStart = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
   const hasMoved = useRef(false);
 
-  // Load saved position
   useEffect(() => {
     try {
       const saved = localStorage.getItem('floatingNavPos');
@@ -78,12 +77,10 @@ export function FloatingNav() {
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
-    const newX = dragStart.current.posX + dx;
-    const newY = dragStart.current.posY + dy;
-    setPosition({ x: newX, y: newY });
+    setPosition({ x: dragStart.current.posX + dx, y: dragStart.current.posY + dy });
   }, [isDragging]);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+  const handlePointerUp = useCallback(() => {
     if (isDragging) {
       setIsDragging(false);
       dragStart.current = null;
@@ -91,269 +88,177 @@ export function FloatingNav() {
     }
   }, [isDragging, position]);
 
-  const mainNavItems: NavItem[] = [
-    {
-      id: "activities",
-      label: "Atividades",
-      icon: <ClipboardList className="h-4 w-4" />,
-      path: "/",
-      color: "text-emerald-600",
-    },
+  // Top-level quick links (always visible when menu open)
+  const quickLinks: NavItem[] = [
+    { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
+    { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
+    { id: "finance", label: "Finanças", icon: <CreditCard className="h-4 w-4" />, path: "/finance", color: "text-green-500" },
+    { id: "editorial", label: "Editorial", icon: <CalendarDays className="h-4 w-4" />, path: "/editorial" },
+  ];
+
+  // Sections with sub-items
+  const sections: NavSection[] = [
     {
       id: "dashboard",
       label: "Dashboard",
       icon: <LayoutDashboard className="h-4 w-4" />,
-      path: "/dashboard",
-    },
-    {
-      id: "finance",
-      label: "Finanças",
-      icon: <CreditCard className="h-4 w-4" />,
-      path: "/finance",
-      color: "text-green-500",
-    },
-    {
-      id: "leads",
-      label: "Leads",
-      icon: <Users className="h-4 w-4" />,
-      path: "/leads",
-    },
-    {
-      id: "editorial",
-      label: "Editorial",
-      icon: <CalendarDays className="h-4 w-4" />,
-      path: "/editorial",
-    },
-    {
-      id: "analytics",
-      label: "Analytics",
-      icon: <TrendingUp className="h-4 w-4" />,
-      path: "/analytics",
-    },
-    {
-      id: "leaderboard",
-      label: "Ranking",
-      icon: <Trophy className="h-4 w-4" />,
-      path: "/leaderboard",
-      color: "text-yellow-500",
-    },
-    {
-      id: "workflow-progress",
-      label: "Fluxo de Trabalho",
-      icon: <Zap className="h-4 w-4" />,
-      path: "/workflow-progress",
-      color: "text-purple-500",
-    },
-  ];
-
-  const dashboardSections: NavItem[] = [
-    {
-      id: "paid",
-      label: "Tráfego Pago",
-      icon: <Megaphone className="h-4 w-4" />,
-      path: "/dashboard?tab=paid",
-      color: "text-blue-500",
-    },
-    {
-      id: "organic",
-      label: "Orgânico",
-      icon: <Heart className="h-4 w-4" />,
-      path: "/dashboard?tab=organic",
-      color: "text-pink-500",
-    },
-    {
-      id: "goals",
-      label: "Metas",
-      icon: <Target className="h-4 w-4" />,
-      path: "/dashboard?tab=goals",
-      color: "text-emerald-500",
+      items: [
+        { id: "dashboard-main", label: "Visão Geral", icon: <LayoutDashboard className="h-3.5 w-3.5" />, path: "/dashboard" },
+        { id: "paid", label: "Tráfego Pago", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
+        { id: "organic", label: "Orgânico", icon: <Heart className="h-3.5 w-3.5" />, path: "/dashboard?tab=organic", color: "text-pink-500" },
+        { id: "goals", label: "Metas", icon: <Target className="h-3.5 w-3.5" />, path: "/dashboard?tab=goals", color: "text-emerald-500" },
+      ],
     },
     {
       id: "automation",
       label: "Automação",
       icon: <Bot className="h-4 w-4" />,
-      path: "/dashboard?tab=automation",
-      color: "text-purple-500",
-    },
-  ];
-
-  const automationSections: NavItem[] = [
-    {
-      id: "comments",
-      label: "Comentários",
-      icon: <MessageCircle className="h-4 w-4" />,
-      path: "/dashboard?tab=automation&subtab=comments",
-      color: "text-primary",
+      items: [
+        { id: "automation-main", label: "Painel", icon: <Bot className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation", color: "text-purple-500" },
+        { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
+        { id: "funnel", label: "Funil", icon: <Filter className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=funnel", color: "text-orange-500" },
+        { id: "workflow", label: "Workflow", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow", color: "text-yellow-500" },
+      ],
     },
     {
-      id: "funnel",
-      label: "Funil",
-      icon: <Filter className="h-4 w-4" />,
-      path: "/dashboard?tab=automation&subtab=funnel",
-      color: "text-orange-500",
-    },
-    {
-      id: "workflow",
-      label: "Workflow",
-      icon: <Zap className="h-4 w-4" />,
-      path: "/workflow",
-      color: "text-yellow-500",
+      id: "more",
+      label: "Mais",
+      icon: <TrendingUp className="h-4 w-4" />,
+      items: [
+        { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
+        { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
+        { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
+        ...(isAdmin ? [{ id: "team", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" }] : []),
+      ],
     },
   ];
 
   const handleNavigate = (path: string) => {
-    if (hasMoved.current) return;
     navigate(path);
     setOpen(false);
+    setExpandedSection(null);
   };
 
   const openCommandPalette = () => {
     setOpen(false);
-    // Dispatch keyboard event to open command palette
-    const event = new KeyboardEvent("keydown", {
-      key: "k",
-      metaKey: true,
-      bubbles: true,
-    });
+    setExpandedSection(null);
+    const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
     document.dispatchEvent(event);
   };
 
   const isActive = (path: string) => {
-    if (path === "/") {
-      return location.pathname === "/" && !location.search;
-    }
-    if (path === "/dashboard") {
-      return location.pathname === "/dashboard" && !location.search;
-    }
-    if (path.includes("?")) {
-      return location.pathname + location.search === path;
-    }
+    if (path === "/") return location.pathname === "/" && !location.search;
+    if (path === "/dashboard") return location.pathname === "/dashboard" && !location.search;
+    if (path.includes("?")) return location.pathname + location.search === path;
     return location.pathname === path;
+  };
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSection(prev => prev === sectionId ? null : sectionId);
   };
 
   return (
     <div
       ref={containerRef}
-      className="fixed z-50 flex flex-col gap-2 touch-none select-none"
+      className="fixed z-50 touch-none select-none"
       style={{
         bottom: `${24 - position.y}px`,
         right: `${24 - position.x}px`,
-        cursor: isDragging ? 'grabbing' : 'grab',
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      {/* Search Button */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="h-12 w-12 rounded-full shadow-lg bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-primary/20 hover:border-primary/50"
-        onClick={() => { if (!hasMoved.current) openCommandPalette(); }}
-      >
-        <Search className="h-5 w-5" />
-      </Button>
-
-      {/* Nav Menu */}
-      <DropdownMenu open={open} onOpenChange={(v) => { if (!hasMoved.current) setOpen(v); }}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            size="icon"
-            className="h-14 w-14 rounded-full shadow-lg"
-          >
-            <Menu className="h-6 w-6" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          side="top"
-          className="w-56 mb-2"
-          sideOffset={8}
+      {/* Expanded Menu Panel */}
+      {open && (
+        <div
+          data-no-drag
+          className="mb-2 w-56 bg-card/95 backdrop-blur-lg border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
+          style={{ cursor: 'default' }}
         >
-          <DropdownMenuLabel>Navegação</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          
-          <DropdownMenuGroup>
-            {mainNavItems.map((item) => (
-              <DropdownMenuItem
-                key={item.id}
-                onClick={() => handleNavigate(item.path)}
-                className={cn(
-                  "gap-2 cursor-pointer",
-                  isActive(item.path) && "bg-accent"
-                )}
-              >
-                <span className={item.color}>{item.icon}</span>
-                {item.label}
-              </DropdownMenuItem>
-            ))}
-            {isAdmin && (
-              <DropdownMenuItem
-                onClick={() => handleNavigate("/team")}
-                className={cn(
-                  "gap-2 cursor-pointer",
-                  isActive("/team") && "bg-accent"
-                )}
-              >
-                <UsersRound className="h-4 w-4 text-emerald-500" />
-                Equipe
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Dashboard
-          </DropdownMenuLabel>
-          
-          <DropdownMenuGroup>
-            {dashboardSections.map((item) => (
-              <DropdownMenuItem
-                key={item.id}
-                onClick={() => handleNavigate(item.path)}
-                className={cn(
-                  "gap-2 cursor-pointer",
-                  isActive(item.path) && "bg-accent"
-                )}
-              >
-                <span className={item.color}>{item.icon}</span>
-                {item.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Automação
-          </DropdownMenuLabel>
-          
-          <DropdownMenuGroup>
-            {automationSections.map((item) => (
-              <DropdownMenuItem
-                key={item.id}
-                onClick={() => handleNavigate(item.path)}
-                className={cn(
-                  "gap-2 cursor-pointer",
-                  isActive(item.path) && "bg-accent"
-                )}
-              >
-                <span className={item.color}>{item.icon}</span>
-                {item.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuGroup>
-
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
+          {/* Search */}
+          <button
             onClick={openCommandPalette}
-            className="gap-2 cursor-pointer"
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:bg-accent/50 transition-colors border-b border-border/30"
           >
             <Search className="h-4 w-4" />
-            Buscar...
-            <DropdownMenuShortcut>⌘K</DropdownMenuShortcut>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <span>Buscar...</span>
+            <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+          </button>
+
+          {/* Quick Links */}
+          <div className="py-1.5">
+            {quickLinks.map(item => (
+              <button
+                key={item.id}
+                onClick={() => handleNavigate(item.path)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-accent/50",
+                  isActive(item.path) && "bg-primary/10 text-primary font-medium"
+                )}
+              >
+                <span className={cn(item.color)}>{item.icon}</span>
+                {item.label}
+                {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+              </button>
+            ))}
+          </div>
+
+          {/* Collapsible Sections */}
+          {sections.map(section => (
+            <div key={section.id} className="border-t border-border/30">
+              <button
+                onClick={() => toggleSection(section.id)}
+                className={cn(
+                  "w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/50",
+                  expandedSection === section.id && "bg-accent/30"
+                )}
+              >
+                {section.icon}
+                <span className="flex-1 text-left">{section.label}</span>
+                <ChevronRight className={cn(
+                  "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                  expandedSection === section.id && "rotate-90"
+                )} />
+              </button>
+
+              {expandedSection === section.id && (
+                <div className="bg-muted/20 py-1 animate-in slide-in-from-top-1 fade-in duration-150">
+                  {section.items.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleNavigate(item.path)}
+                      className={cn(
+                        "w-full flex items-center gap-2 pl-10 pr-4 py-1.5 text-xs transition-colors hover:bg-accent/50",
+                        isActive(item.path) && "bg-primary/10 text-primary font-medium"
+                      )}
+                    >
+                      <span className={cn(item.color)}>{item.icon}</span>
+                      {item.label}
+                      {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* FAB Button */}
+      <div className="flex justify-end">
+        <Button
+          size="icon"
+          className={cn(
+            "h-14 w-14 rounded-full shadow-lg transition-transform duration-200",
+            open && "rotate-90",
+            isDragging ? "cursor-grabbing" : "cursor-grab"
+          )}
+          onClick={() => { if (!hasMoved.current) { setOpen(v => !v); setExpandedSection(null); } }}
+        >
+          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+        </Button>
+      </div>
     </div>
   );
 }
