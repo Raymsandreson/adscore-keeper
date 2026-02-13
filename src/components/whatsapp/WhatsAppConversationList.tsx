@@ -1,7 +1,7 @@
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search, User, Link2 } from 'lucide-react';
+import { Search, User, Link2, Smartphone } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,8 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     return (
       c.phone.includes(term) ||
       (c.contact_name?.toLowerCase().includes(term)) ||
-      (c.last_message?.toLowerCase().includes(term))
+      (c.last_message?.toLowerCase().includes(term)) ||
+      (c.instance_name?.toLowerCase().includes(term))
     );
   });
 
@@ -100,11 +101,19 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                     )}
                   </div>
                 </div>
-                {conv.contact_name && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {formatPhone(conv.phone)}
-                  </p>
-                )}
+                <div className="flex items-center gap-1 mt-0.5">
+                  {conv.contact_name && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatPhone(conv.phone)}
+                    </p>
+                  )}
+                  {conv.instance_name && (
+                    <span className="text-[9px] text-muted-foreground/70 flex items-center gap-0.5 ml-auto">
+                      <Smartphone className="h-2.5 w-2.5" />
+                      {conv.instance_name}
+                    </span>
+                  )}
+                </div>
               </div>
             </button>
           ))

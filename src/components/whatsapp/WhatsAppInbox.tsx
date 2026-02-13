@@ -5,10 +5,12 @@ import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Settings, RefreshCw } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MessageSquare, Settings, RefreshCw, Smartphone } from 'lucide-react';
 
 export function WhatsAppInbox() {
-  const { conversations, loading, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages();
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
+  const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
 
@@ -45,6 +47,25 @@ export function WhatsAppInbox() {
         {totalUnread > 0 && (
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
+
+        {/* Instance selector */}
+        {instances.length > 1 && (
+          <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
+            <SelectTrigger className="w-48 h-8 text-xs ml-2">
+              <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue placeholder="Todas instâncias" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas instâncias</SelectItem>
+              {instances.map(inst => (
+                <SelectItem key={inst.id} value={inst.id}>
+                  {inst.instance_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <div className="ml-auto flex gap-2">
           <Button variant="ghost" size="icon" onClick={refetch} title="Atualizar">
             <RefreshCw className="h-4 w-4" />

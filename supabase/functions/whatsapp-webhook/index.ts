@@ -18,7 +18,6 @@ Deno.serve(async (req) => {
     const body = await req.json()
     console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
 
-    // Detect UazAPI format (has EventType and chat fields)
     let rawPhone = ''
     let contactName: string | null = null
     let messageText: string | null = null
@@ -27,11 +26,19 @@ Deno.serve(async (req) => {
     let mediaType: string | null = null
     let direction = 'inbound'
     let externalMessageId: string | null = null
+    let instanceName: string | null = null
+    let instanceToken: string | null = null
 
     if (body.EventType && body.chat) {
       // UazAPI format
       console.log('Detected UazAPI format, EventType:', body.EventType)
       
+      // Extract instance info
+      instanceName = body.instanceName || body.chat?.instanceName || null
+      instanceToken = body.token || body.chat?.token || null
+      
+      console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8))
+
       // Only process message events
       if (body.EventType !== 'messages') {
         return new Response(
@@ -40,14 +47,11 @@ Deno.serve(async (req) => {
         )
       }
 
-      // Phone from chat.wa_chatid or message.chatid (format: "5511999999999@s.whatsapp.net")
       const chatId = body.chat?.wa_chatid || body.message?.chatid || body.chat?.id || ''
       rawPhone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '')
       
-      // Contact name from chat or message
       contactName = body.chat?.name || body.chat?.pushName || body.senderName || null
       
-      // Message content - UazAPI puts text in message.text or message.content
       const msg = body.message || body.chat?.message || {}
       if (typeof msg === 'string') {
         messageText = msg
@@ -81,7 +85,6 @@ Deno.serve(async (req) => {
         mediaUrl = msg.documentMessage.url || null
       }
 
-      // Direction: if fromMe is true, it's outbound
       direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
       externalMessageId = body.message?.messageid || body.message?.id || body.chat?.id_message || null
     } else {
@@ -94,9 +97,10 @@ Deno.serve(async (req) => {
       mediaType = body.media_type || body.mediaType || null
       direction = body.direction || 'inbound'
       externalMessageId = body.message_id || body.messageId || body.id || null
+      instanceName = body.instance_name || null
+      instanceToken = body.instance_token || null
     }
 
-    // Normalize phone (remove non-digits, leading zeros)
     const phone = rawPhone.replace(/\D/g, '').replace(/^0+/, '')
     
     if (!phone) {
@@ -106,13 +110,12 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType })
+    console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, instanceName })
 
     // Try to find existing contact by phone
     let contactId: string | null = null
     let leadId: string | null = null
 
-    // Search contacts by phone (try multiple formats)
     const phoneVariants = [phone, `+${phone}`, phone.replace(/^55/, '')]
     
     for (const variant of phoneVariants) {
@@ -129,7 +132,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Also check leads table directly
     if (!leadId) {
       for (const variant of phoneVariants) {
         const { data: leads } = await supabase
@@ -145,7 +147,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert the message
+    // Insert the message with instance data
     const { data: message, error } = await supabase
       .from('whatsapp_messages')
       .insert({
@@ -161,6 +163,8 @@ Deno.serve(async (req) => {
         lead_id: leadId,
         external_message_id: externalMessageId,
         metadata: body,
+        instance_name: instanceName,
+        instance_token: instanceToken,
       })
       .select()
       .single()
@@ -173,7 +177,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId)
+    console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName)
 
     return new Response(
       JSON.stringify({ 
@@ -181,7 +185,8 @@ Deno.serve(async (req) => {
         message_id: message.id, 
         contact_id: contactId,
         lead_id: leadId,
-        is_new_contact: !contactId 
+        is_new_contact: !contactId,
+        instance_name: instanceName,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
