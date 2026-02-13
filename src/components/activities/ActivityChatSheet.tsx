@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
   Info, User, Briefcase, MapPin, Calendar, ArrowRight, PhoneCall, FileSearch, CalendarCheck, Mail, CheckCircle, Search,
-  RefreshCw, Settings2,
+  RefreshCw, Settings2, Trash2, Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -31,6 +32,8 @@ interface ChatMessage {
   sender_id: string | null;
   sender_name: string | null;
   created_at: string;
+  deleted_at: string | null;
+  deleted_by_name: string | null;
 }
 
 interface AISuggestion {
@@ -75,6 +78,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [regenPrompt, setRegenPrompt] = useState('');
   const [regenMaxChars, setRegenMaxChars] = useState(600);
   const [regenerating, setRegenerating] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -251,6 +255,22 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       setRegenerateConfig(null);
       setRegenPrompt('');
       setRegenMaxChars(600);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    try {
+      await supabase.from('activity_chat_messages').update({
+        deleted_at: new Date().toISOString(),
+        deleted_by_name: userName || 'Usuário',
+      } as any).eq('id', msgId);
+      await fetchMessages();
+      toast.success('Mensagem apagada');
+    } catch (e) {
+      console.error('Error deleting message:', e);
+      toast.error('Erro ao apagar mensagem');
+    } finally {
+      setDeleteConfirmId(null);
     }
   };
 
@@ -549,7 +569,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     setAnalyzing(true);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
-        body: { messages: messages.map(m => ({ content: m.content, message_type: m.message_type, sender_name: m.sender_name, file_name: m.file_name, file_url: m.file_url, audio_duration: m.audio_duration })) },
+        body: { messages: messages.filter(m => !m.deleted_at).map(m => ({ content: m.content, message_type: m.message_type, sender_name: m.sender_name, file_name: m.file_name, file_url: m.file_url, audio_duration: m.audio_duration })) },
       });
       if (error) throw error;
       if (data?.suggestion) {
@@ -613,6 +633,27 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const renderMessage = (msg: ChatMessage) => {
     const isOwn = msg.sender_id === user?.id;
     const isAI = msg.message_type === 'ai_suggestion';
+    const isDeleted = !!msg.deleted_at;
+
+    // Show deleted message placeholder
+    if (isDeleted) {
+      return (
+        <div key={msg.id} className={cn("flex mb-2", isOwn ? "justify-end" : "justify-start")}>
+          <div className={cn(
+            "max-w-[75%] rounded-2xl px-3 py-2 text-sm opacity-60 italic",
+            isOwn ? "bg-primary/30 text-primary-foreground/70 rounded-br-md" : "bg-muted/50 text-muted-foreground rounded-bl-md"
+          )}>
+            <div className="flex items-center gap-1.5">
+              <Ban className="h-3 w-3 shrink-0" />
+              <span className="text-xs">Mensagem apagada por {msg.deleted_by_name || 'usuário'}</span>
+            </div>
+            <div className={cn("text-[10px] mt-1", isOwn ? "text-primary-foreground/40" : "text-muted-foreground/60")}>
+              {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     if (isAI) {
       const suggestion = msg.ai_suggestion as AISuggestion | null;
@@ -691,43 +732,65 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
 
     return (
-      <div key={msg.id} className={cn("flex mb-2", isOwn ? "justify-end" : "justify-start")}>
-        <div className={cn(
-          "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
-          isOwn ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"
-        )}>
-          {!isOwn && <div className="text-[10px] font-medium mb-0.5 opacity-70">{msg.sender_name}</div>}
+      <div key={msg.id} className={cn("flex mb-2 group", isOwn ? "justify-end" : "justify-start")}>
+        <div className="flex items-end gap-1">
+          {isOwn && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+              onClick={() => setDeleteConfirmId(msg.id)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
+          <div className={cn(
+            "max-w-[75%] rounded-2xl px-3 py-2 text-sm",
+            isOwn ? "bg-primary text-primary-foreground rounded-br-md" : "bg-muted rounded-bl-md"
+          )}>
+            {!isOwn && <div className="text-[10px] font-medium mb-0.5 opacity-70">{msg.sender_name}</div>}
 
-          {msg.message_type === 'text' && <p className="whitespace-pre-wrap">{msg.content}</p>}
+            {msg.message_type === 'text' && <p className="whitespace-pre-wrap">{msg.content}</p>}
 
-          {msg.message_type === 'audio' && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Mic className="h-4 w-4 shrink-0" />
-                <span className="text-xs opacity-80">{msg.content || 'Áudio'}</span>
+            {msg.message_type === 'audio' && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Mic className="h-4 w-4 shrink-0" />
+                  <span className="text-xs opacity-80">{msg.content || 'Áudio'}</span>
+                </div>
+                <audio src={msg.file_url || ''} controls preload="metadata" className="w-full min-w-[220px]" style={{ height: 36 }} />
               </div>
-              <audio src={msg.file_url || ''} controls preload="metadata" className="w-full min-w-[220px]" style={{ height: 36 }} />
+            )}
+
+            {msg.message_type === 'image' && (
+              <div>
+                <img src={msg.file_url || ''} alt={msg.file_name || 'imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
+                {msg.content && msg.content !== msg.file_name && <p className="text-xs mt-1 opacity-80">{msg.content}</p>}
+              </div>
+            )}
+
+            {msg.message_type === 'pdf' && (
+              <a href={msg.file_url || ''} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:opacity-80">
+                <FileText className="h-4 w-4 shrink-0" />
+                <div className="truncate text-xs">{msg.file_name || 'documento.pdf'}</div>
+                <Download className="h-3.5 w-3.5 shrink-0" />
+              </a>
+            )}
+
+            <div className={cn("text-[10px] mt-1", isOwn ? "text-primary-foreground/60" : "text-muted-foreground")}>
+              {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
             </div>
-          )}
-
-          {msg.message_type === 'image' && (
-            <div>
-              <img src={msg.file_url || ''} alt={msg.file_name || 'imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
-              {msg.content && msg.content !== msg.file_name && <p className="text-xs mt-1 opacity-80">{msg.content}</p>}
-            </div>
-          )}
-
-          {msg.message_type === 'pdf' && (
-            <a href={msg.file_url || ''} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:opacity-80">
-              <FileText className="h-4 w-4 shrink-0" />
-              <div className="truncate text-xs">{msg.file_name || 'documento.pdf'}</div>
-              <Download className="h-3.5 w-3.5 shrink-0" />
-            </a>
-          )}
-
-          <div className={cn("text-[10px] mt-1", isOwn ? "text-primary-foreground/60" : "text-muted-foreground")}>
-            {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
           </div>
+          {!isOwn && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+              onClick={() => setDeleteConfirmId(msg.id)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -1034,6 +1097,27 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         </div>
       </div>
     )}
+
+    {/* Delete confirmation dialog */}
+    <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Apagar mensagem?</AlertDialogTitle>
+          <AlertDialogDescription>
+            A mensagem será marcada como apagada e não será usada pela IA para preencher campos. Um registro de que foi apagada ficará visível no chat.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => deleteConfirmId && handleDeleteMessage(deleteConfirmId)}
+          >
+            Apagar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }

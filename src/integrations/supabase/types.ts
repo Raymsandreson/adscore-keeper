@@ -100,6 +100,8 @@ export type Database = {
           audio_duration: number | null
           content: string | null
           created_at: string
+          deleted_at: string | null
+          deleted_by_name: string | null
           file_name: string | null
           file_size: number | null
           file_url: string | null
@@ -115,6 +117,8 @@ export type Database = {
           audio_duration?: number | null
           content?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by_name?: string | null
           file_name?: string | null
           file_size?: number | null
           file_url?: string | null
@@ -130,6 +134,8 @@ export type Database = {
           audio_duration?: number | null
           content?: string | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_by_name?: string | null
           file_name?: string | null
           file_size?: number | null
           file_url?: string | null
