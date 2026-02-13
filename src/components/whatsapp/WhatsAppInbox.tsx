@@ -15,10 +15,12 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
+  const { boards } = useKanbanBoards();
   const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
@@ -128,8 +130,13 @@ export function WhatsAppInbox() {
     setShowActivitySheet(true);
   };
 
-  const handleNavigateToLead = (leadId: string) => {
-    navigate(`/leads?leadId=${leadId}`);
+  const handleNavigateToLead = async (leadId: string) => {
+    // Open lead in edit dialog instead of navigating away
+    const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
+    if (data) {
+      setEditingLead(data as Lead);
+      setShowLeadPanel(true);
+    }
   };
 
   if (showSetup) {
@@ -233,6 +240,7 @@ export function WhatsAppInbox() {
         onOpenChange={handleCloseLeadPanel}
         lead={editingLead}
         onSave={handleSaveLead}
+        boards={boards}
         mode="sheet"
       />
 

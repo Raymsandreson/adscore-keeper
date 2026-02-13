@@ -212,6 +212,7 @@ export function LeadEditDialog({
   const [analyzingViability, setAnalyzingViability] = useState(false);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   const [tempNewsLink, setTempNewsLink] = useState('');
+  const [selectedBoardId, setSelectedBoardId] = useState('');
 
   // Load lead data when dialog opens
   useEffect(() => {
@@ -228,6 +229,7 @@ export function LeadEditDialog({
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
       setClientClassification(lead.client_classification || '');
+      setSelectedBoardId(leadAny.board_id || '');
       
       // Accident fields
       setVictimName(leadAny.victim_name || '');
@@ -545,6 +547,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         liability_type: liabilityType || null,
         news_link: newsLink || null,
         legal_viability: legalViability || null,
+        board_id: selectedBoardId || null,
       } as Partial<Lead>);
 
       // Save custom field values
@@ -702,24 +705,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   />
                 </div>
 
-                <div>
-                  <Label>Telefone</Label>
-                  <Input
-                    value={leadPhone}
-                    onChange={(e) => setLeadPhone(e.target.value)}
-                    placeholder="(00) 00000-0000"
-                  />
-                </div>
-
-                <div>
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={leadEmail}
-                    onChange={(e) => setLeadEmail(e.target.value)}
-                    placeholder="email@exemplo.com"
-                  />
-                </div>
+                {/* Telefone e Email ficam no Contato, não no Lead */}
 
                 <div>
                   <Label>Origem</Label>
@@ -852,6 +838,23 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                     rows={2}
                   />
                 </div>
+
+                {boards.length > 0 && (
+                  <div className="col-span-2">
+                    <Label>Funil / Quadro Kanban</Label>
+                    <Select value={selectedBoardId || '__none__'} onValueChange={(val) => setSelectedBoardId(val === '__none__' ? '' : val)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um funil..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem funil</SelectItem>
+                        {boards.map(b => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
