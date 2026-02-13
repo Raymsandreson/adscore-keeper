@@ -26,9 +26,93 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const { messages, mode, context } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    // Mode: suggest_actions - generate 3 actionable suggestions from context
+    if (mode === "suggest_actions" && context) {
+      const actionsPrompt = `Você é um assistente jurídico de um CRM de advocacia trabalhista. Com base no contexto abaixo, gere exatamente 3 ações práticas e objetivas que o usuário pode tomar agora para dar continuidade ao caso.
+
+Contexto da Atividade:
+- Título: ${context.activity_title || 'N/A'}
+- Tipo: ${context.activity_type || 'N/A'}
+- O que foi feito: ${context.what_was_done || 'Nada registrado'}
+- Status atual: ${context.current_status_notes || 'Não informado'}
+- Próximo passo: ${context.next_steps || 'Não definido'}
+- Observações: ${context.notes || 'Nenhuma'}
+
+${context.lead_name ? `Lead: ${context.lead_name}` : ''}
+${context.case_type ? `Tipo de caso: ${context.case_type}` : ''}
+${context.lead_status ? `Status do lead: ${context.lead_status}` : ''}
+${context.contact_name ? `Contato: ${context.contact_name}` : ''}
+${context.contact_phone ? `Telefone: ${context.contact_phone}` : ''}
+
+Cada ação deve ser uma frase curta (máximo 15 palavras) e começar com um verbo de ação. Pense em ações como: ligar para o contato, enviar documentação, agendar reunião, verificar prazo, etc.`;
+
+      const actionsResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Retorne exatamente 3 ações práticas." },
+            { role: "user", content: actionsPrompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "suggest_actions",
+              description: "Retorna 3 sugestões de ação",
+              parameters: {
+                type: "object",
+                properties: {
+                  actions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: { type: "string", description: "Ação curta (ex: Ligar para o contato)" },
+                        detail: { type: "string", description: "Detalhe breve do que fazer" },
+                        icon: { type: "string", enum: ["phone", "document", "meeting", "email", "check", "search"], description: "Ícone da ação" },
+                      },
+                      required: ["label", "detail", "icon"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["actions"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "suggest_actions" } },
+        }),
+      });
+
+      if (!actionsResponse.ok) {
+        const t = await actionsResponse.text();
+        console.error("AI actions error:", actionsResponse.status, t);
+        return new Response(JSON.stringify({ actions: [] }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const actionsData = await actionsResponse.json();
+      const toolCall = actionsData.choices?.[0]?.message?.tool_calls?.[0];
+      let actions = [];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        actions = parsed.actions || [];
+      }
+
+      return new Response(JSON.stringify({ actions: actions.slice(0, 3) }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const systemPrompt = `Você é um assistente jurídico que analisa conversas de chat de atividades de um CRM de advocacia trabalhista.
 
