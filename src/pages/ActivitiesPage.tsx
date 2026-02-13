@@ -25,6 +25,7 @@ import {
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
+import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -126,6 +127,7 @@ const ActivitiesPage = () => {
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
   const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -1482,14 +1484,24 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               {sheetMode === 'edit' ? (
                 <div className="flex flex-col gap-2 max-w-2xl">
                   <div className="flex items-center justify-between gap-2">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs gap-1"
+                        onClick={() => setChatOpen(true)}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" /> Chat
+                      </Button>
+                    </div>
                     <div className="flex gap-2">
                       {selectedActivity?.status !== 'concluida' && (
                         <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
@@ -1519,6 +1531,20 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           </div>
         )}
       </div>
+
+      <ActivityChatSheet
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+        activityId={selectedActivity?.id || null}
+        leadId={selectedActivity?.lead_id || null}
+        activityTitle={selectedActivity?.title || formTitle}
+        onApplySuggestion={(suggestion) => {
+          if (suggestion.what_was_done) setFormWhatWasDone(suggestion.what_was_done);
+          if (suggestion.current_status_notes) setFormCurrentStatus(suggestion.current_status_notes);
+          if (suggestion.next_steps) setFormNextSteps(suggestion.next_steps);
+          if (suggestion.notes) setFormNotes(suggestion.notes);
+        }}
+      />
     </div>
   );
 };

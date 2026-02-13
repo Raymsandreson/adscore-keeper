@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.generate-corrida-maluca]
 verify_jwt = false
+
+[functions.analyze-activity-chat]
+verify_jwt = false
