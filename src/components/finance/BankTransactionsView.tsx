@@ -17,6 +17,7 @@ import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { ExpenseCategoryManager } from '@/components/finance/ExpenseCategoryManager';
+import { CategorySelector } from '@/components/finance/CategorySelector';
 import { CardAssignmentManager } from '@/components/finance/CardAssignmentManager';
 import {
   ArrowUpRight, ArrowDownRight, Search, Wallet, TrendingUp, TrendingDown,
@@ -575,16 +576,11 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
             {isEditing ? (
               <>
                 {/* Category Selection */}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Categoria</label>
-                  <div className="flex flex-wrap gap-1">
-                    {parentCategories.map(cat => (
-                      <Button key={cat.id} variant={editData.categoryId === cat.id ? 'default' : 'outline'} size="sm" onClick={() => setEditData(prev => ({ ...prev, categoryId: cat.id }))} className="h-7 text-xs gap-1">
-                        <div className={cn("w-2 h-2 rounded", cat.color)} />{cat.name}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                <CategorySelector
+                  categories={categories}
+                  selectedCategoryId={editData.categoryId}
+                  onSelect={(id) => setEditData(prev => ({ ...prev, categoryId: id }))}
+                />
 
                 {/* Link Type & Selection */}
                 <div className="grid grid-cols-2 gap-3">
