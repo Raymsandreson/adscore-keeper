@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
   Info, User, Briefcase, MapPin, Calendar, ArrowRight, PhoneCall, FileSearch, CalendarCheck, Mail, CheckCircle, Search,
+  RefreshCw, Settings2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -70,6 +71,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [actionSuggestions, setActionSuggestions] = useState<{ label: string; detail: string; icon: string }[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [executingAction, setExecutingAction] = useState<string | null>(null);
+  const [regenerateConfig, setRegenerateConfig] = useState<{ msgId: string; fileUrl: string; fileType: string; fileName: string; audioDuration?: number } | null>(null);
+  const [regenPrompt, setRegenPrompt] = useState('');
+  const [regenMaxChars, setRegenMaxChars] = useState(600);
+  const [regenerating, setRegenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -211,6 +216,41 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       console.error('Error auto-analyzing file:', e);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleRegenerateSummary = async () => {
+    if (!regenerateConfig) return;
+    setRegenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+        body: {
+          mode: 'describe_file',
+          context: {
+            file_url: regenerateConfig.fileUrl,
+            file_type: regenerateConfig.fileType,
+            file_name: regenerateConfig.fileName,
+            audio_duration: regenerateConfig.audioDuration,
+            custom_prompt: regenPrompt || undefined,
+            max_chars: regenMaxChars,
+          },
+        },
+      });
+      if (error) throw error;
+      if (data?.description) {
+        // Update existing AI message
+        await supabase.from('activity_chat_messages').update({ content: data.description } as any).eq('id', regenerateConfig.msgId);
+        await fetchMessages();
+        toast.success('Resumo regenerado!');
+      }
+    } catch (e) {
+      console.error('Error regenerating summary:', e);
+      toast.error('Erro ao regenerar resumo');
+    } finally {
+      setRegenerating(false);
+      setRegenerateConfig(null);
+      setRegenPrompt('');
+      setRegenMaxChars(600);
     }
   };
 
@@ -557,6 +597,50 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
     if (isAI) {
       const suggestion = msg.ai_suggestion as AISuggestion | null;
+      const isFileDescription = !suggestion && msg.content;
+
+      // Find the source file message (the message right before this AI message)
+      const msgIndex = messages.findIndex(m => m.id === msg.id);
+      const sourceMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+      const canRegenerate = sourceMsg && ['audio', 'image', 'pdf'].includes(sourceMsg.message_type) && sourceMsg.file_url;
+
+      if (isFileDescription) {
+        return (
+          <div key={msg.id} className="flex justify-center my-3">
+            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 max-w-[90%] space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                  <Sparkles className="h-3.5 w-3.5" /> Resumo da IA
+                </div>
+                {canRegenerate && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] text-primary hover:text-primary"
+                    onClick={() => {
+                      setRegenerateConfig({
+                        msgId: msg.id,
+                        fileUrl: sourceMsg.file_url!,
+                        fileType: sourceMsg.message_type,
+                        fileName: sourceMsg.file_name || '',
+                        audioDuration: sourceMsg.audio_duration || undefined,
+                      });
+                    }}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" /> Regenerar
+                  </Button>
+                )}
+              </div>
+              <Separator className="bg-primary/10" />
+              <div className="text-xs whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+              <div className="text-[10px] text-muted-foreground">
+                {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       if (!suggestion) return null;
       return (
         <div key={msg.id} className="flex justify-center my-3">
@@ -631,6 +715,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         {/* Header */}
@@ -878,5 +963,58 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* Regenerate Summary Dialog */}
+    {regenerateConfig && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setRegenerateConfig(null)}>
+        <div className="bg-background rounded-xl border shadow-lg p-4 w-[90%] max-w-sm space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Settings2 className="h-4 w-4 text-primary" />
+            Regenerar Resumo
+          </div>
+          <Separator />
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Instruções para o resumo</label>
+            <textarea
+              className="w-full rounded-lg border bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+              rows={3}
+              placeholder="Ex: Foque nos próximos passos e decisões tomadas..."
+              value={regenPrompt}
+              onChange={e => setRegenPrompt(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Tamanho máximo do resumo</label>
+            <div className="flex items-center gap-2">
+              <select
+                className="flex-1 rounded-lg border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"
+                value={regenMaxChars}
+                onChange={e => setRegenMaxChars(Number(e.target.value))}
+              >
+                <option value={300}>Curto (~4 linhas)</option>
+                <option value={600}>Padrão (~9 linhas)</option>
+                <option value={1200}>Médio (~18 linhas)</option>
+                <option value={2000}>Longo (~30 linhas)</option>
+                <option value={4000}>Muito longo (~60 linhas)</option>
+              </select>
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">{regenMaxChars} chars</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={() => setRegenerateConfig(null)}>
+              Cancelar
+            </Button>
+            <Button size="sm" className="flex-1 h-8 text-xs" onClick={handleRegenerateSummary} disabled={regenerating}>
+              {regenerating ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+              Regenerar
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
