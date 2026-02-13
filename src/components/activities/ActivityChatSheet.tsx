@@ -79,6 +79,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const callAudioChunksRef = useRef<Blob[]>([]);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
   const callStreamsRef = useRef<MediaStream[]>([]);
+  const recordingTimeRef = useRef(0);
+  const callRecordingTimeRef = useRef(0);
 
   // Fetch user name
   useEffect(() => {
@@ -260,6 +262,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       setRecordingTime(0);
+      recordingTimeRef.current = 0;
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -268,7 +271,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const duration = recordingTime;
+        const duration = recordingTimeRef.current;
 
         setSending(true);
         try {
@@ -286,9 +289,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(10000); // Collect data every 10s to support long recordings
       setRecording(true);
-      timerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+      timerRef.current = setInterval(() => {
+        recordingTimeRef.current += 1;
+        setRecordingTime(recordingTimeRef.current);
+      }, 1000);
     } catch (e) {
       console.error('Error starting recording:', e);
       toast.error('Erro ao acessar microfone');
@@ -376,6 +382,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       callMediaRecorderRef.current = mediaRecorder;
       callAudioChunksRef.current = [];
       setCallRecordingTime(0);
+      callRecordingTimeRef.current = 0;
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) callAudioChunksRef.current.push(e.data);
@@ -386,7 +393,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         callStreamsRef.current = [];
         if (audioContext) audioContext.close();
         const audioBlob = new Blob(callAudioChunksRef.current, { type: 'audio/webm' });
-        const duration = callRecordingTime;
+        const duration = callRecordingTimeRef.current;
 
         setSending(true);
         try {
@@ -405,9 +412,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         }
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(10000); // Collect data every 10s to support long recordings
       setCallRecording(true);
-      callTimerRef.current = setInterval(() => setCallRecordingTime(t => t + 1), 1000);
+      callTimerRef.current = setInterval(() => {
+        callRecordingTimeRef.current += 1;
+        setCallRecordingTime(callRecordingTimeRef.current);
+      }, 1000);
 
       if (isMicOnly) {
         toast.info('Gravando apenas seu microfone. No celular, use viva-voz para capturar a outra pessoa.');
