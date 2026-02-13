@@ -22,6 +22,7 @@ import {
   ClipboardList,
   ChevronRight,
   Phone,
+  MessageSquare as MessageSquareIcon,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
@@ -102,6 +103,7 @@ export function FloatingNav() {
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
     { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
+    { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "finance", label: "Finanças", icon: <CreditCard className="h-4 w-4" />, path: "/finance", color: "text-green-500" },
     { id: "editorial", label: "Editorial", icon: <CalendarDays className="h-4 w-4" />, path: "/editorial" },
   ];

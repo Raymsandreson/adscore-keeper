@@ -3700,6 +3700,75 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_messages: {
+        Row: {
+          contact_id: string | null
+          contact_name: string | null
+          created_at: string
+          direction: string
+          external_message_id: string | null
+          id: string
+          lead_id: string | null
+          media_type: string | null
+          media_url: string | null
+          message_text: string | null
+          message_type: string
+          metadata: Json | null
+          phone: string
+          read_at: string | null
+          status: string
+        }
+        Insert: {
+          contact_id?: string | null
+          contact_name?: string | null
+          created_at?: string
+          direction?: string
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message_text?: string | null
+          message_type?: string
+          metadata?: Json | null
+          phone: string
+          read_at?: string | null
+          status?: string
+        }
+        Update: {
+          contact_id?: string | null
+          contact_name?: string | null
+          created_at?: string
+          direction?: string
+          external_message_id?: string | null
+          id?: string
+          lead_id?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message_text?: string | null
+          message_type?: string
+          metadata?: Json | null
+          phone?: string
+          read_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workflow_daily_goals: {
         Row: {
           created_at: string
