@@ -24,6 +24,7 @@ import ProfilePage from "./pages/ProfilePage";
 import FinancePage from "./pages/FinancePage";
 import ExpenseFormPage from "./pages/ExpenseFormPage";
 import CallsPage from "./pages/CallsPage";
+import WhatsAppPage from "./pages/WhatsAppPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -68,6 +69,7 @@ function AppRoutes() {
         <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
         <Route path="/expense-form/:token" element={<ProtectedRoute><ExpenseFormPage /></ProtectedRoute>} />
         <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
+        <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

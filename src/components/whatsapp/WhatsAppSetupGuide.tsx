@@ -1,0 +1,116 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Copy, ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
+
+export function WhatsAppSetupGuide() {
+  const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    toast.success('URL copiada!');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div>
+        <h2 className="text-xl font-bold mb-2">Configuração da Integração WhatsApp</h2>
+        <p className="text-sm text-muted-foreground">
+          Configure seu n8n para enviar mensagens do UazAPI para o webhook abaixo.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>1</Badge> URL do Webhook
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Use esta URL no n8n para enviar as mensagens recebidas do UazAPI:
+          </p>
+          <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+            <code className="text-xs flex-1 break-all">{webhookUrl}</code>
+            <Button variant="ghost" size="icon" onClick={copyUrl}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Método: <strong>POST</strong> | Content-Type: <strong>application/json</strong>
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>2</Badge> Formato do Payload
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            O n8n deve enviar o seguinte JSON para cada mensagem recebida:
+          </p>
+          <pre className="p-3 bg-muted rounded-lg text-xs overflow-x-auto">
+{`{
+  "phone": "5511999999999",
+  "contact_name": "Nome do Contato",
+  "message": "Texto da mensagem",
+  "message_type": "text",
+  "media_url": null,
+  "media_type": null,
+  "direction": "inbound",
+  "message_id": "id-externo-opcional"
+}`}
+          </pre>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>3</Badge> Workflow no n8n
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Crie dois workflows no n8n:
+          </p>
+          <div className="space-y-2">
+            <div className="p-3 border rounded-lg">
+              <p className="font-medium text-sm">📥 Receber mensagens</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                UazAPI Trigger → Formatar dados → HTTP Request (POST para o webhook acima)
+              </p>
+            </div>
+            <div className="p-3 border rounded-lg">
+              <p className="font-medium text-sm">📤 Enviar mensagens</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Webhook Trigger → UazAPI Send Message
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Configure a variável de ambiente <code className="bg-muted px-1 rounded">N8N_WHATSAPP_WEBHOOK_URL</code> com a URL do webhook de envio do n8n.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>4</Badge> Vinculação Automática
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            O sistema tenta vincular automaticamente as mensagens recebidas a contatos e leads existentes pelo número de telefone. 
+            Para mensagens de números desconhecidos, você pode criar um contato e vincular a um lead diretamente pelo chat.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
