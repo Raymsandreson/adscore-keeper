@@ -43,6 +43,62 @@ export type Database = {
           },
         ]
       }
+      activity_chat_messages: {
+        Row: {
+          activity_id: string | null
+          ai_suggestion: Json | null
+          audio_duration: number | null
+          content: string | null
+          created_at: string
+          file_name: string | null
+          file_size: number | null
+          file_url: string | null
+          id: string
+          lead_id: string | null
+          message_type: string
+          sender_id: string | null
+          sender_name: string | null
+        }
+        Insert: {
+          activity_id?: string | null
+          ai_suggestion?: Json | null
+          audio_duration?: number | null
+          content?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          message_type?: string
+          sender_id?: string | null
+          sender_name?: string | null
+        }
+        Update: {
+          activity_id?: string | null
+          ai_suggestion?: Json | null
+          audio_duration?: number | null
+          content?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          message_type?: string
+          sender_id?: string | null
+          sender_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_chat_messages_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "lead_activities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_field_settings: {
         Row: {
           created_at: string
