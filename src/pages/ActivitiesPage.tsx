@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -1705,6 +1705,38 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       </Button>
                     </div>
                     <div className="flex gap-2 flex-wrap">
+                      {selectedActivity?.status === 'concluida' && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+                              <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-40 p-1" align="start">
+                            <div className="flex flex-col gap-0.5">
+                              {[
+                                { value: 'pendente', label: 'Pendente' },
+                                { value: 'em_andamento', label: 'Em Andamento' },
+                              ].map(opt => (
+                                <Button
+                                  key={opt.value}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs justify-start"
+                                  onClick={async () => {
+                                    if (!selectedActivity) return;
+                                    await updateActivity(selectedActivity.id, { status: opt.value, completed_at: null, completed_by: null, completed_by_name: null });
+                                    fetchActivities(getFilterParams());
+                                    setSelectedActivity(prev => prev ? { ...prev, status: opt.value, completed_at: null, completed_by: null, completed_by_name: null } : prev);
+                                  }}
+                                >
+                                  {opt.label}
+                                </Button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
                       {selectedActivity?.status !== 'concluida' && (
                         <Button size="sm" className="h-8 text-xs bg-success hover:bg-success/90 text-success-foreground" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
