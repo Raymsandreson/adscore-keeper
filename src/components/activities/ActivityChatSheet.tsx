@@ -236,31 +236,63 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
   };
 
-  // Call Recording (system audio + mic)
+  // Call Recording (system audio + mic, fallback to mic-only on mobile)
   const startCallRecording = async () => {
     try {
-      // Capture system audio (what you hear)
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: false,
-        audio: true,
-      } as any);
+      const supportsDisplayMedia = !!(navigator.mediaDevices as any)?.getDisplayMedia;
 
-      // Capture microphone (what you say)
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      let recordStream: MediaStream;
+      let streams: MediaStream[] = [];
+      let audioContext: AudioContext | null = null;
+      let isMicOnly = false;
 
-      callStreamsRef.current = [displayStream, micStream];
+      if (supportsDisplayMedia) {
+        try {
+          const displayStream = await (navigator.mediaDevices as any).getDisplayMedia({
+            video: false,
+            audio: true,
+          });
 
-      // Mix both audio streams
-      const audioContext = new AudioContext();
-      const destination = audioContext.createMediaStreamDestination();
-      const systemSource = audioContext.createMediaStreamSource(displayStream);
-      const micSource = audioContext.createMediaStreamSource(micStream);
-      systemSource.connect(destination);
-      micSource.connect(destination);
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
 
-      const mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm' });
+          streams = [displayStream, micStream];
+          audioContext = new AudioContext();
+          const destination = audioContext.createMediaStreamDestination();
+          audioContext.createMediaStreamSource(displayStream).connect(destination);
+          audioContext.createMediaStreamSource(micStream).connect(destination);
+          recordStream = destination.stream;
+
+          displayStream.getAudioTracks()[0].onended = () => {
+            if (callRecording) stopCallRecording();
+          };
+        } catch (displayErr: any) {
+          if (displayErr.name === 'NotAllowedError') {
+            toast.error('Permissão negada. Selecione a aba e marque "Compartilhar áudio".');
+            return;
+          }
+          // Fallback to mic only
+          const micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          streams = [micStream];
+          recordStream = micStream;
+          isMicOnly = true;
+        }
+      } else {
+        // Mobile / unsupported: mic only
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        streams = [micStream];
+        recordStream = micStream;
+        isMicOnly = true;
+      }
+
+      callStreamsRef.current = streams;
+
+      const mediaRecorder = new MediaRecorder(recordStream, { mimeType: 'audio/webm' });
       callMediaRecorderRef.current = mediaRecorder;
       callAudioChunksRef.current = [];
       setCallRecordingTime(0);
@@ -272,7 +304,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       mediaRecorder.onstop = async () => {
         callStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
         callStreamsRef.current = [];
-        audioContext.close();
+        if (audioContext) audioContext.close();
         const audioBlob = new Blob(callAudioChunksRef.current, { type: 'audio/webm' });
         const duration = callRecordingTime;
 
@@ -283,7 +315,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           if (uploadError) throw uploadError;
 
           const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
-          await sendMessage('audio', `📞 Gravação de chamada (${Math.floor(duration / 60)}min ${duration % 60}s)`, publicUrl, 'call_recording.webm', audioBlob.size, duration);
+          const label = isMicOnly ? '🎙️ Gravação (só microfone)' : '📞 Gravação de chamada';
+          await sendMessage('audio', `${label} (${Math.floor(duration / 60)}min ${duration % 60}s)`, publicUrl, 'call_recording.webm', audioBlob.size, duration);
         } catch (e) {
           console.error('Error uploading call recording:', e);
           toast.error('Erro ao enviar gravação da chamada');
@@ -292,22 +325,18 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         }
       };
 
-      // Stop if user stops sharing
-      displayStream.getAudioTracks()[0].onended = () => {
-        if (callRecording) stopCallRecording();
-      };
-
       mediaRecorder.start();
       setCallRecording(true);
       callTimerRef.current = setInterval(() => setCallRecordingTime(t => t + 1), 1000);
-      toast.success('Gravação de chamada iniciada! Áudio do sistema + microfone.');
+
+      if (isMicOnly) {
+        toast.info('Gravando apenas seu microfone. No celular, use viva-voz para capturar a outra pessoa.');
+      } else {
+        toast.success('Gravação de chamada iniciada! Áudio do sistema + microfone.');
+      }
     } catch (e: any) {
       console.error('Error starting call recording:', e);
-      if (e.name === 'NotAllowedError') {
-        toast.error('Permissão negada. Selecione a aba do WhatsApp Web e marque "Compartilhar áudio".');
-      } else {
-        toast.error('Erro ao iniciar gravação de chamada');
-      }
+      toast.error('Erro ao iniciar gravação de chamada');
     }
   };
 
