@@ -216,6 +216,63 @@ async function getItem(apiKey: string, itemId: string) {
   return await response.json();
 }
 
+async function updateItem(apiKey: string, itemId: string): Promise<void> {
+  console.log(`Triggering Pluggy item update for ${itemId}...`);
+  try {
+    const response = await fetch(`${PLUGGY_API_URL}/items/${itemId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': apiKey,
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.warn(`Item update request failed for ${itemId}: ${error}`);
+      // Don't throw - we still want to sync cached data even if update fails
+      return;
+    }
+
+    const item = await response.json();
+    console.log(`Item ${itemId} update triggered, status: ${item.status}, executionStatus: ${item.executionStatus}`);
+
+    // Wait for the item to finish updating (poll with timeout)
+    const maxWaitMs = 60000; // 60 seconds max
+    const pollIntervalMs = 3000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      const checkResponse = await fetch(`${PLUGGY_API_URL}/items/${itemId}`, {
+        headers: { 'X-API-KEY': apiKey },
+      });
+
+      if (checkResponse.ok) {
+        const checkItem = await checkResponse.json();
+        const execStatus = checkItem.executionStatus;
+        console.log(`Item ${itemId} poll - executionStatus: ${execStatus}`);
+
+        if (execStatus === 'SUCCESS' || execStatus === 'PARTIAL_SUCCESS') {
+          console.log(`Item ${itemId} updated successfully`);
+          return;
+        }
+        if (execStatus === 'ERROR') {
+          console.warn(`Item ${itemId} update finished with error`);
+          return;
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    console.warn(`Item ${itemId} update timed out after ${maxWaitMs}ms, proceeding with existing data`);
+  } catch (err) {
+    console.warn(`Error updating item ${itemId}:`, err);
+    // Don't throw - proceed with sync using cached data
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -316,6 +373,8 @@ serve(async (req) => {
         const BATCH_SIZE = 100; // Process in smaller batches to avoid CPU timeout
 
         for (const connection of connections) {
+          // Trigger Pluggy to refresh data from the bank before fetching
+          await updateItem(apiKey, connection.pluggy_item_id);
           const accounts = await getAccounts(apiKey, connection.pluggy_item_id);
           
           // === CREDIT CARD TRANSACTIONS ===
