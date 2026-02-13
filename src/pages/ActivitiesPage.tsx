@@ -1317,12 +1317,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           >
                             <div className="text-center">{format(day, 'd')}</div>
                             {dayActivities.length > 0 && (
-                              <div className="flex justify-center gap-0.5 mt-0.5">
+                              <div className="flex justify-center gap-1 mt-0.5">
                                 {openCount > 0 && (
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                                  <span className="text-[9px] font-bold text-red-500 leading-none">{openCount}</span>
                                 )}
                                 {doneCount > 0 && (
-                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+                                  <span className="text-[9px] font-bold text-green-500 leading-none">{doneCount}</span>
                                 )}
                               </div>
                             )}
