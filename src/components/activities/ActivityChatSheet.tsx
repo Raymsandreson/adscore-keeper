@@ -474,6 +474,25 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
           const label = isMicOnly ? '🎙️ Gravação (só microfone)' : '📞 Gravação de chamada';
           await sendMessage('audio', `${label} (${Math.floor(duration / 60)}min ${duration % 60}s)`, publicUrl, 'call_recording.webm', audioBlob.size, duration);
+
+          // Auto-register call record
+          const leadData = contextData.lead;
+          const contactData = contextData.contact;
+          await supabase.from('call_records').insert({
+            activity_id: activityId,
+            lead_id: leadId || leadData?.id || null,
+            contact_id: contextData.activity?.contact_id || null,
+            user_id: user?.id,
+            call_type: 'outbound',
+            call_result: 'answered',
+            duration_seconds: duration,
+            audio_url: publicUrl,
+            audio_file_name: 'call_recording.webm',
+            lead_name: leadData?.lead_name || contextData.activity?.lead_name || null,
+            contact_name: contactData?.full_name || contextData.activity?.contact_name || null,
+            contact_phone: contactData?.phone || null,
+          } as any);
+          toast.success('Ligação registrada automaticamente!');
         } catch (e) {
           console.error('Error uploading call recording:', e);
           toast.error('Erro ao enviar gravação da chamada');
