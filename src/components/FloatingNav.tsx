@@ -254,7 +254,10 @@ export function FloatingNav() {
             open && "rotate-90",
             isDragging ? "cursor-grabbing" : "cursor-grab"
           )}
-          onClick={() => { if (!hasMoved.current) { setOpen(v => !v); setExpandedSection(null); } }}
+      onPointerUp={(e) => {
+            e.stopPropagation();
+            if (!hasMoved.current) { setOpen(v => !v); setExpandedSection(null); }
+          }}
         >
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
