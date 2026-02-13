@@ -31,7 +31,7 @@ import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgres
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 const ACTIVITY_TYPES = [
@@ -112,6 +112,7 @@ const ActivitiesPage = () => {
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
   const [formStatus, setFormStatus] = useState('pendente');
   const [formContactId, setFormContactId] = useState('');
   const [formContactName, setFormContactName] = useState('');
@@ -226,6 +227,7 @@ const ActivitiesPage = () => {
     setFormDeadline('');
     setFormNotificationDate('');
     setFormNotes('');
+    setFormRepeatWeekDays([]);
     setFormStatus('pendente');
     setLeadSearch('');
     setFormContactId('');
@@ -238,7 +240,8 @@ const ActivitiesPage = () => {
       toast.error('Informe o assunto da atividade');
       return;
     }
-    await createActivity({
+
+    const baseData = {
       title: formTitle,
       description: null,
       what_was_done: formWhatWasDone || null,
@@ -250,12 +253,34 @@ const ActivitiesPage = () => {
       lead_name: formLeadName || null,
       assigned_to: formAssignedTo || null,
       assigned_to_name: formAssignedToName || null,
-      deadline: formDeadline || null,
-      notification_date: formNotificationDate || null,
       notes: formNotes || null,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
-    });
+    };
+
+    if (formRepeatWeekDays.length > 0 && formDeadline) {
+      // Create one activity per selected day of the week, starting from the deadline week
+      const baseDate = parseISO(formDeadline);
+      const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
+      
+      for (const dayIdx of formRepeatWeekDays) {
+        const targetDate = addDays(weekStart, dayIdx);
+        const dateStr = format(targetDate, 'yyyy-MM-dd');
+        await createActivity({
+          ...baseData,
+          deadline: dateStr,
+          notification_date: dateStr,
+        });
+      }
+      toast.success(`${formRepeatWeekDays.length} atividades criadas para a semana!`);
+    } else {
+      await createActivity({
+        ...baseData,
+        deadline: formDeadline || null,
+        notification_date: formNotificationDate || null,
+      });
+    }
+
     closeSheet();
     fetchActivities(getFilterParams());
   };
@@ -728,6 +753,50 @@ const ActivitiesPage = () => {
           <Input type="date" value={formNotificationDate} onChange={e => setFormNotificationDate(e.target.value)} />
         </div>
       </div>
+
+      {/* Repeat weekly - only on create */}
+      {!selectedActivity && (
+        <div>
+          <Label className="text-xs">Repetir nos dias da semana</Label>
+          <div className="flex gap-1 mt-1">
+            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((day, idx) => {
+              const isSelected = formRepeatWeekDays.includes(idx);
+              return (
+                <Button
+                  key={idx}
+                  type="button"
+                  variant={isSelected ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 w-9 px-0 text-[10px]"
+                  onClick={() => {
+                    setFormRepeatWeekDays(prev =>
+                      isSelected ? prev.filter(d => d !== idx) : [...prev, idx]
+                    );
+                  }}
+                >
+                  {day}
+                </Button>
+              );
+            })}
+            {formRepeatWeekDays.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[10px] text-muted-foreground"
+                onClick={() => setFormRepeatWeekDays([])}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
+          {formRepeatWeekDays.length > 0 && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Será criada 1 atividade para cada dia selecionado na semana do prazo
+            </p>
+          )}
+        </div>
+      )}
 
       <div>
         <Label>Nome do cliente (Lead)</Label>
