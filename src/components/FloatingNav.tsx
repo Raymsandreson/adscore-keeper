@@ -69,7 +69,6 @@ export function FloatingNav() {
     setIsDragging(true);
     hasMoved.current = false;
     dragStart.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [position]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -248,16 +247,13 @@ export function FloatingNav() {
       {/* FAB Button */}
       <div className="flex justify-end">
         <Button
+          data-no-drag
           size="icon"
           className={cn(
-            "h-14 w-14 rounded-full shadow-lg transition-transform duration-200",
-            open && "rotate-90",
-            isDragging ? "cursor-grabbing" : "cursor-grab"
+            "h-14 w-14 rounded-full shadow-lg transition-transform duration-200 cursor-pointer",
+            open && "rotate-90"
           )}
-      onPointerUp={(e) => {
-            e.stopPropagation();
-            if (!hasMoved.current) { setOpen(v => !v); setExpandedSection(null); }
-          }}
+          onClick={() => { setOpen(v => !v); setExpandedSection(null); }}
         >
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
