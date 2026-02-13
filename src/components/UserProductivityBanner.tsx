@@ -308,6 +308,7 @@ export function UserProductivityBanner() {
                       </span>
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                         <span title="Leads">{entry.leadsCreated}L</span>
+                        <span title="DMs">{entry.dmsSent}💬</span>
                         <span title="Passos">{entry.checklistItemsChecked}P</span>
                         <span title="Etapas">{entry.stageChanges}E</span>
                         <span title="Ligações">{entry.callsMade}📞</span>
