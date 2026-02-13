@@ -356,6 +356,119 @@ export type Database = {
         }
         Relationships: []
       }
+      call_records: {
+        Row: {
+          activity_id: string | null
+          ai_summary: string | null
+          ai_transcript: string | null
+          audio_file_name: string | null
+          audio_url: string | null
+          call_result: string
+          call_type: string
+          callback_date: string | null
+          callback_notes: string | null
+          chat_message_id: string | null
+          contact_id: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          duration_seconds: number | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          next_step: string | null
+          notes: string | null
+          phone_used: string | null
+          rating: number | null
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_id?: string | null
+          ai_summary?: string | null
+          ai_transcript?: string | null
+          audio_file_name?: string | null
+          audio_url?: string | null
+          call_result?: string
+          call_type?: string
+          callback_date?: string | null
+          callback_notes?: string | null
+          chat_message_id?: string | null
+          contact_id?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          next_step?: string | null
+          notes?: string | null
+          phone_used?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_id?: string | null
+          ai_summary?: string | null
+          ai_transcript?: string | null
+          audio_file_name?: string | null
+          audio_url?: string | null
+          call_result?: string
+          call_type?: string
+          callback_date?: string | null
+          callback_notes?: string | null
+          chat_message_id?: string | null
+          contact_id?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          duration_seconds?: number | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          next_step?: string | null
+          notes?: string | null
+          phone_used?: string | null
+          rating?: number | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_records_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "lead_activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_records_chat_message_id_fkey"
+            columns: ["chat_message_id"]
+            isOneToOne: false
+            referencedRelation: "activity_chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_records_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_records_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_action_history: {
         Row: {
           action: string
