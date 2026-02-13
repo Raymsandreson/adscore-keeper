@@ -97,7 +97,7 @@ export function StageFunnelChart({ board, leadsPerStage, conversionAlerts = [] }
       <CardContent className="pt-2">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Funnel Visual */}
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0 overflow-hidden">
             {funnelData.map((stage, index) => {
               const widthPercentage = totalLeads > 0 
                 ? Math.max(20, (stage.value / totalLeads) * 100) 
