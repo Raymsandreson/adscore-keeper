@@ -1478,7 +1478,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             </div>
 
             {/* Action bar - sticky at bottom like WhatsApp input bar */}
-            <div className="shrink-0 border-t bg-card px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+            <div className="shrink-0 border-t border-border bg-muted/60 px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
               {sheetMode === 'edit' ? (
                 <div className="flex flex-col gap-2 max-w-2xl">
                   <div className="flex items-center justify-between gap-2">
