@@ -1,0 +1,244 @@
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown, ChevronUp, CheckCircle2, Circle, Lock } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+
+interface Stage {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface ChecklistItem {
+  id: string;
+  label: string;
+  description?: string;
+  checked?: boolean;
+}
+
+interface ChecklistInstance {
+  id: string;
+  stage_id: string;
+  checklist_template_id: string;
+  items: ChecklistItem[];
+  is_completed: boolean;
+  is_readonly: boolean;
+  template_name?: string;
+}
+
+interface LeadFunnelProgressBarProps {
+  leadId: string;
+  boardId: string | null;
+}
+
+export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBarProps) {
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [currentStageId, setCurrentStageId] = useState<string | null>(null);
+  const [instances, setInstances] = useState<ChecklistInstance[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = useCallback(async () => {
+    if (!leadId || !boardId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [boardRes, historyRes, instancesRes] = await Promise.all([
+        supabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+        supabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
+        supabase.from('lead_checklist_instances').select('id, stage_id, checklist_template_id, items, is_completed, is_readonly').eq('lead_id', leadId).eq('board_id', boardId),
+      ]);
+
+      if (boardRes.data?.stages) {
+        const parsed = boardRes.data.stages as unknown as Stage[];
+        setStages(parsed);
+      }
+
+      if (historyRes.data && historyRes.data.length > 0) {
+        setCurrentStageId(historyRes.data[0].to_stage);
+      }
+
+      if (instancesRes.data) {
+        // Fetch template names
+        const templateIds = [...new Set(instancesRes.data.map(i => i.checklist_template_id))];
+        let templateNames: Record<string, string> = {};
+        if (templateIds.length > 0) {
+          const { data: templates } = await supabase
+            .from('checklist_templates')
+            .select('id, name')
+            .in('id', templateIds);
+          (templates || []).forEach(t => { templateNames[t.id] = t.name; });
+        }
+
+        setInstances(instancesRes.data.map(i => ({
+          ...i,
+          items: (i.items as unknown as ChecklistItem[]) || [],
+          template_name: templateNames[i.checklist_template_id] || 'Passos',
+        })));
+      }
+    } catch (err) {
+      console.error('Error loading funnel progress:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [leadId, boardId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
+    if (instance.is_readonly) return;
+
+    const updatedItems = instance.items.map(item =>
+      item.id === itemId ? { ...item, checked: !item.checked } : item
+    );
+
+    const { error } = await supabase
+      .from('lead_checklist_instances')
+      .update({
+        items: updatedItems as any,
+        is_completed: updatedItems.every(item => item.checked),
+        completed_at: updatedItems.every(item => item.checked) ? new Date().toISOString() : null,
+      })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao atualizar passo');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id
+        ? { ...i, items: updatedItems, is_completed: updatedItems.every(item => item.checked) }
+        : i
+    ));
+  };
+
+  if (loading || !boardId || stages.length === 0) return null;
+
+  // Determine current stage index
+  const currentIdx = stages.findIndex(s => s.id === currentStageId);
+  const progressPercent = currentIdx >= 0 ? ((currentIdx + 1) / stages.length) * 100 : 0;
+
+  // Get instances for the current stage
+  const currentStageInstances = instances.filter(i => i.stage_id === currentStageId && !i.is_readonly);
+  const totalItems = currentStageInstances.reduce((sum, i) => sum + i.items.length, 0);
+  const completedItems = currentStageInstances.reduce((sum, i) => sum + i.items.filter(item => item.checked).length, 0);
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button className="w-full mt-2 group cursor-pointer">
+          {/* Compact progress bar */}
+          <div className="flex items-center gap-2">
+            {/* Stage dots */}
+            <div className="flex items-center gap-0.5 flex-1">
+              {stages.map((stage, idx) => {
+                const isPast = idx < currentIdx;
+                const isCurrent = idx === currentIdx;
+                return (
+                  <div key={stage.id} className="flex items-center flex-1">
+                    <div
+                      className={cn(
+                        "h-1.5 flex-1 rounded-full transition-colors",
+                        isPast ? "bg-primary" : isCurrent ? "bg-primary/60" : "bg-muted"
+                      )}
+                      title={stage.name}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+              {currentStageId && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                  {stages.find(s => s.id === currentStageId)?.name || currentStageId}
+                </Badge>
+              )}
+              {totalItems > 0 && (
+                <span>{completedItems}/{totalItems}</span>
+              )}
+              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </div>
+          </div>
+        </button>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div className="mt-2 space-y-2 max-h-[300px] overflow-y-auto">
+          {/* Stage flow visualization */}
+          <div className="flex flex-wrap gap-1 mb-2">
+            {stages.map((stage, idx) => {
+              const isPast = idx < currentIdx;
+              const isCurrent = idx === currentIdx;
+              return (
+                <Badge
+                  key={stage.id}
+                  variant={isCurrent ? "default" : "outline"}
+                  className={cn(
+                    "text-[10px] px-1.5 py-0 h-5 transition-all",
+                    isPast && "bg-primary/15 text-primary border-primary/30",
+                    isCurrent && "bg-primary text-primary-foreground",
+                    !isPast && !isCurrent && "opacity-50"
+                  )}
+                >
+                  {isPast && <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />}
+                  {isCurrent && <Circle className="h-2.5 w-2.5 mr-0.5 fill-current" />}
+                  {stage.name}
+                </Badge>
+              );
+            })}
+          </div>
+
+          {/* Current stage checklists */}
+          {currentStageInstances.length > 0 ? (
+            currentStageInstances.map(instance => (
+              <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium">{instance.template_name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {instance.items.filter(i => i.checked).length}/{instance.items.length}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {instance.items.map(item => (
+                    <label
+                      key={item.id}
+                      className="flex items-start gap-2 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1"
+                    >
+                      <Checkbox
+                        checked={item.checked || false}
+                        onCheckedChange={() => handleToggleItem(instance, item.id)}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className={cn(item.checked && "line-through text-muted-foreground")}>
+                          {item.label}
+                        </span>
+                        {item.description && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-[11px] text-muted-foreground text-center py-2">
+              Nenhum passo configurado para esta fase
+            </p>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
