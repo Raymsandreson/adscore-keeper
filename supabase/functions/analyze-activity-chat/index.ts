@@ -32,7 +32,12 @@ serve(async (req) => {
 
     // Mode: describe_file - auto-analyze a single uploaded file (image, pdf, audio)
     if (mode === "describe_file") {
-      const { file_url: fUrl, file_type: fType, file_name: fName, audio_duration: fDuration } = context || {};
+      const { file_url: fUrl, file_type: fType, file_name: fName, audio_duration: fDuration, custom_prompt: customPrompt, max_chars: maxChars } = context || {};
+
+      // Default: ~9 lines / 3 paragraphs ≈ 600 chars
+      const charLimit = maxChars || 600;
+      const lengthInstruction = `\nIMPORTANTE: O resumo deve ter no máximo ${charLimit} caracteres (aproximadamente ${Math.round(charLimit / 70)} linhas). Seja conciso e direto.`;
+      const customInstruction = customPrompt ? `\nInstruções adicionais do usuário: ${customPrompt}` : '';
 
       let descriptionPrompt = "";
       const contentParts: any[] = [];
@@ -41,7 +46,7 @@ serve(async (req) => {
         descriptionPrompt = `Você recebeu uma gravação de áudio${fDuration ? ` com duração de ${Math.floor(fDuration / 60)}min ${fDuration % 60}s` : ''}. 
 Transcreva o áudio e faça um resumo objetivo da ligação/conversa em formato de bullet points. 
 Inclua: participantes identificados, assuntos tratados, decisões tomadas e próximos passos mencionados.
-Responda em português do Brasil.`;
+Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
         const fileData = await fetchFileAsBase64(fUrl);
         if (fileData) {
           contentParts.push({
@@ -52,7 +57,7 @@ Responda em português do Brasil.`;
       } else if (fType === "image" && fUrl) {
         descriptionPrompt = `Você recebeu uma imagem chamada "${fName || 'imagem'}". 
 Descreva o conteúdo da imagem de forma objetiva. Se for um documento, extraia o texto. Se for uma captura de tela de conversa, resuma os pontos principais.
-Responda em português do Brasil.`;
+Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
         const fileData = await fetchFileAsBase64(fUrl);
         if (fileData) {
           contentParts.push({
@@ -63,7 +68,7 @@ Responda em português do Brasil.`;
       } else if (fType === "pdf" && fUrl) {
         descriptionPrompt = `Você recebeu um documento PDF chamado "${fName || 'documento'}". 
 Analise o conteúdo do documento e faça um resumo objetivo dos pontos principais. Se for um documento jurídico, destaque prazos, partes envolvidas e obrigações.
-Responda em português do Brasil.`;
+Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
         const fileData = await fetchFileAsBase64(fUrl);
         if (fileData) {
           contentParts.push({
