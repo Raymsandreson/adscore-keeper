@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { 
   MapPin, Building2, User, Calendar, FileText, ExternalLink, 
   ChevronDown, ChevronUp, ClipboardPlus
@@ -117,7 +118,7 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
               className="h-6 text-[10px] gap-1 px-2 text-green-600 hover:text-green-700"
               onClick={() => onCreateActivity(lead.id, lead.lead_name || 'Lead', contactId || undefined, contactName || undefined)}
             >
-              <ClipboardPlus className="h-3 w-3" /> Atividade
+              <ClipboardPlus className="h-3 w-3" /> Criar Atividade
             </Button>
             {onNavigateToLead && (
               <Button
@@ -125,6 +126,7 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => onNavigateToLead(lead.id)}
+                title="Abrir Lead"
               >
                 <ExternalLink className="h-3 w-3" />
               </Button>
@@ -137,27 +139,15 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
           </div>
         </div>
 
-        {/* Expanded details */}
+        {/* Expanded: Full ActivityDetailPanel with tabs */}
         <CollapsibleContent>
-          <div className="px-3 pb-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground border-t pt-2">
-            {lead.victim_name && (
-              <span className="flex items-center gap-1"><User className="h-3 w-3" /> Vítima: {lead.victim_name}</span>
-            )}
-            {lead.victim_age && (
-              <span className="flex items-center gap-1">🎂 {lead.victim_age} anos</span>
-            )}
-            {lead.main_company && (
-              <span className="flex items-center gap-1 truncate"><Building2 className="h-3 w-3" /> {lead.main_company}</span>
-            )}
-            {lead.contractor_company && (
-              <span className="flex items-center gap-1 truncate"><Building2 className="h-3 w-3" /> {lead.contractor_company}</span>
-            )}
-            {lead.acolhedor && (
-              <span className="flex items-center gap-1"><User className="h-3 w-3" /> Acolhedor: {lead.acolhedor}</span>
-            )}
-            {lead.visit_city && lead.visit_state && (
-              <span className="flex items-center gap-1">📍 Visita: {lead.visit_city}/{lead.visit_state}</span>
-            )}
+          <div className="border-t" style={{ height: '300px' }}>
+            <ActivityDetailPanel
+              leadId={lead.id}
+              leadName={lead.lead_name}
+              currentActivityId={null}
+              onNavigateToLead={onNavigateToLead}
+            />
           </div>
         </CollapsibleContent>
       </div>
