@@ -95,6 +95,11 @@ export function CreateLeadFromCatDialog({
       toast.error('Selecione um quadro');
       return;
     }
+    // Guard against duplicate creation
+    if (catLead.lead_id) {
+      toast.error('Este CAT já possui um lead vinculado');
+      return;
+    }
     setSaving(true);
     try {
       const selectedStage = selectedBoard?.stages.find(s => s.id === selectedStageId);
