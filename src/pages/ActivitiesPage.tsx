@@ -28,6 +28,7 @@ import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO } from 'date-fns';
@@ -810,6 +811,20 @@ const ActivitiesPage = () => {
         const entry = valueMap[field.field_key];
         if (!entry) return null;
         const [value, setter] = entry;
+
+        if (field.field_key === 'notes') {
+          return (
+            <ActivityNotesField
+              key={field.field_key}
+              value={value}
+              onChange={setter}
+              activityId={selectedActivity?.id || null}
+              placeholder={field.placeholder || 'Notas adicionais...'}
+              label={field.label}
+            />
+          );
+        }
+
         return (
           <div key={field.field_key}>
             <Label>{field.label}</Label>

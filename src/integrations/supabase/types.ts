@@ -43,6 +43,56 @@ export type Database = {
           },
         ]
       }
+      activity_attachments: {
+        Row: {
+          activity_id: string
+          attachment_type: string
+          created_at: string
+          created_by: string | null
+          file_name: string
+          file_size: number | null
+          file_type: string
+          file_url: string
+          id: string
+          link_title: string | null
+          link_url: string | null
+        }
+        Insert: {
+          activity_id: string
+          attachment_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_name: string
+          file_size?: number | null
+          file_type: string
+          file_url: string
+          id?: string
+          link_title?: string | null
+          link_url?: string | null
+        }
+        Update: {
+          activity_id?: string
+          attachment_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_type?: string
+          file_url?: string
+          id?: string
+          link_title?: string | null
+          link_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_attachments_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "lead_activities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_chat_messages: {
         Row: {
           activity_id: string | null
