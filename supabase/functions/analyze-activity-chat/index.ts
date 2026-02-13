@@ -5,6 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function fetchFileAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const buffer = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    const mimeType = resp.headers.get("content-type") || "application/octet-stream";
+    return { base64, mimeType };
+  } catch (e) {
+    console.error("Error fetching file:", url, e);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -15,7 +32,7 @@ serve(async (req) => {
 
     const systemPrompt = `Você é um assistente jurídico que analisa conversas de chat de atividades de um CRM de advocacia trabalhista.
 
-Analise TODAS as mensagens do chat e extraia informações para preencher os campos da atividade.
+Analise TODAS as mensagens do chat, incluindo o conteúdo de áudios transcritos, imagens analisadas e documentos PDF.
 
 Você DEVE retornar um JSON com exatamente estes campos:
 - what_was_done: string (resumo do que foi feito/discutido)
@@ -27,6 +44,55 @@ Seja conciso mas completo. Use linguagem profissional. Se algum campo não tiver
 
 IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.`;
 
+    // Build multimodal content parts
+    const contentParts: any[] = [];
+    
+    // Add text summary of the conversation
+    let textSummary = "Analise estas mensagens de chat e extraia as informações:\n\n";
+    
+    for (const m of messages) {
+      const senderLabel = m.sender_name || 'Usuário';
+      
+      if (m.message_type === 'text') {
+        textSummary += `[${senderLabel}]: ${m.content || ''}\n`;
+      } else if (m.message_type === 'ai_suggestion') {
+        // Skip AI suggestions from analysis
+        continue;
+      } else if (m.message_type === 'image' && m.file_url) {
+        textSummary += `[${senderLabel}] enviou uma imagem (${m.file_name || 'imagem'}). Analise o conteúdo da imagem abaixo:\n`;
+        // Add image as multimodal content
+        const fileData = await fetchFileAsBase64(m.file_url);
+        if (fileData) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
+          });
+        }
+      } else if (m.message_type === 'audio' && m.file_url) {
+        textSummary += `[${senderLabel}] enviou um áudio (${m.audio_duration || '?'}s). Transcreva e analise o áudio abaixo:\n`;
+        const fileData = await fetchFileAsBase64(m.file_url);
+        if (fileData) {
+          contentParts.push({
+            type: "input_audio",
+            input_audio: { data: fileData.base64, format: "wav" }
+          });
+        }
+      } else if (m.message_type === 'pdf' && m.file_url) {
+        textSummary += `[${senderLabel}] enviou um documento PDF (${m.file_name || 'documento'}). Analise o conteúdo do documento abaixo:\n`;
+        const fileData = await fetchFileAsBase64(m.file_url);
+        if (fileData) {
+          // Send PDF as file content for Gemini
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
+          });
+        }
+      }
+    }
+
+    // Build the user message with text first, then media
+    const userContent: any[] = [{ type: "text", text: textSummary }, ...contentParts];
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -37,7 +103,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Analise estas mensagens de chat e extraia as informações:\n\n${messages.map((m: any) => `[${m.sender_name || 'Usuário'}] (${m.message_type}): ${m.content || m.file_name || 'arquivo'}`).join('\n')}` },
+          { role: "user", content: userContent },
         ],
         tools: [
           {
@@ -66,34 +132,28 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
     if (!response.ok) {
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (response.status === 402) {
         return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const t = await response.text();
       console.error("AI gateway error:", response.status, t);
       return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const data = await response.json();
-    
-    // Extract tool call result
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     let suggestion;
     
     if (toolCall?.function?.arguments) {
       suggestion = JSON.parse(toolCall.function.arguments);
     } else {
-      // Fallback: try to parse content directly
       const content = data.choices?.[0]?.message?.content || '{}';
       suggestion = JSON.parse(content);
     }
@@ -104,8 +164,7 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
   } catch (e) {
     console.error("analyze-activity-chat error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
