@@ -19,6 +19,7 @@ import {
   Reply,
   Plus,
   X,
+  Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -151,6 +152,30 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
       toast.error('Erro ao registrar DM');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteComment = async (id: string) => {
+    try {
+      const { error } = await supabase.from('instagram_comments').delete().eq('id', id);
+      if (error) throw error;
+      setComments(prev => prev.filter(c => c.id !== id));
+      toast.success('Comentário excluído!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao excluir comentário');
+    }
+  };
+
+  const handleDeleteDm = async (id: string) => {
+    try {
+      const { error } = await supabase.from('dm_history').delete().eq('id', id);
+      if (error) throw error;
+      setDmHistory(prev => prev.filter(d => d.id !== id));
+      toast.success('DM excluída!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao excluir DM');
     }
   };
 
@@ -310,8 +335,8 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
               .sort((a, b) => b.date.getTime() - a.date.getTime())
               .map((item) => (
                 item.type === 'comment' 
-                  ? <CommentCard key={`comment-${item.data.id}`} comment={item.data as Comment} getConfig={getCommentTypeConfig} />
-                  : <DmCard key={`dm-${item.data.id}`} dm={item.data as DmEntry} getActionLabel={getActionTypeLabel} />
+                  ? <CommentCard key={`comment-${item.data.id}`} comment={item.data as Comment} getConfig={getCommentTypeConfig} onDelete={handleDeleteComment} />
+                  : <DmCard key={`dm-${item.data.id}`} dm={item.data as DmEntry} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} />
               ))}
           </div>
         </TabsContent>
@@ -319,7 +344,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
         <TabsContent value="comments" className="mt-3">
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
             {comments.map((comment) => (
-              <CommentCard key={comment.id} comment={comment} getConfig={getCommentTypeConfig} />
+              <CommentCard key={comment.id} comment={comment} getConfig={getCommentTypeConfig} onDelete={handleDeleteComment} />
             ))}
           </div>
         </TabsContent>
@@ -327,7 +352,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
         <TabsContent value="dms" className="mt-3">
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
             {dmHistory.map((dm) => (
-              <DmCard key={dm.id} dm={dm} getActionLabel={getActionTypeLabel} />
+              <DmCard key={dm.id} dm={dm} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} />
             ))}
           </div>
         </TabsContent>
@@ -338,16 +363,18 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
 
 function CommentCard({ 
   comment, 
-  getConfig 
+  getConfig,
+  onDelete
 }: { 
   comment: Comment; 
-  getConfig: (type: string) => { label: string; icon: any; className: string } 
+  getConfig: (type: string) => { label: string; icon: any; className: string };
+  onDelete: (id: string) => void;
 }) {
   const config = getConfig(comment.comment_type);
   const Icon = config.icon;
 
   return (
-    <div className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+    <div className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors group">
       <div className="flex items-start gap-2">
         <div className={`p-1.5 rounded ${config.className}`}>
           <Icon className="h-3 w-3" />
@@ -362,6 +389,14 @@ function CommentCard({
                 Respondido
               </Badge>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+              onClick={() => onDelete(comment.id)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
           </div>
           <p className="text-sm line-clamp-2">{comment.comment_text || '(sem texto)'}</p>
           <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
@@ -386,13 +421,15 @@ function CommentCard({
 
 function DmCard({ 
   dm, 
-  getActionLabel 
+  getActionLabel,
+  onDelete
 }: { 
   dm: DmEntry; 
-  getActionLabel: (type: string) => string 
+  getActionLabel: (type: string) => string;
+  onDelete: (id: string) => void;
 }) {
   return (
-    <div className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+    <div className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors group">
       <div className="flex items-start gap-2">
         <div className="p-1.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300">
           <Send className="h-3 w-3" />
@@ -407,6 +444,14 @@ function DmCard({
                 Editado
               </Badge>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+              onClick={() => onDelete(dm.id)}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
           </div>
           <p className="text-sm line-clamp-3">{dm.dm_message}</p>
           {dm.original_suggestion && dm.was_edited && (
