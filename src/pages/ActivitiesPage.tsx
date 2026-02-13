@@ -125,6 +125,7 @@ const ActivitiesPage = () => {
   const [workflowFinished, setWorkflowFinished] = useState(false);
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
   const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
+  const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
 
   const getFilterParams = () => ({
     status: filterStatus.length > 0 ? filterStatus : 'all',
@@ -608,6 +609,11 @@ const ActivitiesPage = () => {
     return { open, done, deadlines, hearings, tasks };
   }, [activities]);
 
+  const displayedActivities = useMemo(() => {
+    if (!selectedCalDay) return activities;
+    return activities.filter(a => a.deadline === selectedCalDay);
+  }, [activities, selectedCalDay]);
+
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
     return teamMembers.find(m => m.user_id === userId)?.full_name || null;
@@ -1031,566 +1037,485 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
   const isEditing = sheetMode !== null;
 
+
+
+
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">Atividades</h1>
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      {/* WhatsApp-style Header */}
+      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
+          <div className="flex items-center gap-1.5 text-primary-foreground/80 text-xs">
+            <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.open} abertas</span>
+            <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.done} concluídas</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
+            <Play className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova atividade">
+            <Plus className="h-4 w-4" />
+          </Button>
           <UserMenu />
         </div>
       </div>
 
+      {/* Filters strip - compact horizontal */}
+      <div className="bg-muted/30 border-b px-3 py-1.5 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none">
+        {/* Assessor */}
+        <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterAssignee.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <User className="h-3 w-3" />
+              {filterAssignee.length === 0 ? 'Assessor' : filterAssignee.length === 1 ? (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name?.split(' ')[0] || '1') : `${filterAssignee.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[260px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar assessor..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_assessor" onSelect={() => setFilterAssignee([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {teamMembers.map(m => {
+                    const c = countByField('assigned_to', m.user_id);
+                    const isSelected = filterAssignee.includes(m.user_id);
+                    return (
+                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
+                        <span className="ml-2 flex gap-1 text-[10px]">
+                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {/* Tipo */}
+        <Popover open={openFilterKey === 'type'} onOpenChange={o => setOpenFilterKey(o ? 'type' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterType.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <FileText className="h-3 w-3" />
+              {filterType.length === 0 ? 'Tipo' : filterType.length === 1 ? (ACTIVITY_TYPES.find(t => t.value === filterType[0])?.label || '1') : `${filterType.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[240px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar tipo..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_type" onSelect={() => setFilterType([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterType.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {ACTIVITY_TYPES.map(t => {
+                    const c = countByField('activity_type', t.value);
+                    const isSelected = filterType.includes(t.value);
+                    return (
+                      <CommandItem key={t.value} value={t.label} onSelect={() => toggleFilter(setFilterType, filterType, t.value)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1">{t.label}</span>
+                        <span className="ml-2 flex gap-1 text-[10px]">
+                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {/* Status */}
+        <Popover open={openFilterKey === 'status'} onOpenChange={o => setOpenFilterKey(o ? 'status' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterStatus.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <Clock className="h-3 w-3" />
+              {filterStatus.length === 0 ? 'Status' : filterStatus.length === 1 ? (STATUS_OPTIONS.find(s => s.value === filterStatus[0])?.label || '1') : `${filterStatus.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[220px] p-0" align="start">
+            <Command>
+              <CommandList>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_status" onSelect={() => setFilterStatus([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterStatus.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => {
+                    const isSelected = filterStatus.includes(s.value);
+                    const c = countByField('status', s.value);
+                    return (
+                      <CommandItem key={s.value} value={s.label} onSelect={() => toggleFilter(setFilterStatus, filterStatus, s.value)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1">{s.label}</span>
+                        <span className="ml-2 flex gap-1 text-[10px]">
+                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {/* Lead */}
+        <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterLead.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              📁 {filterLead.length === 0 ? 'Lead' : filterLead.length === 1 ? (leads.find(l => l.id === filterLead[0])?.lead_name?.split(' ')[0] || '1') : `${filterLead.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar lead..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_lead" onSelect={() => setFilterLead([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterLead.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {leads.map(l => {
+                    const c = countByField('lead_id', l.id);
+                    const isSelected = filterLead.includes(l.id);
+                    return (
+                      <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => toggleFilter(setFilterLead, filterLead, l.id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{l.lead_name || 'Sem nome'}</span>
+                        {(c.open > 0 || c.done > 0) && (
+                          <span className="ml-2 flex gap-1 text-[10px]">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {/* Contato */}
+        <Popover open={openFilterKey === 'contact'} onOpenChange={o => setOpenFilterKey(o ? 'contact' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterContact.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <User className="h-3 w-3" />
+              {filterContact.length === 0 ? 'Contato' : `${filterContact.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar contato..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_contact" onSelect={() => setFilterContact([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterContact.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {availableContacts.map(c => {
+                    const ct = countByField('contact_id', c.id);
+                    const isSelected = filterContact.includes(c.id);
+                    return (
+                      <CommandItem key={c.id} value={c.full_name} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{c.full_name}</span>
+                        {(ct.open > 0 || ct.done > 0) && (
+                          <span className="ml-2 flex gap-1 text-[10px]">
+                            <Badge variant="outline" className="px-1 py-0 text-[10px]">{ct.open}⏳</Badge>
+                            <Badge variant="secondary" className="px-1 py-0 text-[10px]">{ct.done}✓</Badge>
+                          </span>
+                        )}
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || selectedCalDay) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setSelectedCalDay(null); }}>
+            <X className="h-3 w-3 mr-1" /> Limpar
+          </Button>
+        )}
+      </div>
+
+      {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
-        {/* LEFT PANEL: Calendar + Filters + Stats + List */}
+        {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
-          "flex flex-col border-r overflow-y-auto transition-all",
-          isEditing ? "w-[420px] min-w-[360px]" : "flex-1"
+          "flex flex-col overflow-hidden transition-all",
+          isEditing ? "w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
-          <div className="p-4 space-y-4">
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Assessor */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Assessor</span>
-                <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-[180px] h-9 justify-between text-sm font-normal">
-                      {filterAssignee.length === 0 ? 'Todos' : filterAssignee.length === 1 ? (teamMembers.find(m => m.user_id === filterAssignee[0])?.full_name || 'Sem nome') : `${filterAssignee.length} selecionados`}
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[260px] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Buscar assessor..." />
-                      <CommandList>
-                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem value="__clear_all_assessor" onSelect={() => setFilterAssignee([])}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterAssignee.length === 0 ? "opacity-100" : "opacity-0")} />
-                            Todos
-                          </CommandItem>
-                          {teamMembers.map(m => {
-                            const c = countByField('assigned_to', m.user_id);
-                            const isSelected = filterAssignee.includes(m.user_id);
-                            return (
-                              <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
-                                <span className="ml-2 flex gap-1 text-[10px]">
-                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                                </span>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
+          {/* Calendar - always visible, compact */}
+          <div className="shrink-0 border-b bg-card/50">
+            <div className="px-3 pt-2 pb-1 flex items-center justify-between">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCalendarMonth(prev => subMonths(prev, 1))}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-sm font-semibold capitalize">
+                {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+              </span>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="px-3 pb-2">
+              <div className="grid grid-cols-7 gap-0.5 text-center">
+                {weekDays.map(d => (
+                  <div key={d} className="text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+                ))}
+                {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
+                  <div key={`pad-${i}`} />
+                ))}
+                {calendarDays.map(day => {
+                  const dateKey = format(day, 'yyyy-MM-dd');
+                  const dayActivities = activitiesByDate[dateKey] || [];
+                  const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
+                  const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
+                  const isSelected = selectedCalDay === dateKey;
 
-              {/* Tipo */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Tipo</span>
-                <Popover open={openFilterKey === 'type'} onOpenChange={o => setOpenFilterKey(o ? 'type' : null)}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-[160px] h-9 justify-between text-sm font-normal">
-                      {filterType.length === 0 ? 'Todos' : filterType.length === 1 ? (ACTIVITY_TYPES.find(t => t.value === filterType[0])?.label || filterType[0]) : `${filterType.length} selecionados`}
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[240px] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Buscar tipo..." />
-                      <CommandList>
-                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem value="__clear_all_type" onSelect={() => setFilterType([])}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterType.length === 0 ? "opacity-100" : "opacity-0")} />
-                            Todos
-                          </CommandItem>
-                          {ACTIVITY_TYPES.map(t => {
-                            const c = countByField('activity_type', t.value);
-                            const isSelected = filterType.includes(t.value);
-                            return (
-                              <CommandItem key={t.value} value={t.label} onSelect={() => toggleFilter(setFilterType, filterType, t.value)}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1">{t.label}</span>
-                                <span className="ml-2 flex gap-1 text-[10px]">
-                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                                </span>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Status */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Status</span>
-                <Popover open={openFilterKey === 'status'} onOpenChange={o => setOpenFilterKey(o ? 'status' : null)}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-[160px] h-9 justify-between text-sm font-normal">
-                      {filterStatus.length === 0 ? 'Todos' : filterStatus.length === 1 ? (STATUS_OPTIONS.find(s => s.value === filterStatus[0])?.label || filterStatus[0]) : `${filterStatus.length} selecionados`}
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[220px] p-0" align="start">
-                    <Command>
-                      <CommandList>
-                        <CommandGroup>
-                          <CommandItem value="__clear_all_status" onSelect={() => setFilterStatus([])}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterStatus.length === 0 ? "opacity-100" : "opacity-0")} />
-                            Todos
-                          </CommandItem>
-                          {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => {
-                            const isSelected = filterStatus.includes(s.value);
-                            const c = countByField('status', s.value);
-                            return (
-                              <CommandItem key={s.value} value={s.label} onSelect={() => toggleFilter(setFilterStatus, filterStatus, s.value)}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1">{s.label}</span>
-                                <span className="ml-2 flex gap-1 text-[10px]">
-                                  <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                                  <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                                </span>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Lead */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Lead</span>
-                <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
-                      <span className="truncate">{filterLead.length === 0 ? 'Todos' : filterLead.length === 1 ? (leads.find(l => l.id === filterLead[0])?.lead_name || 'Sem nome') : `${filterLead.length} selecionados`}</span>
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Buscar lead..." />
-                      <CommandList>
-                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem value="__clear_all_lead" onSelect={() => setFilterLead([])}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterLead.length === 0 ? "opacity-100" : "opacity-0")} />
-                            Todos
-                          </CommandItem>
-                          {leads.map(l => {
-                            const c = countByField('lead_id', l.id);
-                            const isSelected = filterLead.includes(l.id);
-                            return (
-                              <CommandItem key={l.id} value={l.lead_name || l.id} onSelect={() => toggleFilter(setFilterLead, filterLead, l.id)}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1 truncate">{l.lead_name || 'Sem nome'}</span>
-                                {(c.open > 0 || c.done > 0) && (
-                                  <span className="ml-2 flex gap-1 text-[10px]">
-                                    <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
-                                    <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
-                                  </span>
-                                )}
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Contato */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">Contato</span>
-                <Popover open={openFilterKey === 'contact'} onOpenChange={o => setOpenFilterKey(o ? 'contact' : null)}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" className="w-[200px] h-9 justify-between text-sm font-normal">
-                      <span className="truncate">{filterContact.length === 0 ? 'Todos' : filterContact.length === 1 ? (availableContacts.find(c => c.id === filterContact[0])?.full_name || 'Sem nome') : `${filterContact.length} selecionados`}</span>
-                      <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Buscar contato..." />
-                      <CommandList>
-                        <CommandEmpty>Nenhum encontrado</CommandEmpty>
-                        <CommandGroup>
-                          <CommandItem value="__clear_all_contact" onSelect={() => setFilterContact([])}>
-                            <Check className={cn("mr-2 h-3.5 w-3.5", filterContact.length === 0 ? "opacity-100" : "opacity-0")} />
-                            Todos
-                          </CommandItem>
-                          {availableContacts.map(c => {
-                            const ct = countByField('contact_id', c.id);
-                            const isSelected = filterContact.includes(c.id);
-                            return (
-                              <CommandItem key={c.id} value={c.full_name} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
-                                <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
-                                <span className="flex-1 truncate">{c.full_name}</span>
-                                {(ct.open > 0 || ct.done > 0) && (
-                                  <span className="ml-2 flex gap-1 text-[10px]">
-                                    <Badge variant="outline" className="px-1 py-0 text-[10px]">{ct.open}⏳</Badge>
-                                    <Badge variant="secondary" className="px-1 py-0 text-[10px]">{ct.done}✓</Badge>
-                                  </span>
-                                )}
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase">&nbsp;</span>
-                <div className="flex gap-1">
-                  {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0) && (
-                    <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-destructive" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); }}>
-                      <X className="h-3.5 w-3.5 mr-1" />
-                      Limpar
-                    </Button>
-                  )}
-                  <Button size="icon" className="rounded-full h-9 w-9" onClick={() => { resetForm(); setSheetMode('create'); }}>
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-9 gap-1.5" onClick={startWorkflow}>
-                    <Play className="h-3.5 w-3.5" /> Workflow
-                  </Button>
-                </div>
+                  return (
+                    <button
+                      key={dateKey}
+                      onClick={() => setSelectedCalDay(isSelected ? null : dateKey)}
+                      className={cn(
+                        "relative p-0.5 rounded-md text-xs transition-colors",
+                        isToday(day) && "ring-1.5 ring-primary font-bold",
+                        isSelected && "bg-primary text-primary-foreground",
+                        !isSelected && dayActivities.length > 0 && "bg-muted/60 hover:bg-muted",
+                        !isSelected && dayActivities.length === 0 && "hover:bg-muted/30"
+                      )}
+                    >
+                      <div className="text-center leading-tight">{format(day, 'd')}</div>
+                      {dayActivities.length > 0 && (
+                        <div className="flex justify-center gap-0.5 leading-none">
+                          {openCount > 0 && (
+                            <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-red-500")}>{openCount}</span>
+                          )}
+                          {doneCount > 0 && (
+                            <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-green-500")}>{doneCount}</span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className={cn("grid gap-4", isEditing ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-[280px_1fr]")}>
-              {/* Calendar + Stats column */}
-              <div className="space-y-4">
-                {/* Mini Calendar */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalendarMonth(prev => subMonths(prev, 1))}>
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <CardTitle className="text-sm capitalize">
-                        {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
-                      </CardTitle>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}>
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pb-3">
-                    <div className="grid grid-cols-7 gap-1 text-center">
-                      {weekDays.map(d => (
-                        <div key={d} className="text-[10px] font-medium text-muted-foreground py-1">{d}</div>
-                      ))}
-                      {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
-                        <div key={`pad-${i}`} />
-                      ))}
-                      {calendarDays.map(day => {
-                        const dateKey = format(day, 'yyyy-MM-dd');
-                        const dayActivities = activitiesByDate[dateKey] || [];
-                        const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
-                        const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
-
-                        return (
-                          <div
-                            key={dateKey}
-                            className={`relative p-1 rounded-md text-xs ${
-                              isToday(day) ? 'ring-2 ring-primary font-bold' : ''
-                            } ${dayActivities.length > 0 ? 'bg-muted/50' : ''}`}
-                          >
-                            <div className="text-center">{format(day, 'd')}</div>
-                            {dayActivities.length > 0 && (
-                              <div className="flex justify-center gap-1 mt-0.5">
-                                {openCount > 0 && (
-                                  <span className="text-[9px] font-bold text-red-500 leading-none">{openCount}</span>
-                                )}
-                                {doneCount > 0 && (
-                                  <span className="text-[9px] font-bold text-green-500 leading-none">{doneCount}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Stats by type with open/done */}
-                <Card>
-                  <CardContent className="p-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Em aberto:</span>
-                      <span className="font-bold text-yellow-600">{stats.open}</span>
-                    </div>
-                    <Separator />
-                    <div className="flex justify-between text-sm">
-                      <span>Concluídas:</span>
-                      <span className="font-bold text-green-600">{stats.done}</span>
-                    </div>
-                    <Separator />
-                    {ACTIVITY_TYPES.map(t => {
-                      const typeActivities = activities.filter(a => a.activity_type === t.value);
-                      const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
-                      const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
-                      if (openCount === 0 && doneCount === 0) return null;
-                      return (
-                        <div key={t.value}>
-                          <div className="flex justify-between text-sm">
-                            <span>{t.label}:</span>
-                            <span className="flex gap-2 text-xs">
-                              <span className="text-yellow-600 font-medium">{openCount}⏳</span>
-                              <span className="text-green-600 font-medium">{doneCount}✓</span>
-                            </span>
-                          </div>
-                          <Separator />
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Activity Cards */}
-              {!isEditing && (
-                <div className="space-y-3">
-                  {activities.length === 0 ? (
-                    <Card>
-                      <CardContent className="py-12 text-center text-muted-foreground">
-                        <FileText className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                        <p>Nenhuma atividade encontrada</p>
-                        <Button variant="outline" className="mt-4" onClick={() => { resetForm(); setSheetMode('create'); }}>
-                          Criar Atividade
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    activities.map(activity => (
-                      <Card
-                        key={activity.id}
-                        className={cn(
-                          "cursor-pointer hover:shadow-md transition-shadow",
-                          selectedActivity?.id === activity.id && "ring-2 ring-primary"
-                        )}
-                        onClick={() => handleOpenEdit(activity)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <Badge className={statusColors[activity.status] || 'bg-muted'}>
-                                  {STATUS_OPTIONS.find(s => s.value === activity.status)?.label || activity.status}
-                                </Badge>
-                                {activity.priority && activity.priority !== 'normal' && (
-                                  <Badge className={priorityColors[activity.priority] || ''}>
-                                    {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
-                                  </Badge>
-                                )}
-                              </div>
-                              <h3 className="font-medium text-sm mt-1">{activity.title}</h3>
-                              {activity.lead_name && (
-                                <p className="text-xs text-muted-foreground mt-1 truncate">
-                                  📁 {activity.lead_name}
-                                </p>
-                              )}
-                              {activity.contact_name && (
-                                <p className="text-xs text-muted-foreground mt-0.5 truncate flex items-center gap-1">
-                                  <User className="h-3 w-3" /> {activity.contact_name}
-                                </p>
-                              )}
-                              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
-                                {activity.deadline && (
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="h-3 w-3" />
-                                    {format(parseISO(activity.deadline), 'dd/MM/yyyy')}
-                                  </span>
-                                )}
-                                {activity.assigned_to_name && <span>{activity.assigned_to_name}</span>}
-                                <span>{ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}</span>
-                              </div>
-                              <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground flex-wrap">
-                                <span>Criado: {format(parseISO(activity.created_at), "dd/MM/yyyy 'às' HH:mm")}</span>
-                                {activity.updated_at && activity.updated_at !== activity.created_at && (
-                                  <span>• Atualizado: {format(parseISO(activity.updated_at), "dd/MM 'às' HH:mm")}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-col gap-1 shrink-0">
-                              {activity.status !== 'concluida' && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                  onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
-                                  title="Concluir"
-                                >
-                                  <CheckCircle2 className="h-4 w-4" />
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  const url = `${window.location.origin}/atividades?id=${activity.id}`;
-                                  navigator.clipboard.writeText(url);
-                                  toast.success('Link copiado!');
-                                }}
-                                title="Compartilhar link"
-                              >
-                                <Share2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
-                                title="Excluir"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* When editing, show activity list compressed below calendar */}
-              {isEditing && (
-                <ScrollArea className="max-h-[300px]">
-                  <div className="space-y-1">
-                    {activities.map(activity => (
-                      <div
-                        key={activity.id}
-                        className={cn(
-                          "flex items-center gap-2 p-2 rounded-md cursor-pointer text-sm hover:bg-accent transition-colors group",
-                          selectedActivity?.id === activity.id && "bg-accent font-medium"
-                        )}
-                        onClick={() => handleOpenEdit(activity)}
-                      >
-                        <span className={cn("w-2 h-2 rounded-full shrink-0",
-                          activity.status === 'concluida' ? 'bg-green-500' : activity.status === 'em_andamento' ? 'bg-blue-500' : 'bg-yellow-500'
-                        )} />
-                        <div className="flex-1 min-w-0">
-                          <span className="truncate block">{activity.title}</span>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            {activity.lead_name && <span className="truncate max-w-[120px]">📁 {activity.lead_name}</span>}
-                            {activity.contact_name && <span className="truncate max-w-[100px]">👤 {activity.contact_name}</span>}
-                            <span>{format(parseISO(activity.created_at), 'dd/MM')}</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/atividades?id=${activity.id}`); toast.success('Link copiado!'); }}
-                            title="Compartilhar">
-                            <Share2 className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                            onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
-                            title="Excluir">
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+            {/* Stats by type - horizontal compact */}
+            <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-none">
+              {ACTIVITY_TYPES.map(t => {
+                const typeActivities = activities.filter(a => a.activity_type === t.value);
+                const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
+                const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
+                if (openCount === 0 && doneCount === 0) return null;
+                return (
+                  <div key={t.value} className="flex items-center gap-1.5 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
+                    <span className="font-medium text-muted-foreground">{t.label}</span>
+                    <span className="text-red-500 font-bold">{openCount}</span>
+                    <span className="text-green-500 font-bold">{doneCount}</span>
                   </div>
-                </ScrollArea>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Activity list - scrollable like WhatsApp chat */}
+          <div className="flex-1 overflow-y-auto bg-muted/10">
+            {selectedCalDay && (
+              <div className="sticky top-0 z-10 flex justify-center py-1.5">
+                <Badge variant="secondary" className="text-xs shadow-sm cursor-pointer" onClick={() => setSelectedCalDay(null)}>
+                  {format(parseISO(selectedCalDay), "dd 'de' MMMM", { locale: ptBR })} <X className="h-3 w-3 ml-1" />
+                </Badge>
+              </div>
+            )}
+
+            <div className="p-3 space-y-2">
+              {displayedActivities.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                  <FileText className="h-10 w-10 mb-3 opacity-30" />
+                  <p className="text-sm">Nenhuma atividade encontrada</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={() => { resetForm(); setSheetMode('create'); }}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Criar Atividade
+                  </Button>
+                </div>
+              ) : (
+                displayedActivities.map(activity => (
+                  <div
+                    key={activity.id}
+                    className={cn(
+                      "bg-card rounded-lg shadow-sm border border-border/50 p-3 cursor-pointer transition-all hover:shadow-md active:scale-[0.99]",
+                      selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30"
+                    )}
+                    onClick={() => handleOpenEdit(activity)}
+                  >
+                    {/* Top row: badges + actions */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap flex-1">
+                        <Badge className={cn("text-[10px] px-1.5 py-0", statusColors[activity.status] || 'bg-muted')}>
+                          {STATUS_OPTIONS.find(s => s.value === activity.status)?.label || activity.status}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}
+                        </Badge>
+                        {activity.priority && activity.priority !== 'normal' && (
+                          <Badge className={cn("text-[10px] px-1.5 py-0", priorityColors[activity.priority] || '')}>
+                            {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {activity.status !== 'concluida' && (
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={e => { e.stopPropagation(); handleComplete(activity.id); }} title="Concluir">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/atividades?id=${activity.id}`); toast.success('Link copiado!'); }} title="Compartilhar">
+                          <Share2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(activity.id); }} title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="font-medium text-sm mt-1.5 leading-snug">{activity.title}</h3>
+
+                    {/* Context info */}
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
+                      {activity.lead_name && (
+                        <span className="flex items-center gap-1">📁 {activity.lead_name}</span>
+                      )}
+                      {activity.contact_name && (
+                        <span className="flex items-center gap-1"><User className="h-3 w-3" /> {activity.contact_name}</span>
+                      )}
+                    </div>
+
+                    {/* Bottom: deadline + timestamp */}
+                    <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        {activity.deadline && (
+                          <span className="flex items-center gap-0.5">
+                            <Calendar className="h-3 w-3" />
+                            {format(parseISO(activity.deadline), 'dd/MM/yyyy')}
+                          </span>
+                        )}
+                        {activity.assigned_to_name && <span>• {activity.assigned_to_name}</span>}
+                      </div>
+                      <span>{format(parseISO(activity.created_at), "dd/MM 'às' HH:mm")}</span>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
         </div>
 
-        {/* RIGHT PANEL: Activity Form (only when editing) */}
+        {/* RIGHT: Form panel (WhatsApp chat-detail style) */}
         {isEditing && (
-          <div className="flex-1 overflow-y-auto">
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b px-6 py-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold">
-                {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
-              </h2>
-              <Button variant="ghost" size="icon" onClick={closeSheet}>
-                <X className="h-5 w-5" />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Form header */}
+            <div className="bg-primary/5 border-b px-4 py-2.5 flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-sm font-semibold">
+                  {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
+                </h2>
+                {selectedActivity?.lead_name && (
+                  <p className="text-xs text-muted-foreground">📁 {selectedActivity.lead_name}</p>
+                )}
+              </div>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSheet}>
+                <X className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="p-6 max-w-3xl">
-              {activityFormContent}
+            {/* Form body - scrollable */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="max-w-2xl">
+                {activityFormContent}
 
-              {sheetMode === 'edit' && selectedActivity?.completed_at && (
-                <p className="text-xs text-muted-foreground mt-3">
-                  Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
-                  {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
-                </p>
-              )}
+                {sheetMode === 'edit' && selectedActivity?.completed_at && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Concluída por: {selectedActivity.completed_by_name || '—'} em{' '}
+                    {format(parseISO(selectedActivity.completed_at), "dd/MM/yyyy 'às' HH:mm")}
+                  </p>
+                )}
 
-              {sheetMode === 'edit' && selectedActivity && (
-                <div className="text-xs text-muted-foreground mt-3 space-y-1">
-                  <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
-                  {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
-                    <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Action buttons - fixed at bottom */}
-              <div className="flex flex-col gap-3 mt-6 pt-4 border-t">
-                {sheetMode === 'edit' ? (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" /> Excluir
-                      </Button>
-                      <div className="flex gap-2">
-                        {selectedActivity?.status !== 'concluida' && (
-                          <Button variant="outline" size="sm" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
-                            <CheckCircle2 className="h-4 w-4 mr-1" /> Concluir
-                          </Button>
-                        )}
-                        <Button size="sm" onClick={handleUpdate}>Salvar</Button>
-                      </div>
-                    </div>
-                    {selectedActivity?.status !== 'concluida' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-2"
-                        onClick={handleCompleteAndCreateNext}
-                      >
-                        <CheckCircle2 className="h-4 w-4" /> Concluir e Criar Próxima Atv
-                      </Button>
+                {sheetMode === 'edit' && selectedActivity && (
+                  <div className="text-xs text-muted-foreground mt-3 space-y-1">
+                    <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                    {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
+                      <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                     )}
-                  </>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <Button variant="outline" size="sm" onClick={closeSheet}>Cancelar</Button>
-                    <Button size="sm" onClick={handleCreate}>Criar</Button>
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Action bar - sticky at bottom like WhatsApp input bar */}
+            <div className="shrink-0 border-t bg-card px-4 py-2.5 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+              {sheetMode === 'edit' ? (
+                <div className="flex flex-col gap-2 max-w-2xl">
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                    </Button>
+                    <div className="flex gap-2">
+                      {selectedActivity?.status !== 'concluida' && (
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => selectedActivity && handleComplete(selectedActivity.id)}>
+                          <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Concluir
+                        </Button>
+                      )}
+                      <Button size="sm" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
+                    </div>
+                  </div>
+                  {selectedActivity?.status !== 'concluida' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 text-xs gap-1"
+                      onClick={handleCompleteAndCreateNext}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between max-w-2xl">
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={closeSheet}>Cancelar</Button>
+                  <Button size="sm" className="h-8 text-xs" onClick={handleCreate}>Criar</Button>
+                </div>
+              )}
             </div>
           </div>
         )}
