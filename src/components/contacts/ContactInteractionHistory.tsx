@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   MessageSquare,
   Send,
@@ -14,9 +17,12 @@ import {
   Instagram,
   ArrowRight,
   Reply,
+  Plus,
+  X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 
 interface Comment {
   id: string;
@@ -42,9 +48,17 @@ interface ContactInteractionHistoryProps {
 }
 
 export function ContactInteractionHistory({ instagramUsername }: ContactInteractionHistoryProps) {
+  const { user } = useAuthContext();
   const [comments, setComments] = useState<Comment[]>([]);
   const [dmHistory, setDmHistory] = useState<DmEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddComment, setShowAddComment] = useState(false);
+  const [showAddDm, setShowAddDm] = useState(false);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [newCommentType, setNewCommentType] = useState('received');
+  const [newCommentPostUrl, setNewCommentPostUrl] = useState('');
+  const [newDmMessage, setNewDmMessage] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (instagramUsername) {
@@ -87,6 +101,56 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
       console.error('Error fetching interaction history:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    if (!newCommentText.trim() || !instagramUsername) return;
+    setSaving(true);
+    try {
+      const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
+      const { error } = await supabase.from('instagram_comments').insert({
+        author_username: normalizedUsername,
+        comment_text: newCommentText.trim(),
+        comment_type: newCommentType,
+        post_url: newCommentPostUrl.trim() || null,
+        created_at: new Date().toISOString(),
+      } as any);
+      if (error) throw error;
+      toast.success('Comentário registrado!');
+      setNewCommentText('');
+      setNewCommentPostUrl('');
+      setShowAddComment(false);
+      fetchInteractionHistory();
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao registrar comentário');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddDm = async () => {
+    if (!newDmMessage.trim() || !instagramUsername) return;
+    setSaving(true);
+    try {
+      const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
+      const { error } = await supabase.from('dm_history').insert({
+        instagram_username: normalizedUsername,
+        dm_message: newDmMessage.trim(),
+        action_type: 'sent',
+        user_id: user?.id,
+      });
+      if (error) throw error;
+      toast.success('DM registrada!');
+      setNewDmMessage('');
+      setShowAddDm(false);
+      fetchInteractionHistory();
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao registrar DM');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -142,33 +206,86 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
 
   const totalInteractions = comments.length + dmHistory.length;
 
+  const addButtons = (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setShowAddComment(true); setShowAddDm(false); }}>
+        <Plus className="h-3 w-3" /> Comentário
+      </Button>
+      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setShowAddDm(true); setShowAddComment(false); }}>
+        <Plus className="h-3 w-3" /> DM
+      </Button>
+    </div>
+  );
+
+  const addCommentForm = showAddComment && (
+    <div className="p-3 rounded-lg border bg-muted/30 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">Novo Comentário</span>
+        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowAddComment(false)}><X className="h-3 w-3" /></Button>
+      </div>
+      <Select value={newCommentType} onValueChange={setNewCommentType}>
+        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="received">Recebido</SelectItem>
+          <SelectItem value="sent">Enviado</SelectItem>
+          <SelectItem value="mention">Menção</SelectItem>
+        </SelectContent>
+      </Select>
+      <Textarea placeholder="Texto do comentário..." value={newCommentText} onChange={e => setNewCommentText(e.target.value)} className="text-xs min-h-[60px]" />
+      <Input placeholder="URL do post (opcional)" value={newCommentPostUrl} onChange={e => setNewCommentPostUrl(e.target.value)} className="h-8 text-xs" />
+      <Button size="sm" className="h-7 text-xs w-full" onClick={handleAddComment} disabled={!newCommentText.trim() || saving}>
+        {saving ? 'Salvando...' : 'Registrar Comentário'}
+      </Button>
+    </div>
+  );
+
+  const addDmForm = showAddDm && (
+    <div className="p-3 rounded-lg border bg-muted/30 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">Nova DM</span>
+        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowAddDm(false)}><X className="h-3 w-3" /></Button>
+      </div>
+      <Textarea placeholder="Mensagem da DM..." value={newDmMessage} onChange={e => setNewDmMessage(e.target.value)} className="text-xs min-h-[60px]" />
+      <Button size="sm" className="h-7 text-xs w-full" onClick={handleAddDm} disabled={!newDmMessage.trim() || saving}>
+        {saving ? 'Salvando...' : 'Registrar DM'}
+      </Button>
+    </div>
+  );
+
   if (totalInteractions === 0) {
     return (
-      <div className="text-center py-8">
-        <MessageCircle className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-        <p className="text-sm text-muted-foreground">
-          Nenhuma interação registrada
-        </p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Comentários e DMs aparecerão aqui
-        </p>
+      <div className="space-y-4">
+        {addButtons}
+        {addCommentForm}
+        {addDmForm}
+        <div className="text-center py-8">
+          <MessageCircle className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
+          <p className="text-sm text-muted-foreground">Nenhuma interação registrada</p>
+          <p className="text-xs text-muted-foreground mt-1">Adicione comentários e DMs acima</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
-      <div className="flex gap-2">
-        <Badge variant="outline" className="gap-1">
-          <MessageSquare className="h-3 w-3" />
-          {comments.length} comentário{comments.length !== 1 ? 's' : ''}
-        </Badge>
-        <Badge variant="outline" className="gap-1">
-          <Send className="h-3 w-3" />
-          {dmHistory.length} DM{dmHistory.length !== 1 ? 's' : ''}
-        </Badge>
+      {/* Summary + Add buttons */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex gap-2">
+          <Badge variant="outline" className="gap-1">
+            <MessageSquare className="h-3 w-3" />
+            {comments.length} comentário{comments.length !== 1 ? 's' : ''}
+          </Badge>
+          <Badge variant="outline" className="gap-1">
+            <Send className="h-3 w-3" />
+            {dmHistory.length} DM{dmHistory.length !== 1 ? 's' : ''}
+          </Badge>
+        </div>
+        {addButtons}
       </div>
+
+      {addCommentForm}
+      {addDmForm}
 
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
