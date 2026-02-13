@@ -1509,7 +1509,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       )}
                       {selectedActivity?.status !== 'concluida' && (
                         <Button size="sm" className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground" onClick={handleCompleteAndCreateNext}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Próxima Atv
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Concluir e Criar Próxima Atv
                         </Button>
                       )}
                       <Button size="sm" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
