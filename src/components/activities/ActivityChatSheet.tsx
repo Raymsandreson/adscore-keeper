@@ -193,7 +193,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     try {
       setAnalyzing(true);
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
-        body: { mode: 'describe_file', file_url: fileUrl, file_type: fileType, file_name: fileName, audio_duration: audioDuration },
+        body: { mode: 'describe_file', context: { file_url: fileUrl, file_type: fileType, file_name: fileName, audio_duration: audioDuration } },
       });
       if (error) throw error;
       if (data?.description) {
