@@ -274,58 +274,44 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
               )}
             </div>
 
-            {/* Vítima x Empresa */}
-            {summaryLine && (
-              <p className="text-xs font-medium text-foreground/80 mt-0.5 truncate">
-                {summaryLine}
-              </p>
-            )}
+            {/* Compact metadata summary line (like activities header) */}
+            {lead && (() => {
+              const parts: string[] = [];
+              if (lead.city && lead.state) parts.push(`${lead.city}/${lead.state}`);
+              if (lead.victim_name) parts.push(lead.victim_name);
+              if (lead.accident_date) parts.push(`(${format(parseISO(lead.accident_date), 'dd/MM/yyyy')})`);
+              if (lead.damage_description) parts.push(`- ${lead.damage_description}`);
+              const metaLine = parts.join(' | ');
+              return metaLine ? (
+                <p className="text-[11px] text-muted-foreground mt-0.5 truncate" title={metaLine}>
+                  📁 {metaLine}
+                </p>
+              ) : null;
+            })()}
 
-            {/* Key info grid */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 text-[11px] text-muted-foreground">
-              {lead?.case_type && (
-                <span className="flex items-center gap-1">
-                  <FileText className="h-3 w-3 shrink-0" /> {lead.case_type}
-                </span>
-              )}
+            {/* Secondary info row */}
+            <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground flex-wrap">
               {lead?.damage_description && (
-                <span className="flex items-center gap-1 truncate" title={lead.damage_description}>
-                  🩹 {lead.damage_description}
-                </span>
+                <span className="flex items-center gap-0.5">🩹 {lead.damage_description}</span>
               )}
               {lead?.accident_date && (
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3 shrink-0" /> {format(parseISO(lead.accident_date), 'dd/MM/yyyy')}
+                <span className="flex items-center gap-0.5">
+                  <Calendar className="h-2.5 w-2.5" /> {format(parseISO(lead.accident_date), 'dd/MM/yyyy')}
                 </span>
               )}
-              {lead?.city && lead?.state && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3 shrink-0" /> {lead.city}/{lead.state}
+              {lead?.updated_at && (
+                <span className="flex items-center gap-0.5">
+                  <Clock className="h-2.5 w-2.5" /> Últ: {format(parseISO(lead.updated_at), 'dd/MM HH:mm')}
                 </span>
+              )}
+              {lead?.case_type && (
+                <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4">
+                  {lead.case_type}
+                </Badge>
               )}
               {lead?.acolhedor && (
-                <span className="flex items-center gap-1">
-                  <User className="h-3 w-3 shrink-0" /> {lead.acolhedor}
-                </span>
-              )}
-              {contacts.length > 0 && (
-                <span className="flex items-center gap-1">
-                  👥 {contacts.length} contato{contacts.length > 1 ? 's' : ''}
-                </span>
-              )}
-              {lead?.contractor_company && (
-                <span className="flex items-center gap-1 truncate" title={lead.contractor_company}>
-                  <Building2 className="h-3 w-3 shrink-0" /> {lead.contractor_company}
-                </span>
-              )}
-              {lead?.victim_age && (
-                <span className="flex items-center gap-1">
-                  🎂 {lead.victim_age} anos
-                </span>
-              )}
-              {lead?.visit_city && lead?.visit_state && (
-                <span className="flex items-center gap-1">
-                  📍 Visita: {lead.visit_city}/{lead.visit_state}
+                <span className="flex items-center gap-0.5">
+                  <User className="h-2.5 w-2.5" /> {lead.acolhedor}
                 </span>
               )}
             </div>
