@@ -1383,7 +1383,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
           "flex flex-col overflow-hidden transition-all",
-          isEditing ? "w-[400px] min-w-[340px] border-r" : "flex-1"
+          isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
           {/* Calendar - always visible, compact */}
           <div className="shrink-0 border-b bg-card/50">
@@ -1558,13 +1558,18 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             {/* Form header with lead preview */}
             <div className="bg-primary/5 border-b px-4 py-2.5 shrink-0">
               <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold">
-                    {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
-                  </h2>
-                  {formLeadName && (
-                    <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
-                  )}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 md:hidden shrink-0" onClick={closeSheet}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-semibold">
+                      {sheetMode === 'create' ? 'Nova Atividade' : 'Editar Atividade'}
+                    </h2>
+                    {formLeadName && (
+                      <p className="text-xs text-muted-foreground truncate">📁 {formLeadName}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   {formLeadId && (
