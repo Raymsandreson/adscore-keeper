@@ -3,11 +3,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { toast } from 'sonner';
 import {
   ExternalLink, MapPin, Building2, Phone, Mail, User, Calendar,
-  ArrowRight, Clock, FileText, Instagram, Heart,
+  ArrowRight, Clock, FileText, Instagram, Heart, UserPlus, Search, Link2, Loader2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -94,6 +97,90 @@ const statusActivityColors: Record<string, string> = {
   em_andamento: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   concluida: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
 };
+
+function LinkContactButton({ leadId, onLinked }: { leadId: string; onLinked: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState<Array<{ id: string; full_name: string; phone: string | null; email: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
+
+  const doSearch = useCallback(async (q: string) => {
+    setSearching(true);
+    let query = supabase.from('contacts').select('id, full_name, phone, email').order('full_name').limit(15);
+    if (q.trim()) {
+      query = query.or(`full_name.ilike.%${q}%,phone.ilike.%${q}%,email.ilike.%${q}%`);
+    }
+    const { data } = await query;
+    setResults(data || []);
+    setSearching(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) doSearch(search);
+  }, [open]);
+
+  const handleLink = async (contactId: string) => {
+    setLinking(contactId);
+    try {
+      const { error } = await supabase.from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+      if (error) {
+        if (error.code === '23505') { toast.error('Contato já vinculado'); return; }
+        throw error;
+      }
+      toast.success('Contato vinculado!');
+      setOpen(false);
+      onLinked();
+    } catch (e: any) {
+      toast.error('Erro ao vincular: ' + e.message);
+    } finally {
+      setLinking(null);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="w-full gap-2 text-xs">
+          <Link2 className="h-3.5 w-3.5" /> Vincular Contato
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-2" align="start">
+        <div className="relative mb-2">
+          <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Buscar contato..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }}
+            className="pl-7 h-8 text-xs"
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto space-y-0.5">
+          {searching ? (
+            <p className="text-xs text-center py-3 text-muted-foreground">Buscando...</p>
+          ) : results.length === 0 ? (
+            <p className="text-xs text-center py-3 text-muted-foreground">Nenhum contato encontrado</p>
+          ) : (
+            results.map(c => (
+              <button
+                key={c.id}
+                className="w-full text-left px-2 py-1.5 rounded hover:bg-muted text-xs flex items-center justify-between gap-2"
+                onClick={() => handleLink(c.id)}
+                disabled={linking === c.id}
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{c.full_name}</p>
+                  {c.phone && <p className="text-muted-foreground text-[10px]">{c.phone}</p>}
+                </div>
+                {linking === c.id ? <Loader2 className="h-3 w-3 animate-spin shrink-0" /> : <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />}
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNavigateToLead }: ActivityDetailPanelProps) {
   const [lead, setLead] = useState<LeadData | null>(null);
@@ -386,6 +473,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
         {/* Contacts Tab */}
         <TabsContent value="contatos" className="flex-1 overflow-y-auto m-0">
           <div className="p-4 space-y-3">
+            <LinkContactButton leadId={leadId} onLinked={fetchLeadData} />
             {contacts.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Nenhum contato vinculado a este lead</p>
             ) : (
