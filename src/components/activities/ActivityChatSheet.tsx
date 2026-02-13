@@ -607,16 +607,16 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (isFileDescription) {
         return (
           <div key={msg.id} className="flex justify-center my-3">
-            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 max-w-[90%] space-y-2">
+            <div className="bg-primary/90 border border-primary rounded-xl p-3 max-w-[90%] space-y-2 text-primary-foreground">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-medium text-primary">
+                <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground">
                   <Sparkles className="h-3.5 w-3.5" /> Resumo da IA
                 </div>
                 {canRegenerate && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-[10px] text-primary hover:text-primary"
+                    className="h-6 px-2 text-[10px] text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
                     onClick={() => {
                       setRegenerateConfig({
                         msgId: msg.id,
@@ -631,9 +631,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                   </Button>
                 )}
               </div>
-              <Separator className="bg-primary/10" />
-              <div className="text-xs whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-              <div className="text-[10px] text-muted-foreground">
+              <Separator className="bg-primary-foreground/20" />
+              <div className="text-xs whitespace-pre-wrap leading-relaxed text-primary-foreground">{msg.content}</div>
+              <div className="text-[10px] text-primary-foreground/60">
                 {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
               </div>
             </div>
@@ -644,12 +644,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (!suggestion) return null;
       return (
         <div key={msg.id} className="flex justify-center my-3">
-          <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 max-w-[90%] space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium text-primary">
+          <div className="bg-primary/90 border border-primary rounded-xl p-3 max-w-[90%] space-y-2 text-primary-foreground">
+            <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground">
               <Sparkles className="h-3.5 w-3.5" /> Sugestão da IA
             </div>
-            <Separator />
-            <div className="space-y-1.5 text-xs">
+            <Separator className="bg-primary-foreground/20" />
+            <div className="space-y-1.5 text-xs text-primary-foreground">
               {suggestion.what_was_done && (
                 <div><span className="font-medium">O que foi feito:</span> {suggestion.what_was_done}</div>
               )}
@@ -663,7 +663,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 <div><span className="font-medium">Observações:</span> {suggestion.notes}</div>
               )}
             </div>
-            <Button size="sm" className="w-full h-7 text-xs mt-1" onClick={() => handleApplySuggestion(suggestion)}>
+            <Button size="sm" className="w-full h-7 text-xs mt-1 bg-primary-foreground text-primary hover:bg-primary-foreground/90" onClick={() => handleApplySuggestion(suggestion)}>
               <Check className="h-3 w-3 mr-1" /> Aplicar nos campos
             </Button>
           </div>
