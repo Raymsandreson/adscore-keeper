@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
-  Info, User, Briefcase, MapPin, Calendar, ArrowRight,
+  Info, User, Briefcase, MapPin, Calendar, ArrowRight, PhoneCall, FileSearch, CalendarCheck, Mail, CheckCircle, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -59,7 +59,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [recordingTime, setRecordingTime] = useState(0);
   const [callRecording, setCallRecording] = useState(false);
   const [callRecordingTime, setCallRecordingTime] = useState(0);
-  const [pendingSuggestion, setPendingSuggestion] = useState<AISuggestion | null>(null);
+   const [pendingSuggestion, setPendingSuggestion] = useState<AISuggestion | null>(null);
   const [userName, setUserName] = useState<string>('');
   const [contextData, setContextData] = useState<{
     activity: any | null;
@@ -67,6 +67,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     contact: any | null;
   }>({ activity: null, lead: null, contact: null });
   const [contextLoading, setContextLoading] = useState(false);
+  const [actionSuggestions, setActionSuggestions] = useState<{ label: string; detail: string; icon: string }[]>([]);
+  const [actionsLoading, setActionsLoading] = useState(false);
+  const [executingAction, setExecutingAction] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -103,12 +106,42 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
   }, [activityId, leadId]);
 
+  // Fetch AI action suggestions
+  const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
+    setActionsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+        body: {
+          mode: 'suggest_actions',
+          context: {
+            activity_title: actData?.title || '',
+            activity_type: actData?.activity_type || '',
+            what_was_done: actData?.what_was_done || '',
+            current_status_notes: actData?.current_status_notes || '',
+            next_steps: actData?.next_steps || '',
+            notes: actData?.notes || '',
+            lead_name: leadData?.lead_name || '',
+            case_type: leadData?.case_type || '',
+            lead_status: leadData?.status || '',
+            contact_name: contactData?.full_name || '',
+            contact_phone: contactData?.phone || '',
+          },
+        },
+      });
+      if (error) throw error;
+      setActionSuggestions(data?.actions || []);
+    } catch (e) {
+      console.error('Error fetching action suggestions:', e);
+    } finally {
+      setActionsLoading(false);
+    }
+  }, []);
+
   // Fetch context data (activity, lead, contact)
   const fetchContext = useCallback(async () => {
     if (!activityId) return;
     setContextLoading(true);
     try {
-      // Fetch activity
       const { data: actData } = await supabase
         .from('lead_activities')
         .select('*')
@@ -119,12 +152,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       let contactData = null;
 
       if (actData) {
-        // Fetch linked lead
         if (actData.lead_id) {
           const { data: ld } = await supabase.from('leads').select('*').eq('id', actData.lead_id).single();
           leadData = ld;
         }
-        // Fetch linked contact
         if (actData.contact_id) {
           const { data: cd } = await supabase.from('contacts').select('*').eq('id', actData.contact_id).single();
           contactData = cd;
@@ -132,12 +163,15 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       }
 
       setContextData({ activity: actData, lead: leadData, contact: contactData });
+      if (actData) {
+        fetchActionSuggestions(actData, leadData, contactData);
+      }
     } catch (e) {
       console.error('Error fetching context:', e);
     } finally {
       setContextLoading(false);
     }
-  }, [activityId]);
+  }, [activityId, fetchActionSuggestions]);
 
   useEffect(() => {
     if (open) {
@@ -448,6 +482,29 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     toast.success('Sugestão aplicada nos campos!');
   };
 
+  const getActionIcon = (icon: string) => {
+    switch (icon) {
+      case 'phone': return <PhoneCall className="h-3.5 w-3.5" />;
+      case 'document': return <FileSearch className="h-3.5 w-3.5" />;
+      case 'meeting': return <CalendarCheck className="h-3.5 w-3.5" />;
+      case 'email': return <Mail className="h-3.5 w-3.5" />;
+      case 'check': return <CheckCircle className="h-3.5 w-3.5" />;
+      case 'search': return <Search className="h-3.5 w-3.5" />;
+      default: return <ArrowRight className="h-3.5 w-3.5" />;
+    }
+  };
+
+  const handleActionClick = async (action: { label: string; detail: string }) => {
+    setExecutingAction(action.label);
+    // Send the action as a user message
+    await sendMessage('text', `📋 Ação selecionada: ${action.label}\n${action.detail}`);
+    // Auto-trigger AI analysis after sending
+    setTimeout(() => {
+      handleAIAnalyze();
+      setExecutingAction(null);
+    }, 500);
+  };
+
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -631,18 +688,46 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 </>
               )}
 
-              {/* AI suggestion for next action */}
-              {contextData.activity.next_steps && (
-                <>
-                  <Separator className="bg-primary/10" />
-                  <div className="bg-primary/10 rounded-lg p-2 text-[11px]">
-                    <div className="flex items-center gap-1 font-semibold text-primary mb-1">
-                      <Sparkles className="h-3 w-3" /> Sugestão de continuidade
-                    </div>
-                    <p>{contextData.activity.next_steps}</p>
+              {/* AI action suggestions */}
+              <Separator className="bg-primary/10" />
+              <div className="space-y-2">
+                <div className="flex items-center gap-1 font-semibold text-primary text-[11px]">
+                  <Sparkles className="h-3 w-3" /> O que deseja fazer?
+                </div>
+                {actionsLoading ? (
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Gerando sugestões...
                   </div>
-                </>
-              )}
+                ) : actionSuggestions.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {actionSuggestions.map((action, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleActionClick(action)}
+                        disabled={executingAction !== null}
+                        className="w-full flex items-center gap-2 p-2 rounded-lg border border-primary/20 bg-background hover:bg-primary/10 transition-colors text-left group disabled:opacity-50"
+                      >
+                        <div className="shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                          {executingAction === action.label ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : getActionIcon(action.icon)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-medium truncate">{action.label}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{action.detail}</div>
+                        </div>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                ) : contextData.activity.next_steps ? (
+                  <div className="text-[11px] text-muted-foreground italic p-2 bg-primary/5 rounded-lg">
+                    {contextData.activity.next_steps}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-muted-foreground italic">
+                    Envie mensagens para gerar sugestões de ação.
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {contextLoading && (
