@@ -284,13 +284,15 @@ export function ImportCommentsFromExport({
         return;
       }
 
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { error } = await supabase
         .from('contacts')
         .insert({
           full_name: `@${username}`,
           instagram_username: username,
           instagram_url: `https://instagram.com/${username}`,
-          notes: 'Criado via importação de comentários outbound'
+          notes: 'Criado via importação de comentários outbound',
+          created_by: currentUser?.id || null,
         });
 
       if (error) throw error;

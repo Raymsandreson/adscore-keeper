@@ -62,11 +62,13 @@ export const QuickLinkLeadPopover: React.FC<QuickLinkLeadPopoverProps> = ({
     }
     
     // Create new contact
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     const { data: newContact, error } = await supabase
       .from('contacts')
       .insert({
         full_name: authorUsername.replace('@', ''),
-        instagram_username: normalizedUsername
+        instagram_username: normalizedUsername,
+        created_by: currentUser?.id || null,
       })
       .select('id')
       .single();

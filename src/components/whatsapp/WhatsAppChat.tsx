@@ -74,11 +74,13 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
 
   const handleCreateContactAndLink = async () => {
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data: newContact, error } = await supabase
         .from('contacts')
         .insert({
           full_name: conversation.contact_name || `WhatsApp ${conversation.phone}`,
           phone: conversation.phone,
+          created_by: currentUser?.id || null,
         })
         .select()
         .single();
