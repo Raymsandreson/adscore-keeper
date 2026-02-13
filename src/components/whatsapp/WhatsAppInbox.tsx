@@ -7,12 +7,24 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MessageSquare, Settings, RefreshCw, Smartphone } from 'lucide-react';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import type { Lead } from '@/hooks/useLeads';
+import type { Contact } from '@/hooks/useContacts';
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
+
+  // Side panel state
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [showLeadPanel, setShowLeadPanel] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [showContactPanel, setShowContactPanel] = useState(false);
 
   const selectedConversation = conversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
@@ -21,6 +33,86 @@ export function WhatsAppInbox() {
     setSelectedPhone(conv.phone);
     if (conv.unread_count > 0) {
       markAsRead(conv.phone);
+    }
+  };
+
+  const handleCreateLead = async () => {
+    if (!selectedConversation) return;
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from('leads')
+        .insert({
+          lead_name: selectedConversation.contact_name || 'Novo Lead - WhatsApp',
+          source: 'whatsapp',
+          created_by: currentUser?.id || null,
+        })
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      // Link to conversation
+      linkToLead(selectedConversation.phone, data.id);
+
+      // Open for editing with full form
+      setEditingLead(data as Lead);
+      setShowLeadPanel(true);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao criar lead');
+    }
+  };
+
+  const handleCreateContact = async () => {
+    if (!selectedConversation) return;
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert({
+          full_name: selectedConversation.contact_name || 'Novo Contato',
+          phone: selectedConversation.phone,
+          created_by: currentUser?.id || null,
+        })
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      // Link to conversation
+      linkToContact(selectedConversation.phone, data.id);
+
+      // Open for editing with full form
+      setEditingContact(data as Contact);
+      setShowContactPanel(true);
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao criar contato');
+    }
+  };
+
+  const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
+    const { error } = await supabase
+      .from('leads')
+      .update(updates as any)
+      .eq('id', leadId);
+    if (error) throw error;
+  };
+
+  const handleCloseLeadPanel = (open: boolean) => {
+    if (!open) {
+      setShowLeadPanel(false);
+      setEditingLead(null);
+      refetch();
+    }
+  };
+
+  const handleCloseContactPanel = (open: boolean) => {
+    if (!open) {
+      setShowContactPanel(false);
+      setEditingContact(null);
+      refetch();
     }
   };
 
@@ -48,7 +140,6 @@ export function WhatsAppInbox() {
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
 
-        {/* Instance selector */}
         {instances.length > 1 && (
           <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
             <SelectTrigger className="w-48 h-8 text-xs ml-2">
@@ -96,6 +187,8 @@ export function WhatsAppInbox() {
               onSendMessage={sendMessage}
               onLinkToLead={linkToLead}
               onLinkToContact={linkToContact}
+              onCreateLead={handleCreateLead}
+              onCreateContact={handleCreateContact}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">
@@ -115,6 +208,24 @@ export function WhatsAppInbox() {
           )}
         </div>
       </div>
+
+      {/* Lead Edit Panel - Full form with all tabs + AI */}
+      <LeadEditDialog
+        open={showLeadPanel}
+        onOpenChange={handleCloseLeadPanel}
+        lead={editingLead}
+        onSave={handleSaveLead}
+        mode="sheet"
+      />
+
+      {/* Contact Detail Panel - Full form with all fields */}
+      <ContactDetailSheet
+        contact={editingContact}
+        open={showContactPanel}
+        onOpenChange={handleCloseContactPanel}
+        onContactUpdated={() => refetch()}
+        mode="sheet"
+      />
     </div>
   );
 }
