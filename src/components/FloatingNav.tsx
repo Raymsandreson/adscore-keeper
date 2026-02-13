@@ -145,8 +145,6 @@ export function FloatingNav() {
 
   const handleNavigate = (path: string) => {
     navigate(path);
-    setOpen(false);
-    setExpandedSection(null);
   };
 
   const openCommandPalette = () => {
