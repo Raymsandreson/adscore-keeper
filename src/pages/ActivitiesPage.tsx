@@ -1572,6 +1572,22 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {!formLeadId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                      onClick={() => {
+                        const params = new URLSearchParams();
+                        params.set('newLead', 'true');
+                        if (selectedActivity?.id) params.set('activityId', selectedActivity.id);
+                        navigate(`/leads?${params.toString()}`);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Criar Lead
+                    </Button>
+                  )}
                   {formLeadId && (
                     <Button
                       variant="ghost"
@@ -1618,6 +1634,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     </Badge>
                   )}
                 </div>
+              )}
+              {/* No lead message */}
+              {!formLeadId && (
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
+                </p>
               )}
               {/* Funnel progress bar */}
               {formLeadId && leadPreview?.board_id && (
