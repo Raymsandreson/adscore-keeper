@@ -59,6 +59,13 @@ export function InvestmentsView({ searchTerm, filterCategories, filterSubcategor
   const { categories, overrides, setTransactionOverride, getTransactionOverride, getCategoryById } = useExpenseCategories();
   const parentCategories = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
 
+  // Auto-switch to lista tab when category filter is applied
+  useEffect(() => {
+    if (filterCategories && !filterCategories.includes('all')) {
+      setActiveTab('lista');
+    }
+  }, [filterCategories]);
+
   useEffect(() => {
     if (!user) return;
     fetchInvestments();
