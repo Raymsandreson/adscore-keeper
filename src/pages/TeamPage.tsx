@@ -6,6 +6,7 @@ import { TeamManagement } from '@/components/team/TeamManagement';
 import { TeamProductivityDashboard } from '@/components/team/TeamProductivityDashboard';
 import { CardPermissionsManager } from '@/components/finance/CardPermissionsManager';
 import { TeamsManager } from '@/components/team/TeamsManager';
+import { AccountPermissionsManager } from '@/components/finance/AccountPermissionsManager';
 import { ModulePermissionsManager } from '@/components/team/ModulePermissionsManager';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
@@ -22,6 +23,7 @@ import {
   UsersRound,
   DollarSign,
   Lock,
+  Landmark,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -86,7 +88,7 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-5xl grid-cols-7">
+          <TabsList className="grid w-full max-w-6xl grid-cols-8">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
@@ -110,6 +112,10 @@ export default function TeamPage() {
             <TabsTrigger value="permissions" className="gap-2">
               <CreditCard className="h-4 w-4" />
               <span className="hidden sm:inline">Cartões</span>
+            </TabsTrigger>
+            <TabsTrigger value="accounts" className="gap-2">
+              <Landmark className="h-4 w-4" />
+              <span className="hidden sm:inline">Contas</span>
             </TabsTrigger>
             <TabsTrigger value="modules" className="gap-2">
               <Lock className="h-4 w-4" />
@@ -139,6 +145,10 @@ export default function TeamPage() {
 
           <TabsContent value="permissions">
             <CardPermissionsManager availableCards={availableCards} />
+          </TabsContent>
+
+          <TabsContent value="accounts">
+            <AccountPermissionsManager />
           </TabsContent>
 
           <TabsContent value="modules">
