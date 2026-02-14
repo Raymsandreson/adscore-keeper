@@ -539,68 +539,70 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
     return (
       <div key={t.id} className={cn("border rounded-lg transition-all", isPending ? "border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/10" : "bg-card", isEditing && "ring-2 ring-primary")}>
         {/* Main Row */}
-        <div className="p-3 flex items-center gap-3 cursor-pointer hover:bg-muted/50" onClick={() => !isEditing && setExpandedId(isExpanded ? null : t.id)}>
-          {showCheckbox && (
-            <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} onClick={(e) => e.stopPropagation()} className="shrink-0" />
-          )}
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+        <div className="p-3 cursor-pointer hover:bg-muted/50" onClick={() => !isEditing && setExpandedId(isExpanded ? null : t.id)}>
+          <div className="flex items-center gap-2">
+            {showCheckbox && (
+              <Checkbox checked={selectedIds.has(t.id)} onCheckedChange={() => toggleSelect(t.id)} onClick={(e) => e.stopPropagation()} className="shrink-0" />
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
 
-          <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-            <span className="w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM', { locale: ptBR })}</span>
-            {t.transaction_time && (
-              <span className="flex items-center gap-0.5 text-muted-foreground/70">
-                <Clock className="h-3 w-3" />{t.transaction_time.slice(0, 5)}
-              </span>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+              <span className="w-12">{format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM', { locale: ptBR })}</span>
+              {t.transaction_time && (
+                <span className="flex items-center gap-0.5 text-muted-foreground/70">
+                  <Clock className="h-3 w-3" />{t.transaction_time.slice(0, 5)}
+                </span>
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                {t.amount >= 0 ? <ArrowUpRight className="h-4 w-4 text-green-500 shrink-0" /> : <ArrowDownRight className="h-4 w-4 text-destructive shrink-0" />}
+                <p className="font-medium truncate text-sm">{t.description || t.merchant_name || 'Sem descrição'}</p>
+              </div>
+            </div>
+
+            {isPending ? (
+              <Badge variant="outline" className="shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendente</Badge>
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+            )}
+
+            <span className={cn("font-bold text-sm w-24 text-right shrink-0", t.amount >= 0 ? "text-green-600" : "text-destructive")}>
+              {formatCurrency(t.amount)}
+            </span>
+
+            {!isEditing && (
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); startEditing(t); }}>
+                <Edit2 className="h-4 w-4" />
+              </Button>
             )}
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              {t.amount >= 0 ? <ArrowUpRight className="h-4 w-4 text-green-500 shrink-0" /> : <ArrowDownRight className="h-4 w-4 text-destructive shrink-0" />}
-              <p className="font-medium truncate text-sm">{t.description || t.merchant_name || 'Sem descrição'}</p>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-              {t.merchant_cnpj && (
-                <span className="flex items-center gap-1 font-mono">
-                  <Building2 className="h-3 w-3" />
-                  {t.merchant_cnpj.length === 14 ? t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : t.merchant_cnpj}
-                </span>
-              )}
-              {(t.merchant_city || t.merchant_state) && (
-                <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[t.merchant_city, t.merchant_state].filter(Boolean).join('-')}</span>
-              )}
-            </div>
+          {/* Secondary info row */}
+          <div className="flex items-center gap-2 mt-1 ml-10 flex-wrap">
+            {t.merchant_cnpj && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground font-mono">
+                <Building2 className="h-3 w-3" />
+                {t.merchant_cnpj.length === 14 ? t.merchant_cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : t.merchant_cnpj}
+              </span>
+            )}
+            {(t.merchant_city || t.merchant_state) && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{[t.merchant_city, t.merchant_state].filter(Boolean).join('-')}</span>
+            )}
+            {category && (
+              <Badge variant="outline" className="text-[10px] h-5">
+                <div className={cn("w-2 h-2 rounded-full mr-1", category.color)} />{category.name}
+              </Badge>
+            )}
+            {linkedName && (
+              <Badge variant="secondary" className="text-[10px] h-5">
+                {override?.lead_id ? <User className="h-3 w-3 mr-0.5" /> : <Users className="h-3 w-3 mr-0.5" />}{linkedName}
+              </Badge>
+            )}
           </div>
-
-          {category && (
-            <Badge variant="outline" className="shrink-0 text-xs">
-              <div className={cn("w-2 h-2 rounded-full mr-1", category.color)} />{category.name}
-            </Badge>
-          )}
-
-          {linkedName && (
-            <Badge variant="secondary" className="shrink-0 text-xs">
-              {override?.lead_id ? <User className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}{linkedName}
-            </Badge>
-          )}
-
-          {isPending ? (
-            <Badge variant="outline" className="shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pendente</Badge>
-          ) : (
-            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-          )}
-
-          <span className={cn("font-bold text-sm w-24 text-right shrink-0", t.amount >= 0 ? "text-green-600" : "text-destructive")}>
-            {formatCurrency(t.amount)}
-          </span>
-
-          {!isEditing && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); startEditing(t); }}>
-              <Edit2 className="h-4 w-4" />
-            </Button>
-          )}
         </div>
 
         {/* Expanded/Edit Row */}
