@@ -25,8 +25,6 @@ export function ModulePermissionsManager() {
   const { members, loading: membersLoading } = useTeamMembers();
   const [saving, setSaving] = useState<string | null>(null);
 
-  const nonAdminMembers = members.filter(m => m.role !== 'admin');
-
   const handleChange = async (userId: string, moduleKey: string, level: AccessLevel) => {
     const key = `${userId}-${moduleKey}`;
     setSaving(key);
@@ -44,13 +42,12 @@ export function ModulePermissionsManager() {
     return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
   }
 
-  if (nonAdminMembers.length === 0) {
+  if (members.length === 0) {
     return (
       <Card className="border-0 shadow-card">
         <CardContent className="py-12 text-center">
           <Shield className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-          <p className="text-muted-foreground">Nenhum membro (não-admin) encontrado.</p>
-          <p className="text-sm text-muted-foreground/70 mt-1">Administradores têm acesso total a todas as seções.</p>
+          <p className="text-muted-foreground">Nenhum membro encontrado.</p>
         </CardContent>
       </Card>
     );
@@ -87,27 +84,34 @@ export function ModulePermissionsManager() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {nonAdminMembers.map(member => {
+              {members.map(member => {
+                const isAdminMember = member.role === 'admin';
                 const perms = getUserPermissions(member.user_id);
                 return (
                   <TableRow key={member.user_id}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium text-sm">{member.full_name || 'Sem nome'}</p>
-                        <p className="text-xs text-muted-foreground">{member.email}</p>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{member.full_name || 'Sem nome'}</p>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                        {isAdminMember && <Badge variant="secondary" className="text-[10px] h-5">Admin</Badge>}
                       </div>
                     </TableCell>
                     {MODULE_DEFINITIONS.map(mod => {
-                      const level = perms[mod.key] || 'edit';
+                      const level = isAdminMember ? 'edit' : (perms[mod.key] || 'edit');
                       const savingKey = `${member.user_id}-${mod.key}`;
                       const isSaving = saving === savingKey;
                       return (
                         <TableCell key={mod.key} className="text-center">
-                          <Select
-                            value={level}
-                            onValueChange={(v) => handleChange(member.user_id, mod.key, v as AccessLevel)}
-                            disabled={isSaving}
-                          >
+                          {isAdminMember ? (
+                            <Badge variant="outline" className="text-[10px] mx-auto bg-muted">Acesso Total</Badge>
+                          ) : (
+                            <Select
+                              value={level}
+                              onValueChange={(v) => handleChange(member.user_id, mod.key, v as AccessLevel)}
+                              disabled={isSaving}
+                            >
                             <SelectTrigger className={cn("h-8 text-xs w-28 mx-auto", accessLabels[level].color)}>
                               <SelectValue />
                             </SelectTrigger>
@@ -132,6 +136,7 @@ export function ModulePermissionsManager() {
                               </SelectItem>
                             </SelectContent>
                           </Select>
+                          )}
                         </TableCell>
                       );
                     })}
