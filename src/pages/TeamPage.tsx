@@ -6,6 +6,7 @@ import { TeamManagement } from '@/components/team/TeamManagement';
 import { TeamProductivityDashboard } from '@/components/team/TeamProductivityDashboard';
 import { CardPermissionsManager } from '@/components/finance/CardPermissionsManager';
 import { TeamsManager } from '@/components/team/TeamsManager';
+import { ModulePermissionsManager } from '@/components/team/ModulePermissionsManager';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
 import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
@@ -20,6 +21,7 @@ import {
   Star,
   UsersRound,
   DollarSign,
+  Lock,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -84,30 +86,34 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-4xl grid-cols-6">
+          <TabsList className="grid w-full max-w-5xl grid-cols-7">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
-              Produtividade
+              <span className="hidden sm:inline">Produtividade</span>
             </TabsTrigger>
             <TabsTrigger value="commission" className="gap-2">
               <DollarSign className="h-4 w-4" />
-              Metas
+              <span className="hidden sm:inline">Metas</span>
             </TabsTrigger>
             <TabsTrigger value="evaluations" className="gap-2">
               <Star className="h-4 w-4" />
-              Avaliações
+              <span className="hidden sm:inline">Avaliações</span>
             </TabsTrigger>
             <TabsTrigger value="members" className="gap-2">
               <Users className="h-4 w-4" />
-              Membros
+              <span className="hidden sm:inline">Membros</span>
             </TabsTrigger>
             <TabsTrigger value="teams" className="gap-2">
               <UsersRound className="h-4 w-4" />
-              Times
+              <span className="hidden sm:inline">Times</span>
             </TabsTrigger>
             <TabsTrigger value="permissions" className="gap-2">
               <CreditCard className="h-4 w-4" />
-              Cartões
+              <span className="hidden sm:inline">Cartões</span>
+            </TabsTrigger>
+            <TabsTrigger value="modules" className="gap-2">
+              <Lock className="h-4 w-4" />
+              <span className="hidden sm:inline">Acessos</span>
             </TabsTrigger>
           </TabsList>
 
@@ -133,6 +139,10 @@ export default function TeamPage() {
 
           <TabsContent value="permissions">
             <CardPermissionsManager availableCards={availableCards} />
+          </TabsContent>
+
+          <TabsContent value="modules">
+            <ModulePermissionsManager />
           </TabsContent>
         </Tabs>
       </div>

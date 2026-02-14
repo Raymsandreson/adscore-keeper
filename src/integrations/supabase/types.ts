@@ -2957,6 +2957,33 @@ export type Database = {
         }
         Relationships: []
       }
+      member_module_permissions: {
+        Row: {
+          access_level: string
+          created_at: string
+          id: string
+          module_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_level?: string
+          created_at?: string
+          id?: string
+          module_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_level?: string
+          created_at?: string
+          id?: string
+          module_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       n8n_automation_logs: {
         Row: {
           action_type: string
