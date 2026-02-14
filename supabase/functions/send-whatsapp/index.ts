@@ -54,15 +54,18 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send directly to UazAPI using the instance token
+    // Send directly to UazAPI using the instance token via header auth (v2 API)
     const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
-    const sendUrl = `${baseUrl}/sendText/${instance.instance_token}`
+    const sendUrl = `${baseUrl}/sendText`
     
-    console.log('Sending via instance:', instance.instance_name, 'to phone:', phone)
+    console.log('Sending via instance:', instance.instance_name, 'to phone:', phone, 'url:', sendUrl)
 
     const uazResponse = await fetch(sendUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'token': instance.instance_token
+      },
       body: JSON.stringify({
         phone: phone,
         message: message,
