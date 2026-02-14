@@ -909,47 +909,9 @@ export default function FinancePage() {
               </CardContent>
             </Card>
 
-            {/* Financial Section Tabs */}
-            <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
-              <TabsList className="grid w-full grid-cols-4 h-11">
-                <TabsTrigger value="credit-card" className="flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" />
-                  <span className="hidden sm:inline">Cartão de Crédito</span>
-                  <span className="sm:hidden">Cartão</span>
-                </TabsTrigger>
-                <TabsTrigger value="bank" className="flex items-center gap-2">
-                  <Wallet className="h-4 w-4" />
-                  <span className="hidden sm:inline">Conta Corrente</span>
-                  <span className="sm:hidden">Conta</span>
-                </TabsTrigger>
-                <TabsTrigger value="investments" className="flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4" />
-                  <span className="hidden sm:inline">Investimentos</span>
-                  <span className="sm:hidden">Invest.</span>
-                </TabsTrigger>
-                <TabsTrigger value="loans" className="flex items-center gap-2">
-                  <Landmark className="h-4 w-4" />
-                  <span className="hidden sm:inline">Empréstimos</span>
-                  <span className="sm:hidden">Emprest.</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="bank" className="mt-4">
-                <BankTransactionsView startDate={startDate} endDate={endDate} />
-              </TabsContent>
-
-              <TabsContent value="investments" className="mt-4">
-                <InvestmentsView />
-              </TabsContent>
-
-              <TabsContent value="loans" className="mt-4">
-                <LoansView />
-              </TabsContent>
-
-              <TabsContent value="credit-card" className="mt-4 space-y-4">
+            {/* Shared Filters Bar */}
             <Card className="border-0 shadow-card">
               <CardContent className="py-4 space-y-4">
-                {/* Row 1: Search + Filters */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                   {/* Connection Filter */}
                   {connections.length > 1 && (
@@ -976,7 +938,7 @@ export default function FinancePage() {
                     />
                   </div>
                   
-                  {/* Cost Account Filter - Multi Select (BEFORE Cards) */}
+                  {/* Cost Account Filter */}
                   <MultiSelectFilter
                     icon={<Wallet className="h-4 w-4 text-muted-foreground" />}
                     placeholder="Conta"
@@ -994,49 +956,42 @@ export default function FinancePage() {
                     selectedValues={filterAccounts}
                     onSelectionChange={(values) => {
                       setFilterAccounts(values);
-                      // Reset card filter when account changes
                       setFilterCards(['all']);
                     }}
                   />
                   
-                  {/* Card Filter - Multi Select (filtered by selected accounts) */}
-                  <MultiSelectFilter
-                    icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
-                    placeholder="Cartão"
-                    allLabel="Todos os cartões"
-                    options={availableCards
-                      .filter(card => {
-                        // Filter cards by selected account(s)
-                        const isAllAccounts = filterAccounts.includes("all");
-                        if (isAllAccounts) return true;
-                        
-                        const assignment = getCardAssignment(card);
-                        const cardAccountId = assignment?.cost_account_id || null;
-                        
-                        // Check if card matches selected accounts
-                        if (filterAccounts.includes("no-account") && !cardAccountId) {
-                          return true;
-                        }
-                        if (cardAccountId && filterAccounts.includes(cardAccountId)) {
-                          return true;
-                        }
-                        return false;
-                      })
-                      .map(card => {
-                        const assignment = getCardAssignment(card);
-                        return {
-                          value: card,
-                          label: assignment?.card_name 
-                            ? `${assignment.card_name} (**** ${card})`
-                            : `**** ${card}`,
-                          sublabel: assignment?.lead_name || undefined
-                        };
-                      })}
-                    selectedValues={filterCards}
-                    onSelectionChange={setFilterCards}
-                  />
+                  {/* Card Filter - only for credit card section */}
+                  {financialSection === 'credit-card' && (
+                    <MultiSelectFilter
+                      icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
+                      placeholder="Cartão"
+                      allLabel="Todos os cartões"
+                      options={availableCards
+                        .filter(card => {
+                          const isAllAccounts = filterAccounts.includes("all");
+                          if (isAllAccounts) return true;
+                          const assignment = getCardAssignment(card);
+                          const cardAccountId = assignment?.cost_account_id || null;
+                          if (filterAccounts.includes("no-account") && !cardAccountId) return true;
+                          if (cardAccountId && filterAccounts.includes(cardAccountId)) return true;
+                          return false;
+                        })
+                        .map(card => {
+                          const assignment = getCardAssignment(card);
+                          return {
+                            value: card,
+                            label: assignment?.card_name 
+                              ? `${assignment.card_name} (**** ${card})`
+                              : `**** ${card}`,
+                            sublabel: assignment?.lead_name || undefined
+                          };
+                        })}
+                      selectedValues={filterCards}
+                      onSelectionChange={setFilterCards}
+                    />
+                  )}
                   
-                  {/* Category Filter - Multi Select with Preview Totals */}
+                  {/* Category Filter */}
                   <MultiSelectFilter
                     icon={<Tag className="h-4 w-4 text-muted-foreground" />}
                     placeholder="Categoria"
@@ -1081,62 +1036,111 @@ export default function FinancePage() {
                   </Select>
                 </div>
 
-                {/* Row 3: Summary + Category Chips */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  {/* Total Card */}
-                  <Card className="bg-gradient-to-br from-destructive/5 to-destructive/10 border-destructive/20">
-                    <CardContent className="py-4">
-                      <p className="text-sm text-muted-foreground">Total Gasto</p>
-                      <p className="text-2xl font-bold text-destructive">
-                        {loading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalSpent)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {filteredTransactions.length} transações
-                      </p>
-                    </CardContent>
-                  </Card>
+                {/* Category chips + clear filters */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasActiveFilters && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearAllFilters}
+                      className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                      Limpar filtros
+                    </Button>
+                  )}
                   
-                  {/* Category Chips - Local Categories with Totals */}
-                  <div className="md:col-span-3 flex flex-wrap items-center gap-2 content-center">
-                    {hasActiveFilters && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearAllFilters}
-                        className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                  {localCategoryTotals.slice(0, 6).map(({ categoryId, categoryName, total }) => {
+                    const isSelected = filterCategories.includes(categoryId);
+                    return (
+                      <Badge
+                        key={categoryId}
+                        variant={isSelected ? 'default' : 'outline'}
+                        className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
+                        onClick={() => {
+                          if (isSelected) {
+                            const newValues = filterCategories.filter(v => v !== categoryId);
+                            setFilterCategories(newValues.length === 0 ? ['all'] : newValues);
+                          } else {
+                            setFilterCategories([...filterCategories.filter(v => v !== 'all'), categoryId]);
+                          }
+                        }}
                       >
-                        <X className="h-3 w-3" />
-                        Limpar filtros
-                      </Button>
-                    )}
-                    
-                    {localCategoryTotals.slice(0, 6).map(({ categoryId, categoryName, total }) => {
-                      const isSelected = filterCategories.includes(categoryId);
-                      return (
-                        <Badge
-                          key={categoryId}
-                          variant={isSelected ? 'default' : 'outline'}
-                          className="cursor-pointer rounded-full px-3 py-1.5 hover:bg-primary/10 transition-colors"
-                          onClick={() => {
-                            if (isSelected) {
-                              const newValues = filterCategories.filter(v => v !== categoryId);
-                              setFilterCategories(newValues.length === 0 ? ['all'] : newValues);
-                            } else {
-                              setFilterCategories([...filterCategories.filter(v => v !== 'all'), categoryId]);
-                            }
-                          }}
-                        >
-                          {categoryName} ({formatCurrency(total)})
-                        </Badge>
-                      );
-                    })}
-                    {localCategoryTotals.length > 6 && (
-                      <Badge variant="outline" className="rounded-full px-3 py-1.5">
-                        +{localCategoryTotals.length - 6} mais
+                        {categoryName} ({formatCurrency(total)})
                       </Badge>
-                    )}
-                  </div>
+                    );
+                  })}
+                  {localCategoryTotals.length > 6 && (
+                    <Badge variant="outline" className="rounded-full px-3 py-1.5">
+                      +{localCategoryTotals.length - 6} mais
+                    </Badge>
+                  )}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Financial Section Tabs */}
+            <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
+              <TabsList className="grid w-full grid-cols-4 h-11">
+                <TabsTrigger value="credit-card" className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline">Cartão de Crédito</span>
+                  <span className="sm:hidden">Cartão</span>
+                </TabsTrigger>
+                <TabsTrigger value="bank" className="flex items-center gap-2">
+                  <Wallet className="h-4 w-4" />
+                  <span className="hidden sm:inline">Conta Corrente</span>
+                  <span className="sm:hidden">Conta</span>
+                </TabsTrigger>
+                <TabsTrigger value="investments" className="flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4" />
+                  <span className="hidden sm:inline">Investimentos</span>
+                  <span className="sm:hidden">Invest.</span>
+                </TabsTrigger>
+                <TabsTrigger value="loans" className="flex items-center gap-2">
+                  <Landmark className="h-4 w-4" />
+                  <span className="hidden sm:inline">Empréstimos</span>
+                  <span className="sm:hidden">Emprest.</span>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="bank" className="mt-4">
+                <BankTransactionsView 
+                  startDate={startDate} 
+                  endDate={endDate} 
+                  searchTerm={searchTerm}
+                  filterCategories={filterCategories}
+                  filterSubcategory={filterSubcategory}
+                />
+              </TabsContent>
+
+              <TabsContent value="investments" className="mt-4">
+                <InvestmentsView 
+                  searchTerm={searchTerm}
+                  filterCategories={filterCategories}
+                  filterSubcategory={filterSubcategory}
+                />
+              </TabsContent>
+
+              <TabsContent value="loans" className="mt-4">
+                <LoansView 
+                  searchTerm={searchTerm}
+                  filterCategories={filterCategories}
+                  filterSubcategory={filterSubcategory}
+                />
+              </TabsContent>
+
+              <TabsContent value="credit-card" className="mt-4 space-y-4">
+            {/* Total Summary for credit card */}
+            <Card className="bg-gradient-to-br from-destructive/5 to-destructive/10 border-destructive/20">
+              <CardContent className="py-4">
+                <p className="text-sm text-muted-foreground">Total Gasto</p>
+                <p className="text-2xl font-bold text-destructive">
+                  {loading ? <Skeleton className="h-8 w-24" /> : formatCurrency(totalSpent)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {filteredTransactions.length} transações
+                </p>
               </CardContent>
             </Card>
 

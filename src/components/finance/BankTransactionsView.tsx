@@ -72,17 +72,21 @@ interface Contact {
 interface BankTransactionsViewProps {
   startDate: Date;
   endDate: Date;
+  searchTerm?: string;
+  filterCategories?: string[];
+  filterSubcategory?: string;
 }
 
 type FlowFilter = 'all' | 'credit' | 'debit';
 
 const NONE_SELECTED = 'NONE';
 
-export function BankTransactionsView({ startDate, endDate }: BankTransactionsViewProps) {
+export function BankTransactionsView({ startDate, endDate, searchTerm: externalSearchTerm, filterCategories: externalFilterCategories, filterSubcategory: externalFilterSubcategory }: BankTransactionsViewProps) {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const searchTerm = externalSearchTerm || internalSearchTerm;
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('all');
   const [activeTab, setActiveTab] = useState('workflow');
 
@@ -182,8 +186,30 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
         t.merchant_city?.toLowerCase().includes(term)
       );
     }
+    // Category filter from parent
+    if (externalFilterCategories && !externalFilterCategories.includes('all')) {
+      result = result.filter(t => {
+        const override = getTransactionOverride(t.id);
+        const categoryId = override?.category_id || null;
+        if (externalFilterCategories.includes('uncategorized') && !categoryId) return true;
+        if (categoryId) {
+          // Check parent category match
+          const cat = getCategoryById(categoryId);
+          if (externalFilterCategories.includes(categoryId)) return true;
+          if (cat?.parent_id && externalFilterCategories.includes(cat.parent_id)) return true;
+        }
+        return false;
+      });
+    }
+    // Subcategory filter from parent
+    if (externalFilterSubcategory && externalFilterSubcategory !== 'all') {
+      result = result.filter(t => {
+        const override = getTransactionOverride(t.id);
+        return override?.category_id === externalFilterSubcategory;
+      });
+    }
     return result;
-  }, [transactions, searchTerm, flowFilter]);
+  }, [transactions, searchTerm, flowFilter, externalFilterCategories, externalFilterSubcategory, getTransactionOverride, getCategoryById]);
 
   const totalCredits = useMemo(() => filtered.filter(t => t.amount >= 0).reduce((sum, t) => sum + t.amount, 0), [filtered]);
   const totalDebits = useMemo(() => filtered.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0), [filtered]);
@@ -758,7 +784,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar por descrição, estabelecimento, categoria, cidade..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 h-10 rounded-xl bg-muted/50 border-0" />
+          <Input placeholder="Buscar por descrição, estabelecimento, categoria, cidade..." value={internalSearchTerm} onChange={(e) => setInternalSearchTerm(e.target.value)} className="pl-10 h-10 rounded-xl bg-muted/50 border-0" />
         </div>
         <div className="flex items-center gap-1 bg-muted rounded-xl p-1">
           <Button variant={flowFilter === 'all' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg" onClick={() => setFlowFilter('all')}>Todas</Button>

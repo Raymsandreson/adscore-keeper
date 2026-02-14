@@ -39,7 +39,13 @@ interface Contact { id: string; full_name: string; city: string | null; state: s
 
 const NONE_SELECTED = 'NONE';
 
-export function InvestmentsView() {
+interface InvestmentsViewProps {
+  searchTerm?: string;
+  filterCategories?: string[];
+  filterSubcategory?: string;
+}
+
+export function InvestmentsView({ searchTerm, filterCategories, filterSubcategory }: InvestmentsViewProps) {
   const { user } = useAuth();
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,15 +85,48 @@ export function InvestmentsView() {
     setContacts(contactsRes.data || []);
   };
 
-  const totalBalance = investments.reduce((sum, i) => sum + (i.balance || 0), 0);
-  const totalProfit = investments.reduce((sum, i) => sum + (i.amount_profit || 0), 0);
+  // Filter investments by search and category
+  const filteredInvestments = useMemo(() => {
+    let result = investments;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(inv => 
+        inv.name?.toLowerCase().includes(term) ||
+        inv.type?.toLowerCase().includes(term) ||
+        inv.issuer_name?.toLowerCase().includes(term)
+      );
+    }
+    if (filterCategories && !filterCategories.includes('all')) {
+      result = result.filter(inv => {
+        const override = getTransactionOverride(inv.id);
+        const categoryId = override?.category_id || null;
+        if (filterCategories.includes('uncategorized') && !categoryId) return true;
+        if (categoryId) {
+          if (filterCategories.includes(categoryId)) return true;
+          const cat = getCategoryById(categoryId);
+          if (cat?.parent_id && filterCategories.includes(cat.parent_id)) return true;
+        }
+        return false;
+      });
+    }
+    if (filterSubcategory && filterSubcategory !== 'all') {
+      result = result.filter(inv => {
+        const override = getTransactionOverride(inv.id);
+        return override?.category_id === filterSubcategory;
+      });
+    }
+    return result;
+  }, [investments, searchTerm, filterCategories, filterSubcategory, getTransactionOverride, getCategoryById]);
+
+  const totalBalance = filteredInvestments.reduce((sum, i) => sum + (i.balance || 0), 0);
+  const totalProfit = filteredInvestments.reduce((sum, i) => sum + (i.amount_profit || 0), 0);
 
   const pendingCount = useMemo(() => {
-    return investments.filter(inv => {
+    return filteredInvestments.filter(inv => {
       const ov = getTransactionOverride(inv.id);
       return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
     }).length;
-  }, [investments, getTransactionOverride, overrides]);
+  }, [filteredInvestments, getTransactionOverride, overrides]);
 
   const startEditing = (inv: Investment) => {
     const override = getTransactionOverride(inv.id);
@@ -227,7 +266,7 @@ export function InvestmentsView() {
     );
   }
 
-  const pendingInvestments = investments.filter(inv => {
+  const pendingInvestments = filteredInvestments.filter(inv => {
     const ov = getTransactionOverride(inv.id);
     return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
   });
@@ -236,7 +275,7 @@ export function InvestmentsView() {
     <div className="space-y-4">
       {/* Export */}
       <div className="flex justify-end">
-        <ExportFormatMenu onExport={(fmt) => exportInvestments(investments, fmt)} disabled={investments.length === 0} />
+        <ExportFormatMenu onExport={(fmt) => exportInvestments(filteredInvestments, fmt)} disabled={filteredInvestments.length === 0} />
       </div>
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
@@ -277,9 +316,9 @@ export function InvestmentsView() {
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-amber-500" />
               <span className="font-medium">{pendingCount} pendentes</span>
-              <Badge variant="secondary" className="rounded-full">{investments.length - pendingCount} / {investments.length} vinculados</Badge>
+              <Badge variant="secondary" className="rounded-full">{filteredInvestments.length - pendingCount} / {filteredInvestments.length} vinculados</Badge>
             </div>
-            <Progress value={investments.length > 0 ? ((investments.length - pendingCount) / investments.length) * 100 : 0} className="h-1.5" />
+            <Progress value={filteredInvestments.length > 0 ? ((filteredInvestments.length - pendingCount) / filteredInvestments.length) * 100 : 0} className="h-1.5" />
             {pendingCount === 0 ? (
               <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -294,7 +333,7 @@ export function InvestmentsView() {
         </TabsContent>
 
         <TabsContent value="lista" className="mt-4">
-          <div className="grid gap-4">{investments.map(inv => renderInvestmentCard(inv))}</div>
+          <div className="grid gap-4">{filteredInvestments.map(inv => renderInvestmentCard(inv))}</div>
         </TabsContent>
 
         <TabsContent value="config" className="mt-4">
