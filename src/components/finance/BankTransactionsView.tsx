@@ -156,7 +156,6 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
       const { data, error } = await supabase
         .from('bank_transactions')
         .select('id, pluggy_transaction_id, description, amount, transaction_date, transaction_time, category, transaction_type, merchant_name, merchant_cnpj, merchant_city, merchant_state, pluggy_account_id')
-        .eq('user_id', user.id)
         .gte('transaction_date', fromDate)
         .lte('transaction_date', toDate)
         .order('transaction_date', { ascending: false })

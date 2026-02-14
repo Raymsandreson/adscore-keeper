@@ -4009,6 +4009,10 @@ export type Database = {
         Args: { _card_last_digits: string; _user_id: string }
         Returns: boolean
       }
+      can_view_pluggy_account: {
+        Args: { _pluggy_account_id: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
