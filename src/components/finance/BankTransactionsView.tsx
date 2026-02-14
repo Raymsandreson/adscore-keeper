@@ -90,6 +90,13 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('all');
   const [activeTab, setActiveTab] = useState('workflow');
 
+  // Auto-switch to lista tab when category filter is applied
+  useEffect(() => {
+    if (externalFilterCategories && !externalFilterCategories.includes('all')) {
+      setActiveTab('lista');
+    }
+  }, [externalFilterCategories]);
+
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
