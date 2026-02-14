@@ -76,7 +76,7 @@ export function InvestmentsView({ searchTerm, filterCategories, filterSubcategor
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('investments').select('*').eq('user_id', user.id).order('balance', { ascending: false });
+      const { data, error } = await supabase.from('investments').select('*').order('balance', { ascending: false });
       if (error) throw error;
       setInvestments(data || []);
     } catch (err) { console.error('Error fetching investments:', err); }

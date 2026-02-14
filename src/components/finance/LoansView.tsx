@@ -76,7 +76,7 @@ export function LoansView({ searchTerm, filterCategories, filterSubcategory }: L
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('loans').select('*').eq('user_id', user.id).order('outstanding_balance', { ascending: false });
+      const { data, error } = await supabase.from('loans').select('*').order('outstanding_balance', { ascending: false });
       if (error) throw error;
       setLoans(data || []);
     } catch (err) { console.error('Error fetching loans:', err); }
