@@ -99,19 +99,16 @@ export function ModulePermissionsManager() {
                       </div>
                     </TableCell>
                     {MODULE_DEFINITIONS.map(mod => {
-                      const level = isAdminMember ? 'edit' : (perms[mod.key] || 'edit');
+                      const level = perms[mod.key] || 'edit';
                       const savingKey = `${member.user_id}-${mod.key}`;
                       const isSaving = saving === savingKey;
                       return (
                         <TableCell key={mod.key} className="text-center">
-                          {isAdminMember ? (
-                            <Badge variant="outline" className="text-[10px] mx-auto bg-muted">Acesso Total</Badge>
-                          ) : (
-                            <Select
-                              value={level}
-                              onValueChange={(v) => handleChange(member.user_id, mod.key, v as AccessLevel)}
-                              disabled={isSaving}
-                            >
+                          <Select
+                            value={level}
+                            onValueChange={(v) => handleChange(member.user_id, mod.key, v as AccessLevel)}
+                            disabled={isSaving}
+                          >
                             <SelectTrigger className={cn("h-8 text-xs w-28 mx-auto", accessLabels[level].color)}>
                               <SelectValue />
                             </SelectTrigger>
@@ -136,7 +133,6 @@ export function ModulePermissionsManager() {
                               </SelectItem>
                             </SelectContent>
                           </Select>
-                          )}
                         </TableCell>
                       );
                     })}
