@@ -39,7 +39,13 @@ interface Contact { id: string; full_name: string; }
 
 const NONE_SELECTED = 'NONE';
 
-export function LoansView() {
+interface LoansViewProps {
+  searchTerm?: string;
+  filterCategories?: string[];
+  filterSubcategory?: string;
+}
+
+export function LoansView({ searchTerm, filterCategories, filterSubcategory }: LoansViewProps) {
   const { user } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,15 +85,47 @@ export function LoansView() {
     setContacts(contactsRes.data || []);
   };
 
-  const totalOutstanding = loans.reduce((sum, l) => sum + (l.outstanding_balance || 0), 0);
-  const totalMonthly = loans.reduce((sum, l) => sum + (l.monthly_payment || 0), 0);
+  // Filter loans by search and category
+  const filteredLoans = useMemo(() => {
+    let result = loans;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(l =>
+        l.name?.toLowerCase().includes(term) ||
+        l.loan_type?.toLowerCase().includes(term)
+      );
+    }
+    if (filterCategories && !filterCategories.includes('all')) {
+      result = result.filter(l => {
+        const override = getTransactionOverride(l.id);
+        const categoryId = override?.category_id || null;
+        if (filterCategories.includes('uncategorized') && !categoryId) return true;
+        if (categoryId) {
+          if (filterCategories.includes(categoryId)) return true;
+          const cat = getCategoryById(categoryId);
+          if (cat?.parent_id && filterCategories.includes(cat.parent_id)) return true;
+        }
+        return false;
+      });
+    }
+    if (filterSubcategory && filterSubcategory !== 'all') {
+      result = result.filter(l => {
+        const override = getTransactionOverride(l.id);
+        return override?.category_id === filterSubcategory;
+      });
+    }
+    return result;
+  }, [loans, searchTerm, filterCategories, filterSubcategory, getTransactionOverride, getCategoryById]);
+
+  const totalOutstanding = filteredLoans.reduce((sum, l) => sum + (l.outstanding_balance || 0), 0);
+  const totalMonthly = filteredLoans.reduce((sum, l) => sum + (l.monthly_payment || 0), 0);
 
   const pendingCount = useMemo(() => {
-    return loans.filter(l => {
+    return filteredLoans.filter(l => {
       const ov = getTransactionOverride(l.id);
       return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
     }).length;
-  }, [loans, getTransactionOverride, overrides]);
+  }, [filteredLoans, getTransactionOverride, overrides]);
 
   const startEditing = (loan: Loan) => {
     const override = getTransactionOverride(loan.id);
@@ -238,7 +276,7 @@ export function LoansView() {
     );
   }
 
-  const pendingLoans = loans.filter(l => {
+  const pendingLoans = filteredLoans.filter(l => {
     const ov = getTransactionOverride(l.id);
     return !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
   });
@@ -247,7 +285,7 @@ export function LoansView() {
     <div className="space-y-4">
       {/* Export */}
       <div className="flex justify-end">
-        <ExportFormatMenu onExport={(fmt) => exportLoans(loans, fmt)} disabled={loans.length === 0} />
+        <ExportFormatMenu onExport={(fmt) => exportLoans(filteredLoans, fmt)} disabled={filteredLoans.length === 0} />
       </div>
       {/* Summary */}
       <div className="grid grid-cols-2 gap-4">
@@ -288,9 +326,9 @@ export function LoansView() {
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-amber-500" />
               <span className="font-medium">{pendingCount} pendentes</span>
-              <Badge variant="secondary" className="rounded-full">{loans.length - pendingCount} / {loans.length} vinculados</Badge>
+              <Badge variant="secondary" className="rounded-full">{filteredLoans.length - pendingCount} / {filteredLoans.length} vinculados</Badge>
             </div>
-            <Progress value={loans.length > 0 ? ((loans.length - pendingCount) / loans.length) * 100 : 0} className="h-1.5" />
+            <Progress value={filteredLoans.length > 0 ? ((filteredLoans.length - pendingCount) / filteredLoans.length) * 100 : 0} className="h-1.5" />
             {pendingCount === 0 ? (
               <Card className="border-green-500/50 bg-green-50/50 dark:bg-green-950/20">
                 <CardContent className="flex flex-col items-center justify-center py-12">
@@ -305,7 +343,7 @@ export function LoansView() {
         </TabsContent>
 
         <TabsContent value="lista" className="mt-4">
-          <div className="grid gap-4">{loans.map(l => renderLoanCard(l))}</div>
+          <div className="grid gap-4">{filteredLoans.map(l => renderLoanCard(l))}</div>
         </TabsContent>
 
         <TabsContent value="config" className="mt-4">
