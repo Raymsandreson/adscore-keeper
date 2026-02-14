@@ -604,7 +604,21 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={(e) => { e.stopPropagation(); openCreateSheet(editData.linkType); }} title={`Criar ${editData.linkType === 'lead' ? 'Lead' : 'Contato'}`}><Plus className="h-3 w-3" /></Button>
                       </div>
                     </div>
-                    <Select value={editData.linkId || ''} onValueChange={(v) => setEditData(prev => ({ ...prev, linkId: v }))}>
+                    <Select value={editData.linkId || ''} onValueChange={(v) => {
+                      setEditData(prev => ({ ...prev, linkId: v }));
+                      // Auto-fill city/state from lead's visit location
+                      if (editData.linkType === 'lead' && v && v !== NONE_SELECTED) {
+                        const selectedLead = leads.find(l => l.id === v);
+                        if (selectedLead) {
+                          const leadState = selectedLead.state || '';
+                          const leadCity = selectedLead.city || '';
+                          if (leadState || leadCity) {
+                            setEditData(prev => ({ ...prev, linkId: v, manualState: leadState, manualCity: leadCity }));
+                            if (leadState) fetchCities(leadState);
+                          }
+                        }
+                      }
+                    }}>
                       <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value={NONE_SELECTED} className="text-amber-600 dark:text-amber-400 font-medium italic">

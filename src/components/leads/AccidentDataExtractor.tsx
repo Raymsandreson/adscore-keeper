@@ -362,6 +362,19 @@ export function AccidentDataExtractor({
     }
   };
 
+  const formatDisplayValue = (key: string, value: string | number | null | undefined): string => {
+    if (value === null || value === undefined) return '';
+    if (key === 'accident_date' && typeof value === 'string') {
+      try {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleDateString('pt-BR');
+        }
+      } catch { /* ignore */ }
+    }
+    return String(value);
+  };
+
   const renderComparisonField = (field: FieldComparisonResult) => {
     return (
       <div 
@@ -394,20 +407,20 @@ export function AccidentDataExtractor({
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-muted-foreground min-w-[50px]">Atual:</span>
                   <span className="text-muted-foreground line-through truncate">
-                    {String(field.currentValue)}
+                    {formatDisplayValue(field.key, field.currentValue)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-emerald-600 min-w-[50px]">Novo:</span>
                   <ArrowRight className="h-3 w-3 text-emerald-600" />
                   <span className="text-foreground font-medium truncate">
-                    {String(field.extractedValue)}
+                    {formatDisplayValue(field.key, field.extractedValue)}
                   </span>
                 </div>
               </div>
             ) : (
               <p className="text-sm text-foreground truncate">
-                {String(field.extractedValue)}
+                {formatDisplayValue(field.key, field.extractedValue)}
               </p>
             )}
           </div>
@@ -482,7 +495,29 @@ export function AccidentDataExtractor({
                   <FileUp className="h-4 w-4" />
                   Upload de documento (PDF, Word, TXT)
                 </label>
-                <div className="flex gap-2">
+                <div
+                  className={cn(
+                    "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors",
+                    uploadedFile ? "border-primary/50 bg-primary/5" : "border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+                      if (!validTypes.includes(file.type)) {
+                        toast.error('Tipo de arquivo não suportado. Use PDF, Word ou TXT.');
+                        return;
+                      }
+                      setUploadedFile(file);
+                      toast.success(`Arquivo "${file.name}" carregado`);
+                    }
+                  }}
+                  onClick={() => !uploadedFile && fileInputRef.current?.click()}
+                >
                   <Input
                     type="file"
                     ref={fileInputRef}
@@ -490,24 +525,26 @@ export function AccidentDataExtractor({
                     accept=".pdf,.doc,.docx,.txt"
                     className="hidden"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex-1"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    {uploadedFile ? uploadedFile.name : 'Escolher arquivo'}
-                  </Button>
-                  {uploadedFile && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setUploadedFile(null)}
-                    >
-                      ×
-                    </Button>
+                  {uploadedFile ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <FileUp className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-medium">{uploadedFile.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => { e.stopPropagation(); setUploadedFile(null); }}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Upload className="h-8 w-8 mx-auto text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">Arraste um arquivo aqui ou clique para selecionar</p>
+                      <p className="text-xs text-muted-foreground/70">PDF, Word ou TXT</p>
+                    </div>
                   )}
                 </div>
               </div>
