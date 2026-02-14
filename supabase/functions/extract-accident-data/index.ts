@@ -126,21 +126,21 @@ serve(async (req) => {
         imageContent.push(`data:${mimeType};base64,${content}`);
       }
     } else if (type === 'document') {
-      // Document uploaded as base64 - try to extract text
-      // For now, we'll pass it to the AI as text if it's a text document
-      // For PDFs/Word, we might need additional processing
+      // Document uploaded as base64
       if (mimeType === 'text/plain') {
-        // Decode base64 text content
         try {
           textContent = atob(content);
         } catch {
           textContent = content;
         }
-      } else if (mimeType?.includes('pdf') || mimeType?.includes('word')) {
-        // For PDF/Word, we can't process directly - inform the user
+      } else if (mimeType?.includes('pdf')) {
+        // Send PDF as inline_data to Gemini which supports PDF natively
+        imageContent.push(`data:application/pdf;base64,${content}`);
+      } else if (mimeType?.includes('word') || mimeType?.includes('openxmlformats')) {
+        // Word docs can't be processed directly - inform the user
         return new Response(
           JSON.stringify({ 
-            error: 'Para documentos PDF/Word, por favor copie e cole o texto diretamente ou use a aba de imagem para prints do documento.' 
+            error: 'Para documentos Word, por favor copie e cole o texto diretamente ou salve como PDF e envie novamente.' 
           }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
