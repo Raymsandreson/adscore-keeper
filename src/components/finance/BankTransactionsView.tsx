@@ -75,6 +75,7 @@ interface BankTransactionsViewProps {
 }
 
 type FlowFilter = 'all' | 'credit' | 'debit';
+type StatusFilter = 'all' | 'pending' | 'done';
 
 const NONE_SELECTED = 'NONE';
 
@@ -84,6 +85,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [flowFilter, setFlowFilter] = useState<FlowFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [activeTab, setActiveTab] = useState('workflow');
 
   // Editing state
@@ -172,6 +174,13 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
     let result = transactions;
     if (flowFilter === 'credit') result = result.filter(t => t.amount >= 0);
     else if (flowFilter === 'debit') result = result.filter(t => t.amount < 0);
+    if (statusFilter !== 'all') {
+      result = result.filter(t => {
+        const ov = getTransactionOverride(t.id);
+        const isPending = !ov || (!ov.lead_id && !ov.contact_id && !ov.link_acknowledged);
+        return statusFilter === 'pending' ? isPending : !isPending;
+      });
+    }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(t =>
@@ -183,7 +192,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       );
     }
     return result;
-  }, [transactions, searchTerm, flowFilter]);
+  }, [transactions, searchTerm, flowFilter, statusFilter, getTransactionOverride]);
 
   const totalCredits = useMemo(() => filtered.filter(t => t.amount >= 0).reduce((sum, t) => sum + t.amount, 0), [filtered]);
   const totalDebits = useMemo(() => filtered.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0), [filtered]);
@@ -755,7 +764,7 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
       </div>
 
       {/* Search + Flow Filter */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar por descrição, estabelecimento, categoria, cidade..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 h-10 rounded-xl bg-muted/50 border-0" />
@@ -764,6 +773,11 @@ export function BankTransactionsView({ startDate, endDate }: BankTransactionsVie
           <Button variant={flowFilter === 'all' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg" onClick={() => setFlowFilter('all')}>Todas</Button>
           <Button variant={flowFilter === 'credit' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg gap-1" onClick={() => setFlowFilter('credit')}><ArrowUpRight className="h-3 w-3" /> Entradas</Button>
           <Button variant={flowFilter === 'debit' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg gap-1" onClick={() => setFlowFilter('debit')}><ArrowDownRight className="h-3 w-3" /> Saídas</Button>
+        </div>
+        <div className="flex items-center gap-1 bg-muted rounded-xl p-1">
+          <Button variant={statusFilter === 'all' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg" onClick={() => setStatusFilter('all')}>Todos</Button>
+          <Button variant={statusFilter === 'pending' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg gap-1" onClick={() => setStatusFilter('pending')}><AlertCircle className="h-3 w-3" /> Pendentes</Button>
+          <Button variant={statusFilter === 'done' ? 'default' : 'ghost'} size="sm" className="h-8 text-xs rounded-lg gap-1" onClick={() => setStatusFilter('done')}><CheckCircle2 className="h-3 w-3" /> Categorizados</Button>
         </div>
       </div>
 
