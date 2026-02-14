@@ -3520,13 +3520,6 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "transaction_category_overrides_transaction_id_fkey"
-            columns: ["transaction_id"]
-            isOneToOne: true
-            referencedRelation: "credit_card_transactions"
-            referencedColumns: ["id"]
-          },
         ]
       }
       user_activity_log: {
