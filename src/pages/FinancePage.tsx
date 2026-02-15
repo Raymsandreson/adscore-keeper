@@ -123,6 +123,7 @@ export default function FinancePage() {
   const [filterCategories, setFilterCategories] = useState<string[]>(["all"]);
   const [filterAccounts, setFilterAccounts] = useState<string[]>(["all"]);
   const [filterSubcategory, setFilterSubcategory] = useState<string>("all");
+  const [filterContacts, setFilterContacts] = useState<string[]>(["all"]);
   const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
   const [isConnecting, setIsConnecting] = useState(false);
@@ -141,6 +142,20 @@ export default function FinancePage() {
     const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
     return Array.from(cards);
   }, [transactions]);
+
+  // Get unique contacts linked to cards
+  const contactFilterOptions = useMemo(() => {
+    const contactMap = new Map<string, { id: string; name: string }>();
+    cardAssignments.forEach(a => {
+      if (a.contact_id) {
+        contactMap.set(a.contact_id, {
+          id: a.contact_id,
+          name: a.contact_name || a.lead_name || `Contato ${a.card_last_digits}`,
+        });
+      }
+    });
+    return Array.from(contactMap.values());
+  }, [cardAssignments]);
 
   // Get parent categories and subcategories from our local categories
   const parentCategories = useMemo(() => {
@@ -399,9 +414,25 @@ export default function FinancePage() {
         matchesSubcategory = localCategoryId === filterSubcategory;
       }
       
-      return matchesDate && matchesSearch && matchesCard && matchesConnection && matchesAccount && matchesCategory && matchesSubcategory;
+      // Contact filter (via card assignment)
+      const isAllContacts = filterContacts.includes("all");
+      let matchesContact = isAllContacts;
+      if (!matchesContact && t.card_last_digits) {
+        const assignment = getCardAssignment(t.card_last_digits);
+        const contactId = assignment?.contact_id || null;
+        if (filterContacts.includes("no-contact")) {
+          matchesContact = !contactId;
+        }
+        if (contactId && filterContacts.includes(contactId)) {
+          matchesContact = true;
+        }
+      } else if (!matchesContact && !t.card_last_digits) {
+        matchesContact = filterContacts.includes("no-contact");
+      }
+
+      return matchesDate && matchesSearch && matchesCard && matchesConnection && matchesAccount && matchesCategory && matchesSubcategory && matchesContact;
     });
-  }, [permittedTransactions, searchTerm, filterCards, filterConnections, filterAccounts, filterCategories, filterSubcategory, startDate, endDate, getLocalCategoryForTransaction, getTransactionOverride]);
+  }, [permittedTransactions, searchTerm, filterCards, filterConnections, filterAccounts, filterCategories, filterSubcategory, filterContacts, startDate, endDate, getLocalCategoryForTransaction, getTransactionOverride, getCardAssignment]);
 
   // Calculate totals for PREVIEW in dropdown (without category filter applied)
   // This shows totals for each category based on date, search, and card filters only
@@ -566,13 +597,14 @@ export default function FinancePage() {
     return matchedRange?.value || 'custom';
   };
 
-  const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || !filterConnections.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
+  const hasActiveFilters = !filterCards.includes('all') || !filterAccounts.includes('all') || !filterCategories.includes('all') || !filterConnections.includes('all') || !filterContacts.includes('all') || filterSubcategory !== 'all' || searchTerm !== '';
 
   const clearAllFilters = () => {
     setFilterCards(['all']);
     setFilterAccounts(['all']);
     setFilterCategories(['all']);
     setFilterConnections(['all']);
+    setFilterContacts(['all']);
     setFilterSubcategory('all');
     setSearchTerm('');
   };
@@ -988,6 +1020,24 @@ export default function FinancePage() {
                         })}
                       selectedValues={filterCards}
                       onSelectionChange={setFilterCards}
+                    />
+                  )}
+                  
+                  {/* Contact Filter - only contacts linked to cards */}
+                  {financialSection === 'credit-card' && contactFilterOptions.length > 0 && (
+                    <MultiSelectFilter
+                      icon={<Users className="h-4 w-4 text-muted-foreground" />}
+                      placeholder="Contato"
+                      allLabel="Todos os contatos"
+                      options={[
+                        { value: 'no-contact', label: 'Sem contato vinculado' },
+                        ...contactFilterOptions.map(c => ({
+                          value: c.id,
+                          label: c.name,
+                        }))
+                      ]}
+                      selectedValues={filterContacts}
+                      onSelectionChange={setFilterContacts}
                     />
                   )}
                   
