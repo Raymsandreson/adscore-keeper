@@ -5,6 +5,184 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function transcribeCallAudio(audioUrl: string, apiKey: string): Promise<{ summary: string; transcript: string } | null> {
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: "Você é um assistente jurídico de um CRM de advocacia. Transcreva o áudio da chamada e forneça um resumo objetivo."
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Transcreva este áudio de chamada telefônica e forneça:\n1. TRANSCRIÇÃO: A transcrição completa da conversa\n2. RESUMO: Um resumo conciso dos pontos principais discutidos, decisões tomadas e próximos passos\n\nResponda em português do Brasil. Use o formato:\nTRANSCRIÇÃO:\n[transcrição aqui]\n\nRESUMO:\n[resumo aqui]"
+              },
+              {
+                type: "input_audio",
+                input_audio: { url: audioUrl, format: "wav" }
+              }
+            ]
+          }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("AI transcription error:", response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || "";
+
+    const transcriptMatch = content.match(/TRANSCRIÇÃO:\s*([\s\S]*?)(?=RESUMO:|$)/i);
+    const summaryMatch = content.match(/RESUMO:\s*([\s\S]*?)$/i);
+
+    return {
+      transcript: transcriptMatch?.[1]?.trim() || content,
+      summary: summaryMatch?.[1]?.trim() || "",
+    };
+  } catch (e) {
+    console.error("Transcription error:", e);
+    return null;
+  }
+}
+
+async function handleCallEvent(supabase: any, body: any) {
+  const call = body.call || body.message || body.chat || {};
+  const chatId = body.chat?.wa_chatid || call.chatid || call.from || '';
+  const phone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/\D/g, '').replace(/^0+/, '');
+  const contactName = body.chat?.name || body.chat?.pushName || body.senderName || null;
+  const instanceName = body.instanceName || body.chat?.instanceName || null;
+
+  const isIncoming = !(body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true);
+  const callType = isIncoming ? 'recebida' : 'realizada';
+  const durationSeconds = call.duration || call.callDuration || 0;
+  const callStatus = call.status || call.result || 'unknown';
+
+  // Map UazAPI call status to our call_result
+  let callResult = 'atendeu';
+  const statusLower = (callStatus + '').toLowerCase();
+  if (statusLower.includes('miss') || statusLower.includes('reject') || statusLower.includes('cancel') || statusLower.includes('timeout')) {
+    callResult = 'não_atendeu';
+  } else if (statusLower.includes('busy')) {
+    callResult = 'ocupado';
+  }
+
+  console.log('Processing call event:', { phone, contactName, callType, durationSeconds, callResult, callStatus });
+
+  if (!phone) {
+    console.error('No phone for call event');
+    return null;
+  }
+
+  // Find contact/lead
+  let contactId: string | null = null;
+  let leadId: string | null = null;
+  let leadName: string | null = null;
+
+  const phoneVariants = [phone, `+${phone}`, phone.replace(/^55/, '')];
+  for (const variant of phoneVariants) {
+    const { data: contacts } = await supabase
+      .from('contacts')
+      .select('id, lead_id, full_name')
+      .or(`phone.ilike.%${variant}`)
+      .limit(1);
+    if (contacts?.length) {
+      contactId = contacts[0].id;
+      leadId = contacts[0].lead_id;
+      break;
+    }
+  }
+
+  if (!leadId) {
+    for (const variant of phoneVariants) {
+      const { data: leads } = await supabase
+        .from('leads')
+        .select('id, lead_name')
+        .or(`lead_phone.ilike.%${variant}`)
+        .limit(1);
+      if (leads?.length) {
+        leadId = leads[0].id;
+        leadName = leads[0].lead_name;
+        break;
+      }
+    }
+  }
+
+  // Try transcription if there's audio and call was answered
+  let aiSummary: string | null = null;
+  let aiTranscript: string | null = null;
+  const audioUrl = call.audioUrl || call.audio_url || call.mediaUrl || null;
+
+  if (audioUrl && callResult === 'atendeu' && durationSeconds > 5) {
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (apiKey) {
+      console.log('Transcribing call audio...');
+      const result = await transcribeCallAudio(audioUrl, apiKey);
+      if (result) {
+        aiSummary = result.summary;
+        aiTranscript = result.transcript;
+        console.log('Transcription completed, summary length:', aiSummary?.length);
+      }
+    }
+  }
+
+  // Get first admin user as fallback user_id
+  const { data: adminRole } = await supabase
+    .from('user_roles')
+    .select('user_id')
+    .eq('role', 'admin')
+    .limit(1)
+    .single();
+
+  const userId = adminRole?.user_id;
+  if (!userId) {
+    console.error('No admin user found for call record');
+    return null;
+  }
+
+  const { data: record, error } = await supabase
+    .from('call_records')
+    .insert({
+      user_id: userId,
+      call_type: callType,
+      call_result: callResult,
+      duration_seconds: durationSeconds,
+      contact_id: contactId,
+      lead_id: leadId,
+      lead_name: leadName || contactName,
+      contact_name: contactName,
+      contact_phone: phone,
+      phone_used: 'whatsapp',
+      ai_summary: aiSummary,
+      ai_transcript: aiTranscript,
+      audio_url: audioUrl,
+      notes: `Chamada WhatsApp ${callType} via ${instanceName || 'UazAPI'}. Status: ${callStatus}`,
+      tags: ['whatsapp', 'automatico'],
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating call record:', error);
+    return null;
+  }
+
+  console.log('Call record created:', record.id);
+  return record;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -18,6 +196,17 @@ Deno.serve(async (req) => {
     const body = await req.json()
     console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
 
+    // ========== CALL EVENT HANDLING ==========
+    if (body.EventType === 'call' || body.event === 'call' || body.type === 'call') {
+      console.log('Detected CALL event, processing...')
+      const callRecord = await handleCallEvent(supabase, body);
+      return new Response(
+        JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========== MESSAGE HANDLING (existing logic) ==========
     let rawPhone = ''
     let contactName: string | null = null
     let messageText: string | null = null
@@ -33,13 +222,11 @@ Deno.serve(async (req) => {
       // UazAPI format
       console.log('Detected UazAPI format, EventType:', body.EventType)
       
-      // Extract instance info
       instanceName = body.instanceName || body.chat?.instanceName || null
       instanceToken = body.token || body.chat?.token || null
       
       console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8))
 
-      // Only process message events
       if (body.EventType !== 'messages') {
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: `EventType ${body.EventType} ignored` }),
@@ -66,7 +253,6 @@ Deno.serve(async (req) => {
           || null
       }
 
-      // Media handling
       if (msg.imageMessage) {
         messageType = 'image'
         mediaType = msg.imageMessage.mimetype || 'image/jpeg'
@@ -88,7 +274,6 @@ Deno.serve(async (req) => {
       direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
       externalMessageId = body.message?.messageid || body.message?.id || body.chat?.id_message || null
     } else {
-      // Generic / custom format
       rawPhone = body.phone || body.from || body.sender || body.remoteJid || ''
       contactName = body.contact_name || body.pushName || body.senderName || body.name || null
       messageText = body.message || body.text || body.body || body.content || null
@@ -112,7 +297,6 @@ Deno.serve(async (req) => {
 
     console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, instanceName })
 
-    // Try to find existing contact by phone
     let contactId: string | null = null
     let leadId: string | null = null
 
@@ -147,7 +331,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert the message with instance data
     const { data: message, error } = await supabase
       .from('whatsapp_messages')
       .insert({

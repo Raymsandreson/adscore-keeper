@@ -102,13 +102,37 @@ export function WhatsAppSetupGuide() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Badge>4</Badge> Vinculação Automática
+            <Badge>4</Badge> Rastreamento de Chamadas
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            O sistema pode rastrear chamadas de voz/vídeo feitas pelo WhatsApp automaticamente.
+          </p>
+          <div className="p-3 border rounded-lg space-y-2">
+            <p className="font-medium text-sm">📞 Configuração na UazAPI:</p>
+            <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+              <li>No painel da UazAPI, acesse <strong>Webhooks</strong></li>
+              <li>Ative o evento <strong>"call"</strong> além de "messages"</li>
+              <li>O n8n deve encaminhar esses eventos para o mesmo webhook</li>
+            </ol>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            As chamadas serão registradas automaticamente na página <strong>/calls</strong> com transcrição por IA quando disponível.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>5</Badge> Vinculação Automática
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            O sistema tenta vincular automaticamente as mensagens recebidas a contatos e leads existentes pelo número de telefone. 
-            Para mensagens de números desconhecidos, você pode criar um contato e vincular a um lead diretamente pelo chat.
+            O sistema tenta vincular automaticamente as mensagens e chamadas recebidas a contatos e leads existentes pelo número de telefone. 
+            Para números desconhecidos, você pode criar um contato e vincular a um lead diretamente pelo chat.
           </p>
         </CardContent>
       </Card>
