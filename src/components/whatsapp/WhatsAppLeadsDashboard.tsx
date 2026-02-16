@@ -43,6 +43,7 @@ export function WhatsAppLeadsDashboard() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30');
   const [instances, setInstances] = useState<any[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState('all');
 
   useEffect(() => {
     fetchData();
@@ -75,12 +76,31 @@ export function WhatsAppLeadsDashboard() {
     setLoading(false);
   };
 
+  // Filter messages by selected instance
+  const filteredMessages = useMemo(() => {
+    if (selectedInstance === 'all') return messages;
+    return messages.filter(m => m.instance_name === selectedInstance);
+  }, [messages, selectedInstance]);
+
+  // Get lead IDs that have messages from selected instance
+  const filteredLeadIds = useMemo(() => {
+    if (selectedInstance === 'all') return null; // null means no filter
+    const ids = new Set<string>();
+    filteredMessages.forEach(m => { if (m.lead_id) ids.add(m.lead_id); });
+    return ids;
+  }, [filteredMessages, selectedInstance]);
+
+  const filteredLeads = useMemo(() => {
+    if (!filteredLeadIds) return leads;
+    return leads.filter(l => filteredLeadIds.has(l.id));
+  }, [leads, filteredLeadIds]);
+
   // Calculate first response times for leads with WhatsApp messages
   const responseMetrics = useMemo(() => {
     const leadFirstInbound = new Map<string, string>();
     const leadFirstOutbound = new Map<string, string>();
 
-    messages.forEach(msg => {
+    filteredMessages.forEach(msg => {
       if (!msg.lead_id) return;
       if (msg.direction === 'inbound' && !leadFirstInbound.has(msg.lead_id)) {
         leadFirstInbound.set(msg.lead_id, msg.created_at);
@@ -108,38 +128,38 @@ export function WhatsAppLeadsDashboard() {
     const responseRate = leadsWithInbound > 0 ? Math.round((leadsWithResponse / leadsWithInbound) * 100) : 0;
 
     return { avgResponseTime, responseRate, responseTimes, leadsWithResponse, leadsWithInbound };
-  }, [messages]);
+  }, [filteredMessages]);
 
   // Leads by day
   const leadsByDay = useMemo(() => {
     const dayMap = new Map<string, number>();
-    leads.forEach(l => {
+    filteredLeads.forEach(l => {
       const day = format(parseISO(l.created_at), 'dd/MM', { locale: ptBR });
       dayMap.set(day, (dayMap.get(day) || 0) + 1);
     });
     return Array.from(dayMap.entries())
       .map(([day, count]) => ({ day, count }))
       .reverse();
-  }, [leads]);
+  }, [filteredLeads]);
 
   // Leads by time period
   const leadsByTimePeriod = useMemo(() => {
     const periodMap = new Map<string, number>();
     ['Madrugada (00h-6h)', 'Manhã (6h-12h)', 'Tarde (12h-18h)', 'Noite (18h-00h)'].forEach(p => periodMap.set(p, 0));
     
-    leads.forEach(l => {
+    filteredLeads.forEach(l => {
       const hour = parseISO(l.created_at).getHours();
       const p = getTimePeriod(hour);
       periodMap.set(p, (periodMap.get(p) || 0) + 1);
     });
     return Array.from(periodMap.entries()).map(([name, value]) => ({ name, value }));
-  }, [leads]);
+  }, [filteredLeads]);
 
   // Leads by hour
   const leadsByHour = useMemo(() => {
     const hourMap = new Map<number, number>();
     for (let i = 0; i < 24; i++) hourMap.set(i, 0);
-    leads.forEach(l => {
+    filteredLeads.forEach(l => {
       const hour = parseISO(l.created_at).getHours();
       hourMap.set(hour, (hourMap.get(hour) || 0) + 1);
     });
@@ -147,13 +167,13 @@ export function WhatsAppLeadsDashboard() {
       hour: `${hour}h`,
       count,
     }));
-  }, [leads]);
+  }, [filteredLeads]);
 
   // Conversion metrics
   const conversionMetrics = useMemo(() => {
-    const total = leads.length;
-    const qualified = leads.filter(l => l.status === 'qualified' || l.status === 'converted').length;
-    const converted = leads.filter(l => l.status === 'converted').length;
+    const total = filteredLeads.length;
+    const qualified = filteredLeads.filter(l => l.status === 'qualified' || l.status === 'converted').length;
+    const converted = filteredLeads.filter(l => l.status === 'converted').length;
     
     return {
       total,
@@ -162,12 +182,12 @@ export function WhatsAppLeadsDashboard() {
       qualificationRate: total > 0 ? Math.round((qualified / total) * 100) : 0,
       conversionRate: total > 0 ? Math.round((converted / total) * 100) : 0,
     };
-  }, [leads]);
+  }, [filteredLeads]);
 
   // 80/20 - Top campaigns
   const topCampaigns = useMemo(() => {
     const campaignMap = new Map<string, { count: number; converted: number }>();
-    leads.forEach(l => {
+    filteredLeads.forEach(l => {
       const name = l.campaign_name || 'Sem Campanha';
       const existing = campaignMap.get(name) || { count: 0, converted: 0 };
       existing.count++;
@@ -184,7 +204,7 @@ export function WhatsAppLeadsDashboard() {
       }))
       .sort((a, b) => b.leads - a.leads)
       .slice(0, 10);
-  }, [leads]);
+  }, [filteredLeads]);
 
   // Leads by instance (for receiving instances)
   const leadsByInstance = useMemo(() => {
@@ -236,16 +256,31 @@ export function WhatsAppLeadsDashboard() {
           </h2>
           <p className="text-xs text-muted-foreground">Análise de performance de captação via WhatsApp e Anúncios</p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-44 h-8 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PERIOD_OPTIONS.map(o => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          {instances.length > 0 && (
+            <Select value={selectedInstance} onValueChange={setSelectedInstance}>
+              <SelectTrigger className="w-48 h-8 text-xs">
+                <SelectValue placeholder="Instância" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas instâncias</SelectItem>
+                {instances.map(i => (
+                  <SelectItem key={i.id} value={i.instance_name}>{i.instance_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-44 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PERIOD_OPTIONS.map(o => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* KPI Cards */}
