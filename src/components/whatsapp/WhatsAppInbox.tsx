@@ -8,6 +8,8 @@ import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3 } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
@@ -35,6 +37,8 @@ export function WhatsAppInbox() {
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
+  const [showBoardPicker, setShowBoardPicker] = useState(false);
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
 
   const selectedConversation = conversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
@@ -46,8 +50,19 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleCreateLead = async () => {
+  const handleCreateLead = () => {
     if (!selectedConversation) return;
+    // If only one board, skip picker
+    if (boards.length === 1) {
+      createLeadWithBoard(boards[0].id);
+    } else {
+      setSelectedBoardId(boards[0]?.id || '');
+      setShowBoardPicker(true);
+    }
+  };
+
+  const createLeadWithBoard = async (boardId: string) => {
+    if (!selectedConversation || !boardId) return;
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data, error } = await supabase
@@ -56,6 +71,7 @@ export function WhatsAppInbox() {
           lead_name: selectedConversation.contact_name || 'Novo Lead - WhatsApp',
           source: 'whatsapp',
           created_by: currentUser?.id || null,
+          board_id: boardId,
         })
         .select('*')
         .single();
@@ -68,6 +84,7 @@ export function WhatsAppInbox() {
       // Open for editing with full form
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
+      setShowBoardPicker(false);
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar lead');
@@ -280,6 +297,34 @@ export function WhatsAppInbox() {
         defaultContactId={activityDefaults.contactId}
         defaultContactName={activityDefaults.contactName}
       />
+
+      {/* Board Picker Dialog */}
+      <Dialog open={showBoardPicker} onOpenChange={setShowBoardPicker}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Selecionar Funil</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Label>Funil *</Label>
+            <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Selecione um funil" />
+              </SelectTrigger>
+              <SelectContent>
+                {boards.map(b => (
+                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBoardPicker(false)}>Cancelar</Button>
+            <Button onClick={() => createLeadWithBoard(selectedBoardId)} disabled={!selectedBoardId}>
+              Criar Lead
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
