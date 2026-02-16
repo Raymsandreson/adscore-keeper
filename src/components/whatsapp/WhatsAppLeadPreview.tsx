@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
+import { WhatsAppLeadStageManager } from './WhatsAppLeadStageManager';
 import { 
   MapPin, Building2, User, Calendar, FileText, ExternalLink, 
   ChevronDown, ChevronUp, ClipboardPlus
@@ -138,6 +139,18 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
             </CollapsibleTrigger>
           </div>
         </div>
+
+        {/* Stage Manager - always visible when lead has board */}
+        {lead.board_id && (
+          <div className="border-t">
+            <WhatsAppLeadStageManager
+              leadId={lead.id}
+              boardId={lead.board_id}
+              currentStageId={lead.status}
+              onStageChanged={fetchLead}
+            />
+          </div>
+        )}
 
         {/* Expanded: Full ActivityDetailPanel with tabs */}
         <CollapsibleContent>
