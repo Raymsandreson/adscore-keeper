@@ -3775,6 +3775,8 @@ export type Database = {
       }
       whatsapp_instances: {
         Row: {
+          ad_account_id: string | null
+          ad_account_name: string | null
           base_url: string | null
           created_at: string
           id: string
@@ -3782,9 +3784,12 @@ export type Database = {
           instance_token: string
           is_active: boolean | null
           owner_phone: string | null
+          receive_leads: boolean | null
           updated_at: string
         }
         Insert: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           base_url?: string | null
           created_at?: string
           id?: string
@@ -3792,9 +3797,12 @@ export type Database = {
           instance_token: string
           is_active?: boolean | null
           owner_phone?: string | null
+          receive_leads?: boolean | null
           updated_at?: string
         }
         Update: {
+          ad_account_id?: string | null
+          ad_account_name?: string | null
           base_url?: string | null
           created_at?: string
           id?: string
@@ -3802,6 +3810,7 @@ export type Database = {
           instance_token?: string
           is_active?: boolean | null
           owner_phone?: string | null
+          receive_leads?: boolean | null
           updated_at?: string
         }
         Relationships: []

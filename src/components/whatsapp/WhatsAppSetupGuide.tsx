@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 
 export function WhatsAppSetupGuide() {
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
@@ -111,6 +112,9 @@ export function WhatsAppSetupGuide() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Ad Link Settings */}
+      <WhatsAppAdLinkSettings />
     </div>
   );
 }
