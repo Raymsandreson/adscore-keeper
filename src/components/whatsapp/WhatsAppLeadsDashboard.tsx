@@ -46,7 +46,7 @@ export function WhatsAppLeadsDashboard() {
   const [leads, setLeads] = useState<LeadWithMessages[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('this_month');
+  const [period, setPeriod] = useState('today');
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState('all');
 
