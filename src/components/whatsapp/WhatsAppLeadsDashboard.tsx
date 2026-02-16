@@ -20,6 +20,19 @@ interface LeadWithMessages {
   first_response_at?: string | null;
 }
 
+interface ConversationSummary {
+  phone: string;
+  firstMessageAt: string;
+  inboundCount: number;
+  outboundCount: number;
+  hasOutboundReply: boolean;
+  firstInboundAt: string | null;
+  firstOutboundAt: string | null;
+  instanceName: string | null;
+  leadId: string | null;
+  leadName: string | null;
+}
+
 const PERIOD_OPTIONS = [
   { value: 'today', label: 'Hoje' },
   { value: 'yesterday', label: 'Ontem' },
@@ -58,16 +71,18 @@ export function WhatsAppLeadsDashboard() {
     setLoading(true);
     const now = new Date();
     let sinceDate: Date;
+    let untilDate: Date | null = null;
     switch (period) {
       case 'today':
         sinceDate = startOfDay(now);
         break;
       case 'yesterday':
         sinceDate = startOfDay(subDays(now, 1));
+        untilDate = endOfDay(subDays(now, 1));
         break;
       case 'this_week': {
         const day = now.getDay();
-        const diff = day === 0 ? 6 : day - 1; // Monday as start
+        const diff = day === 0 ? 6 : day - 1;
         sinceDate = startOfDay(subDays(now, diff));
         break;
       }
@@ -82,17 +97,26 @@ export function WhatsAppLeadsDashboard() {
     }
     const since = sinceDate.toISOString();
 
+    let leadsQuery = supabase
+      .from('leads')
+      .select('id, lead_name, source, status, created_at, campaign_name, adset_name, ad_name')
+      .gte('created_at', since)
+      .order('created_at', { ascending: false });
+    
+    let msgsQuery = supabase
+      .from('whatsapp_messages')
+      .select('id, phone, direction, created_at, lead_id, instance_name')
+      .gte('created_at', since)
+      .order('created_at', { ascending: true });
+
+    if (untilDate) {
+      leadsQuery = leadsQuery.lte('created_at', untilDate.toISOString());
+      msgsQuery = msgsQuery.lte('created_at', untilDate.toISOString());
+    }
+
     const [leadsRes, msgsRes, instRes] = await Promise.all([
-      supabase
-        .from('leads')
-        .select('id, lead_name, source, status, created_at, campaign_name, adset_name, ad_name')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('whatsapp_messages')
-        .select('id, phone, direction, created_at, lead_id, instance_name')
-        .gte('created_at', since)
-        .order('created_at', { ascending: true }),
+      leadsQuery,
+      msgsQuery,
       supabase
         .from('whatsapp_instances')
         .select('id, instance_name, receive_leads, ad_account_name')
@@ -111,9 +135,47 @@ export function WhatsAppLeadsDashboard() {
     return messages.filter(m => m.instance_name === selectedInstance);
   }, [messages, selectedInstance]);
 
+  // Build conversations from messages (grouped by phone)
+  const conversations = useMemo<ConversationSummary[]>(() => {
+    const phoneMap = new Map<string, ConversationSummary>();
+    filteredMessages.forEach(msg => {
+      const existing = phoneMap.get(msg.phone);
+      if (!existing) {
+        phoneMap.set(msg.phone, {
+          phone: msg.phone,
+          firstMessageAt: msg.created_at,
+          inboundCount: msg.direction === 'inbound' ? 1 : 0,
+          outboundCount: msg.direction === 'outbound' ? 1 : 0,
+          hasOutboundReply: msg.direction === 'outbound',
+          firstInboundAt: msg.direction === 'inbound' ? msg.created_at : null,
+          firstOutboundAt: msg.direction === 'outbound' ? msg.created_at : null,
+          instanceName: msg.instance_name,
+          leadId: msg.lead_id,
+          leadName: null,
+        });
+      } else {
+        if (msg.direction === 'inbound') {
+          existing.inboundCount++;
+          if (!existing.firstInboundAt) existing.firstInboundAt = msg.created_at;
+        } else {
+          existing.outboundCount++;
+          existing.hasOutboundReply = true;
+          if (!existing.firstOutboundAt) existing.firstOutboundAt = msg.created_at;
+        }
+        if (!existing.leadId && msg.lead_id) existing.leadId = msg.lead_id;
+      }
+    });
+    return Array.from(phoneMap.values());
+  }, [filteredMessages]);
+
+  // Only inbound conversations (new contacts reaching out)
+  const inboundConversations = useMemo(() => {
+    return conversations.filter(c => c.inboundCount > 0);
+  }, [conversations]);
+
   // Get lead IDs that have messages from selected instance
   const filteredLeadIds = useMemo(() => {
-    if (selectedInstance === 'all') return null; // null means no filter
+    if (selectedInstance === 'all') return null;
     const ids = new Set<string>();
     filteredMessages.forEach(m => { if (m.lead_id) ids.add(m.lead_id); });
     return ids;
@@ -124,26 +186,13 @@ export function WhatsAppLeadsDashboard() {
     return leads.filter(l => filteredLeadIds.has(l.id));
   }, [leads, filteredLeadIds]);
 
-  // Calculate first response times for leads with WhatsApp messages
+  // Calculate response metrics based on conversations (by phone), not just leads
   const responseMetrics = useMemo(() => {
-    const leadFirstInbound = new Map<string, string>();
-    const leadFirstOutbound = new Map<string, string>();
-
-    filteredMessages.forEach(msg => {
-      if (!msg.lead_id) return;
-      if (msg.direction === 'inbound' && !leadFirstInbound.has(msg.lead_id)) {
-        leadFirstInbound.set(msg.lead_id, msg.created_at);
-      }
-      if (msg.direction === 'outbound' && !leadFirstOutbound.has(msg.lead_id)) {
-        leadFirstOutbound.set(msg.lead_id, msg.created_at);
-      }
-    });
-
     const responseTimes: number[] = [];
-    leadFirstInbound.forEach((inboundTime, leadId) => {
-      const outboundTime = leadFirstOutbound.get(leadId);
-      if (outboundTime) {
-        const diff = differenceInMinutes(parseISO(outboundTime), parseISO(inboundTime));
+    
+    inboundConversations.forEach(conv => {
+      if (conv.firstInboundAt && conv.firstOutboundAt) {
+        const diff = differenceInMinutes(parseISO(conv.firstOutboundAt), parseISO(conv.firstInboundAt));
         if (diff >= 0 && diff < 1440) responseTimes.push(diff);
       }
     });
@@ -152,51 +201,51 @@ export function WhatsAppLeadsDashboard() {
       ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
       : 0;
 
-    const leadsWithResponse = leadFirstOutbound.size;
-    const leadsWithInbound = leadFirstInbound.size;
-    const responseRate = leadsWithInbound > 0 ? Math.round((leadsWithResponse / leadsWithInbound) * 100) : 0;
+    const conversationsWithReply = inboundConversations.filter(c => c.hasOutboundReply).length;
+    const totalInbound = inboundConversations.length;
+    const responseRate = totalInbound > 0 ? Math.round((conversationsWithReply / totalInbound) * 100) : 0;
 
-    return { avgResponseTime, responseRate, responseTimes, leadsWithResponse, leadsWithInbound };
-  }, [filteredMessages]);
+    return { avgResponseTime, responseRate, responseTimes, leadsWithResponse: conversationsWithReply, leadsWithInbound: totalInbound };
+  }, [inboundConversations]);
 
-  // Leads by day
+  // Conversations by day (using first inbound message time)
   const leadsByDay = useMemo(() => {
     const dayMap = new Map<string, number>();
-    filteredLeads.forEach(l => {
-      const day = format(parseISO(l.created_at), 'dd/MM', { locale: ptBR });
+    inboundConversations.forEach(c => {
+      const day = format(parseISO(c.firstInboundAt!), 'dd/MM', { locale: ptBR });
       dayMap.set(day, (dayMap.get(day) || 0) + 1);
     });
     return Array.from(dayMap.entries())
       .map(([day, count]) => ({ day, count }))
       .reverse();
-  }, [filteredLeads]);
+  }, [inboundConversations]);
 
-  // Leads by time period
+  // Conversations by time period
   const leadsByTimePeriod = useMemo(() => {
     const periodMap = new Map<string, number>();
     ['Madrugada (00h-6h)', 'Manhã (6h-12h)', 'Tarde (12h-18h)', 'Noite (18h-00h)'].forEach(p => periodMap.set(p, 0));
     
-    filteredLeads.forEach(l => {
-      const hour = parseISO(l.created_at).getHours();
+    inboundConversations.forEach(c => {
+      const hour = parseISO(c.firstInboundAt!).getHours();
       const p = getTimePeriod(hour);
       periodMap.set(p, (periodMap.get(p) || 0) + 1);
     });
     return Array.from(periodMap.entries()).map(([name, value]) => ({ name, value }));
-  }, [filteredLeads]);
+  }, [inboundConversations]);
 
-  // Leads by hour
+  // Conversations by hour
   const leadsByHour = useMemo(() => {
     const hourMap = new Map<number, number>();
     for (let i = 0; i < 24; i++) hourMap.set(i, 0);
-    filteredLeads.forEach(l => {
-      const hour = parseISO(l.created_at).getHours();
+    inboundConversations.forEach(c => {
+      const hour = parseISO(c.firstInboundAt!).getHours();
       hourMap.set(hour, (hourMap.get(hour) || 0) + 1);
     });
     return Array.from(hourMap.entries()).map(([hour, count]) => ({
       hour: `${hour}h`,
       count,
     }));
-  }, [filteredLeads]);
+  }, [inboundConversations]);
 
   // Conversion metrics
   const conversionMetrics = useMemo(() => {
@@ -318,10 +367,10 @@ export function WhatsAppLeadsDashboard() {
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Total Leads</span>
+              <span className="text-xs text-muted-foreground">Conversas</span>
             </div>
-            <p className="text-2xl font-bold">{conversionMetrics.total}</p>
-            <p className="text-xs text-muted-foreground">{leadsByDay.length > 0 ? Math.round(conversionMetrics.total / leadsByDay.length) : 0} /dia</p>
+            <p className="text-2xl font-bold">{inboundConversations.length}</p>
+            <p className="text-xs text-muted-foreground">{filteredMessages.length} msgs | {conversionMetrics.total} leads</p>
           </CardContent>
         </Card>
         <Card>
