@@ -21,6 +21,11 @@ interface LeadWithMessages {
 }
 
 const PERIOD_OPTIONS = [
+  { value: 'today', label: 'Hoje' },
+  { value: 'yesterday', label: 'Ontem' },
+  { value: 'this_week', label: 'Esta semana' },
+  { value: 'this_month', label: 'Este mês' },
+  { value: 'this_year', label: 'Este ano' },
   { value: '7', label: 'Últimos 7 dias' },
   { value: '14', label: 'Últimos 14 dias' },
   { value: '30', label: 'Últimos 30 dias' },
@@ -41,7 +46,7 @@ export function WhatsAppLeadsDashboard() {
   const [leads, setLeads] = useState<LeadWithMessages[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('30');
+  const [period, setPeriod] = useState('this_month');
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState('all');
 
@@ -51,7 +56,31 @@ export function WhatsAppLeadsDashboard() {
 
   const fetchData = async () => {
     setLoading(true);
-    const since = subDays(new Date(), parseInt(period)).toISOString();
+    const now = new Date();
+    let sinceDate: Date;
+    switch (period) {
+      case 'today':
+        sinceDate = startOfDay(now);
+        break;
+      case 'yesterday':
+        sinceDate = startOfDay(subDays(now, 1));
+        break;
+      case 'this_week': {
+        const day = now.getDay();
+        const diff = day === 0 ? 6 : day - 1; // Monday as start
+        sinceDate = startOfDay(subDays(now, diff));
+        break;
+      }
+      case 'this_month':
+        sinceDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'this_year':
+        sinceDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        sinceDate = subDays(now, parseInt(period));
+    }
+    const since = sinceDate.toISOString();
 
     const [leadsRes, msgsRes, instRes] = await Promise.all([
       supabase
@@ -292,7 +321,7 @@ export function WhatsAppLeadsDashboard() {
               <span className="text-xs text-muted-foreground">Total Leads</span>
             </div>
             <p className="text-2xl font-bold">{conversionMetrics.total}</p>
-            <p className="text-xs text-muted-foreground">{Math.round(conversionMetrics.total / parseInt(period))} /dia</p>
+            <p className="text-xs text-muted-foreground">{leadsByDay.length > 0 ? Math.round(conversionMetrics.total / leadsByDay.length) : 0} /dia</p>
           </CardContent>
         </Card>
         <Card>
