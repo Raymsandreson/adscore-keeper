@@ -362,6 +362,39 @@ export type Database = {
         }
         Relationships: []
       }
+      call_events_pending: {
+        Row: {
+          call_id: string
+          contact_name: string | null
+          created_at: string
+          event_type: string
+          from_me: boolean | null
+          id: string
+          instance_name: string | null
+          phone: string
+        }
+        Insert: {
+          call_id: string
+          contact_name?: string | null
+          created_at?: string
+          event_type: string
+          from_me?: boolean | null
+          id?: string
+          instance_name?: string | null
+          phone: string
+        }
+        Update: {
+          call_id?: string
+          contact_name?: string | null
+          created_at?: string
+          event_type?: string
+          from_me?: boolean | null
+          id?: string
+          instance_name?: string | null
+          phone?: string
+        }
+        Relationships: []
+      }
       call_records: {
         Row: {
           activity_id: string | null

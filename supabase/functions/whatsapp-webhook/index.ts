@@ -246,35 +246,105 @@ async function handleCallEvent(supabase: any, body: any) {
   const contactName = body.chat?.name || body.chat?.pushName || body.senderName || null;
   const instanceName = body.instanceName || body.chat?.instanceName || null;
 
-  // UazAPI v2: fromMe is at body level, not nested
+  // UazAPI v2: fromMe is at body level
   const isIncoming = !(body.fromMe === true || body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true);
-  const callType = isIncoming ? 'recebida' : 'realizada';
-  const durationSeconds = event.duration || event.callDuration || call.duration || call.callDuration || 0;
-  const callStatus = event.status || event.result || call.status || call.result || event.Data?.Tag || 'unknown';
+  const callId = event.CallID || event.call_id || call.CallID || '';
+  const eventTag = (event.Data?.Tag || event.status || event.result || call.status || '').toLowerCase();
+  const reason = (body.Reason || event.Reason || event.Data?.Attrs?.reason || '').toLowerCase();
 
-  let callResult = 'atendeu';
-  const statusLower = (callStatus + '').toLowerCase();
-  if (statusLower.includes('miss') || statusLower.includes('reject') || statusLower.includes('cancel') || statusLower.includes('timeout')) {
-    callResult = 'não_atendeu';
-  } else if (statusLower.includes('busy')) {
-    callResult = 'ocupado';
-  } else if (statusLower === 'offer') {
-    // UazAPI v2: 'offer' means call started, result unknown yet - mark as received
-    callResult = 'atendeu';
-  }
+  console.log('Processing call event:', { phone, callId, eventTag, reason, isIncoming, instanceName });
 
-  console.log('Processing call event:', { phone, contactName, callType, durationSeconds, callResult, callStatus });
-
-  if (!phone) {
-    console.error('No phone for call event');
+  if (!phone || !callId) {
+    console.error('No phone or callId for call event');
     return null;
   }
 
+  // ===== EVENT ROUTING =====
+  // offer = call started → save pending event
+  // accept = call answered → save pending event  
+  // terminate = call ended → create final record with calculated duration
+
+  if (eventTag === 'offer') {
+    // Save the offer timestamp
+    await supabase.from('call_events_pending').insert({
+      call_id: callId,
+      instance_name: instanceName,
+      phone,
+      contact_name: contactName,
+      event_type: 'offer',
+      from_me: !isIncoming,
+    });
+    console.log('Saved offer event for call:', callId);
+    return null; // Don't create a call_record yet
+  }
+
+  if (eventTag === 'accept') {
+    // Save the accept timestamp
+    await supabase.from('call_events_pending').insert({
+      call_id: callId,
+      instance_name: instanceName,
+      phone,
+      contact_name: contactName,
+      event_type: 'accept',
+      from_me: !isIncoming,
+    });
+    console.log('Saved accept event for call:', callId);
+    return null; // Don't create a call_record yet
+  }
+
+  // ===== TERMINATE: Create the final call record =====
+  // Look up pending events to calculate duration
+  const { data: pendingEvents } = await supabase
+    .from('call_events_pending')
+    .select('*')
+    .eq('call_id', callId)
+    .order('created_at', { ascending: true });
+
+  const offerEvent = pendingEvents?.find((e: any) => e.event_type === 'offer');
+  const acceptEvent = pendingEvents?.find((e: any) => e.event_type === 'accept');
+
+  // Calculate duration: from accept (or offer if no accept) to now
+  let durationSeconds = 0;
+  const wasAnswered = !!acceptEvent;
+  
+  if (wasAnswered && acceptEvent) {
+    const acceptTime = new Date(acceptEvent.created_at).getTime();
+    const terminateTime = Date.now();
+    durationSeconds = Math.round((terminateTime - acceptTime) / 1000);
+  }
+
+  // Determine call result
+  let callResult = 'atendeu';
+  if (!wasAnswered) {
+    // Check reason for unanswered
+    if (reason.includes('reject') || reason.includes('cancel') || reason.includes('timeout') || reason.includes('miss') || reason.includes('accepted_elsewhere')) {
+      callResult = 'não_atendeu';
+    } else if (reason.includes('busy')) {
+      callResult = 'ocupado';
+    } else {
+      callResult = 'não_atendeu';
+    }
+    durationSeconds = 0;
+  }
+
+  // Use phone/name from offer event if available (more reliable)
+  const finalPhone = offerEvent?.phone || phone;
+  const finalContactName = offerEvent?.contact_name || contactName;
+  const callType = offerEvent?.from_me ? 'realizada' : (isIncoming ? 'recebida' : 'realizada');
+
+  console.log('Creating call record:', { finalPhone, callType, callResult, durationSeconds, wasAnswered });
+
+  // Clean up pending events
+  if (pendingEvents?.length) {
+    await supabase.from('call_events_pending').delete().eq('call_id', callId);
+  }
+
+  // Look up contact/lead
   let contactId: string | null = null;
   let leadId: string | null = null;
   let leadName: string | null = null;
 
-  const phoneVariants = [phone, `+${phone}`, phone.replace(/^55/, '')];
+  const phoneVariants = [finalPhone, `+${finalPhone}`, finalPhone.replace(/^55/, '')];
   for (const variant of phoneVariants) {
     const { data: contacts } = await supabase
       .from('contacts')
@@ -303,6 +373,7 @@ async function handleCallEvent(supabase: any, body: any) {
     }
   }
 
+  // AI transcription for answered calls
   let aiSummary: string | null = null;
   let aiTranscript: string | null = null;
   const audioUrl = call.audioUrl || call.audio_url || call.mediaUrl || null;
@@ -315,7 +386,6 @@ async function handleCallEvent(supabase: any, body: any) {
       if (result) {
         aiSummary = result.summary;
         aiTranscript = result.transcript;
-        console.log('Transcription completed, summary length:', aiSummary?.length);
       }
     }
   }
@@ -342,14 +412,14 @@ async function handleCallEvent(supabase: any, body: any) {
       duration_seconds: durationSeconds,
       contact_id: contactId,
       lead_id: leadId,
-      lead_name: leadName || contactName,
-      contact_name: contactName,
-      contact_phone: phone,
+      lead_name: leadName || finalContactName,
+      contact_name: finalContactName,
+      contact_phone: finalPhone,
       phone_used: 'whatsapp',
       ai_summary: aiSummary,
       ai_transcript: aiTranscript,
       audio_url: audioUrl,
-      notes: `Chamada WhatsApp ${callType} via ${instanceName || 'UazAPI'}. Status: ${callStatus}`,
+      notes: `Chamada WhatsApp ${callType} via ${instanceName || 'UazAPI'}. Duração: ${durationSeconds}s`,
       tags: ['whatsapp', 'automatico'],
     })
     .select()
@@ -360,7 +430,7 @@ async function handleCallEvent(supabase: any, body: any) {
     return null;
   }
 
-  console.log('Call record created:', record.id);
+  console.log('Call record created:', record.id, 'duration:', durationSeconds, 'seconds');
   return record;
 }
 
