@@ -243,11 +243,19 @@ Deno.serve(async (req) => {
       if (typeof msg === 'string') {
         messageText = msg
       } else {
-        // Handle content that can be string or object with text property
+        // Handle content that can be string or object with URL property (UazAPI media format)
         const rawContent = msg.content;
-        const contentText = typeof rawContent === 'object' && rawContent !== null 
-          ? rawContent.text || rawContent.conversation || null
-          : rawContent;
+        let contentText: string | null = null;
+        
+        if (typeof rawContent === 'object' && rawContent !== null) {
+          // UazAPI sends media as content: { URL: "...", DirectPath: "...", ... }
+          if (rawContent.URL) {
+            mediaUrl = rawContent.URL;
+          }
+          contentText = rawContent.text || rawContent.conversation || null;
+        } else if (typeof rawContent === 'string') {
+          contentText = rawContent;
+        }
 
         messageText = msg.text
           || contentText
@@ -264,22 +272,50 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Detect media type - check standard WhatsApp format first, then UazAPI format
       if (msg.imageMessage) {
         messageType = 'image'
         mediaType = msg.imageMessage.mimetype || 'image/jpeg'
-        mediaUrl = msg.imageMessage.url || null
+        mediaUrl = mediaUrl || msg.imageMessage.url || null
       } else if (msg.videoMessage) {
         messageType = 'video'
         mediaType = msg.videoMessage.mimetype || 'video/mp4'
-        mediaUrl = msg.videoMessage.url || null
+        mediaUrl = mediaUrl || msg.videoMessage.url || null
       } else if (msg.audioMessage) {
         messageType = 'audio'
         mediaType = msg.audioMessage.mimetype || 'audio/ogg'
-        mediaUrl = msg.audioMessage.url || null
+        mediaUrl = mediaUrl || msg.audioMessage.url || null
       } else if (msg.documentMessage) {
         messageType = 'document'
         mediaType = msg.documentMessage.mimetype || null
-        mediaUrl = msg.documentMessage.url || null
+        mediaUrl = mediaUrl || msg.documentMessage.url || null
+      } else if (msg.mediaType || (typeof msg.content === 'object' && msg.content?.URL)) {
+        // UazAPI format: uses mediaType field and content.URL
+        const uazMediaType = (msg.mediaType || '').toLowerCase()
+        const chatLastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
+        
+        if (uazMediaType.includes('audio') || uazMediaType.includes('ptt') || chatLastMsgType.includes('audio')) {
+          messageType = 'audio'
+          mediaType = msg.mimetype || 'audio/ogg'
+        } else if (uazMediaType.includes('image') || chatLastMsgType.includes('image')) {
+          messageType = 'image'
+          mediaType = msg.mimetype || 'image/jpeg'
+        } else if (uazMediaType.includes('video') || chatLastMsgType.includes('video')) {
+          messageType = 'video'
+          mediaType = msg.mimetype || 'video/mp4'
+        } else if (uazMediaType.includes('document') || uazMediaType.includes('sticker') || chatLastMsgType.includes('document') || chatLastMsgType.includes('sticker')) {
+          messageType = 'document'
+          mediaType = msg.mimetype || null
+        } else if (mediaUrl) {
+          // Has media URL but unknown type - mark as document
+          messageType = 'document'
+          mediaType = msg.mimetype || null
+        }
+        
+        // If no text and it's a media message, set a descriptive text
+        if (!messageText && messageType !== 'text') {
+          messageText = null // Will show media type badge in UI
+        }
       }
 
       direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
