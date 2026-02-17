@@ -11,6 +11,7 @@ import { PageTracker } from "@/components/PageTracker";
 import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { FloatingNav } from "@/components/FloatingNav";
+import { IncomingCallBanner } from "@/components/IncomingCallBanner";
 import Index from "./pages/Index";
 import ActivitiesPage from "./pages/ActivitiesPage";
 import LeadsCenter from "./pages/LeadsCenter";
@@ -54,6 +55,7 @@ function AppRoutes() {
       <PageTracker />
       <GlobalDatabaseSearch />
       <UserProductivityBanner />
+      <IncomingCallBanner />
       <FloatingNav />
       <Routes>
         <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
