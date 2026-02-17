@@ -173,12 +173,44 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   : "bg-card border rounded-bl-sm"
               )}
             >
-              {msg.media_url && (
+              {/* Media rendering */}
+              {msg.message_type === 'audio' && msg.media_url && (
+                <audio controls className="max-w-full mb-1" preload="none">
+                  <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
+                  Áudio não suportado
+                </audio>
+              )}
+              {msg.message_type === 'image' && msg.media_url && (
+                <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                  <img 
+                    src={msg.media_url} 
+                    alt="Imagem" 
+                    className="max-w-full rounded-lg mb-1 max-h-[300px] object-cover cursor-pointer"
+                    loading="lazy"
+                  />
+                </a>
+              )}
+              {msg.message_type === 'video' && msg.media_url && (
+                <video controls className="max-w-full rounded-lg mb-1 max-h-[300px]" preload="none">
+                  <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
+                  Vídeo não suportado
+                </video>
+              )}
+              {msg.message_type === 'document' && msg.media_url && (
+                <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
+                  <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
+                </a>
+              )}
+              {/* Fallback for media without proper type */}
+              {msg.media_url && msg.message_type === 'text' && (
                 <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
                   <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
                 </a>
               )}
               {msg.message_text && <p className="whitespace-pre-wrap">{msg.message_text}</p>}
+              {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
+                <p className="text-xs italic opacity-70">📎 {msg.message_type}</p>
+              )}
               <p className={cn(
                 "text-[10px] mt-1",
                 msg.direction === 'outbound' ? "text-green-200" : "text-muted-foreground"
