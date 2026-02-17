@@ -21,13 +21,13 @@ async function downloadAndStoreMedia(
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
 
-    // Try UazAPI v2 endpoint: POST /message/download with { id: messageId }
-    const downloadUrl = `${baseUrl}/message/download`;
-    console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
+    // UazAPI v2 endpoint: POST /chat/downloadMediaMessage with { messages: messageId }
+    const downloadUrl = `${baseUrl}/chat/downloadMediaMessage`;
+    console.log('Calling /chat/downloadMediaMessage at:', downloadUrl, 'with messages:', messageId);
     const downloadResp = await fetch(downloadUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-      body: JSON.stringify({ id: messageId }),
+      body: JSON.stringify({ messages: messageId }),
     });
 
     console.log('downloadMediaMessage response status:', downloadResp.status);
@@ -76,12 +76,14 @@ async function downloadAndStoreMedia(
 
     // Fallback: try /getMediaURL endpoint
     if (!fileBuffer || fileBuffer.byteLength < 50) {
-      console.log('Trying /chat/media fallback...');
-      const getMediaUrlEndpoint = `${baseUrl}/chat/media`;
+      console.log('Trying /chat/downloadMediaMessage with full ID fallback...');
+      // Try with owner:messageId format if the first attempt used short ID
+      const fullId = messageId.includes(':') ? messageId.split(':').pop()! : `${instanceName}:${messageId}`;
+      const getMediaUrlEndpoint = `${baseUrl}/chat/downloadMediaMessage`;
       const mediaUrlResp = await fetch(getMediaUrlEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-        body: JSON.stringify({ id: messageId }),
+        body: JSON.stringify({ messages: fullId }),
       });
       console.log('getMediaURL response status:', mediaUrlResp.status);
       if (mediaUrlResp.ok) {
@@ -477,7 +479,7 @@ Deno.serve(async (req) => {
       }
 
       direction = (body.message?.fromMe === true || body.chat?.fromMe === true) ? 'outbound' : 'inbound'
-      externalMessageId = body.message?.messageid || body.message?.id || body.chat?.id_message || null
+      externalMessageId = body.message?.id || body.message?.messageid || body.chat?.id_message || null
     } else {
       rawPhone = body.phone || body.from || body.sender || body.remoteJid || ''
       contactName = body.contact_name || body.pushName || body.senderName || body.name || null
