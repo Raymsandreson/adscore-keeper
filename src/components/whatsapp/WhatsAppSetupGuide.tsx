@@ -137,6 +137,39 @@ export function WhatsAppSetupGuide() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Badge>6</Badge> Configurar Webhooks na Meta
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Acesse o painel de Webhooks do seu app na Meta para configurar os eventos:
+          </p>
+          <Button variant="outline" size="sm" asChild>
+            <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Abrir Meta Developers
+            </a>
+          </Button>
+          <div className="space-y-2 mt-3">
+            <p className="text-xs text-muted-foreground">
+              <strong>URL do Webhook para Chamadas:</strong>
+            </p>
+            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+              <code className="text-xs flex-1 break-all">{`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-calling-webhook`}</code>
+              <Button variant="ghost" size="icon" onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-calling-webhook`); toast.success('URL copiada!'); }}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Verify Token: <code className="bg-muted px-1 rounded">abraci_calling_2026</code>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Ad Link Settings */}
       <WhatsAppAdLinkSettings />
     </div>
