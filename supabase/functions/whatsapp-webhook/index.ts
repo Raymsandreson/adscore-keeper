@@ -236,16 +236,21 @@ async function transcribeCallAudio(audioUrl: string, apiKey: string): Promise<{ 
 }
 
 async function handleCallEvent(supabase: any, body: any) {
+  const event = body.event || {};
   const call = body.call || body.message || body.chat || {};
-  const chatId = body.chat?.wa_chatid || call.chatid || call.from || '';
-  const phone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '').replace(/\D/g, '').replace(/^0+/, '');
+  
+  // UazAPI v2: phone comes from sender_pn, event.CallCreatorAlt, or event.From
+  const senderPn = body.sender_pn || event.CallCreatorAlt || '';
+  const chatId = senderPn || body.chat?.wa_chatid || call.chatid || event.From || call.from || '';
+  const phone = chatId.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '').replace(/\D/g, '').replace(/^0+/, '');
   const contactName = body.chat?.name || body.chat?.pushName || body.senderName || null;
   const instanceName = body.instanceName || body.chat?.instanceName || null;
 
-  const isIncoming = !(body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true);
+  // UazAPI v2: fromMe is at body level, not nested
+  const isIncoming = !(body.fromMe === true || body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true);
   const callType = isIncoming ? 'recebida' : 'realizada';
-  const durationSeconds = call.duration || call.callDuration || 0;
-  const callStatus = call.status || call.result || 'unknown';
+  const durationSeconds = event.duration || event.callDuration || call.duration || call.callDuration || 0;
+  const callStatus = event.status || event.result || call.status || call.result || event.Data?.Tag || 'unknown';
 
   let callResult = 'atendeu';
   const statusLower = (callStatus + '').toLowerCase();
@@ -253,6 +258,9 @@ async function handleCallEvent(supabase: any, body: any) {
     callResult = 'não_atendeu';
   } else if (statusLower.includes('busy')) {
     callResult = 'ocupado';
+  } else if (statusLower === 'offer') {
+    // UazAPI v2: 'offer' means call started, result unknown yet - mark as received
+    callResult = 'atendeu';
   }
 
   console.log('Processing call event:', { phone, contactName, callType, durationSeconds, callResult, callStatus });
