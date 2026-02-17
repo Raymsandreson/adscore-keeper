@@ -21,13 +21,13 @@ async function downloadAndStoreMedia(
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
 
-    // UazAPI v2 endpoint: POST /message/download with { messages: messageId }
+    // UazAPI v2 endpoint: POST /message/download with { id: messageId, return_link: true, generate_mp3: true }
     const downloadUrl = `${baseUrl}/message/download`;
-    console.log('Calling /message/download at:', downloadUrl, 'with messages:', messageId);
+    console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
     const downloadResp = await fetch(downloadUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-      body: JSON.stringify({ messages: messageId }),
+      body: JSON.stringify({ id: messageId, return_link: true, generate_mp3: true }),
     });
 
     console.log('downloadMediaMessage response status:', downloadResp.status);
@@ -38,7 +38,24 @@ async function downloadAndStoreMedia(
       if (respContentType.includes('application/json')) {
         const jsonData = await downloadResp.json();
         console.log('downloadMediaMessage JSON response keys:', Object.keys(jsonData));
-        if (jsonData.data) {
+        
+        // UazAPI v2 returns { fileURL, mimetype, base64Data?, transcription? }
+        if (jsonData.fileURL) {
+          console.log('Got fileURL from UazAPI:', jsonData.fileURL);
+          const mediaResp = await fetch(jsonData.fileURL);
+          if (mediaResp.ok) {
+            fileBuffer = await mediaResp.arrayBuffer();
+            contentType = jsonData.mimetype || mediaResp.headers.get('content-type') || contentType;
+          }
+        } else if (jsonData.base64Data) {
+          const binaryStr = atob(jsonData.base64Data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          fileBuffer = bytes.buffer;
+          if (jsonData.mimetype) contentType = jsonData.mimetype;
+        } else if (jsonData.data) {
           const binaryStr = atob(jsonData.data);
           const bytes = new Uint8Array(binaryStr.length);
           for (let i = 0; i < binaryStr.length; i++) {
@@ -52,14 +69,6 @@ async function downloadAndStoreMedia(
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = mediaResp.headers.get('content-type') || contentType;
           }
-        } else if (jsonData.base64) {
-          const binaryStr = atob(jsonData.base64);
-          const bytes = new Uint8Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) {
-            bytes[i] = binaryStr.charCodeAt(i);
-          }
-          fileBuffer = bytes.buffer;
-          if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else {
           console.log('downloadMediaMessage unexpected JSON:', JSON.stringify(jsonData).substring(0, 500));
         }
@@ -74,32 +83,32 @@ async function downloadAndStoreMedia(
       console.log('downloadMediaMessage error:', downloadResp.status, errorText.substring(0, 300));
     }
 
-    // Fallback: try /getMediaURL endpoint
+    // Fallback: try with alternate ID format (strip owner prefix or add it)
     if (!fileBuffer || fileBuffer.byteLength < 50) {
       console.log('Trying /message/download with alternate ID format...');
-      // Try with owner:messageId format if the first attempt used short ID
-      const fullId = messageId.includes(':') ? messageId.split(':').pop()! : `${instanceName}:${messageId}`;
-      const getMediaUrlEndpoint = `${baseUrl}/message/download`;
-      const mediaUrlResp = await fetch(getMediaUrlEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'token': instanceToken },
-        body: JSON.stringify({ messages: fullId }),
-      });
-      console.log('getMediaURL response status:', mediaUrlResp.status);
-      if (mediaUrlResp.ok) {
-        const mediaUrlData = await mediaUrlResp.json();
-        console.log('getMediaURL response keys:', Object.keys(mediaUrlData));
-        const resolvedUrl = mediaUrlData.url || mediaUrlData.mediaUrl || mediaUrlData.data;
-        if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
-          const dlResp = await fetch(resolvedUrl);
-          if (dlResp.ok) {
-            fileBuffer = await dlResp.arrayBuffer();
-            contentType = dlResp.headers.get('content-type') || contentType;
+      const altId = messageId.includes(':') ? messageId.split(':').pop()! : messageId;
+      if (altId !== messageId) {
+        const fallbackResp = await fetch(`${baseUrl}/message/download`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': instanceToken },
+          body: JSON.stringify({ id: altId, return_link: true, generate_mp3: true }),
+        });
+        console.log('Fallback download response status:', fallbackResp.status);
+        if (fallbackResp.ok) {
+          const fallbackData = await fallbackResp.json();
+          console.log('Fallback response keys:', Object.keys(fallbackData));
+          const resolvedUrl = fallbackData.fileURL || fallbackData.url;
+          if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
+            const dlResp = await fetch(resolvedUrl);
+            if (dlResp.ok) {
+              fileBuffer = await dlResp.arrayBuffer();
+              contentType = fallbackData.mimetype || dlResp.headers.get('content-type') || contentType;
+            }
           }
+        } else {
+          const errText = await fallbackResp.text();
+          console.log('Fallback download error:', fallbackResp.status, errText.substring(0, 300));
         }
-      } else {
-        const errText = await mediaUrlResp.text();
-        console.log('getMediaURL error:', mediaUrlResp.status, errText.substring(0, 300));
       }
     }
 
