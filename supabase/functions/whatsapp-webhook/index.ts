@@ -5,6 +5,132 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function downloadAndStoreMedia(
+  supabase: any,
+  messageId: string,
+  instanceName: string,
+  mediaUrl: string,
+  mediaType: string,
+  messageType: string,
+  baseUrl: string,
+  instanceToken: string,
+): Promise<string | null> {
+  try {
+    console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
+
+    // Try UazAPI downloadMediaMessage endpoint
+    const downloadUrl = `${baseUrl}/downloadMediaMessage/${instanceToken}`;
+    const downloadResp = await fetch(downloadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messageId }),
+    });
+
+    let fileBuffer: ArrayBuffer | null = null;
+    let contentType = mediaType || 'application/octet-stream';
+
+    if (downloadResp.ok) {
+      const respContentType = downloadResp.headers.get('content-type') || '';
+      
+      if (respContentType.includes('application/json')) {
+        // UazAPI might return JSON with base64 data
+        const jsonData = await downloadResp.json();
+        if (jsonData.data) {
+          // base64 encoded
+          const binaryStr = atob(jsonData.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          fileBuffer = bytes.buffer;
+          if (jsonData.mimetype) contentType = jsonData.mimetype;
+        } else if (jsonData.url) {
+          // Direct URL returned
+          const mediaResp = await fetch(jsonData.url);
+          if (mediaResp.ok) {
+            fileBuffer = await mediaResp.arrayBuffer();
+            contentType = mediaResp.headers.get('content-type') || contentType;
+          }
+        }
+      } else {
+        // Direct binary response
+        fileBuffer = await downloadResp.arrayBuffer();
+        if (respContentType && !respContentType.includes('text/')) {
+          contentType = respContentType;
+        }
+      }
+    }
+
+    // Fallback: try direct URL if UazAPI endpoint didn't work
+    if (!fileBuffer && mediaUrl && !mediaUrl.includes('.enc')) {
+      console.log('Trying direct media URL...');
+      const directResp = await fetch(mediaUrl);
+      if (directResp.ok) {
+        fileBuffer = await directResp.arrayBuffer();
+        contentType = directResp.headers.get('content-type') || contentType;
+      }
+    }
+
+    if (!fileBuffer || fileBuffer.byteLength < 100) {
+      console.log('Could not download media, buffer empty or too small');
+      return null;
+    }
+
+    console.log('Downloaded media:', fileBuffer.byteLength, 'bytes, type:', contentType);
+
+    // Determine file extension
+    const ext = getFileExtension(contentType, messageType);
+    const timestamp = Date.now();
+    const filePath = `${instanceName.replace(/\s+/g, '_')}/${timestamp}_${messageId.substring(0, 8)}.${ext}`;
+
+    // Upload to storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('whatsapp-media')
+      .upload(filePath, fileBuffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError);
+      return null;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('whatsapp-media')
+      .getPublicUrl(filePath);
+
+    console.log('Media uploaded successfully:', urlData.publicUrl);
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error('Media download/upload error:', e);
+    return null;
+  }
+}
+
+function getFileExtension(contentType: string, messageType: string): string {
+  const map: Record<string, string> = {
+    'audio/ogg': 'ogg',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/amr': 'amr',
+    'audio/aac': 'aac',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'video/mp4': 'mp4',
+    'video/3gpp': '3gp',
+    'application/pdf': 'pdf',
+  };
+  if (map[contentType]) return map[contentType];
+  if (messageType === 'audio') return 'ogg';
+  if (messageType === 'image') return 'jpg';
+  if (messageType === 'video') return 'mp4';
+  return 'bin';
+}
+
 async function transcribeCallAudio(audioUrl: string, apiKey: string): Promise<{ summary: string; transcript: string } | null> {
   try {
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -70,7 +196,6 @@ async function handleCallEvent(supabase: any, body: any) {
   const durationSeconds = call.duration || call.callDuration || 0;
   const callStatus = call.status || call.result || 'unknown';
 
-  // Map UazAPI call status to our call_result
   let callResult = 'atendeu';
   const statusLower = (callStatus + '').toLowerCase();
   if (statusLower.includes('miss') || statusLower.includes('reject') || statusLower.includes('cancel') || statusLower.includes('timeout')) {
@@ -86,7 +211,6 @@ async function handleCallEvent(supabase: any, body: any) {
     return null;
   }
 
-  // Find contact/lead
   let contactId: string | null = null;
   let leadId: string | null = null;
   let leadName: string | null = null;
@@ -120,7 +244,6 @@ async function handleCallEvent(supabase: any, body: any) {
     }
   }
 
-  // Try transcription if there's audio and call was answered
   let aiSummary: string | null = null;
   let aiTranscript: string | null = null;
   const audioUrl = call.audioUrl || call.audio_url || call.mediaUrl || null;
@@ -138,7 +261,6 @@ async function handleCallEvent(supabase: any, body: any) {
     }
   }
 
-  // Get first admin user as fallback user_id
   const { data: adminRole } = await supabase
     .from('user_roles')
     .select('user_id')
@@ -206,7 +328,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // ========== MESSAGE HANDLING (existing logic) ==========
+    // ========== MESSAGE HANDLING ==========
     let rawPhone = ''
     let contactName: string | null = null
     let messageText: string | null = null
@@ -217,6 +339,7 @@ Deno.serve(async (req) => {
     let externalMessageId: string | null = null
     let instanceName: string | null = null
     let instanceToken: string | null = null
+    let baseUrl: string | null = null
 
     if (body.EventType && body.chat) {
       // UazAPI format
@@ -224,8 +347,9 @@ Deno.serve(async (req) => {
       
       instanceName = body.instanceName || body.chat?.instanceName || null
       instanceToken = body.token || body.chat?.token || null
+      baseUrl = body.BaseUrl || null
       
-      console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8))
+      console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
 
       if (body.EventType !== 'messages') {
         return new Response(
@@ -243,12 +367,10 @@ Deno.serve(async (req) => {
       if (typeof msg === 'string') {
         messageText = msg
       } else {
-        // Handle content that can be string or object with URL property (UazAPI media format)
         const rawContent = msg.content;
         let contentText: string | null = null;
         
         if (typeof rawContent === 'object' && rawContent !== null) {
-          // UazAPI sends media as content: { URL: "...", DirectPath: "...", ... }
           if (rawContent.URL) {
             mediaUrl = rawContent.URL;
           }
@@ -266,13 +388,12 @@ Deno.serve(async (req) => {
           || msg.documentMessage?.caption
           || null
         
-        // Ensure messageText is always a string or null
         if (messageText && typeof messageText !== 'string') {
           messageText = JSON.stringify(messageText)
         }
       }
 
-      // Detect media type - check standard WhatsApp format first, then UazAPI format
+      // Detect media type
       if (msg.imageMessage) {
         messageType = 'image'
         mediaType = msg.imageMessage.mimetype || 'image/jpeg'
@@ -290,13 +411,12 @@ Deno.serve(async (req) => {
         mediaType = msg.documentMessage.mimetype || null
         mediaUrl = mediaUrl || msg.documentMessage.url || null
       } else if (msg.mediaType || (typeof msg.content === 'object' && msg.content?.URL)) {
-        // UazAPI format: uses mediaType field and content.URL
         const uazMediaType = (msg.mediaType || '').toLowerCase()
         const chatLastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
         
         if (uazMediaType.includes('audio') || uazMediaType.includes('ptt') || chatLastMsgType.includes('audio')) {
           messageType = 'audio'
-          mediaType = msg.mimetype || 'audio/ogg'
+          mediaType = msg.mimetype || 'audio/ogg; codecs=opus'
         } else if (uazMediaType.includes('image') || chatLastMsgType.includes('image')) {
           messageType = 'image'
           mediaType = msg.mimetype || 'image/jpeg'
@@ -307,14 +427,12 @@ Deno.serve(async (req) => {
           messageType = 'document'
           mediaType = msg.mimetype || null
         } else if (mediaUrl) {
-          // Has media URL but unknown type - mark as document
           messageType = 'document'
           mediaType = msg.mimetype || null
         }
         
-        // If no text and it's a media message, set a descriptive text
         if (!messageText && messageType !== 'text') {
-          messageText = null // Will show media type badge in UI
+          messageText = null
         }
       }
 
@@ -342,8 +460,51 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, instanceName })
+    console.log('Parsed message:', { phone, contactName, messageText: messageText?.substring(0, 100), direction, messageType, mediaUrl: mediaUrl?.substring(0, 80), instanceName })
 
+    // ========== DOWNLOAD AND STORE MEDIA ==========
+    let storedMediaUrl = mediaUrl;
+    if (mediaUrl && messageType !== 'text' && externalMessageId) {
+      // Look up instance token from DB if not in payload
+      let resolvedToken = instanceToken;
+      let resolvedBaseUrl = baseUrl;
+      
+      if (instanceName && (!resolvedToken || !resolvedBaseUrl)) {
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_token, base_url')
+          .eq('instance_name', instanceName)
+          .limit(1)
+          .single();
+        if (inst) {
+          resolvedToken = resolvedToken || inst.instance_token;
+          resolvedBaseUrl = resolvedBaseUrl || inst.base_url;
+        }
+      }
+
+      if (resolvedToken && resolvedBaseUrl) {
+        const publicUrl = await downloadAndStoreMedia(
+          supabase,
+          externalMessageId,
+          instanceName || 'unknown',
+          mediaUrl,
+          mediaType || 'application/octet-stream',
+          messageType,
+          resolvedBaseUrl,
+          resolvedToken,
+        );
+        if (publicUrl) {
+          storedMediaUrl = publicUrl;
+          console.log('Media stored at:', publicUrl);
+        } else {
+          console.log('Media download failed, keeping original URL');
+        }
+      } else {
+        console.log('No instance token/baseUrl for media download');
+      }
+    }
+
+    // ========== FIND CONTACT/LEAD ==========
     let contactId: string | null = null
     let leadId: string | null = null
 
@@ -385,7 +546,7 @@ Deno.serve(async (req) => {
         contact_name: contactName,
         message_text: messageText,
         message_type: messageType,
-        media_url: mediaUrl,
+        media_url: storedMediaUrl,
         media_type: mediaType,
         direction,
         status: direction === 'inbound' ? 'received' : 'sent',
@@ -407,7 +568,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName)
+    console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
     return new Response(
       JSON.stringify({ 
@@ -417,6 +578,7 @@ Deno.serve(async (req) => {
         lead_id: leadId,
         is_new_contact: !contactId,
         instance_name: instanceName,
+        media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
