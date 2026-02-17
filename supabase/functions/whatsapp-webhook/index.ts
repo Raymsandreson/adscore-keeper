@@ -21,12 +21,13 @@ async function downloadAndStoreMedia(
     let fileBuffer: ArrayBuffer | null = null;
     let contentType = mediaType || 'application/octet-stream';
 
-    // Try UazAPI downloadMediaMessage endpoint (v2 API - token in header, GET with path param)
-    const downloadUrl = `${baseUrl}/downloadMediaMessage/${messageId}`;
-    console.log('Calling downloadMediaMessage at:', downloadUrl);
+    // Try UazAPI v2 endpoint: POST /message/download with { id: messageId }
+    const downloadUrl = `${baseUrl}/message/download`;
+    console.log('Calling /message/download at:', downloadUrl, 'with id:', messageId);
     const downloadResp = await fetch(downloadUrl, {
-      method: 'GET',
-      headers: { 'token': instanceToken },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'token': instanceToken },
+      body: JSON.stringify({ id: messageId }),
     });
 
     console.log('downloadMediaMessage response status:', downloadResp.status);
@@ -75,11 +76,12 @@ async function downloadAndStoreMedia(
 
     // Fallback: try /getMediaURL endpoint
     if (!fileBuffer || fileBuffer.byteLength < 50) {
-      console.log('Trying /getMediaURL fallback...');
-      const getMediaUrlEndpoint = `${baseUrl}/getMediaURL/${messageId}`;
+      console.log('Trying /chat/media fallback...');
+      const getMediaUrlEndpoint = `${baseUrl}/chat/media`;
       const mediaUrlResp = await fetch(getMediaUrlEndpoint, {
-        method: 'GET',
-        headers: { 'token': instanceToken },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': instanceToken },
+        body: JSON.stringify({ id: messageId }),
       });
       console.log('getMediaURL response status:', mediaUrlResp.status);
       if (mediaUrlResp.ok) {
