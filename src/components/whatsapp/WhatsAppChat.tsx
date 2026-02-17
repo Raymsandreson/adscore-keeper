@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2 } from 'lucide-react';
+import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,15 +30,50 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [callRecords, setCallRecords] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
+  // Fetch call records for this phone
+  useEffect(() => {
+    const phone = conversation.phone;
+    if (!phone) return;
+    const fetchCalls = async () => {
+      const { data } = await supabase
+        .from('call_records')
+        .select('*')
+        .eq('contact_phone', phone)
+        .order('created_at', { ascending: true });
+      setCallRecords(data || []);
+    };
+    fetchCalls();
+
+    const channel = supabase
+      .channel(`call_records_chat_${phone}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_records', filter: `contact_phone=eq.${phone}` }, () => fetchCalls())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversation.phone]);
+
+  // Merge messages and call records into a unified timeline
+  const timelineItems = (() => {
+    const items: Array<{ type: 'message' | 'call'; data: any; timestamp: string }> = [];
+    for (const msg of messages) {
+      items.push({ type: 'message', data: msg, timestamp: msg.created_at });
+    }
+    for (const call of callRecords) {
+      items.push({ type: 'call', data: call, timestamp: call.created_at });
+    }
+    items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    return items;
+  })();
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [timelineItems.length]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
@@ -155,71 +190,115 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         />
       )}
 
-      {/* Messages */}
+      {/* Messages + Call Records Timeline */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
-        {messages.map(msg => (
-          <div
-            key={msg.id}
-            className={cn(
-              "flex",
-              msg.direction === 'outbound' ? "justify-end" : "justify-start"
-            )}
-          >
+        {timelineItems.map((item, idx) => {
+          if (item.type === 'call') {
+            const call = item.data;
+            const isOutbound = call.call_type === 'outbound' || call.call_type === 'realizada';
+            const resultMap: Record<string, string> = { atendeu: 'Atendeu', answered: 'Atendeu', 'não_atendeu': 'Não Atendeu', not_answered: 'Não Atendeu', ocupado: 'Ocupado', busy: 'Ocupado' };
+            const resultLabel = resultMap[call.call_result] || call.call_result;
+            const durationSec = call.duration_seconds || 0;
+            const durationStr = `${Math.floor(durationSec / 60)}min ${durationSec % 60}s`;
+            const startTime = format(new Date(call.created_at), "HH:mm", { locale: ptBR });
+            const endDate = new Date(new Date(call.created_at).getTime() + durationSec * 1000);
+            const endTime = format(endDate, "HH:mm", { locale: ptBR });
+            const isUnanswered = call.call_result === 'não_atendeu' || call.call_result === 'not_answered';
+
+            return (
+              <div key={`call-${call.id}`} className="flex justify-center">
+                <div className={cn(
+                  "flex items-center gap-2 rounded-xl px-4 py-2 text-xs max-w-[85%] border",
+                  isUnanswered 
+                    ? "bg-destructive/10 border-destructive/30 text-destructive"
+                    : "bg-primary/10 border-primary/30 text-primary"
+                )}>
+                  {isOutbound ? <PhoneOutgoing className="h-3.5 w-3.5 shrink-0" /> : <PhoneIncoming className="h-3.5 w-3.5 shrink-0" />}
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">
+                      {isOutbound ? 'Chamada Realizada' : 'Chamada Recebida'}
+                      {isUnanswered && ' — Não Atendeu'}
+                    </span>
+                    <div className="flex items-center gap-2 text-[10px] opacity-80">
+                      <span>{resultLabel}</span>
+                      <span>•</span>
+                      <span>{durationStr}</span>
+                      <span>•</span>
+                      <Clock className="h-2.5 w-2.5 inline" />
+                      <span>{startTime} → {endTime}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // Regular message
+          const msg = item.data;
+          return (
             <div
+              key={msg.id}
               className={cn(
-                "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
-                msg.direction === 'outbound'
-                  ? "bg-green-600 text-white rounded-br-sm"
-                  : "bg-card border rounded-bl-sm"
+                "flex",
+                msg.direction === 'outbound' ? "justify-end" : "justify-start"
               )}
             >
-              {/* Media rendering */}
-              {msg.message_type === 'audio' && msg.media_url && (
-                <audio controls className="max-w-full mb-1" preload="none">
-                  <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
-                  Áudio não suportado
-                </audio>
-              )}
-              {msg.message_type === 'image' && msg.media_url && (
-                <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-                  <img 
-                    src={msg.media_url} 
-                    alt="Imagem" 
-                    className="max-w-full rounded-lg mb-1 max-h-[300px] object-cover cursor-pointer"
-                    loading="lazy"
-                  />
-                </a>
-              )}
-              {msg.message_type === 'video' && msg.media_url && (
-                <video controls className="max-w-full rounded-lg mb-1 max-h-[300px]" preload="none">
-                  <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
-                  Vídeo não suportado
-                </video>
-              )}
-              {msg.message_type === 'document' && msg.media_url && (
-                <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
-                  <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
-                </a>
-              )}
-              {/* Fallback for media without proper type */}
-              {msg.media_url && msg.message_type === 'text' && (
-                <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
-                  <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
-                </a>
-              )}
-              {msg.message_text && <p className="whitespace-pre-wrap">{msg.message_text}</p>}
-              {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
-                <p className="text-xs italic opacity-70">📎 {msg.message_type}</p>
-              )}
-              <p className={cn(
-                "text-[10px] mt-1",
-                msg.direction === 'outbound' ? "text-green-200" : "text-muted-foreground"
-              )}>
-                {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
-              </p>
+              <div
+                className={cn(
+                  "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
+                  msg.direction === 'outbound'
+                    ? "bg-green-600 text-white rounded-br-sm"
+                    : "bg-card border rounded-bl-sm"
+                )}
+              >
+                {/* Media rendering */}
+                {msg.message_type === 'audio' && msg.media_url && (
+                  <audio controls className="max-w-full mb-1" preload="none">
+                    <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
+                    Áudio não suportado
+                  </audio>
+                )}
+                {msg.message_type === 'image' && msg.media_url && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                    <img 
+                      src={msg.media_url} 
+                      alt="Imagem" 
+                      className="max-w-full rounded-lg mb-1 max-h-[300px] object-cover cursor-pointer"
+                      loading="lazy"
+                    />
+                  </a>
+                )}
+                {msg.message_type === 'video' && msg.media_url && (
+                  <video controls className="max-w-full rounded-lg mb-1 max-h-[300px]" preload="none">
+                    <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
+                    Vídeo não suportado
+                  </video>
+                )}
+                {msg.message_type === 'document' && msg.media_url && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
+                    <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
+                  </a>
+                )}
+                {/* Fallback for media without proper type */}
+                {msg.media_url && msg.message_type === 'text' && (
+                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
+                    <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
+                  </a>
+                )}
+                {msg.message_text && <p className="whitespace-pre-wrap">{msg.message_text}</p>}
+                {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
+                  <p className="text-xs italic opacity-70">📎 {msg.message_type}</p>
+                )}
+                <p className={cn(
+                  "text-[10px] mt-1",
+                  msg.direction === 'outbound' ? "text-green-200" : "text-muted-foreground"
+                )}>
+                  {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

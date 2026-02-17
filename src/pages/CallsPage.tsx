@@ -30,8 +30,8 @@ const RESULT_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = [
-  { value: 'outbound', label: 'Saída', icon: PhoneOutgoing },
-  { value: 'inbound', label: 'Entrada', icon: PhoneIncoming },
+  { value: 'outbound', label: 'Chamada Realizada', icon: PhoneOutgoing },
+  { value: 'inbound', label: 'Chamada Recebida', icon: PhoneIncoming },
 ];
 
 function formatDuration(seconds: number) {
@@ -53,8 +53,16 @@ export default function CallsPage() {
   // Filter records
   const filtered = useMemo(() => {
     return records.filter(r => {
-      if (filterResult !== 'all' && r.call_result !== filterResult) return false;
-      if (filterType !== 'all' && r.call_type !== filterType) return false;
+      if (filterResult !== 'all') {
+        const resultMap: Record<string, string[]> = { answered: ['answered', 'atendeu'], not_answered: ['not_answered', 'não_atendeu'], busy: ['busy', 'ocupado'] };
+        const validResults = resultMap[filterResult] || [filterResult];
+        if (!validResults.includes(r.call_result)) return false;
+      }
+      if (filterType !== 'all') {
+        const typeMap: Record<string, string[]> = { outbound: ['outbound', 'realizada'], inbound: ['inbound', 'recebida'] };
+        const validTypes = typeMap[filterType] || [filterType];
+        if (!validTypes.includes(r.call_type)) return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -136,8 +144,16 @@ export default function CallsPage() {
     }
   };
 
+  const normalizeResult = (result: string) => {
+    const map: Record<string, string> = { atendeu: 'answered', 'não_atendeu': 'not_answered', ocupado: 'busy' };
+    return map[result] || result;
+  };
+
+  const isOutbound = (type: string) => type === 'outbound' || type === 'realizada';
+
   const getResultBadge = (result: string) => {
-    const opt = RESULT_OPTIONS.find(o => o.value === result);
+    const normalized = normalizeResult(result);
+    const opt = RESULT_OPTIONS.find(o => o.value === normalized);
     if (!opt) return <Badge variant="outline">{result}</Badge>;
     const Icon = opt.icon;
     return (
@@ -275,10 +291,10 @@ export default function CallsPage() {
                           {call.contact_phone && <div className="text-xs text-muted-foreground">{call.contact_phone}</div>}
                         </TableCell>
                         <TableCell>
-                          {call.call_type === 'outbound' ? (
-                            <Badge variant="outline" className="gap-1"><PhoneOutgoing className="h-3 w-3" /> Saída</Badge>
+                          {isOutbound(call.call_type) ? (
+                            <Badge variant="outline" className="gap-1"><PhoneOutgoing className="h-3 w-3" /> Chamada Realizada</Badge>
                           ) : (
-                            <Badge variant="outline" className="gap-1"><PhoneIncoming className="h-3 w-3" /> Entrada</Badge>
+                            <Badge variant="outline" className="gap-1"><PhoneIncoming className="h-3 w-3" /> Chamada Recebida</Badge>
                           )}
                         </TableCell>
                         <TableCell>{getResultBadge(call.call_result)}</TableCell>
