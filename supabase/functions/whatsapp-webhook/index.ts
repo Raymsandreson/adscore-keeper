@@ -18,25 +18,27 @@ async function downloadAndStoreMedia(
   try {
     console.log('Downloading media via UazAPI for message:', messageId, 'type:', messageType);
 
-    // Try UazAPI downloadMediaMessage endpoint
-    const downloadUrl = `${baseUrl}/downloadMediaMessage/${instanceToken}`;
+    let fileBuffer: ArrayBuffer | null = null;
+    let contentType = mediaType || 'application/octet-stream';
+
+    // Try UazAPI downloadMediaMessage endpoint (v2 API - token in header)
+    const downloadUrl = `${baseUrl}/downloadMediaMessage`;
+    console.log('Calling downloadMediaMessage at:', downloadUrl, 'with messageId:', messageId);
     const downloadResp = await fetch(downloadUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'token': instanceToken },
       body: JSON.stringify({ messageId }),
     });
 
-    let fileBuffer: ArrayBuffer | null = null;
-    let contentType = mediaType || 'application/octet-stream';
+    console.log('downloadMediaMessage response status:', downloadResp.status);
 
     if (downloadResp.ok) {
       const respContentType = downloadResp.headers.get('content-type') || '';
       
       if (respContentType.includes('application/json')) {
-        // UazAPI might return JSON with base64 data
         const jsonData = await downloadResp.json();
+        console.log('downloadMediaMessage JSON response keys:', Object.keys(jsonData));
         if (jsonData.data) {
-          // base64 encoded
           const binaryStr = atob(jsonData.data);
           const bytes = new Uint8Array(binaryStr.length);
           for (let i = 0; i < binaryStr.length; i++) {
@@ -45,24 +47,62 @@ async function downloadAndStoreMedia(
           fileBuffer = bytes.buffer;
           if (jsonData.mimetype) contentType = jsonData.mimetype;
         } else if (jsonData.url) {
-          // Direct URL returned
           const mediaResp = await fetch(jsonData.url);
           if (mediaResp.ok) {
             fileBuffer = await mediaResp.arrayBuffer();
             contentType = mediaResp.headers.get('content-type') || contentType;
           }
+        } else if (jsonData.base64) {
+          const binaryStr = atob(jsonData.base64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+          }
+          fileBuffer = bytes.buffer;
+          if (jsonData.mimetype) contentType = jsonData.mimetype;
+        } else {
+          console.log('downloadMediaMessage unexpected JSON:', JSON.stringify(jsonData).substring(0, 500));
         }
       } else {
-        // Direct binary response
         fileBuffer = await downloadResp.arrayBuffer();
         if (respContentType && !respContentType.includes('text/')) {
           contentType = respContentType;
         }
       }
+    } else {
+      const errorText = await downloadResp.text();
+      console.log('downloadMediaMessage error:', downloadResp.status, errorText.substring(0, 300));
     }
 
-    // Fallback: try direct URL if UazAPI endpoint didn't work
-    if (!fileBuffer && mediaUrl && !mediaUrl.includes('.enc')) {
+    // Fallback: try /getMediaURL endpoint
+    if (!fileBuffer || fileBuffer.byteLength < 50) {
+      console.log('Trying /getMediaURL fallback...');
+      const getMediaUrlEndpoint = `${baseUrl}/getMediaURL`;
+      const mediaUrlResp = await fetch(getMediaUrlEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': instanceToken },
+        body: JSON.stringify({ messageId }),
+      });
+      console.log('getMediaURL response status:', mediaUrlResp.status);
+      if (mediaUrlResp.ok) {
+        const mediaUrlData = await mediaUrlResp.json();
+        console.log('getMediaURL response keys:', Object.keys(mediaUrlData));
+        const resolvedUrl = mediaUrlData.url || mediaUrlData.mediaUrl || mediaUrlData.data;
+        if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
+          const dlResp = await fetch(resolvedUrl);
+          if (dlResp.ok) {
+            fileBuffer = await dlResp.arrayBuffer();
+            contentType = dlResp.headers.get('content-type') || contentType;
+          }
+        }
+      } else {
+        const errText = await mediaUrlResp.text();
+        console.log('getMediaURL error:', mediaUrlResp.status, errText.substring(0, 300));
+      }
+    }
+
+    // Fallback: try direct URL if not encrypted
+    if ((!fileBuffer || fileBuffer.byteLength < 50) && mediaUrl && !mediaUrl.includes('.enc')) {
       console.log('Trying direct media URL...');
       const directResp = await fetch(mediaUrl);
       if (directResp.ok) {
@@ -71,8 +111,8 @@ async function downloadAndStoreMedia(
       }
     }
 
-    if (!fileBuffer || fileBuffer.byteLength < 100) {
-      console.log('Could not download media, buffer empty or too small');
+    if (!fileBuffer || fileBuffer.byteLength < 50) {
+      console.log('Could not download media, buffer empty or too small, size:', fileBuffer?.byteLength || 0);
       return null;
     }
 
