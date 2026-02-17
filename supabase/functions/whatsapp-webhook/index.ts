@@ -243,14 +243,25 @@ Deno.serve(async (req) => {
       if (typeof msg === 'string') {
         messageText = msg
       } else {
+        // Handle content that can be string or object with text property
+        const rawContent = msg.content;
+        const contentText = typeof rawContent === 'object' && rawContent !== null 
+          ? rawContent.text || rawContent.conversation || null
+          : rawContent;
+
         messageText = msg.text
-          || msg.content
+          || contentText
           || msg.conversation 
           || msg.extendedTextMessage?.text 
           || msg.imageMessage?.caption 
           || msg.videoMessage?.caption
           || msg.documentMessage?.caption
           || null
+        
+        // Ensure messageText is always a string or null
+        if (messageText && typeof messageText !== 'string') {
+          messageText = JSON.stringify(messageText)
+        }
       }
 
       if (msg.imageMessage) {
