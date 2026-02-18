@@ -92,3 +92,18 @@ verify_jwt = false
 
 [functions.meta-calling-webhook]
 verify_jwt = false
+
+[functions.google-oauth-callback]
+verify_jwt = false
+
+[functions.google-auth-url]
+verify_jwt = false
+
+[functions.google-save-contact]
+verify_jwt = false
+
+[functions.google-calendar-event]
+verify_jwt = false
+
+[functions.google-check-connection]
+verify_jwt = false

@@ -5,12 +5,13 @@ import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
+import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3 } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -28,6 +29,7 @@ export function WhatsAppInbox() {
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showGooglePanel, setShowGooglePanel] = useState(false);
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -185,6 +187,20 @@ export function WhatsAppInbox() {
     );
   }
 
+  if (showGooglePanel) {
+    return (
+      <div className="h-screen flex flex-col">
+        <div className="flex items-center gap-3 p-4 border-b bg-card">
+          <Button variant="ghost" size="sm" onClick={() => setShowGooglePanel(false)}>← Voltar</Button>
+          <h1 className="text-lg font-semibold">Google Workspace</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 max-w-xl mx-auto w-full">
+          <GoogleIntegrationPanel />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -213,6 +229,9 @@ export function WhatsAppInbox() {
         )}
 
         <div className="ml-auto flex gap-2">
+          <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
+            <Chrome className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
           </Button>
