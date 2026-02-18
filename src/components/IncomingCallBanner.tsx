@@ -62,84 +62,89 @@ export function IncomingCallBanner() {
     }
   }, []);
 
-  const stopRecording = useCallback(async () => {
-    if (!mediaRecorderRef.current || !user || !activeCall) return;
+  const stopRecording = useCallback(() => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return;
 
+    // Update UI immediately so button responds
+    setIsRecording(false);
     setProcessing(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
-    return new Promise<void>((resolve) => {
-      mediaRecorderRef.current!.onstop = async () => {
-        // Stop mic
-        streamRef.current?.getTracks().forEach(t => t.stop());
+    // Capture values before async onstop
+    const currentUser = user;
+    const currentCall = activeCall;
+    const currentDuration = recordingTime;
+    const currentMime = mediaRecorderRef.current.mimeType;
 
-        const blob = new Blob(chunksRef.current, { type: mediaRecorderRef.current!.mimeType });
-        const ext = mediaRecorderRef.current!.mimeType.includes('webm') ? 'webm' : 'mp4';
-        const fileName = `call_${activeCall.call_id}_${Date.now()}.${ext}`;
+    mediaRecorderRef.current.onstop = async () => {
+      // Stop mic
+      streamRef.current?.getTracks().forEach(t => t.stop());
 
-        try {
-          // Upload audio
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('activity-chat')
-            .upload(`call-recordings/${fileName}`, blob, {
-              contentType: mediaRecorderRef.current!.mimeType,
-            });
-
-          if (uploadError) throw uploadError;
-
-          const { data: urlData } = supabase.storage
-            .from('activity-chat')
-            .getPublicUrl(`call-recordings/${fileName}`);
-
-          const audioUrl = urlData.publicUrl;
-
-          // Create/update call record with audio
-          const { error: upsertError } = await supabase
-            .from('call_records')
-            .insert({
-              user_id: user.id,
-              call_type: activeCall.from_me ? 'realizada' : 'recebida',
-              call_result: 'atendeu',
-              duration_seconds: recordingTime,
-              contact_phone: activeCall.phone,
-              contact_name: activeCall.contact_name,
-              audio_url: audioUrl,
-              audio_file_name: fileName,
-              phone_used: 'whatsapp_cloud',
-              notes: `Gravação local da chamada WhatsApp Cloud.`,
-              tags: ['whatsapp', 'cloud_api', 'gravacao_local'],
-            });
-
-          if (upsertError) throw upsertError;
-
-          // Trigger AI transcription via edge function
-          try {
-            await supabase.functions.invoke('analyze-activity-chat', {
-              body: {
-                action: 'transcribe_call',
-                audio_url: audioUrl,
-                call_id: activeCall.call_id,
-                phone: activeCall.phone,
-              },
-            });
-          } catch {
-            // Non-critical - transcription can happen later
-          }
-
-          toast.success('Chamada gravada e salva com sucesso!');
-        } catch (err) {
-          console.error('Error saving recording:', err);
-          toast.error('Erro ao salvar gravação');
-        }
-
-        setIsRecording(false);
+      if (!currentUser || !currentCall) {
         setProcessing(false);
-        dismiss();
-        resolve();
-      };
+        return;
+      }
 
-      mediaRecorderRef.current!.stop();
-    });
+      const blob = new Blob(chunksRef.current, { type: currentMime });
+      const ext = currentMime.includes('webm') ? 'webm' : 'mp4';
+      const fileName = `call_${currentCall.call_id}_${Date.now()}.${ext}`;
+
+      try {
+        // Upload audio
+        const { error: uploadError } = await supabase.storage
+          .from('activity-chat')
+          .upload(`call-recordings/${fileName}`, blob, {
+            contentType: currentMime,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('activity-chat')
+          .getPublicUrl(`call-recordings/${fileName}`);
+
+        const audioUrl = urlData.publicUrl;
+
+        // Create call record with audio
+        const { error: upsertError } = await supabase
+          .from('call_records')
+          .insert({
+            user_id: currentUser.id,
+            call_type: currentCall.from_me ? 'realizada' : 'recebida',
+            call_result: 'atendeu',
+            duration_seconds: currentDuration,
+            contact_phone: currentCall.phone,
+            contact_name: currentCall.contact_name,
+            audio_url: audioUrl,
+            audio_file_name: fileName,
+            phone_used: 'whatsapp_cloud',
+            notes: `Gravação local da chamada WhatsApp Cloud.`,
+            tags: ['whatsapp', 'cloud_api', 'gravacao_local'],
+          });
+
+        if (upsertError) throw upsertError;
+
+        // Trigger AI transcription (non-critical)
+        supabase.functions.invoke('analyze-activity-chat', {
+          body: {
+            action: 'transcribe_call',
+            audio_url: audioUrl,
+            call_id: currentCall.call_id,
+            phone: currentCall.phone,
+          },
+        }).catch(() => {});
+
+        toast.success('Chamada gravada e salva com sucesso!');
+      } catch (err) {
+        console.error('Error saving recording:', err);
+        toast.error('Erro ao salvar gravação');
+      }
+
+      setProcessing(false);
+      dismiss();
+    };
+
+    mediaRecorderRef.current.stop();
   }, [user, activeCall, recordingTime, dismiss]);
 
   if (!activeCall && !isRecording) return null;
