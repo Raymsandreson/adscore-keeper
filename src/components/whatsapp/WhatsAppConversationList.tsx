@@ -55,37 +55,42 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       }
 
       const leadIds = conversations.filter(c => c.lead_id).map(c => c.lead_id as string);
-      if (leadIds.length > 0) {
-        const [leadsRes, stageRes, checklistRes, templatesRes] = await Promise.all([
-          supabase.from('leads').select('id, board_id').in('id', leadIds),
-          supabase.from('lead_stage_history')
-            .select('lead_id, to_stage, changed_at')
-            .in('lead_id', leadIds)
-            .order('changed_at', { ascending: false }),
-          supabase.from('lead_checklist_instances')
-            .select('lead_id, checklist_template_id, is_completed')
-            .in('lead_id', leadIds)
-            .eq('is_completed', true),  // only completed
-          supabase.from('checklist_templates').select('id, name').order('name'),
-        ]);
-
-        const map = new Map<string, LeadInfo>();
-        for (const lead of leadsRes.data || []) {
-          const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
-          const completedIds = (checklistRes.data || [])
-            .filter(c => c.lead_id === lead.id)
-            .map(c => c.checklist_template_id);
-
-          map.set(lead.id, {
-            id: lead.id,
-            board_id: lead.board_id,
-            current_stage: latestStage?.to_stage || null,
-            completed_checklist_ids: completedIds,
-          });
-        }
-        setLeadInfoMap(map);
-        setChecklistTemplates(templatesRes.data || []);
+      
+      // Always reset map when conversations change
+      if (leadIds.length === 0) {
+        setLeadInfoMap(new Map());
+        return;
       }
+
+      const [leadsRes, stageRes, checklistRes, templatesRes] = await Promise.all([
+        supabase.from('leads').select('id, board_id').in('id', leadIds),
+        supabase.from('lead_stage_history')
+          .select('lead_id, to_stage, changed_at')
+          .in('lead_id', leadIds)
+          .order('changed_at', { ascending: false }),
+        supabase.from('lead_checklist_instances')
+          .select('lead_id, checklist_template_id, is_completed')
+          .in('lead_id', leadIds)
+          .eq('is_completed', true),
+        supabase.from('checklist_templates').select('id, name').order('name'),
+      ]);
+
+      const map = new Map<string, LeadInfo>();
+      for (const lead of (leadsRes.data || [])) {
+        const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
+        const completedIds = (checklistRes.data || [])
+          .filter(c => c.lead_id === lead.id)
+          .map(c => c.checklist_template_id);
+
+        map.set(lead.id, {
+          id: lead.id,
+          board_id: lead.board_id,
+          current_stage: latestStage?.to_stage || null,
+          completed_checklist_ids: completedIds,
+        });
+      }
+      setLeadInfoMap(map);
+      setChecklistTemplates(templatesRes.data || []);
     };
     fetchData();
   }, [conversations, selectedInstanceId]);
