@@ -63,39 +63,42 @@ export function IncomingCallBanner() {
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') return;
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      // Force reset if stuck
+      setIsRecording(false);
+      setProcessing(false);
+      return;
+    }
 
-    // Update UI immediately so button responds
-    setIsRecording(false);
+    // Show spinner — keep isRecording=true so banner stays visible
     setProcessing(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
-    // Capture values before async onstop
+    // Capture values now (before async)
     const currentUser = user;
     const currentCall = activeCall;
     const currentDuration = recordingTime;
-    const currentMime = mediaRecorderRef.current.mimeType;
+    const currentMime = recorder.mimeType;
 
-    mediaRecorderRef.current.onstop = async () => {
-      // Stop mic
+    recorder.onstop = async () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
 
-      if (!currentUser || !currentCall) {
+      if (!currentUser) {
+        setIsRecording(false);
         setProcessing(false);
         return;
       }
 
       const blob = new Blob(chunksRef.current, { type: currentMime });
       const ext = currentMime.includes('webm') ? 'webm' : 'mp4';
-      const fileName = `call_${currentCall.call_id}_${Date.now()}.${ext}`;
+      const callId = currentCall?.call_id ?? `local_${Date.now()}`;
+      const fileName = `call_${callId}_${Date.now()}.${ext}`;
 
       try {
-        // Upload audio
         const { error: uploadError } = await supabase.storage
           .from('activity-chat')
-          .upload(`call-recordings/${fileName}`, blob, {
-            contentType: currentMime,
-          });
+          .upload(`call-recordings/${fileName}`, blob, { contentType: currentMime });
 
         if (uploadError) throw uploadError;
 
@@ -105,33 +108,26 @@ export function IncomingCallBanner() {
 
         const audioUrl = urlData.publicUrl;
 
-        // Create call record with audio
         const { error: upsertError } = await supabase
           .from('call_records')
           .insert({
             user_id: currentUser.id,
-            call_type: currentCall.from_me ? 'realizada' : 'recebida',
+            call_type: currentCall?.from_me ? 'realizada' : 'recebida',
             call_result: 'atendeu',
             duration_seconds: currentDuration,
-            contact_phone: currentCall.phone,
-            contact_name: currentCall.contact_name,
+            contact_phone: currentCall?.phone ?? null,
+            contact_name: currentCall?.contact_name ?? null,
             audio_url: audioUrl,
             audio_file_name: fileName,
             phone_used: 'whatsapp_cloud',
-            notes: `Gravação local da chamada WhatsApp Cloud.`,
+            notes: 'Gravação local da chamada WhatsApp Cloud.',
             tags: ['whatsapp', 'cloud_api', 'gravacao_local'],
           });
 
         if (upsertError) throw upsertError;
 
-        // Trigger AI transcription (non-critical)
         supabase.functions.invoke('analyze-activity-chat', {
-          body: {
-            action: 'transcribe_call',
-            audio_url: audioUrl,
-            call_id: currentCall.call_id,
-            phone: currentCall.phone,
-          },
+          body: { action: 'transcribe_call', audio_url: audioUrl, call_id: callId, phone: currentCall?.phone },
         }).catch(() => {});
 
         toast.success('Chamada gravada e salva com sucesso!');
@@ -140,11 +136,18 @@ export function IncomingCallBanner() {
         toast.error('Erro ao salvar gravação');
       }
 
+      setIsRecording(false);
       setProcessing(false);
       dismiss();
     };
 
-    mediaRecorderRef.current.stop();
+    try {
+      recorder.stop();
+    } catch (err) {
+      console.error('Error stopping recorder:', err);
+      setIsRecording(false);
+      setProcessing(false);
+    }
   }, [user, activeCall, recordingTime, dismiss]);
 
   if (!activeCall && !isRecording) return null;
