@@ -118,6 +118,26 @@ export function useLeadActivities() {
         .single();
 
       if (error) throw error;
+
+      // Auto-sync to Google Calendar (silent, best-effort)
+      if (data && (activity.deadline || activity.notification_date)) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            supabase.functions.invoke('google-calendar-event', {
+              body: {
+                action_type: 'call',
+                title: activity.title || 'Nova Atividade',
+                description: activity.description || activity.notes || undefined,
+                scheduled_at: activity.deadline || activity.notification_date,
+                contact_name: activity.contact_name || activity.lead_name || undefined,
+                notes: `Lead: ${activity.lead_name || ''}\nTipo: ${activity.activity_type || ''}\nStatus: pendente`,
+              },
+            }).catch(() => {}); // silent fail if not connected
+          }
+        } catch {}
+      }
+
       toast.success('Atividade criada!');
       return data;
     } catch (error) {

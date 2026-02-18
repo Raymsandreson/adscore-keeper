@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
 import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -498,7 +498,9 @@ export function WhatsAppLeadsDashboard() {
                 <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Leads" />
+                <Line type="monotone" dataKey="count" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Leads">
+                  <LabelList dataKey="count" position="top" style={{ fontSize: 9, fill: 'hsl(var(--foreground))', fontWeight: 600 }} formatter={(v: number) => v > 0 ? v : ''} />
+                </Line>
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
