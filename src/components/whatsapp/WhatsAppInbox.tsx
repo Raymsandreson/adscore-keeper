@@ -6,6 +6,7 @@ import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
+import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,6 +36,8 @@ export function WhatsAppInbox() {
   const [showLeadPanel, setShowLeadPanel] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [showContactPanel, setShowContactPanel] = useState(false);
+  // Create contact dialog
+  const [showCreateContactDialog, setShowCreateContactDialog] = useState(false);
 
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
@@ -93,32 +96,16 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleCreateContact = async () => {
+  const handleCreateContact = () => {
     if (!selectedConversation) return;
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert({
-          full_name: selectedConversation.contact_name || 'Novo Contato',
-          phone: selectedConversation.phone,
-          created_by: currentUser?.id || null,
-        })
-        .select('*')
-        .single();
+    setShowCreateContactDialog(true);
+  };
 
-      if (error) throw error;
-
-      // Link to conversation
-      linkToContact(selectedConversation.phone, data.id);
-
-      // Open for editing with full form
-      setEditingContact(data as Contact);
-      setShowContactPanel(true);
-    } catch (e) {
-      console.error(e);
-      toast.error('Erro ao criar contato');
+  const handleContactCreated = (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
+    if (selectedConversation) {
+      linkToContact(selectedConversation.phone, contact.id);
     }
+    refetch();
   };
 
   const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
@@ -307,6 +294,15 @@ export function WhatsAppInbox() {
         onOpenChange={handleCloseContactPanel}
         onContactUpdated={() => refetch()}
         mode="sheet"
+      />
+
+      {/* Create Contact Dialog */}
+      <CreateContactDialog
+        open={showCreateContactDialog}
+        onOpenChange={setShowCreateContactDialog}
+        defaultPhone={selectedConversation?.phone}
+        defaultName={selectedConversation?.contact_name || ''}
+        onContactCreated={handleContactCreated}
       />
 
       {/* Activity Creation Sheet */}
