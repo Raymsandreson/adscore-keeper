@@ -1984,6 +1984,90 @@ export type Database = {
         }
         Relationships: []
       }
+      google_oauth_tokens: {
+        Row: {
+          access_token: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          refresh_token: string | null
+          scope: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          refresh_token?: string | null
+          scope?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          refresh_token?: string | null
+          scope?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      google_scheduled_actions: {
+        Row: {
+          action_type: string
+          calendar_event_link: string | null
+          contact_instagram: string | null
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          google_event_id: string | null
+          id: string
+          message_text: string | null
+          notes: string | null
+          scheduled_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          calendar_event_link?: string | null
+          contact_instagram?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          google_event_id?: string | null
+          id?: string
+          message_text?: string | null
+          notes?: string | null
+          scheduled_at: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          calendar_event_link?: string | null
+          contact_instagram?: string | null
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          google_event_id?: string | null
+          id?: string
+          message_text?: string | null
+          notes?: string | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       instagram_accounts: {
         Row: {
           access_token: string
