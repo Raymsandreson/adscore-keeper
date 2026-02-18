@@ -269,6 +269,22 @@ export const useContacts = () => {
 
       if (error) throw error;
 
+      // Auto-save to Google Contacts (silent, best-effort)
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          supabase.functions.invoke('google-save-contact', {
+            body: {
+              name: contact.full_name,
+              phone: contact.phone || undefined,
+              email: contact.email || undefined,
+              instagram_username: instagramUsername || undefined,
+              notes: contact.notes || undefined,
+            },
+          }).catch(() => {}); // silent fail if not connected
+        }
+      } catch {}
+
       toast.success('Contato adicionado com sucesso');
       fetchContacts();
       return data as Contact;
