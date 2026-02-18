@@ -348,36 +348,59 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
             const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
             const stage = board?.stages.find(s => s.id === info?.current_stage);
 
+            const isSelected = selectedPhone === conv.phone;
+
             return (
               <button
                 key={conv.phone}
                 onClick={() => onSelect(conv)}
                 className={cn(
-                  "w-full flex items-start gap-3 p-3 text-left hover:bg-accent/50 transition-colors border-b border-border/30",
-                  selectedPhone === conv.phone && "bg-accent"
+                  "w-full flex items-start gap-3 p-3 text-left transition-all duration-150 border-b border-border/30",
+                  isSelected
+                    ? "bg-primary border-l-2 border-l-primary shadow-sm"
+                    : "hover:bg-accent/40 border-l-2 border-l-transparent"
                 )}
               >
-                <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                  <User className="h-5 w-5 text-green-600" />
+                <div className={cn(
+                  "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
+                  isSelected
+                    ? "bg-primary-foreground/20"
+                    : "bg-green-100 dark:bg-green-900/30"
+                )}>
+                  <User className={cn("h-5 w-5", isSelected ? "text-primary-foreground" : "text-green-600")} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-sm truncate">
+                    <span className={cn(
+                      "font-semibold text-sm truncate",
+                      isSelected ? "text-primary-foreground" : "text-foreground"
+                    )}>
                       {conv.contact_name || formatPhone(conv.phone)}
                     </span>
-                    <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                    <span className={cn(
+                      "text-[10px] flex-shrink-0",
+                      isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
+                    )}>
                       {format(new Date(conv.last_message_at), 'HH:mm', { locale: ptBR })}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-0.5">
-                    <p className="text-xs text-muted-foreground truncate">
+                    <p className={cn(
+                      "text-xs truncate",
+                      isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+                    )}>
                       {conv.last_message || '(mídia)'}
                     </p>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      {conv.lead_id && <Link2 className="h-3 w-3 text-blue-500" />}
-                      {convHasCalls && <PhoneCall className="h-3 w-3 text-purple-500" />}
+                      {conv.lead_id && <Link2 className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-blue-500")} />}
+                      {convHasCalls && <PhoneCall className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-purple-500")} />}
                       {conv.unread_count > 0 && (
-                        <Badge className="h-5 min-w-5 flex items-center justify-center text-[10px] bg-green-600 hover:bg-green-600 p-0 px-1.5">
+                        <Badge className={cn(
+                          "h-5 min-w-5 flex items-center justify-center text-[10px] p-0 px-1.5",
+                          isSelected
+                            ? "bg-primary-foreground text-primary hover:bg-primary-foreground"
+                            : "bg-green-600 hover:bg-green-600"
+                        )}>
                           {conv.unread_count}
                         </Badge>
                       )}
@@ -387,14 +410,22 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                   {(board || stage) && (
                     <div className="flex items-center gap-1 mt-1 flex-wrap">
                       {board && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        <span className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded",
+                          isSelected
+                            ? "bg-primary-foreground/20 text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        )}>
                           {board.name}
                         </span>
                       )}
                       {stage && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ background: `${stage.color}22`, color: stage.color }}
+                          style={isSelected
+                            ? { background: 'rgba(255,255,255,0.25)', color: 'white' }
+                            : { background: `${stage.color}22`, color: stage.color }
+                          }
                         >
                           {stage.name}
                         </span>
@@ -404,10 +435,16 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
 
                   <div className="flex items-center gap-1 mt-0.5">
                     {conv.contact_name && (
-                      <p className="text-[10px] text-muted-foreground">{formatPhone(conv.phone)}</p>
+                      <p className={cn(
+                        "text-[10px]",
+                        isSelected ? "text-primary-foreground/60" : "text-muted-foreground"
+                      )}>{formatPhone(conv.phone)}</p>
                     )}
                     {conv.instance_name && (
-                      <span className="text-[9px] text-muted-foreground/70 flex items-center gap-0.5 ml-auto">
+                      <span className={cn(
+                        "text-[9px] flex items-center gap-0.5 ml-auto",
+                        isSelected ? "text-primary-foreground/60" : "text-muted-foreground/70"
+                      )}>
                         <Smartphone className="h-2.5 w-2.5" />
                         {conv.instance_name}
                       </span>
@@ -416,9 +453,13 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
 
                   {unansweredAt && (
                     <div className="flex items-center gap-1 mt-1">
-                      <span
-                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border"
-                        style={{ color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' }}
+                      <span className={cn(
+                        "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border",
+                        isSelected
+                          ? "border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
+                          : ""
+                      )}
+                        style={!isSelected ? { color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' } : {}}
                       >
                         <Clock className="h-2.5 w-2.5" />
                         Sem resposta há {formatDistanceToNow(new Date(unansweredAt), { locale: ptBR })}
