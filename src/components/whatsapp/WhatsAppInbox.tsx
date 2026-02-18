@@ -234,6 +234,8 @@ export function WhatsAppInbox() {
             loading={loading}
             selectedPhone={selectedPhone}
             onSelect={handleSelectConversation}
+            boards={boards}
+            selectedInstanceId={selectedInstanceId}
           />
         </div>
 
