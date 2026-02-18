@@ -54,29 +54,52 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send directly to UazAPI using the instance token in the URL path (v2 API)
-    const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
-    const sendUrl = `${baseUrl}/sendText/${instance.instance_token}`
+    // Route through n8n webhook which has the real UazAPI tokens configured
+    const n8nWebhookUrl = Deno.env.get('N8N_WHATSAPP_WEBHOOK_URL')
     
-    console.log('Sending via instance:', instance.instance_name, 'to phone:', phone, 'url:', sendUrl)
+    if (n8nWebhookUrl) {
+      console.log('Sending via n8n webhook for instance:', instance.instance_name, 'to phone:', phone)
+      
+      const n8nResponse = await fetch(n8nWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone,
+          message,
+          instance_name: instance.instance_name,
+          base_url: instance.base_url || 'https://abraci.uazapi.com',
+          instance_token: instance.instance_token,
+        }),
+      })
 
-    const uazResponse = await fetch(sendUrl, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        phone: phone,
-        message: message,
-      }),
-    })
+      if (!n8nResponse.ok) {
+        const errorText = await n8nResponse.text()
+        throw new Error(`n8n webhook error: ${n8nResponse.status} - ${errorText}`)
+      }
 
-    if (!uazResponse.ok) {
-      const errorText = await uazResponse.text()
-      throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
+      console.log('n8n webhook response status:', n8nResponse.status)
+    } else {
+      // Fallback: direct UazAPI call with token in header
+      const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+      const sendUrl = `${baseUrl}/sendText`
+      console.log('Sending directly to UazAPI:', sendUrl, 'instance:', instance.instance_name)
+
+      const uazResponse = await fetch(sendUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'token': instance.instance_token,
+        },
+        body: JSON.stringify({ phone, message }),
+      })
+
+      if (!uazResponse.ok) {
+        const errorText = await uazResponse.text()
+        throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
+      }
     }
 
-    // Save outbound message to database with instance info
+    // Save outbound message to database
     const { data: savedMessage, error } = await supabase
       .from('whatsapp_messages')
       .insert({
