@@ -2,7 +2,10 @@ import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, ChevronDown } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -14,7 +17,7 @@ interface LeadInfo {
   id: string;
   board_id: string | null;
   current_stage: string | null;
-  checklist_stage_ids: string[];
+  completed_checklist_ids: string[];
 }
 
 interface Props {
@@ -33,19 +36,16 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
-  const [selectedChecklistId, setSelectedChecklistId] = useState<string>('all');
+  // Multi-select passos
+  const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
+  const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
 
-  // Phones that have call records
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
-  // Lead details by lead_id
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
-  // Checklist templates
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string }[]>([]);
 
-  // Fetch call phones and lead info
   useEffect(() => {
     const fetchData = async () => {
-      // Call records
       const { data: callData } = await supabase
         .from('call_records')
         .select('contact_phone')
@@ -54,66 +54,45 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         setPhonesWithCalls(new Set(callData.map((r: any) => r.contact_phone as string)));
       }
 
-      // Lead info for conversations that have lead_id
       const leadIds = conversations.filter(c => c.lead_id).map(c => c.lead_id as string);
       if (leadIds.length > 0) {
-        // Fetch leads board_id
-        const { data: leadsData } = await supabase
-          .from('leads')
-          .select('id, board_id')
-          .in('id', leadIds);
-
-        // Fetch latest stage per lead from stage history
-        const { data: stageData } = await supabase
-          .from('lead_stage_history')
-          .select('lead_id, to_stage, to_board_id, changed_at')
-          .in('lead_id', leadIds)
-          .order('changed_at', { ascending: false });
-
-        // Fetch checklist instances
-        const { data: checklistData } = await supabase
-          .from('lead_checklist_instances')
-          .select('lead_id, checklist_template_id, is_completed')
-          .in('lead_id', leadIds);
+        const [leadsRes, stageRes, checklistRes, templatesRes] = await Promise.all([
+          supabase.from('leads').select('id, board_id').in('id', leadIds),
+          supabase.from('lead_stage_history')
+            .select('lead_id, to_stage, changed_at')
+            .in('lead_id', leadIds)
+            .order('changed_at', { ascending: false }),
+          supabase.from('lead_checklist_instances')
+            .select('lead_id, checklist_template_id, is_completed')
+            .in('lead_id', leadIds)
+            .eq('is_completed', true),  // only completed
+          supabase.from('checklist_templates').select('id, name').order('name'),
+        ]);
 
         const map = new Map<string, LeadInfo>();
-        for (const lead of leadsData || []) {
-          // Latest stage (first in desc order)
-          const latestStage = stageData?.find(s => s.lead_id === lead.id);
-          // Checklist template ids with incomplete items
-          const checklistIds = (checklistData || [])
-            .filter(c => c.lead_id === lead.id && !c.is_completed)
+        for (const lead of leadsRes.data || []) {
+          const latestStage = stageRes.data?.find(s => s.lead_id === lead.id);
+          const completedIds = (checklistRes.data || [])
+            .filter(c => c.lead_id === lead.id)
             .map(c => c.checklist_template_id);
 
           map.set(lead.id, {
             id: lead.id,
             board_id: lead.board_id,
             current_stage: latestStage?.to_stage || null,
-            checklist_stage_ids: checklistIds,
+            completed_checklist_ids: completedIds,
           });
         }
         setLeadInfoMap(map);
-
-        // Checklist templates
-        const { data: templates } = await supabase
-          .from('checklist_templates')
-          .select('id, name')
-          .order('name');
-        setChecklistTemplates(templates || []);
+        setChecklistTemplates(templatesRes.data || []);
       }
     };
     fetchData();
   }, [conversations, selectedInstanceId]);
 
-  // Boards filtered by instance (if instance selected, filter; otherwise all)
-  // For now we show all boards since instance <-> board linking isn't direct in schema
-  const availableBoards = boards;
-
-  // Stages for selected board
   const availableStages = useMemo(() => {
     if (selectedBoardId === 'all') return [];
-    const board = boards.find(b => b.id === selectedBoardId);
-    return board?.stages || [];
+    return boards.find(b => b.id === selectedBoardId)?.stages || [];
   }, [selectedBoardId, boards]);
 
   const isUnanswered = (conv: WhatsAppConversation) => {
@@ -127,17 +106,14 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     const sorted = [...conv.messages].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-    if (sorted.length > 0 && sorted[0].direction === 'inbound') return sorted[0].created_at;
-    return null;
+    return sorted.length > 0 && sorted[0].direction === 'inbound' ? sorted[0].created_at : null;
   };
 
   const hasCalls = (conv: WhatsAppConversation) => phonesWithCalls.has(conv.phone);
-
   const getLeadInfo = (conv: WhatsAppConversation) =>
     conv.lead_id ? leadInfoMap.get(conv.lead_id) : undefined;
 
   const filtered = useMemo(() => conversations.filter(c => {
-    // Text search
     const term = search.toLowerCase();
     if (term && !(
       c.phone.includes(term) ||
@@ -146,36 +122,51 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       c.instance_name?.toLowerCase().includes(term)
     )) return false;
 
-    // Quick filter
     if (quickFilter === 'no_lead' && c.lead_id) return false;
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
 
-    // Board filter
     if (selectedBoardId !== 'all') {
       const info = getLeadInfo(c);
       if (!info || info.board_id !== selectedBoardId) return false;
     }
 
-    // Stage filter
     if (selectedStageId !== 'all') {
       const info = getLeadInfo(c);
       if (!info || info.current_stage !== selectedStageId) return false;
     }
 
-    // Checklist/Passos filter
-    if (selectedChecklistId !== 'all') {
+    // Multi-select passos: lead must have ALL selected checklists completed
+    if (selectedChecklistIds.length > 0) {
       const info = getLeadInfo(c);
-      if (!info || !info.checklist_stage_ids.includes(selectedChecklistId)) return false;
+      if (!info) return false;
+      const allCompleted = selectedChecklistIds.every(id =>
+        info.completed_checklist_ids.includes(id)
+      );
+      if (!allCompleted) return false;
     }
 
     return true;
-  }), [conversations, search, quickFilter, selectedBoardId, selectedStageId, selectedChecklistId, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
 
   const formatPhone = (phone: string) => {
     if (phone.length === 13) return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
     if (phone.length === 12) return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 8)}-${phone.slice(8)}`;
     return phone;
+  };
+
+  const toggleChecklist = (id: string) => {
+    setSelectedChecklistIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedChecklistIds.length === checklistTemplates.length) {
+      setSelectedChecklistIds([]);
+    } else {
+      setSelectedChecklistIds(checklistTemplates.map(t => t.id));
+    }
   };
 
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
@@ -240,7 +231,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         ))}
       </div>
 
-      {/* Advanced filters: Funil / Fase / Passos */}
+      {/* Advanced filters */}
       <div className="px-2 py-2 border-b space-y-1.5">
         {/* Funil */}
         <Select value={selectedBoardId} onValueChange={v => { setSelectedBoardId(v); setSelectedStageId('all'); }}>
@@ -249,13 +240,13 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os funis</SelectItem>
-            {availableBoards.map(b => (
+            {boards.map(b => (
               <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* Fase - only shown when board selected */}
+        {/* Fase */}
         {selectedBoardId !== 'all' && availableStages.length > 0 && (
           <Select value={selectedStageId} onValueChange={setSelectedStageId}>
             <SelectTrigger className="h-7 text-xs">
@@ -270,19 +261,70 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
           </Select>
         )}
 
-        {/* Passos */}
+        {/* Passos — multi-select popover */}
         {checklistTemplates.length > 0 && (
-          <Select value={selectedChecklistId} onValueChange={setSelectedChecklistId}>
-            <SelectTrigger className="h-7 text-xs">
-              <SelectValue placeholder="Passos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os passos</SelectItem>
-              {checklistTemplates.map(t => (
-                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={checklistPopoverOpen} onOpenChange={setChecklistPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-7 text-xs justify-between font-normal px-2"
+              >
+                <span className="flex items-center gap-1.5">
+                  <CheckSquare className="h-3 w-3 text-muted-foreground" />
+                  {selectedChecklistIds.length === 0
+                    ? 'Passos concluídos'
+                    : selectedChecklistIds.length === checklistTemplates.length
+                      ? 'Todos os passos'
+                      : `${selectedChecklistIds.length} passo${selectedChecklistIds.length > 1 ? 's' : ''} selecionado${selectedChecklistIds.length > 1 ? 's' : ''}`
+                  }
+                </span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <div className="space-y-1">
+                {/* Select all */}
+                <div
+                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
+                  onClick={toggleAll}
+                >
+                  <Checkbox
+                    checked={selectedChecklistIds.length === checklistTemplates.length && checklistTemplates.length > 0}
+                    onCheckedChange={toggleAll}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
+                </div>
+                <div className="border-t my-1" />
+                {checklistTemplates.map(t => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer"
+                    onClick={() => toggleChecklist(t.id)}
+                  >
+                    <Checkbox
+                      checked={selectedChecklistIds.includes(t.id)}
+                      onCheckedChange={() => toggleChecklist(t.id)}
+                    />
+                    <span className="text-xs">{t.name}</span>
+                  </div>
+                ))}
+                {selectedChecklistIds.length > 0 && (
+                  <>
+                    <div className="border-t my-1" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full h-7 text-xs text-muted-foreground"
+                      onClick={() => setSelectedChecklistIds([])}
+                    >
+                      Limpar seleção
+                    </Button>
+                  </>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
       </div>
 
@@ -340,7 +382,6 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                     </div>
                   </div>
 
-                  {/* Board / Stage badge */}
                   {(board || stage) && (
                     <div className="flex items-center gap-1 mt-1 flex-wrap">
                       {board && (
@@ -371,11 +412,12 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                     )}
                   </div>
 
-                  {/* Unanswered time */}
                   {unansweredAt && (
                     <div className="flex items-center gap-1 mt-1">
-                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border"
-                        style={{ color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' }}>
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border"
+                        style={{ color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' }}
+                      >
                         <Clock className="h-2.5 w-2.5" />
                         Sem resposta há {formatDistanceToNow(new Date(unansweredAt), { locale: ptBR })}
                       </span>
