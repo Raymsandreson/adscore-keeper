@@ -292,6 +292,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                   <Checkbox
                     checked={selectedChecklistIds.length === checklistTemplates.length && checklistTemplates.length > 0}
                     onCheckedChange={toggleAll}
+                    onClick={e => e.stopPropagation()}
                   />
                   <span className="text-xs font-medium text-muted-foreground">Selecionar todos</span>
                 </div>
@@ -305,6 +306,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                     <Checkbox
                       checked={selectedChecklistIds.includes(t.id)}
                       onCheckedChange={() => toggleChecklist(t.id)}
+                      onClick={e => e.stopPropagation()}
                     />
                     <span className="text-xs">{t.name}</span>
                   </div>
