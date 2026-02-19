@@ -90,6 +90,8 @@ const DEFAULT_TIERS: CommissionTier[] = [
   { min_percent: 100, max_percent: 999, commission_value: 600 },
 ];
 
+const emptyGoalValues = { target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 };
+
 export function CommissionGoals() {
   const [goals, setGoals] = useState<CommissionGoal[]>([]);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
@@ -100,13 +102,12 @@ export function CommissionGoals() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<CommissionGoal | null>(null);
   const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
-  const [expandedMember, setExpandedMember] = useState<string | null>(null); // "goalId:userId"
+  const [expandedMember, setExpandedMember] = useState<string | null>(null);
   const [memberObjects, setMemberObjects] = useState<Record<string, any[]>>({});
   const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
   const [dailyGoalAchievements, setDailyGoalAchievements] = useState<Record<string, { achieved: number; total: number }>>({});
 
   // Default daily goals state - keyed by board_id ('global' for no board)
-  const emptyGoalValues = { target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 };
   const [defaultGoalsMap, setDefaultGoalsMap] = useState<Record<string, typeof emptyGoalValues>>({ global: { ...emptyGoalValues } });
   const [selectedDefaultBoard, setSelectedDefaultBoard] = useState('global');
   const [savingDefaults, setSavingDefaults] = useState(false);
