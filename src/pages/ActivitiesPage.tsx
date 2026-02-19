@@ -1448,62 +1448,59 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         {viewMode === 'matrix' && !isEditing && (
           <div className="flex-1 overflow-auto p-4">
             <div className="max-w-5xl mx-auto">
-              {/* Axis labels */}
-              <div className="flex items-center justify-center gap-8 mb-3 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground">↑ Muito Importante</span>
-                  <span>·</span>
-                  <span className="text-muted-foreground">↓ Pouco Importante</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground">← Muito Urgente</span>
-                  <span>·</span>
-                  <span className="text-muted-foreground">→ Pouco Urgente</span>
-                </div>
-              </div>
 
-              {/* Column headers */}
-              <div className="grid grid-cols-2 gap-3 mb-1 px-0">
-                <div className="text-center text-xs font-medium text-muted-foreground">🚨 Muito Urgente</div>
-                <div className="text-center text-xs font-medium text-muted-foreground">🕐 Pouco Urgente</div>
-              </div>
+              {/* Matrix with axis labels */}
+              <div className="flex gap-2">
+                {/* Y-axis label (Importância) */}
+                <div className="flex flex-col items-center justify-center w-5 shrink-0" style={{ minHeight: 'calc(100vh - 240px)' }}>
+                  <div className="flex flex-col items-center gap-1" style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                    <span className="text-[10px] font-bold text-foreground">▲ MUITO IMPORTANTE</span>
+                    <span className="text-[18px] text-muted-foreground mx-1">←</span>
+                    <span className="text-[10px] text-muted-foreground">▼ POUCO IMPORTANTE</span>
+                  </div>
+                </div>
 
-              {/* 2x2 Matrix */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-3 h-[calc(100vh-280px)]">
-                {[
-                  {
-                    id: 'do_now', label: 'Faça Agora', emoji: '🔥',
-                    desc: 'Urgente + Importante',
-                    bg: 'bg-red-50 dark:bg-red-950/20',
-                    border: 'border-red-300 dark:border-red-800',
-                    header: 'bg-red-500',
-                    rowLabel: '⬆️ Muito Importante',
-                  },
-                  {
-                    id: 'schedule', label: 'Agende para depois', emoji: '📅',
-                    desc: 'Não urgente + Importante',
-                    bg: 'bg-blue-50 dark:bg-blue-950/20',
-                    border: 'border-blue-300 dark:border-blue-800',
-                    header: 'bg-blue-600',
-                    rowLabel: null,
-                  },
-                  {
-                    id: 'delegate', label: 'Delegue para alguém', emoji: '🤝',
-                    desc: 'Urgente + Pouco importante',
-                    bg: 'bg-orange-50 dark:bg-orange-950/20',
-                    border: 'border-orange-300 dark:border-orange-800',
-                    header: 'bg-orange-500',
-                    rowLabel: '⬇️ Pouco Importante',
-                  },
-                  {
-                    id: 'eliminate', label: 'Retire da sua agenda', emoji: '🗑️',
-                    desc: 'Não urgente + Pouco importante',
-                    bg: 'bg-muted/30',
-                    border: 'border-border',
-                    header: 'bg-muted-foreground',
-                    rowLabel: null,
-                  },
-                ].map((quadrant) => {
+                <div className="flex-1 flex flex-col gap-2">
+                  {/* X-axis label (Urgência) */}
+                  <div className="flex items-center justify-between px-1 text-[10px] font-medium">
+                    <span className="text-foreground font-bold">◀ MUITO URGENTE</span>
+                    <span className="text-muted-foreground">POUCO URGENTE ▶</span>
+                  </div>
+
+                  {/* 2x2 Matrix */}
+                  {/* Order: top-left=do_now(urgente+importante), top-right=schedule(não urgente+importante)
+                              bottom-left=delegate(urgente+pouco importante), bottom-right=eliminate(não urgente+pouco importante) */}
+                  <div className="grid grid-cols-2 grid-rows-2 gap-3" style={{ height: 'calc(100vh - 280px)' }}>
+                    {[
+                      {
+                        id: 'do_now', label: 'Faça Agora', emoji: '🔥',
+                        desc: 'Urgente + Importante',
+                        bg: 'bg-red-50 dark:bg-red-950/20',
+                        border: 'border-red-300 dark:border-red-800',
+                        header: 'bg-red-500',
+                      },
+                      {
+                        id: 'schedule', label: 'Agende para depois', emoji: '📅',
+                        desc: 'Não urgente + Importante',
+                        bg: 'bg-blue-50 dark:bg-blue-950/20',
+                        border: 'border-blue-300 dark:border-blue-800',
+                        header: 'bg-blue-600',
+                      },
+                      {
+                        id: 'delegate', label: 'Delegue para alguém', emoji: '🤝',
+                        desc: 'Urgente + Pouco importante',
+                        bg: 'bg-orange-50 dark:bg-orange-950/20',
+                        border: 'border-orange-300 dark:border-orange-800',
+                        header: 'bg-orange-500',
+                      },
+                      {
+                        id: 'eliminate', label: 'Retire da sua agenda', emoji: '🗑️',
+                        desc: 'Não urgente + Pouco importante',
+                        bg: 'bg-muted/30',
+                        border: 'border-border',
+                        header: 'bg-muted-foreground',
+                      },
+                    ].map((quadrant) => {
                   const quadrantActivities = displayedActivities.filter(
                     a => (a as any).matrix_quadrant === quadrant.id
                   );
@@ -1604,34 +1601,36 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     </div>
                   );
                 })}
-              </div>
-
-              {/* Unclassified activities */}
-              {(() => {
-                const unclassified = displayedActivities.filter(a => !(a as any).matrix_quadrant);
-                if (unclassified.length === 0) return null;
-                return (
-                  <div className="mt-4">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">
-                      📋 Sem classificação na Matriz ({unclassified.length}) — arraste-as para os quadrantes ou clique para editar
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {unclassified.map(activity => (
-                        <div
-                          key={activity.id}
-                          draggable
-                          onDragStart={(e) => { e.dataTransfer.setData('activityId', activity.id); }}
-                          className="bg-card border border-border/60 rounded-lg px-3 py-2 text-xs cursor-grab hover:shadow-md transition-all max-w-[200px]"
-                          onClick={() => handleOpenEdit(activity)}
-                        >
-                          <p className="font-medium truncate">{activity.title}</p>
-                          {activity.lead_name && <p className="text-muted-foreground truncate">📁 {activity.lead_name}</p>}
-                        </div>
-                      ))}
-                    </div>
                   </div>
-                );
-              })()}
+
+                  {/* Unclassified activities */}
+                  {(() => {
+                    const unclassified = displayedActivities.filter(a => !(a as any).matrix_quadrant);
+                    if (unclassified.length === 0) return null;
+                    return (
+                      <div className="mt-4">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">
+                          📋 Sem classificação na Matriz ({unclassified.length}) — arraste-as para os quadrantes ou clique para editar
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {unclassified.map(activity => (
+                            <div
+                              key={activity.id}
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.setData('activityId', activity.id); }}
+                              className="bg-card border border-border/60 rounded-lg px-3 py-2 text-xs cursor-grab hover:shadow-md transition-all max-w-[200px]"
+                              onClick={() => handleOpenEdit(activity)}
+                            >
+                              <p className="font-medium truncate">{activity.title}</p>
+                              {activity.lead_name && <p className="text-muted-foreground truncate">📁 {activity.lead_name}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
             </div>
           </div>
         )}
