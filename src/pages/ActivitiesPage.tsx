@@ -29,7 +29,8 @@ import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
-import { TimeBlockSettingsDialog, TimeBlockConfig, loadTimeBlockConfigs, saveTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
+import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
+import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
@@ -139,7 +140,7 @@ const ActivitiesPage = () => {
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
-  const [timeBlockSettings, setTimeBlockSettings] = useState<TimeBlockConfig[]>(() => loadTimeBlockConfigs());
+  const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<{
     case_type?: string | null;
@@ -2365,10 +2366,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         open={timeBlockSettingsOpen}
         onOpenChange={setTimeBlockSettingsOpen}
         configs={timeBlockSettings}
-        onSave={(configs) => {
-          setTimeBlockSettings(configs);
-          saveTimeBlockConfigs(configs);
-        }}
+        onSave={saveTimeBlockConfigs}
       />
     </div>
   );

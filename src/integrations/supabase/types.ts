@@ -3804,6 +3804,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_timeblock_settings: {
+        Row: {
+          activity_type: string
+          color: string
+          created_at: string
+          days: number[]
+          end_hour: number
+          id: string
+          label: string
+          start_hour: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          color: string
+          created_at?: string
+          days?: number[]
+          end_hour?: number
+          id?: string
+          label: string
+          start_hour?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          color?: string
+          created_at?: string
+          days?: number[]
+          end_hour?: number
+          id?: string
+          label?: string
+          start_hour?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       weekly_evaluations: {
         Row: {
           comments: string | null
