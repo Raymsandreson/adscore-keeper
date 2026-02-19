@@ -152,7 +152,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
         dm_message: editedDm.trim(),
         original_suggestion: dmSuggestion || '',
         was_edited: editedDm.trim() !== (dmSuggestion || '').trim(),
-        action_type: 'copied',
+        action_type: 'sent',
         comment_id: comment.id,
         author_id: (comment as any).author_id || null,
       });

@@ -330,7 +330,7 @@ export function CommissionGoals() {
           const { data } = await supabase.from('dm_history')
             .select('id, instagram_username, dm_message, created_at')
             .eq('user_id', userId)
-            .eq('action_type', 'sent')
+            .neq('action_type', 'received')
             .gte('created_at', startDate).lte('created_at', endDate)
             .order('created_at', { ascending: false })
             .limit(50);

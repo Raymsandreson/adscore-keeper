@@ -139,7 +139,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
       const { error } = await supabase.from('dm_history').insert({
         instagram_username: normalizedUsername,
         dm_message: newDmMessage.trim(),
-        action_type: 'copied',
+        action_type: 'sent',
         user_id: user?.id,
       });
       if (error) throw error;
