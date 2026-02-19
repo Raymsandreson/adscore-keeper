@@ -22,7 +22,9 @@ export interface TimeBlockConfig {
   activityType: string;
   days: number[];
   startHour: number;
+  startMinute?: number;
   endHour: number;
+  endMinute?: number;
   color: string;
   label: string;
   isCustom?: boolean;
@@ -36,7 +38,15 @@ const WEEK_DAYS = [
   { label: 'SEX', idx: 4 },
 ];
 
-const HOURS = Array.from({ length: 13 }, (_, i) => i + 7); // 7h–19h
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6h–20h
+const MINUTES = [0, 15, 30, 45];
+
+/** Convert hour+minute to decimal for overlap comparison */
+const toDecimal = (h: number, m: number = 0) => h + m / 60;
+
+/** Format as HH:MM */
+const fmtTime = (h: number, m: number = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
 
 export const COLOR_OPTIONS = [
   { value: 'bg-blue-500', label: 'Azul' },
@@ -72,7 +82,7 @@ interface Props {
 // Helpers for overlap detection
 // ------------------------------------------------------------------
 
-/** All blocks that belong to OTHER types or OTHER blockIds */
+/** All blocks that belong to OTHER blockIds */
 function getOccupiedRanges(
   blocks: TimeBlockConfig[],
   currentBlockId: string,
@@ -83,41 +93,22 @@ function getOccupiedRanges(
     if (b.blockId === currentBlockId) return;
     const sharesDay = days.some(d => b.days.includes(d));
     if (!sharesDay) return;
-    ranges.push({ start: b.startHour, end: b.endHour });
+    ranges.push({ start: toDecimal(b.startHour, b.startMinute), end: toDecimal(b.endHour, b.endMinute) });
   });
   return ranges;
 }
 
-function getAvailableStartHours(
+function hasOverlap(
   blocks: TimeBlockConfig[],
   blockId: string,
   days: number[],
-): number[] {
-  if (days.length === 0) return HOURS.slice(0, -1);
+  startDecimal: number,
+  endDecimal: number,
+): boolean {
   const ranges = getOccupiedRanges(blocks, blockId, days);
-  return HOURS.slice(0, -1).filter(h =>
-    !ranges.some(r => h >= r.start && h < r.end)
-  );
+  return ranges.some(r => startDecimal < r.end && endDecimal > r.start);
 }
 
-function getAvailableEndHours(
-  blocks: TimeBlockConfig[],
-  blockId: string,
-  days: number[],
-  startHour: number,
-): number[] {
-  if (days.length === 0) return HOURS.filter(h => h > startHour);
-  const ranges = getOccupiedRanges(blocks, blockId, days);
-  const available: number[] = [];
-  for (const h of HOURS) {
-    if (h <= startHour) continue;
-    // Range [startHour, h) must be free
-    const blocked = ranges.some(r => r.start < h && r.end > startHour);
-    if (!blocked) available.push(h);
-    else break;
-  }
-  return available;
-}
 
 // ------------------------------------------------------------------
 // Component
@@ -412,10 +403,28 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                   {sel && (
                     <div className="px-3 pb-3 border-t border-primary/20 pt-3 space-y-3">
                       {typeBlocks.map((block, bi) => {
-                        const availStart = getAvailableStartHours(blocks, block.blockId, block.days);
-                        const availEnd = getAvailableEndHours(blocks, block.blockId, block.days, block.startHour);
-                        const correctedStart = availStart.includes(block.startHour) ? block.startHour : (availStart[0] ?? block.startHour);
-                        const correctedEnd = availEnd.includes(block.endHour) ? block.endHour : (availEnd[0] ?? block.endHour);
+                        const startDec = toDecimal(block.startHour, block.startMinute ?? 0);
+                        const endDec = toDecimal(block.endHour, block.endMinute ?? 0);
+
+                        const handleStartChange = (h: number, m: number) => {
+                          const newStartDec = toDecimal(h, m);
+                          let newEndH = block.endHour;
+                          let newEndM = block.endMinute ?? 0;
+                          // If end <= new start, push end 1h forward
+                          if (toDecimal(newEndH, newEndM) <= newStartDec) {
+                            newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
+                            newEndM = m;
+                          }
+                          updateBlock(block.blockId, { startHour: h, startMinute: m, endHour: newEndH, endMinute: newEndM });
+                        };
+
+                        const handleEndChange = (h: number, m: number) => {
+                          if (toDecimal(h, m) > startDec) {
+                            updateBlock(block.blockId, { endHour: h, endMinute: m });
+                          }
+                        };
+
+                        const overlapWarn = hasOverlap(blocks, block.blockId, block.days, startDec, endDec);
 
                         return (
                           <div key={block.blockId} className={cn(
@@ -469,53 +478,86 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                               </div>
                             </div>
 
-                            {/* Hours */}
-                            <div className="flex items-center gap-3">
+                            {/* Time pickers with hour + minute */}
+                            <div className="flex flex-wrap items-center gap-2">
                               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Horário</p>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">De</span>
+                              
+                              <span className="text-xs text-muted-foreground">De</span>
+                              {/* Start time */}
+                              <div className="flex items-center gap-1">
                                 <select
-                                  value={correctedStart}
-                                  onChange={e => {
-                                    const v = Number(e.target.value);
-                                    const newEnd = getAvailableEndHours(blocks, block.blockId, block.days, v);
-                                    updateBlock(block.blockId, { startHour: v, endHour: newEnd[0] ?? v + 1 });
-                                  }}
+                                  value={block.startHour}
+                                  onChange={e => handleStartChange(Number(e.target.value), block.startMinute ?? 0)}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                  {availStart.length > 0
-                                    ? availStart.map(h => <option key={h} value={h}>{h}:00</option>)
-                                    : <option value={correctedStart}>{correctedStart}:00</option>}
+                                  {HOURS.slice(0, -1).map(h => (
+                                    <option key={h} value={h}>{String(h).padStart(2, '0')}h</option>
+                                  ))}
                                 </select>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">até</span>
+                                <span className="text-xs text-muted-foreground">:</span>
                                 <select
-                                  value={correctedEnd}
-                                  onChange={e => updateBlock(block.blockId, { endHour: Number(e.target.value) })}
+                                  value={block.startMinute ?? 0}
+                                  onChange={e => handleStartChange(block.startHour, Number(e.target.value))}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                  {availEnd.length > 0
-                                    ? availEnd.map(h => <option key={h} value={h}>{h}:00</option>)
-                                    : <option value={correctedEnd}>{correctedEnd}:00</option>}
+                                  {MINUTES.map(m => (
+                                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                                  ))}
                                 </select>
                               </div>
+
+                              <span className="text-xs text-muted-foreground">até</span>
+                              {/* End time */}
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={block.endHour}
+                                  onChange={e => handleEndChange(Number(e.target.value), block.endMinute ?? 0)}
+                                  className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                >
+                                  {HOURS.map(h => (
+                                    <option key={h} value={h} disabled={toDecimal(h, block.endMinute ?? 0) <= startDec}>
+                                      {String(h).padStart(2, '0')}h
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-xs text-muted-foreground">:</span>
+                                <select
+                                  value={block.endMinute ?? 0}
+                                  onChange={e => handleEndChange(block.endHour, Number(e.target.value))}
+                                  className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                >
+                                  {MINUTES.map(m => (
+                                    <option key={m} value={m} disabled={toDecimal(block.endHour, m) <= startDec}>
+                                      {String(m).padStart(2, '0')}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Duration label */}
+                              <span className="text-[10px] text-muted-foreground">
+                                ({Math.round((endDec - startDec) * 60)}min)
+                              </span>
+
                               {/* Mini bar */}
-                              <div className="flex-1 relative h-5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
+                              <div className="flex-1 relative h-4 bg-muted/30 rounded-full overflow-hidden min-w-[60px] hidden sm:block">
                                 {(() => {
                                   const total = HOURS[HOURS.length - 1] - HOURS[0];
-                                  const sp = ((correctedStart - HOURS[0]) / total) * 100;
-                                  const wp = ((correctedEnd - correctedStart) / total) * 100;
+                                  const sp = ((startDec - HOURS[0]) / total) * 100;
+                                  const wp = ((endDec - startDec) / total) * 100;
                                   return (
                                     <div
                                       className={cn('absolute top-0 bottom-0 rounded-full opacity-70', type.color)}
-                                      style={{ left: `${sp}%`, width: `${wp}%` }}
+                                      style={{ left: `${Math.max(0, sp)}%`, width: `${Math.max(2, wp)}%` }}
                                     />
                                   );
                                 })()}
                               </div>
                             </div>
 
+                            {overlapWarn && (
+                              <p className="text-[11px] text-orange-500">⚠️ Este horário sobrepõe outro bloco nos mesmos dias</p>
+                            )}
                             {block.days.length === 0 && (
                               <p className="text-[11px] text-destructive">⚠️ Nenhum dia selecionado</p>
                             )}
