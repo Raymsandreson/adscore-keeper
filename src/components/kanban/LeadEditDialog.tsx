@@ -40,6 +40,7 @@ import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { LeadChecklistPanel } from '@/components/kanban/LeadChecklistPanel';
+import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { 
@@ -621,7 +622,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-8 h-auto">
+          <TabsList className="grid w-full grid-cols-9 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
               Básico
@@ -633,6 +634,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             <TabsTrigger value="checklist" className="text-xs py-2">
               <CheckSquare className="h-3 w-3 mr-1" />
               Checklist
+            </TabsTrigger>
+            <TabsTrigger value="activities" className="text-xs py-2">
+              <Calendar className="h-3 w-3 mr-1" />
+              Atividades
             </TabsTrigger>
             <TabsTrigger value="accident" className="text-xs py-2">
               <FileText className="h-3 w-3 mr-1" />
@@ -861,6 +866,11 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             {/* Contacts Tab */}
             <TabsContent value="contacts" className="mt-0">
               <LeadLinkedContacts leadId={lead.id} />
+            </TabsContent>
+
+            {/* Activities Tab */}
+            <TabsContent value="activities" className="mt-0">
+              <LeadActivitiesTab leadId={lead.id} leadName={lead.lead_name || ''} />
             </TabsContent>
 
             {/* Accident Details Tab */}
