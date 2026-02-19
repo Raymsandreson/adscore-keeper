@@ -100,11 +100,13 @@ export const RelationshipPromptDialog: React.FC<RelationshipPromptDialogProps> =
 
       // Create new contact if needed
       if (createNew && newContactName.trim()) {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
             full_name: newContactName.trim(),
-            classifications: []
+            classifications: [],
+            created_by: currentUser?.id || null,
           })
           .select('id')
           .single();

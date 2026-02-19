@@ -271,12 +271,14 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
       // Create contact if doesn't exist
       if (!contactId && authorUsername) {
         const normalizedUsername = authorUsername.startsWith('@') ? authorUsername : `@${authorUsername}`;
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
             full_name: authorUsername.replace('@', ''),
             instagram_username: normalizedUsername,
-            classifications: selectedClassifications
+            classifications: selectedClassifications,
+            created_by: currentUser?.id || null,
           })
           .select('id')
           .single();
@@ -393,11 +395,13 @@ export const CommentCardBadges: React.FC<CommentCardBadgesProps> = ({
       // Create contact if doesn't exist
       if (!contactId && authorUsername) {
         const normalizedUsername = authorUsername.startsWith('@') ? authorUsername : `@${authorUsername}`;
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { data: newContact, error: createError } = await supabase
           .from('contacts')
           .insert({
             full_name: authorUsername.replace('@', ''),
-            instagram_username: normalizedUsername
+            instagram_username: normalizedUsername,
+            created_by: currentUser?.id || null,
           })
           .select('id')
           .single();

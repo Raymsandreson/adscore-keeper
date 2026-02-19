@@ -160,13 +160,15 @@ export const PendingToFollowList = () => {
           .eq('id', existing.id);
         if (error) throw error;
       } else {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { error } = await supabase
           .from('contacts')
           .insert({
             full_name: `@${username}`,
             instagram_username: username,
             follower_status: 'requested',
-            follow_requested_at: new Date().toISOString()
+            follow_requested_at: new Date().toISOString(),
+            created_by: currentUser?.id || null,
           });
         if (error) throw error;
       }
@@ -198,12 +200,14 @@ export const PendingToFollowList = () => {
           .eq('id', existing.id);
         if (error) throw error;
       } else {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
         const { error } = await supabase
           .from('contacts')
           .insert({
             full_name: `@${username}`,
             instagram_username: username,
-            follower_status: 'following'
+            follower_status: 'following',
+            created_by: currentUser?.id || null,
           });
         if (error) throw error;
       }
@@ -287,12 +291,14 @@ export const PendingToFollowList = () => {
             .update(locationUpdate)
             .eq('id', existing.id);
         } else {
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
           await supabase
             .from('contacts')
             .insert({
               full_name: `@${user.username}`,
               instagram_username: user.username,
-              ...locationUpdate
+              ...locationUpdate,
+              created_by: currentUser?.id || null,
             });
         }
 

@@ -135,6 +135,7 @@ export function PostDmContactRegistration({
     const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
 
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const contactData = {
         full_name: formData.full_name,
         phone: formData.phone || null,
@@ -145,7 +146,8 @@ export function PostDmContactRegistration({
         classifications: formData.classifications,
         instagram_username: normalizedUsername,
         instagram_url: `https://instagram.com/${normalizedUsername}`,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        created_by: currentUser?.id || null,
       };
 
       if (existingContact) {
