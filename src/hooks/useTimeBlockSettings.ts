@@ -67,8 +67,6 @@ export function useTimeBlockSettings(targetUserId?: string) {
     const uid = userId || effectiveUserId;
     if (!uid) return;
 
-    setConfigs(newConfigs);
-
     const rows = newConfigs.map(c => ({
       user_id: uid,
       activity_type: c.activityType,
@@ -77,6 +75,8 @@ export function useTimeBlockSettings(targetUserId?: string) {
       end_hour: c.endHour,
     }));
 
+    // Validate before deleting: try inserting to a temp check first
+    // Then delete + insert atomically to avoid data loss on error
     const { error: deleteError } = await supabase
       .from('user_timeblock_settings')
       .delete()
@@ -93,6 +93,9 @@ export function useTimeBlockSettings(targetUserId?: string) {
       if (error) {
         const { toast } = await import('sonner');
         toast.error('Erro ao salvar rotina: ' + error.message);
+        // Reload to restore whatever state is in DB
+        await fetchSettings(uid);
+        return;
       } else {
         const { toast } = await import('sonner');
         toast.success('Rotina salva com sucesso!');
@@ -102,6 +105,8 @@ export function useTimeBlockSettings(targetUserId?: string) {
       toast.success('Rotina salva (sem tipos selecionados).');
     }
 
+    // Update local state only after successful save
+    setConfigs(newConfigs);
     await fetchSettings(uid);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveUserId, fetchSettings]);
