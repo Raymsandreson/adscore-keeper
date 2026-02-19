@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Settings2, RotateCcw, Save, Plus, Trash2 } from 'lucide-react';
+import { Settings2, RotateCcw, Save, Plus, Trash2, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export interface TimeBlockConfig {
   activityType: string;
@@ -87,12 +88,27 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [newLabel, setNewLabel] = useState('');
   const [newColor, setNewColor] = useState('bg-teal-500');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showTypeSelector, setShowTypeSelector] = useState(false);
+  // which types are currently "active" (shown in list). Default: all
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(() => new Set(configs.map(c => c.activityType)));
 
   useEffect(() => {
     setLocal(configs);
     setShowAddForm(false);
+    setSearch('');
+    setShowTypeSelector(false);
+    setActiveTypes(new Set(configs.map(c => c.activityType)));
     setNewLabel('');
   }, [configs, open]);
+
+  const visibleConfigs = useMemo(() => {
+    return local.filter(c => {
+      const matchesActive = activeTypes.has(c.activityType);
+      const matchesSearch = c.label.toLowerCase().includes(search.toLowerCase());
+      return matchesActive && matchesSearch;
+    });
+  }, [local, activeTypes, search]);
 
   const updateConfig = (type: string, patch: Partial<TimeBlockConfig>) => {
     setLocal(prev => prev.map(c => c.activityType === type ? { ...c, ...patch } : c));
@@ -106,6 +122,17 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
       : [...cfg.days, dayIdx].sort();
     updateConfig(type, { days });
   };
+
+  const toggleTypeActive = (type: string) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) { next.delete(type); } else { next.add(type); }
+      return next;
+    });
+  };
+
+  const selectAllTypes = () => setActiveTypes(new Set(local.map(c => c.activityType)));
+  const clearAllTypes = () => setActiveTypes(new Set());
 
   const handleAddCustom = () => {
     const trimmed = newLabel.trim();
@@ -150,8 +177,75 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
           </p>
         </DialogHeader>
 
-        <div className="space-y-5 mt-2">
-          {local.map((cfg) => (
+        {/* Search + type selector bar */}
+        <div className="flex items-center gap-2 mt-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Filtrar por nome..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Button
+            variant={showTypeSelector ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setShowTypeSelector(v => !v)}
+            className="gap-1.5 shrink-0"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Selecionar tipos
+            {activeTypes.size < local.length && (
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
+                {activeTypes.size}/{local.length}
+              </Badge>
+            )}
+          </Button>
+        </div>
+
+        {/* Type selector panel */}
+        {showTypeSelector && (
+          <div className="rounded-lg border p-3 bg-muted/10 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipos visíveis</p>
+              <div className="flex gap-1.5">
+                <button onClick={selectAllTypes} className="text-[11px] text-primary hover:underline">Todos</button>
+                <span className="text-muted-foreground text-[11px]">·</span>
+                <button onClick={clearAllTypes} className="text-[11px] text-muted-foreground hover:underline">Nenhum</button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {local.map(c => (
+                <button
+                  key={c.activityType}
+                  onClick={() => toggleTypeActive(c.activityType)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all',
+                    activeTypes.has(c.activityType)
+                      ? `${c.color} text-white border-transparent`
+                      : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
+                  )}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-5 mt-1">
+          {visibleConfigs.length === 0 && (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              Nenhum tipo encontrado. Ajuste o filtro ou a seleção.
+            </div>
+          )}
+          {visibleConfigs.map((cfg) => (
             <div key={cfg.activityType} className="rounded-lg border p-4 space-y-3">
               {/* Header */}
               <div className="flex items-center justify-between">
