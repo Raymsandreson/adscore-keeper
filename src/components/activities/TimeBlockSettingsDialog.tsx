@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { Settings2, RotateCcw, Save, Plus, Trash2, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Settings2, RotateCcw, Save, Plus, Trash2, Search, X, Sparkles, Loader2, Wand2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export interface TimeBlockConfig {
   activityType: string;
@@ -36,7 +39,7 @@ const DEFAULT_ACTIVITY_TYPES = [
   { value: 'diligencia', label: 'Diligência', color: 'bg-orange-500', defaultDays: [2,4], defaultStart: 10, defaultEnd: 12 },
 ];
 
-const COLOR_OPTIONS = [
+export const COLOR_OPTIONS = [
   { value: 'bg-blue-500', label: 'Azul' },
   { value: 'bg-green-500', label: 'Verde' },
   { value: 'bg-yellow-500', label: 'Amarelo' },
@@ -89,27 +92,26 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [newColor, setNewColor] = useState('bg-teal-500');
   const [showAddForm, setShowAddForm] = useState(false);
   const [search, setSearch] = useState('');
-  const [showTypeSelector, setShowTypeSelector] = useState(false);
-  // which types are currently "active" (shown in list). Default: all
-  const [activeTypes, setActiveTypes] = useState<Set<string>>(() => new Set(configs.map(c => c.activityType)));
+
+  // AI assistant state
+  const [showAI, setShowAI] = useState(false);
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLocal(configs);
-    setActiveTypes(new Set(configs.map(c => c.activityType)));
     setShowAddForm(false);
     setSearch('');
-    setShowTypeSelector(false);
+    setShowAI(false);
+    setAiDescription('');
     setNewLabel('');
   }, [configs, open]);
 
   const visibleConfigs = useMemo(() => {
-    return local.filter(c => {
-      const matchesActive = activeTypes.has(c.activityType);
-      const matchesSearch = c.label.toLowerCase().includes(search.toLowerCase());
-      return matchesActive && matchesSearch;
-    });
-  }, [local, activeTypes, search]);
+    if (!search) return local;
+    return local.filter(c => c.label.toLowerCase().includes(search.toLowerCase()));
+  }, [local, search]);
 
   const updateConfig = (type: string, patch: Partial<TimeBlockConfig>) => {
     setLocal(prev => prev.map(c => c.activityType === type ? { ...c, ...patch } : c));
@@ -123,17 +125,6 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
       : [...cfg.days, dayIdx].sort();
     updateConfig(type, { days });
   };
-
-  const toggleTypeActive = (type: string) => {
-    setActiveTypes(prev => {
-      const next = new Set(prev);
-      if (next.has(type)) { next.delete(type); } else { next.add(type); }
-      return next;
-    });
-  };
-
-  const selectAllTypes = () => setActiveTypes(new Set(local.map(c => c.activityType)));
-  const clearAllTypes = () => setActiveTypes(new Set());
 
   const handleAddCustom = () => {
     const trimmed = newLabel.trim();
@@ -149,15 +140,13 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
       isCustom: true,
     };
     setLocal(prev => [...prev, newCfg]);
-    setActiveTypes(prev => new Set([...prev, key]));
     setNewLabel('');
     setNewColor('bg-teal-500');
     setShowAddForm(false);
   };
 
-  const handleRemoveCustom = (type: string) => {
+  const handleRemoveType = (type: string) => {
     setLocal(prev => prev.filter(c => c.activityType !== type));
-    setActiveTypes(prev => { const next = new Set(prev); next.delete(type); return next; });
   };
 
   const handleReset = () => setLocal(getDefaultTimeBlockConfigs());
@@ -165,6 +154,43 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const handleSave = () => {
     onSave(local);
     onOpenChange(false);
+  };
+
+  const handleAISuggest = async () => {
+    if (!aiDescription.trim()) {
+      toast.error('Descreva sua semana antes de gerar a rotina');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-routine', {
+        body: { description: aiDescription },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const suggested: TimeBlockConfig[] = (data?.configs || []).map((c: any) => ({
+        activityType: c.activityType || `custom_${Date.now()}_${Math.random()}`,
+        label: c.label || 'Atividade',
+        color: c.color || 'bg-blue-500',
+        days: Array.isArray(c.days) ? c.days : [0, 1, 2, 3, 4],
+        startHour: Number(c.startHour) || 9,
+        endHour: Number(c.endHour) || 11,
+        isCustom: true,
+      }));
+
+      if (suggested.length === 0) throw new Error('A IA não retornou sugestões válidas');
+
+      setLocal(suggested);
+      setShowAI(false);
+      setAiDescription('');
+      toast.success(`✨ ${suggested.length} tipos de atividade gerados pela IA!`);
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao gerar rotina com IA');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   return (
@@ -176,12 +202,65 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
             Configurar Blocos de Tempo
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Defina em quais dias e horários cada tipo de atividade deve aparecer na grade semanal.
+            Defina os tipos de atividade, dias e horários da sua grade semanal.
           </p>
         </DialogHeader>
 
-        {/* Search + type selector bar */}
-        <div className="flex items-center gap-2 mt-2">
+        {/* AI Assistant Banner */}
+        {!showAI ? (
+          <button
+            onClick={() => setShowAI(true)}
+            className="flex items-center gap-3 w-full rounded-lg border border-dashed border-primary/40 p-3 bg-primary/5 hover:bg-primary/10 transition-colors text-left"
+          >
+            <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-primary">✨ Organizar rotina com IA</p>
+              <p className="text-xs text-muted-foreground">Descreva sua semana e a IA cria os blocos automaticamente</p>
+            </div>
+          </button>
+        ) : (
+          <div className="rounded-lg border border-primary/30 p-4 bg-primary/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-primary">Assistente de Rotina IA</span>
+              </div>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAI(false)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <Textarea
+              placeholder="Exemplo: Preciso fazer audiências nas terças e quintas de manhã, reuniões toda segunda, prazos processuais toda quarta, e atendimento a clientes nas sextas à tarde..."
+              value={aiDescription}
+              onChange={e => setAiDescription(e.target.value)}
+              className="min-h-[90px] text-sm resize-none"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleAISuggest}
+                disabled={aiLoading || !aiDescription.trim()}
+                className="gap-1.5 flex-1"
+              >
+                {aiLoading ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" />Gerando rotina...</>
+                ) : (
+                  <><Wand2 className="h-3.5 w-3.5" />Gerar Rotina</>
+                )}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowAI(false)}>Cancelar</Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              ⚠️ Isso substituirá os tipos atuais pelos sugeridos pela IA. Você poderá editar depois.
+            </p>
+          </div>
+        )}
+
+        {/* Search bar */}
+        <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
@@ -196,105 +275,56 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
               </button>
             )}
           </div>
-          <Button
-            variant={showTypeSelector ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={() => setShowTypeSelector(v => !v)}
-            className="gap-1.5 shrink-0"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Selecionar tipos
-            {activeTypes.size < local.length && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
-                {activeTypes.size}/{local.length}
-              </Badge>
-            )}
-          </Button>
+          <Badge variant="secondary" className="text-xs shrink-0">{local.length} tipo{local.length !== 1 ? 's' : ''}</Badge>
         </div>
 
-        {/* Type selector panel */}
-        {showTypeSelector && (
-          <div className="rounded-lg border p-3 bg-muted/10 space-y-2">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Tipos visíveis</p>
-              <div className="flex gap-1.5">
-                <button onClick={selectAllTypes} className="text-[11px] text-primary hover:underline">Todos</button>
-                <span className="text-muted-foreground text-[11px]">·</span>
-                <button onClick={clearAllTypes} className="text-[11px] text-muted-foreground hover:underline">Nenhum</button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {local.map(c => (
-                <button
-                  key={c.activityType}
-                  onClick={() => toggleTypeActive(c.activityType)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all',
-                    activeTypes.has(c.activityType)
-                      ? `${c.color} text-white border-transparent`
-                      : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/50'
-                  )}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-5 mt-1">
+        <div className="space-y-4 mt-1">
           {visibleConfigs.length === 0 && (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              Nenhum tipo encontrado. Ajuste o filtro ou a seleção.
+              {local.length === 0
+                ? 'Nenhum tipo configurado. Adicione um tipo ou use a IA para gerar uma rotina.'
+                : 'Nenhum tipo encontrado com esse filtro.'}
             </div>
           )}
+
           {visibleConfigs.map((cfg) => (
             <div key={cfg.activityType} className="rounded-lg border p-4 space-y-3">
               {/* Header */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {cfg.isCustom ? (
-                    /* Color picker for custom types */
-                    <div className="flex items-center gap-1.5">
-                      <span className={cn('h-3 w-3 rounded-full shrink-0', cfg.color)} />
-                      <div className="flex gap-1">
-                        {COLOR_OPTIONS.map(c => (
-                          <button
-                            key={c.value}
-                            onClick={() => updateConfig(cfg.activityType, { color: c.value })}
-                            className={cn(
-                              'h-4 w-4 rounded-full border-2 transition-all',
-                              c.value,
-                              cfg.color === c.value ? 'border-foreground scale-110' : 'border-transparent'
-                            )}
-                            title={c.label}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <span className={cn('h-3 w-3 rounded-full shrink-0', cfg.color)} />
-                  )}
-                  {cfg.isCustom ? (
-                    <Input
-                      value={cfg.label}
-                      onChange={e => updateConfig(cfg.activityType, { label: e.target.value })}
-                      className="h-7 text-sm font-semibold w-40"
-                    />
-                  ) : (
-                    <span className="font-semibold text-sm">{cfg.label}</span>
-                  )}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* Color picker (for all types) */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className={cn('h-3 w-3 rounded-full', cfg.color)} />
+                  </div>
+                  <div className="flex gap-1 flex-wrap flex-shrink-0">
+                    {COLOR_OPTIONS.map(c => (
+                      <button
+                        key={c.value}
+                        onClick={() => updateConfig(cfg.activityType, { color: c.value })}
+                        className={cn(
+                          'h-4 w-4 rounded-full border-2 transition-all',
+                          c.value,
+                          cfg.color === c.value ? 'border-foreground scale-110' : 'border-transparent'
+                        )}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    value={cfg.label}
+                    onChange={e => updateConfig(cfg.activityType, { label: e.target.value })}
+                    className="h-7 text-sm font-semibold w-36 ml-1"
+                  />
                 </div>
-                {cfg.isCustom && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => handleRemoveCustom(cfg.activityType)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+                  onClick={() => handleRemoveType(cfg.activityType)}
+                  title="Excluir tipo"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
 
               {/* Days selector */}
@@ -438,36 +468,38 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
               className="w-full gap-2 border-dashed"
             >
               <Plus className="h-4 w-4" />
-              Adicionar tipo personalizado
+              Adicionar tipo de atividade
             </Button>
           )}
         </div>
 
         {/* Visual preview mini-grid */}
-        <div className="mt-4 rounded-lg border p-3 bg-muted/20">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Prévia da grade semanal</p>
-          <div className="grid grid-cols-5 gap-1">
-            {WEEK_DAYS.map(d => (
-              <div key={d.idx} className="space-y-1">
-                <div className="text-center text-[10px] font-bold text-muted-foreground">{d.label}</div>
-                {local.filter(c => c.days.includes(d.idx)).map(c => (
-                  <div
-                    key={c.activityType}
-                    className={cn('rounded px-1.5 py-1 text-[9px] text-white font-bold', c.color)}
-                  >
-                    <div className="truncate">{c.label.slice(0, 6)}</div>
-                    <div className="opacity-80">{c.startHour}h-{c.endHour}h</div>
-                  </div>
-                ))}
-                {local.filter(c => c.days.includes(d.idx)).length === 0 && (
-                  <div className="rounded border border-dashed border-muted-foreground/20 h-8 flex items-center justify-center">
-                    <span className="text-[9px] text-muted-foreground/40">vazio</span>
-                  </div>
-                )}
-              </div>
-            ))}
+        {local.length > 0 && (
+          <div className="mt-4 rounded-lg border p-3 bg-muted/20">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Prévia da grade semanal</p>
+            <div className="grid grid-cols-5 gap-1">
+              {WEEK_DAYS.map(d => (
+                <div key={d.idx} className="space-y-1">
+                  <div className="text-center text-[10px] font-bold text-muted-foreground">{d.label}</div>
+                  {local.filter(c => c.days.includes(d.idx)).map(c => (
+                    <div
+                      key={c.activityType}
+                      className={cn('rounded px-1.5 py-1 text-[9px] text-white font-bold', c.color)}
+                    >
+                      <div className="truncate">{c.label.slice(0, 6)}</div>
+                      <div className="opacity-80">{c.startHour}h-{c.endHour}h</div>
+                    </div>
+                  ))}
+                  {local.filter(c => c.days.includes(d.idx)).length === 0 && (
+                    <div className="rounded border border-dashed border-muted-foreground/20 h-8 flex items-center justify-center">
+                      <span className="text-[9px] text-muted-foreground/40">vazio</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <Separator />
         <div className="flex items-center justify-between">
