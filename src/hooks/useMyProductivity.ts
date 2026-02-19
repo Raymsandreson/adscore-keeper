@@ -206,13 +206,22 @@ export function useMyProductivity() {
         target_session_minutes: goalsRes.data.target_session_minutes ?? fallback.target_session_minutes,
       } : fallback;
 
-      const core = [
+      const baseCore = [
         { current: prod.commentReplies, target: resolvedGoals.target_replies },
         { current: prod.dmsSent, target: resolvedGoals.target_dms },
         { current: prod.leadsCreated, target: resolvedGoals.target_leads },
         { current: prod.sessionMinutes, target: resolvedGoals.target_session_minutes },
-        { current: prod.activitiesCompleted, target: (goalsRes.data as any)?.target_activities ?? fallback.target_activities },
       ].filter(m => m.target > 0);
+
+      const actTarget = (goalsRes.data as any)?.target_activities ?? fallback.target_activities;
+      const actPercent = actTarget > 0 ? Math.min(100, (prod.activitiesCompleted / actTarget) * 100) : 0;
+      const basePercentages = baseCore.map(m => Math.min(100, (m.current / m.target) * 100));
+      const baseAvg = basePercentages.length > 0 ? basePercentages.reduce((a, b) => a + b, 0) / basePercentages.length : 100;
+
+      // Only include activities if they help (don't dilute the score)
+      const core = actTarget > 0 && actPercent >= baseAvg
+        ? [...baseCore, { current: prod.activitiesCompleted, target: actTarget }]
+        : baseCore;
 
       const progressPercent = core.length === 0 ? 100 :
         Math.round(core.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / core.length);
@@ -250,13 +259,20 @@ export function useMyProductivity() {
 
   // Overall goal progress — uses core daily metrics
   const goalProgress = (() => {
-    const core = [
+    const baseCore = [
       { current: data.commentReplies, target: goals.target_replies },
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
-      { current: data.activitiesCompleted, target: goals.target_activities },
     ].filter(m => m.target > 0);
+
+    const actPercent = goals.target_activities > 0 ? Math.min(100, (data.activitiesCompleted / goals.target_activities) * 100) : 0;
+    const basePercentages = baseCore.map(m => Math.min(100, (m.current / m.target) * 100));
+    const baseAvg = basePercentages.length > 0 ? basePercentages.reduce((a, b) => a + b, 0) / basePercentages.length : 100;
+
+    const core = goals.target_activities > 0 && actPercent >= baseAvg
+      ? [...baseCore, { current: data.activitiesCompleted, target: goals.target_activities }]
+      : baseCore;
 
     if (core.length === 0) return 100;
     const percentages = core.map(m => Math.min(100, (m.current / m.target) * 100));
