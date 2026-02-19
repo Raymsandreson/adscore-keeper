@@ -114,10 +114,11 @@ export function CommissionGoals() {
   const defaultGoals = defaultGoalsMap[selectedDefaultBoard] || { ...emptyGoalValues };
 
   // Per-user daily goals state
-  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues>>({});
+  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues & { target_days?: number[] }>>({});
   const [userGoalsDialogOpen, setUserGoalsDialogOpen] = useState(false);
   const [selectedUserForGoals, setSelectedUserForGoals] = useState('');
   const [editingUserGoals, setEditingUserGoals] = useState<typeof emptyGoalValues>({ ...emptyGoalValues });
+  const [editingTargetDays, setEditingTargetDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [savingUserGoals, setSavingUserGoals] = useState(false);
 
   // Form state
@@ -228,7 +229,7 @@ export function CommissionGoals() {
   useEffect(() => {
     supabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
       if (data && data.length > 0) {
-        const map: Record<string, typeof emptyGoalValues> = {};
+        const map: Record<string, typeof emptyGoalValues & { target_days?: number[] }> = {};
         data.forEach((d: any) => {
           map[d.user_id] = {
             target_replies: d.target_replies,
@@ -241,6 +242,7 @@ export function CommissionGoals() {
             target_stage_changes: d.target_stage_changes ?? 10,
             target_leads_closed: d.target_leads_closed ?? 2,
             target_checklist_items: d.target_checklist_items ?? 10,
+            target_days: d.target_days ?? [1, 2, 3, 4, 5],
           };
         });
         setUserDailyGoals(map);
@@ -333,7 +335,7 @@ export function CommissionGoals() {
     if (!selectedUserForGoals) { toast.error('Selecione um membro'); return; }
     setSavingUserGoals(true);
     try {
-      const payload = { ...editingUserGoals, user_id: selectedUserForGoals } as any;
+      const payload = { ...editingUserGoals, user_id: selectedUserForGoals, target_days: editingTargetDays } as any;
       const { data: existing } = await supabase
         .from('user_daily_goal_defaults')
         .select('id')
@@ -346,7 +348,7 @@ export function CommissionGoals() {
         await supabase.from('user_daily_goal_defaults').insert(payload);
       }
       
-      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: editingUserGoals }));
+      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays } }));
       toast.success('Metas diárias do usuário salvas!');
       setUserGoalsDialogOpen(false);
     } catch (err) {
@@ -358,7 +360,9 @@ export function CommissionGoals() {
 
   const openUserGoalsDialog = (userId: string) => {
     setSelectedUserForGoals(userId);
-    setEditingUserGoals(userDailyGoals[userId] || { ...emptyGoalValues });
+    const existing = userDailyGoals[userId];
+    setEditingUserGoals(existing ? { target_replies: existing.target_replies, target_dms: existing.target_dms, target_leads: existing.target_leads, target_session_minutes: existing.target_session_minutes, target_contacts: existing.target_contacts, target_calls: existing.target_calls, target_activities: existing.target_activities, target_stage_changes: existing.target_stage_changes, target_leads_closed: existing.target_leads_closed, target_checklist_items: existing.target_checklist_items } : { ...emptyGoalValues });
+    setEditingTargetDays(existing?.target_days ?? [1, 2, 3, 4, 5]);
     setUserGoalsDialogOpen(true);
   };
 
@@ -836,16 +840,22 @@ export function CommissionGoals() {
               const achievement = dailyGoalAchievements[profile.user_id];
               const achievementPercent = achievement && achievement.total > 0
                 ? Math.round((achievement.achieved / achievement.total) * 100) : null;
+              const targetDays = userDailyGoals[profile.user_id]?.target_days ?? [1, 2, 3, 4, 5];
+              const dayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+              const daysText = targetDays.length === 5 && [1,2,3,4,5].every(d => targetDays.includes(d))
+                ? 'Seg–Sex'
+                : targetDays.length === 7 ? 'Todos' : targetDays.sort((a,b) => a-b).map(d => dayLabels[d]).join(', ');
 
               return (
                 <div key={profile.user_id} className="flex items-center justify-between p-2 rounded-md border bg-muted/20 hover:bg-muted/40">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <span className="text-sm font-medium">{profile.full_name}</span>
                     {hasCustomGoals ? (
                       <Badge variant="secondary" className="text-[10px]">Meta personalizada</Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px]">Padrão global</Badge>
                     )}
+                    <Badge variant="outline" className="text-[10px]">{daysText}</Badge>
                     {achievementPercent !== null && (
                       <Badge variant={achievementPercent >= 80 ? 'default' : achievementPercent >= 50 ? 'secondary' : 'destructive'} className="text-[10px]">
                         {achievementPercent}% dias atingidos
@@ -1351,6 +1361,34 @@ export function CommissionGoals() {
             <p className="text-sm text-muted-foreground">
               Defina as metas diárias específicas para este usuário. Estas metas sobrepõem o padrão global.
             </p>
+            {/* Weekday selector */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Dias da semana obrigatórios</Label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { day: 1, label: 'Seg' },
+                  { day: 2, label: 'Ter' },
+                  { day: 3, label: 'Qua' },
+                  { day: 4, label: 'Qui' },
+                  { day: 5, label: 'Sex' },
+                  { day: 6, label: 'Sáb' },
+                  { day: 0, label: 'Dom' },
+                ].map(({ day, label }) => (
+                  <label key={day} className="flex items-center gap-1.5 cursor-pointer">
+                    <Checkbox
+                      checked={editingTargetDays.includes(day)}
+                      onCheckedChange={(checked) => {
+                        setEditingTargetDays(prev =>
+                          checked ? [...prev, day] : prev.filter(d => d !== day)
+                        );
+                      }}
+                    />
+                    <span className="text-xs">{label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">Apenas nesses dias o snapshot de meta será registrado e contabilizado.</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Respostas / dia</Label>
