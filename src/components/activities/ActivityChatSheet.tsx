@@ -306,9 +306,21 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
   };
 
+  // Detect call intent patterns
+  const CALL_INTENT_PATTERNS = /\b(vou ligar|vou fazer uma liga|iniciar liga|fazendo uma liga|começ(ar|ando) a liga|vou telefonar|ligando agora|vou discar)\b/i;
+
   const handleSendText = () => {
     if (!inputText.trim()) return;
-    sendMessage('text', inputText.trim());
+    const text = inputText.trim();
+    sendMessage('text', text);
+
+    // Auto-start call recording if user mentions making a call
+    if (CALL_INTENT_PATTERNS.test(text) && !callRecording && !recording) {
+      setTimeout(() => {
+        toast('Iniciando gravação da chamada automaticamente...', { icon: '📞' });
+        startCallRecording();
+      }, 800);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
