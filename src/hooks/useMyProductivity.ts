@@ -211,6 +211,7 @@ export function useMyProductivity() {
         { current: prod.dmsSent, target: resolvedGoals.target_dms },
         { current: prod.leadsCreated, target: resolvedGoals.target_leads },
         { current: prod.sessionMinutes, target: resolvedGoals.target_session_minutes },
+        { current: prod.activitiesCompleted, target: (goalsRes.data as any)?.target_activities ?? fallback.target_activities },
       ].filter(m => m.target > 0);
 
       const progressPercent = core.length === 0 ? 100 :
@@ -247,14 +248,14 @@ export function useMyProductivity() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Overall goal progress — uses only the 4 core daily metrics to avoid dilution
-  // by secondary metrics (calls, checklists, etc.) which many users may not have targets for
+  // Overall goal progress — uses core daily metrics
   const goalProgress = (() => {
     const core = [
       { current: data.commentReplies, target: goals.target_replies },
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
+      { current: data.activitiesCompleted, target: goals.target_activities },
     ].filter(m => m.target > 0);
 
     if (core.length === 0) return 100;
