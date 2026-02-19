@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -128,12 +130,13 @@ export function CommissionGoals() {
   const defaultGoals = defaultGoalsMap[selectedDefaultBoard] || { ...emptyGoalValues };
 
   // Per-user daily goals state
-  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }>>({});
+  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>; target_refused_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }>>({});
   const [userGoalsDialogOpen, setUserGoalsDialogOpen] = useState(false);
   const [selectedUserForGoals, setSelectedUserForGoals] = useState('');
   const [editingUserGoals, setEditingUserGoals] = useState<typeof emptyGoalValues>({ ...emptyGoalValues });
   const [editingTargetDays, setEditingTargetDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [editingClosedByBoard, setEditingClosedByBoard] = useState<Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>>({});
+  const [editingRefusedByBoard, setEditingRefusedByBoard] = useState<Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>>({});
   const [savingUserGoals, setSavingUserGoals] = useState(false);
 
   // Form state
@@ -244,7 +247,7 @@ export function CommissionGoals() {
   useEffect(() => {
     supabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
       if (data && data.length > 0) {
-        const map: Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }> = {};
+        const map: Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>; target_refused_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }> = {};
         data.forEach((d: any) => {
           map[d.user_id] = {
             target_replies: d.target_replies,
@@ -259,6 +262,7 @@ export function CommissionGoals() {
             target_checklist_items: d.target_checklist_items ?? 10,
             target_days: d.target_days ?? [1, 2, 3, 4, 5],
             target_closed_by_board: d.target_closed_by_board ? migrateClosedByBoard(d.target_closed_by_board) : {},
+            target_refused_by_board: d.target_refused_by_board ? migrateClosedByBoard(d.target_refused_by_board) : {},
           };
         });
         setUserDailyGoals(map);
@@ -351,7 +355,7 @@ export function CommissionGoals() {
     if (!selectedUserForGoals) { toast.error('Selecione um membro'); return; }
     setSavingUserGoals(true);
     try {
-      const payload = { ...editingUserGoals, user_id: selectedUserForGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard } as any;
+      const payload = { ...editingUserGoals, user_id: selectedUserForGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard, target_refused_by_board: editingRefusedByBoard } as any;
       const { data: existing } = await supabase
         .from('user_daily_goal_defaults')
         .select('id')
@@ -364,7 +368,7 @@ export function CommissionGoals() {
         await supabase.from('user_daily_goal_defaults').insert(payload);
       }
       
-      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard } as any }));
+      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard, target_refused_by_board: editingRefusedByBoard } as any }));
       toast.success('Metas diárias do usuário salvas!');
       setUserGoalsDialogOpen(false);
     } catch (err) {
@@ -380,6 +384,7 @@ export function CommissionGoals() {
     setEditingUserGoals(existing ? { target_replies: existing.target_replies, target_dms: existing.target_dms, target_leads: existing.target_leads, target_session_minutes: existing.target_session_minutes, target_contacts: existing.target_contacts, target_calls: existing.target_calls, target_activities: existing.target_activities, target_stage_changes: existing.target_stage_changes, target_leads_closed: existing.target_leads_closed, target_checklist_items: existing.target_checklist_items } : { ...emptyGoalValues });
     setEditingTargetDays(existing?.target_days ?? [1, 2, 3, 4, 5]);
     setEditingClosedByBoard(existing?.target_closed_by_board ? migrateClosedByBoard(existing.target_closed_by_board) : {});
+    setEditingRefusedByBoard(existing?.target_refused_by_board ? migrateClosedByBoard(existing.target_refused_by_board) : {});
     setUserGoalsDialogOpen(true);
   };
 
@@ -756,6 +761,42 @@ export function CommissionGoals() {
           Nova Meta
         </Button>
       </div>
+
+      {/* Alert for expired custom periods */}
+      {(() => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const expired: { userName: string; boardName: string; type: string; endDate: string }[] = [];
+        Object.entries(userDailyGoals).forEach(([userId, goals]) => {
+          const userName = profiles.find(p => p.user_id === userId)?.full_name || 'Usuário';
+          const checkBoards = (boardMap: Record<string, any> | undefined, type: string) => {
+            if (!boardMap) return;
+            Object.entries(boardMap).forEach(([boardId, config]) => {
+              if (config?.period === 'custom' && config?.custom_end && config.custom_end < today && config.target > 0) {
+                const boardName = boards.find(b => b.id === boardId)?.name || boardId;
+                expired.push({ userName, boardName, type, endDate: config.custom_end });
+              }
+            });
+          };
+          checkBoards(goals.target_closed_by_board, 'Fechamento');
+          checkBoards(goals.target_refused_by_board, 'Recusados');
+        });
+        if (expired.length === 0) return null;
+        return (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Períodos personalizados expirados</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc list-inside text-xs mt-1 space-y-0.5">
+                {expired.map((e, i) => (
+                  <li key={i}>
+                    <strong>{e.userName}</strong> — {e.type} no funil <strong>{e.boardName}</strong> expirou em {new Date(e.endDate + 'T12:00:00').toLocaleDateString('pt-BR')}. Configure uma nova meta.
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        );
+      })()}
 
       {/* Per-user daily goals */}
       <Card>
@@ -1421,6 +1462,75 @@ export function CommissionGoals() {
                                 className="h-8 text-sm"
                                 value={boardConfig.custom_end || ''}
                                 onChange={e => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id], custom_end: e.target.value } }))}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* Per-board refused targets with period selector */}
+            {boards.length > 0 && (
+              <div className="space-y-3 border-t pt-3">
+                <Label className="text-xs font-medium">Recusados por funil</Label>
+                <p className="text-[10px] text-muted-foreground">Defina a meta de recusados e o período para cada funil. Deixe 0 para ignorar.</p>
+                <div className="space-y-3">
+                  {boards.map(board => {
+                    const boardConfig = editingRefusedByBoard[board.id] || { target: 0, period: 'daily' };
+                    return (
+                      <div key={board.id} className="space-y-1.5 p-2 rounded-md border bg-muted/30">
+                        <Label className="text-[10px] flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: board.color || 'hsl(var(--primary))' }} />
+                          {board.name}
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Meta</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-8 text-sm"
+                              value={boardConfig.target}
+                              onChange={e => setEditingRefusedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id] || { period: 'daily' }, target: Number(e.target.value) || 0 } }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Período</Label>
+                            <Select
+                              value={boardConfig.period}
+                              onValueChange={v => setEditingRefusedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id] || { target: 0 }, period: v } }))}
+                            >
+                              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">Diário</SelectItem>
+                                <SelectItem value="weekly">Semanal</SelectItem>
+                                <SelectItem value="monthly">Mensal</SelectItem>
+                                <SelectItem value="custom">Personalizado</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        {boardConfig.period === 'custom' && (
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Início</Label>
+                              <Input
+                                type="date"
+                                className="h-8 text-sm"
+                                value={boardConfig.custom_start || ''}
+                                onChange={e => setEditingRefusedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id], custom_start: e.target.value } }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Fim</Label>
+                              <Input
+                                type="date"
+                                className="h-8 text-sm"
+                                value={boardConfig.custom_end || ''}
+                                onChange={e => setEditingRefusedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id], custom_end: e.target.value } }))}
                               />
                             </div>
                           </div>
