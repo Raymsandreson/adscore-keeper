@@ -179,15 +179,23 @@ export function useMyProductivity() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Overall goal progress (average of individual goal percentages)
+  // Overall goal progress — average of ALL active goals (only those with target > 0)
   const goalProgress = (() => {
     const metrics = [
       { current: data.commentReplies, target: goals.target_replies },
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
-    ];
-    const percentages = metrics.map(m => m.target > 0 ? Math.min(100, (m.current / m.target) * 100) : 100);
+      { current: data.contactsCreated, target: goals.target_contacts },
+      { current: data.callsMade, target: goals.target_calls },
+      { current: data.activitiesCompleted, target: goals.target_activities },
+      { current: data.stageChanges, target: goals.target_stage_changes },
+      { current: data.leadsClosed, target: goals.target_leads_closed },
+      { current: data.checklistItemsChecked, target: goals.target_checklist_items },
+    ].filter(m => m.target > 0); // only count metrics that have an active target
+
+    if (metrics.length === 0) return 100;
+    const percentages = metrics.map(m => Math.min(100, (m.current / m.target) * 100));
     return Math.round(percentages.reduce((a, b) => a + b, 0) / percentages.length);
   })();
 
