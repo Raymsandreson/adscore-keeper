@@ -118,7 +118,8 @@ export function useMyProductivity() {
       const overdueActivities = overdueActivitiesRes.data || [];
       const outboundComments = outboundCommentsRes.data || [];
       const sentComments = sentCommentsRes.data || [];
-      const userDefaults = userDefaultGoalsRes.data;
+      const userDefaults = userDefaultGoalsRes.data as any;
+      const userTargetDays: number[] = userDefaults?.target_days ?? [1, 2, 3, 4, 5];
 
       // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
@@ -215,20 +216,23 @@ export function useMyProductivity() {
       const progressPercent = core.length === 0 ? 100 :
         Math.round(core.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / core.length);
       
-      // Upsert snapshot for today
+      // Upsert snapshot for today — only on target days
       const today = format(now, 'yyyy-MM-dd');
-      supabase.from('daily_goal_snapshots').upsert({
-        user_id: userId,
-        snapshot_date: today,
-        progress_percent: progressPercent,
-        achieved: progressPercent >= 100,
-        metrics_detail: {
-          commentReplies: prod.commentReplies,
-          dmsSent: prod.dmsSent,
-          leadsCreated: prod.leadsCreated,
-          sessionMinutes: prod.sessionMinutes,
-        },
-      } as any, { onConflict: 'user_id,snapshot_date' }).then(() => {});
+      const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+      if (userTargetDays.includes(dayOfWeek)) {
+        supabase.from('daily_goal_snapshots').upsert({
+          user_id: userId,
+          snapshot_date: today,
+          progress_percent: progressPercent,
+          achieved: progressPercent >= 100,
+          metrics_detail: {
+            commentReplies: prod.commentReplies,
+            dmsSent: prod.dmsSent,
+            leadsCreated: prod.leadsCreated,
+            sessionMinutes: prod.sessionMinutes,
+          },
+        } as any, { onConflict: 'user_id,snapshot_date' }).then(() => {});
+      }
     } catch (error) {
       console.error('Error fetching my productivity:', error);
     } finally {

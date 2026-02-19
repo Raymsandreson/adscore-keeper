@@ -3821,6 +3821,7 @@ export type Database = {
           target_calls: number
           target_checklist_items: number
           target_contacts: number
+          target_days: number[]
           target_dms: number
           target_leads: number
           target_leads_closed: number
@@ -3837,6 +3838,7 @@ export type Database = {
           target_calls?: number
           target_checklist_items?: number
           target_contacts?: number
+          target_days?: number[]
           target_dms?: number
           target_leads?: number
           target_leads_closed?: number
@@ -3853,6 +3855,7 @@ export type Database = {
           target_calls?: number
           target_checklist_items?: number
           target_contacts?: number
+          target_days?: number[]
           target_dms?: number
           target_leads?: number
           target_leads_closed?: number
