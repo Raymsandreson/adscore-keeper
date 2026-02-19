@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { startOfDay, endOfDay, format } from 'date-fns';
@@ -64,13 +64,12 @@ export function useMyProductivity() {
         contactsRes, dmsRes, repliesRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
-        outboundCommentsRes, sentCommentsRes,
+        outboundCommentsRes, sentCommentsRes, userDefaultGoalsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('dm_history').select('id, action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        // Replies on own posts (comment was replied by this user)
         supabase.from('instagram_comments').select('id').eq('replied_by', userId)
           .gte('replied_at', startDate).lte('replied_at', endDate),
         supabase.from('lead_stage_history').select('id, lead_id, to_stage')
@@ -103,6 +102,8 @@ export function useMyProductivity() {
         supabase.from('instagram_comments').select('id')
           .eq('comment_type', 'sent')
           .gte('created_at', startDate).lte('created_at', endDate),
+        // Per-user daily goal defaults
+        supabase.from('user_daily_goal_defaults').select('*').eq('user_id', userId).maybeSingle(),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -117,6 +118,7 @@ export function useMyProductivity() {
       const overdueActivities = overdueActivitiesRes.data || [];
       const outboundComments = outboundCommentsRes.data || [];
       const sentComments = sentCommentsRes.data || [];
+      const userDefaults = userDefaultGoalsRes.data;
 
       // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
@@ -150,9 +152,22 @@ export function useMyProductivity() {
 
       setData(prod);
 
-      // Use user-specific goals if set, otherwise fall back to configurable defaults
+      // Priority: user-specific daily goals > per-user defaults > global defaults > hardcoded
+      const ud = userDefaults as any;
       const dg = defaultGoalsRes.data;
-      const fallback: MyDailyGoals = dg ? {
+      
+      const fallback: MyDailyGoals = ud ? {
+        target_replies: ud.target_replies ?? 20,
+        target_dms: ud.target_dms ?? 10,
+        target_leads: ud.target_leads ?? 5,
+        target_session_minutes: ud.target_session_minutes ?? 60,
+        target_contacts: ud.target_contacts ?? 5,
+        target_calls: ud.target_calls ?? 10,
+        target_activities: ud.target_activities ?? 5,
+        target_stage_changes: ud.target_stage_changes ?? 10,
+        target_leads_closed: ud.target_leads_closed ?? 2,
+        target_checklist_items: ud.target_checklist_items ?? 10,
+      } : dg ? {
         target_replies: dg.target_replies ?? 20,
         target_dms: dg.target_dms ?? 10,
         target_leads: dg.target_leads ?? 5,
@@ -181,6 +196,39 @@ export function useMyProductivity() {
       } else {
         setGoals(fallback);
       }
+
+      // Save daily goal snapshot (calculate progress with resolved goals)
+      const resolvedGoals = goalsRes.data ? {
+        target_replies: goalsRes.data.target_replies ?? fallback.target_replies,
+        target_dms: goalsRes.data.target_dms ?? fallback.target_dms,
+        target_leads: goalsRes.data.target_leads ?? fallback.target_leads,
+        target_session_minutes: goalsRes.data.target_session_minutes ?? fallback.target_session_minutes,
+      } : fallback;
+
+      const core = [
+        { current: prod.commentReplies, target: resolvedGoals.target_replies },
+        { current: prod.dmsSent, target: resolvedGoals.target_dms },
+        { current: prod.leadsCreated, target: resolvedGoals.target_leads },
+        { current: prod.sessionMinutes, target: resolvedGoals.target_session_minutes },
+      ].filter(m => m.target > 0);
+
+      const progressPercent = core.length === 0 ? 100 :
+        Math.round(core.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / core.length);
+      
+      // Upsert snapshot for today
+      const today = format(now, 'yyyy-MM-dd');
+      supabase.from('daily_goal_snapshots').upsert({
+        user_id: userId,
+        snapshot_date: today,
+        progress_percent: progressPercent,
+        achieved: progressPercent >= 100,
+        metrics_detail: {
+          commentReplies: prod.commentReplies,
+          dmsSent: prod.dmsSent,
+          leadsCreated: prod.leadsCreated,
+          sessionMinutes: prod.sessionMinutes,
+        },
+      } as any, { onConflict: 'user_id,snapshot_date' }).then(() => {});
     } catch (error) {
       console.error('Error fetching my productivity:', error);
     } finally {

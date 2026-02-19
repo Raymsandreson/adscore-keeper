@@ -31,6 +31,7 @@ const METRIC_OPTIONS = [
   { value: 'dms_sent', label: 'DMs enviadas' },
   { value: 'contacts_created', label: 'Contatos criados' },
   { value: 'activities_completed', label: 'Atividades concluídas' },
+  { value: 'daily_goal_achievement', label: '% Dias com meta diária atingida' },
 ];
 
 interface CommissionGoal {
@@ -102,6 +103,7 @@ export function CommissionGoals() {
   const [expandedMember, setExpandedMember] = useState<string | null>(null); // "goalId:userId"
   const [memberObjects, setMemberObjects] = useState<Record<string, any[]>>({});
   const [loadingObjects, setLoadingObjects] = useState<string | null>(null);
+  const [dailyGoalAchievements, setDailyGoalAchievements] = useState<Record<string, { achieved: number; total: number }>>({});
 
   // Default daily goals state - keyed by board_id ('global' for no board)
   const emptyGoalValues = { target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 };
@@ -109,6 +111,13 @@ export function CommissionGoals() {
   const [selectedDefaultBoard, setSelectedDefaultBoard] = useState('global');
   const [savingDefaults, setSavingDefaults] = useState(false);
   const defaultGoals = defaultGoalsMap[selectedDefaultBoard] || { ...emptyGoalValues };
+
+  // Per-user daily goals state
+  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues>>({});
+  const [userGoalsDialogOpen, setUserGoalsDialogOpen] = useState(false);
+  const [selectedUserForGoals, setSelectedUserForGoals] = useState('');
+  const [editingUserGoals, setEditingUserGoals] = useState<typeof emptyGoalValues>({ ...emptyGoalValues });
+  const [savingUserGoals, setSavingUserGoals] = useState(false);
 
   // Form state
   const [scopeType, setScopeType] = useState<'user' | 'team'>('user');
@@ -214,6 +223,51 @@ export function CommissionGoals() {
     });
   }, []);
 
+  // Fetch per-user daily goals
+  useEffect(() => {
+    supabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
+      if (data && data.length > 0) {
+        const map: Record<string, typeof emptyGoalValues> = {};
+        data.forEach((d: any) => {
+          map[d.user_id] = {
+            target_replies: d.target_replies,
+            target_dms: d.target_dms,
+            target_leads: d.target_leads,
+            target_session_minutes: d.target_session_minutes,
+            target_contacts: d.target_contacts ?? 5,
+            target_calls: d.target_calls ?? 10,
+            target_activities: d.target_activities ?? 5,
+            target_stage_changes: d.target_stage_changes ?? 10,
+            target_leads_closed: d.target_leads_closed ?? 2,
+            target_checklist_items: d.target_checklist_items ?? 10,
+          };
+        });
+        setUserDailyGoals(map);
+      }
+    });
+  }, []);
+
+  // Fetch daily goal snapshots for current month
+  useEffect(() => {
+    const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
+    const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd');
+    supabase.from('daily_goal_snapshots')
+      .select('user_id, snapshot_date, achieved')
+      .gte('snapshot_date', monthStart)
+      .lte('snapshot_date', monthEnd)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, { achieved: number; total: number }> = {};
+          data.forEach((d: any) => {
+            if (!map[d.user_id]) map[d.user_id] = { achieved: 0, total: 0 };
+            map[d.user_id].total++;
+            if (d.achieved) map[d.user_id].achieved++;
+          });
+          setDailyGoalAchievements(map);
+        }
+      });
+  }, []);
+
   const updateDefaultGoalField = (field: string, value: number) => {
     setDefaultGoalsMap(prev => ({
       ...prev,
@@ -248,6 +302,11 @@ export function CommissionGoals() {
   };
 
   const getMetricValue = (userId: string, metricKey: string): number => {
+    if (metricKey === 'daily_goal_achievement') {
+      const data = dailyGoalAchievements[userId];
+      if (!data || data.total === 0) return 0;
+      return Math.round((data.achieved / data.total) * 100);
+    }
     const p = productivity.find(u => u.userId === userId);
     if (!p) return 0;
     switch (metricKey) {
@@ -266,6 +325,40 @@ export function CommissionGoals() {
       case 'activities_completed': return p.activitiesCompleted;
       default: return 0;
     }
+  };
+
+  // Save per-user daily goals
+  const saveUserDailyGoals = async () => {
+    if (!selectedUserForGoals) { toast.error('Selecione um membro'); return; }
+    setSavingUserGoals(true);
+    try {
+      const payload = { ...editingUserGoals, user_id: selectedUserForGoals } as any;
+      const { data: existing } = await supabase
+        .from('user_daily_goal_defaults')
+        .select('id')
+        .eq('user_id', selectedUserForGoals)
+        .maybeSingle();
+      
+      if (existing) {
+        await supabase.from('user_daily_goal_defaults').update(payload).eq('id', existing.id);
+      } else {
+        await supabase.from('user_daily_goal_defaults').insert(payload);
+      }
+      
+      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: editingUserGoals }));
+      toast.success('Metas diárias do usuário salvas!');
+      setUserGoalsDialogOpen(false);
+    } catch (err) {
+      toast.error('Erro ao salvar metas do usuário');
+    } finally {
+      setSavingUserGoals(false);
+    }
+  };
+
+  const openUserGoalsDialog = (userId: string) => {
+    setSelectedUserForGoals(userId);
+    setEditingUserGoals(userDailyGoals[userId] || { ...emptyGoalValues });
+    setUserGoalsDialogOpen(true);
   };
 
   const fetchMemberObjects = async (goalId: string, userId: string, metricKey: string, periodStart: string, periodEnd: string) => {
@@ -356,6 +449,21 @@ export function CommissionGoals() {
             .order('changed_at', { ascending: false })
             .limit(50);
           items = (data || []).map(s => ({ id: s.id, label: `Lead`, sublabel: `${s.from_stage || '?'} → ${s.to_stage}`, date: s.changed_at }));
+          break;
+        }
+        case 'daily_goal_achievement': {
+          const { data } = await supabase.from('daily_goal_snapshots')
+            .select('id, snapshot_date, progress_percent, achieved')
+            .eq('user_id', userId)
+            .gte('snapshot_date', startDate.split('T')[0])
+            .lte('snapshot_date', endDate.split('T')[0])
+            .order('snapshot_date', { ascending: false });
+          items = (data || []).map((s: any) => ({
+            id: s.id,
+            label: new Date(s.snapshot_date + 'T12:00:00').toLocaleDateString('pt-BR'),
+            sublabel: `${s.progress_percent}% ${s.achieved ? '✅' : '❌'}`,
+            date: s.snapshot_date,
+          }));
           break;
         }
         default:
@@ -705,6 +813,50 @@ export function CommissionGoals() {
               {savingDefaults ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Salvar Padrão
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-user daily goals */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            Metas Diárias por Usuário
+          </CardTitle>
+          <CardDescription>
+            Defina metas diárias individuais para cada membro. Quando definida, sobrepõe a meta padrão global.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {profiles.filter(p => p.full_name).map(profile => {
+              const hasCustomGoals = !!userDailyGoals[profile.user_id];
+              const achievement = dailyGoalAchievements[profile.user_id];
+              const achievementPercent = achievement && achievement.total > 0
+                ? Math.round((achievement.achieved / achievement.total) * 100) : null;
+
+              return (
+                <div key={profile.user_id} className="flex items-center justify-between p-2 rounded-md border bg-muted/20 hover:bg-muted/40">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">{profile.full_name}</span>
+                    {hasCustomGoals ? (
+                      <Badge variant="secondary" className="text-[10px]">Meta personalizada</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px]">Padrão global</Badge>
+                    )}
+                    {achievementPercent !== null && (
+                      <Badge variant={achievementPercent >= 80 ? 'default' : achievementPercent >= 50 ? 'secondary' : 'destructive'} className="text-[10px]">
+                        {achievementPercent}% dias atingidos
+                      </Badge>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => openUserGoalsDialog(profile.user_id)}>
+                    <Edit2 className="h-3 w-3 mr-1" /> Configurar
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -1182,6 +1334,71 @@ export function CommissionGoals() {
           <SheetFooter className="flex-row justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave}>{editingGoal ? 'Salvar' : 'Criar Meta'}</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Per-user daily goals dialog */}
+      <Sheet open={userGoalsDialogOpen} onOpenChange={(open) => { setUserGoalsDialogOpen(open); }}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>
+              Metas Diárias - {profiles.find(p => p.user_id === selectedUserForGoals)?.full_name || 'Usuário'}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Defina as metas diárias específicas para este usuário. Estas metas sobrepõem o padrão global.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Respostas / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_replies} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">DMs / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_dms} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Leads / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_leads} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tempo online (min)</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_session_minutes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Contatos / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_contacts} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_contacts: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Ligações / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_calls} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_calls: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Atividades / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_activities} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Etapas / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_stage_changes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Fechados / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_leads_closed} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_leads_closed: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Passos / dia</Label>
+                <Input type="number" min={0} value={editingUserGoals.target_checklist_items} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
+              </div>
+            </div>
+          </div>
+          <SheetFooter className="flex-row justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setUserGoalsDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={saveUserDailyGoals} disabled={savingUserGoals}>
+              {savingUserGoals ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Salvar
+            </Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
