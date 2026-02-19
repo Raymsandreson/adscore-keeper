@@ -659,6 +659,16 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    // Auto-set activity type based on lead's workflow step
+    const workflowType = leadWorkflowActivityTypes[leadId];
+    if (workflowType) {
+      const routineKeys = timeBlockSettings.length > 0
+        ? new Set(timeBlockSettings.map(c => c.activityType))
+        : null;
+      if (!routineKeys || routineKeys.has(workflowType)) {
+        setFormType(workflowType);
+      }
+    }
     // Fetch contacts linked to this lead
     try {
       const { data: linkedData } = await supabase
