@@ -514,8 +514,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                                   onChange={e => handleEndChange(Number(e.target.value), block.endMinute ?? 0)}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                  {HOURS.map(h => (
-                                    <option key={h} value={h} disabled={toDecimal(h, block.endMinute ?? 0) <= startDec}>
+                                 {HOURS.map(h => (
+                                    <option key={h} value={h} disabled={toDecimal(h, 45) <= startDec}>
                                       {String(h).padStart(2, '0')}h
                                     </option>
                                   ))}
