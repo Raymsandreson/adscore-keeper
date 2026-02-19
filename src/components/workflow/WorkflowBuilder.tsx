@@ -394,32 +394,36 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
                 {phases.map((phase, phaseIdx) => (
-                  <div key={phase.stageId} className="border rounded-lg overflow-hidden">
-                    {/* Phase header */}
-                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/40">
-                      <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
-                      <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1">
-                        <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
-                          {phase.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                          <span className="font-semibold text-sm text-primary">{phase.stageName}</span>
-                        </CollapsibleTrigger>
-                      </Collapsible>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {phase.objectives.length} objetivo(s)
-                      </span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => addObjective(phaseIdx)}>
-                        <Plus className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => {
-                        const newName = prompt('Renomear fase:', phase.stageName);
-                        if (newName) updatePhaseName(phaseIdx, newName);
-                      }}>
-                        <Edit3 className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                   <div key={phase.stageId} className="border rounded-lg overflow-hidden">
+                     {/* Phase header */}
+                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/40">
+                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                       <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
+                         <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
+                           {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                           {phase.isExpanded ? (
+                             <Input
+                               value={phase.stageName}
+                               onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                               onClick={e => e.stopPropagation()}
+                               placeholder="Nome da fase..."
+                               className="h-7 text-sm font-semibold text-primary flex-1"
+                             />
+                           ) : (
+                             <span className="font-semibold text-sm text-primary truncate">{phase.stageName}</span>
+                           )}
+                         </CollapsibleTrigger>
+                       </Collapsible>
+                       <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                         {phase.objectives.length} obj.
+                       </span>
+                       <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" title="Adicionar objetivo" onClick={() => addObjective(phaseIdx)}>
+                         <Plus className="h-3.5 w-3.5" />
+                       </Button>
+                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
+                         <Trash2 className="h-3 w-3" />
+                       </Button>
+                     </div>
 
                     {/* Phase description row */}
                     {phase.isExpanded && (
@@ -430,97 +434,117 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                         )}
 
                         {phase.objectives.map((obj, objIdx) => (
-                          <div key={objIdx} className="border-t first:border-t-0">
-                            {/* Objective header */}
-                            <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-primary/30">
-                              <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1">
-                                <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
-                                  {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                                  <span className="font-medium text-sm">{obj.name}</span>
-                                </CollapsibleTrigger>
-                              </Collapsible>
-                              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                {obj.items.length} passo(s)
-                              </span>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" onClick={() => {
-                                const newName = prompt('Renomear objetivo:', obj.name);
-                                if (newName) updateObjective(phaseIdx, objIdx, { name: newName });
-                              }}>
-                                <Edit3 className="h-3 w-3" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
+                           <div key={objIdx} className="border-t first:border-t-0">
+                             {/* Objective header */}
+                             <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-primary/30">
+                               <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
+                                 <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
+                                   {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
+                                   {obj.isExpanded ? (
+                                     <Input
+                                       value={obj.name}
+                                       onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
+                                       onClick={e => e.stopPropagation()}
+                                       placeholder="Nome do objetivo..."
+                                       className="h-7 text-sm font-medium flex-1"
+                                     />
+                                   ) : (
+                                     <span className="font-medium text-sm truncate">{obj.name}</span>
+                                   )}
+                                 </CollapsibleTrigger>
+                               </Collapsible>
+                               <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                 {obj.items.length} passo(s)
+                               </span>
+                               <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
+                                 <Trash2 className="h-3 w-3" />
+                               </Button>
+                             </div>
 
-                            {/* Objective description */}
+                            {/* Objective content */}
                             {obj.isExpanded && (
-                              <div className="ml-4 border-l-2 border-primary/30 px-4 pb-3 space-y-2">
-                                {obj.description && (
-                                  <p className="text-xs text-muted-foreground border-l-2 border-muted pl-2">{obj.description}</p>
-                                )}
-
-                                <Input
-                                  value={obj.description}
-                                  onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
-                                  placeholder="Descrição do objetivo..."
-                                  className="h-7 text-xs"
-                                />
+                              <div className="ml-4 border-l-2 border-primary/20 px-4 pb-4 pt-2 space-y-3">
+                                {/* Objective description field */}
+                                <div>
+                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
+                                  <Textarea
+                                    value={obj.description}
+                                    onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
+                                    placeholder="Descreva o objetivo desta etapa do funil..."
+                                    className="mt-1 min-h-[52px] text-xs resize-none"
+                                  />
+                                </div>
 
                                 {/* Steps */}
-                                {obj.items.length === 0 ? (
-                                  <p className="text-[11px] text-muted-foreground italic">Nenhum passo adicionado</p>
-                                ) : (
-                                  obj.items.map((step) => (
-                                    <div key={step.id} className="ml-4 border-l-2 border-muted pl-3 py-2 space-y-1.5">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-medium text-sm flex-1">{step.label}</span>
-                                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
-                                          const newLabel = prompt('Editar passo:', step.label);
-                                          if (newLabel) updateStepLabel(phaseIdx, objIdx, step.id, newLabel);
-                                        }}>
-                                          <Edit3 className="h-2.5 w-2.5" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
-                                          <Trash2 className="h-2.5 w-2.5" />
-                                        </Button>
-                                      </div>
-                                      {/* Activity type selector */}
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Tipo de ativ.:</span>
-                                        <Select
-                                          value={step.activityType || '__none__'}
-                                          onValueChange={v => updateStepActivityType(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
-                                        >
-                                          <SelectTrigger className="h-6 text-[11px] flex-1">
-                                            <SelectValue placeholder="Nenhum" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="__none__">
-                                              <span className="text-muted-foreground">Nenhum</span>
-                                            </SelectItem>
-                                            {activityTypes.filter(t => t.is_active).map(t => (
-                                              <SelectItem key={t.id} value={t.key}>
-                                                <div className="flex items-center gap-1.5">
-                                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-                                                  {t.label}
-                                                </div>
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <Input
-                                        value={step.description || ''}
-                                        onChange={e => updateStepDescription(phaseIdx, objIdx, step.id, e.target.value)}
-                                        placeholder="Descrição do passo (opcional)..."
-                                        className="h-6 text-[11px]"
-                                      />
-                                    </div>
-                                  ))
-                                )}
+                                <div>
+                                  <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Passos</Label>
+                                  <div className="mt-1.5 space-y-2">
+                                    {obj.items.length === 0 ? (
+                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
+                                    ) : (
+                                      obj.items.map((step, stepIdx) => (
+                                        <div key={step.id} className="border rounded-md bg-muted/20 p-2.5 space-y-2">
+                                          {/* Step header: number + delete */}
+                                          <div className="flex items-center gap-2">
+                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                                              {stepIdx + 1}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <Input
+                                                value={step.label}
+                                                onChange={e => updateStepLabel(phaseIdx, objIdx, step.id, e.target.value)}
+                                                placeholder="Nome do passo..."
+                                                className="h-7 text-sm font-medium"
+                                              />
+                                            </div>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
+                                              <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                          </div>
 
-                                {/* Add step inline */}
+                                          {/* Tipo de atividade */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Tipo de atv.:</Label>
+                                            <Select
+                                              value={step.activityType || '__none__'}
+                                              onValueChange={v => updateStepActivityType(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs flex-1">
+                                                <SelectValue placeholder="Nenhum" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">
+                                                  <span className="text-muted-foreground">Nenhum</span>
+                                                </SelectItem>
+                                                {activityTypes.filter(t => t.is_active).map(t => (
+                                                  <SelectItem key={t.id} value={t.key}>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                                                      {t.label}
+                                                    </div>
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+
+                                          {/* Descrição do passo */}
+                                          <div className="flex items-start gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0 pt-1.5">Descrição:</Label>
+                                            <Textarea
+                                              value={step.description || ''}
+                                              onChange={e => updateStepDescription(phaseIdx, objIdx, step.id, e.target.value)}
+                                              placeholder="Instruções detalhadas (opcional)..."
+                                              className="flex-1 min-h-[52px] text-xs resize-none"
+                                            />
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Add step */}
                                 <StepAdder onAdd={(label) => addStep(phaseIdx, objIdx, label)} />
                               </div>
                             )}
