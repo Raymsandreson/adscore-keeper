@@ -12,10 +12,11 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps) {
   const { isAuthenticated, loading } = useAuthContext();
-  const { canView, canEdit, loading: permLoading } = useModulePermissions();
+  const { canView, loading: permLoading } = useModulePermissions();
   const location = useLocation();
 
-  if (loading || permLoading) {
+  // While auth is loading, show a full-screen spinner (before we know if user is authenticated)
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -30,7 +31,7 @@ export function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps
   // Auto-detect module from route if not explicitly provided
   const moduleKey = requiredModule || MODULE_DEFINITIONS.find(m => m.route === location.pathname)?.key;
   
-  if (moduleKey && !canView(moduleKey)) {
+  if (moduleKey && !permLoading && !canView(moduleKey)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -48,5 +49,7 @@ export function ProtectedRoute({ children, requiredModule }: ProtectedRouteProps
     );
   }
 
+  // Render children always (don't unmount on permLoading) to avoid closing open dialogs
   return <>{children}</>;
 }
+

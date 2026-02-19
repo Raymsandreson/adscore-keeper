@@ -46,7 +46,7 @@ export function useModulePermissions() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user?.id]); // use user.id instead of user object to avoid re-fetching on reference changes
 
   useEffect(() => {
     fetchPermissions();
