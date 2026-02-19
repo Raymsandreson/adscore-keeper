@@ -410,17 +410,43 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                           const newStartDec = toDecimal(h, m);
                           let newEndH = block.endHour;
                           let newEndM = block.endMinute ?? 0;
-                          // If end <= new start, push end 1h forward
+                          // If end <= new start, push end to start + 30min
                           if (toDecimal(newEndH, newEndM) <= newStartDec) {
-                            newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
-                            newEndM = m;
+                            // Try to add 30min, then 1h
+                            const candidate30 = toDecimal(h, m + 30);
+                            const candidate1h = toDecimal(h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h, m);
+                            if (m + 30 <= 45 && m + 30 <= 60) {
+                              newEndH = h;
+                              newEndM = m + 30 > 45 ? 0 : [0, 15, 30, 45].find(min => min > m) ?? 0;
+                              if (newEndM === 0) newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
+                            } else {
+                              newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
+                              newEndM = m;
+                            }
                           }
                           updateBlock(block.blockId, { startHour: h, startMinute: m, endHour: newEndH, endMinute: newEndM });
                         };
 
-                        const handleEndChange = (h: number, m: number) => {
-                          if (toDecimal(h, m) > startDec) {
-                            updateBlock(block.blockId, { endHour: h, endMinute: m });
+                        const handleEndHourChange = (h: number) => {
+                          // Find a valid minute for this end hour
+                          let m = block.endMinute ?? 0;
+                          const currentStartDec = toDecimal(block.startHour, block.startMinute ?? 0);
+                          if (toDecimal(h, m) <= currentStartDec) {
+                            // Find the first minute that makes end > start
+                            const validMinute = MINUTES.find(min => toDecimal(h, min) > currentStartDec);
+                            if (validMinute !== undefined) {
+                              m = validMinute;
+                            } else {
+                              return; // no valid minute for this hour, skip
+                            }
+                          }
+                          updateBlock(block.blockId, { endHour: h, endMinute: m });
+                        };
+
+                        const handleEndMinuteChange = (m: number) => {
+                          const currentStartDec = toDecimal(block.startHour, block.startMinute ?? 0);
+                          if (toDecimal(block.endHour, m) > currentStartDec) {
+                            updateBlock(block.blockId, { endMinute: m });
                           }
                         };
 
@@ -511,10 +537,10 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                               <div className="flex items-center gap-1">
                                 <select
                                   value={block.endHour}
-                                  onChange={e => handleEndChange(Number(e.target.value), block.endMinute ?? 0)}
+                                  onChange={e => handleEndHourChange(Number(e.target.value))}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                 {HOURS.map(h => (
+                                  {HOURS.map(h => (
                                     <option key={h} value={h} disabled={toDecimal(h, 45) <= startDec}>
                                       {String(h).padStart(2, '0')}h
                                     </option>
@@ -523,7 +549,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                                 <span className="text-xs text-muted-foreground">:</span>
                                 <select
                                   value={block.endMinute ?? 0}
-                                  onChange={e => handleEndChange(block.endHour, Number(e.target.value))}
+                                  onChange={e => handleEndMinuteChange(Number(e.target.value))}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
                                   {MINUTES.map(m => (
