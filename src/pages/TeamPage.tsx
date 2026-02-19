@@ -12,6 +12,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
 import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
 import { CommissionGoals } from '@/components/team/CommissionGoals';
+import { MemberRoutineManager } from '@/components/team/MemberRoutineManager';
 import {
   Users,
   BarChart3,
@@ -24,6 +25,7 @@ import {
   DollarSign,
   Lock,
   Landmark,
+  CalendarClock,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -88,7 +90,7 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-6xl grid-cols-8">
+          <TabsList className="grid w-full max-w-6xl grid-cols-9">
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
@@ -108,6 +110,10 @@ export default function TeamPage() {
             <TabsTrigger value="teams" className="gap-2">
               <UsersRound className="h-4 w-4" />
               <span className="hidden sm:inline">Times</span>
+            </TabsTrigger>
+            <TabsTrigger value="routines" className="gap-2">
+              <CalendarClock className="h-4 w-4" />
+              <span className="hidden sm:inline">Rotinas</span>
             </TabsTrigger>
             <TabsTrigger value="permissions" className="gap-2">
               <CreditCard className="h-4 w-4" />
@@ -141,6 +147,10 @@ export default function TeamPage() {
 
           <TabsContent value="teams">
             <TeamsManager />
+          </TabsContent>
+
+          <TabsContent value="routines">
+            <MemberRoutineManager />
           </TabsContent>
 
           <TabsContent value="permissions">

@@ -3,18 +3,21 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TimeBlockConfig, getDefaultTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
 
-export function useTimeBlockSettings() {
+export function useTimeBlockSettings(targetUserId?: string) {
   const { user } = useAuthContext();
   const [configs, setConfigs] = useState<TimeBlockConfig[]>(getDefaultTimeBlockConfigs());
   const [loading, setLoading] = useState(true);
 
+  // Use targetUserId if provided (admin editing another user), otherwise use own user id
+  const effectiveUserId = targetUserId || user?.id;
+
   const fetchSettings = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+    if (!effectiveUserId) { setLoading(false); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from('user_timeblock_settings')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', effectiveUserId);
 
     if (!error && data && data.length > 0) {
       const loaded: TimeBlockConfig[] = data.map(row => ({
@@ -26,18 +29,20 @@ export function useTimeBlockSettings() {
         endHour: row.end_hour,
       }));
       setConfigs(loaded);
+    } else {
+      setConfigs(getDefaultTimeBlockConfigs());
     }
     setLoading(false);
-  }, [user]);
+  }, [effectiveUserId]);
 
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
 
   const saveSettings = useCallback(async (newConfigs: TimeBlockConfig[]) => {
-    if (!user) return;
+    if (!effectiveUserId) return;
     setConfigs(newConfigs);
 
     const upsertRows = newConfigs.map(c => ({
-      user_id: user.id,
+      user_id: effectiveUserId,
       activity_type: c.activityType,
       label: c.label,
       color: c.color,
@@ -49,7 +54,7 @@ export function useTimeBlockSettings() {
     await supabase
       .from('user_timeblock_settings')
       .upsert(upsertRows, { onConflict: 'user_id,activity_type' });
-  }, [user]);
+  }, [effectiveUserId]);
 
   return { configs, loading, saveSettings };
 }
