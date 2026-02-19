@@ -3826,6 +3826,7 @@ export type Database = {
           target_dms: number
           target_leads: number
           target_leads_closed: number
+          target_refused_by_board: Json | null
           target_replies: number
           target_session_minutes: number
           target_stage_changes: number
@@ -3844,6 +3845,7 @@ export type Database = {
           target_dms?: number
           target_leads?: number
           target_leads_closed?: number
+          target_refused_by_board?: Json | null
           target_replies?: number
           target_session_minutes?: number
           target_stage_changes?: number
@@ -3862,6 +3864,7 @@ export type Database = {
           target_dms?: number
           target_leads?: number
           target_leads_closed?: number
+          target_refused_by_board?: Json | null
           target_replies?: number
           target_session_minutes?: number
           target_stage_changes?: number
