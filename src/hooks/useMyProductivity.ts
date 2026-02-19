@@ -73,7 +73,7 @@ export function useMyProductivity() {
         // Replies on own posts (comment was replied by this user)
         supabase.from('instagram_comments').select('id').eq('replied_by', userId)
           .gte('replied_at', startDate).lte('replied_at', endDate),
-        supabase.from('lead_stage_history').select('id, lead_id')
+        supabase.from('lead_stage_history').select('id, lead_id, to_stage')
           .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('leads').select('id, status').eq('created_by', userId)
@@ -121,7 +121,8 @@ export function useMyProductivity() {
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
       const sessionMinutes = sessions.reduce((acc, s) => acc + Math.round((s.duration_seconds || 0) / 60), 0);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
-      const leadsClosed = leads.filter(l => ['converted', 'won', 'closed', 'fechado', 'done'].includes(l.status || '')).length;
+      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
       // Total comment replies = replied to comments on own posts + outbound comments registered manually
       const totalCommentReplies = replies.length + outboundComments.length;
 

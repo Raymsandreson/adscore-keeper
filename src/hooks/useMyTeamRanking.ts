@@ -100,7 +100,7 @@ export function useMyTeamRanking() {
         supabase.from('user_activity_log').select('user_id, action_type')
           .in('user_id', memberIds)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('lead_stage_history').select('id, changed_by')
+        supabase.from('lead_stage_history').select('id, changed_by, to_stage')
           .in('changed_by', memberIds)
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('call_records').select('id, user_id')
@@ -121,9 +121,15 @@ export function useMyTeamRanking() {
       (leadsRes.data || []).forEach(l => {
         if (l.created_by && statsMap.has(l.created_by)) {
           statsMap.get(l.created_by)!.leads++;
-          if (['converted', 'won', 'closed', 'fechado', 'done'].includes(l.status || '')) {
-            statsMap.get(l.created_by)!.closed++;
-          }
+        }
+      });
+      // Count closed from stage history (moved to closed stage)
+      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      (stageRes.data || []).forEach(s => {
+        const changedBy = (s as any).changed_by;
+        const toStage = (s as any).to_stage;
+        if (changedBy && statsMap.has(changedBy) && toStage && CLOSED_STAGE_IDS.includes(toStage)) {
+          statsMap.get(changedBy)!.closed++;
         }
       });
       (activityRes.data || []).forEach(a => {
