@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 
 const METRICS = [
-  { key: 'commentReplies', label: 'Respostas', icon: MessageSquare, color: 'text-blue-500' },
+  { key: 'commentReplies', label: 'Comentários Enviados', icon: MessageSquare, color: 'text-blue-500' },
   { key: 'dmsSent', label: 'DMs', icon: Send, color: 'text-violet-500' },
   { key: 'contactsCreated', label: 'Contatos', icon: Users, color: 'text-teal-500' },
   { key: 'leadsCreated', label: 'Leads', icon: Target, color: 'text-indigo-500' },
@@ -130,7 +130,7 @@ export function UserProductivityBanner() {
 
   // Goal items for detail view
   const goalItems = [
-    { label: 'Respostas', current: data.commentReplies, target: goals.target_replies },
+    { label: 'Comentários Enviados', current: data.commentReplies, target: goals.target_replies },
     { label: 'DMs', current: data.dmsSent, target: goals.target_dms },
     { label: 'Leads', current: data.leadsCreated, target: goals.target_leads },
     { label: 'Tempo', current: data.sessionMinutes, target: goals.target_session_minutes, suffix: 'min' },

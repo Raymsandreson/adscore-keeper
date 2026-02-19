@@ -40,7 +40,7 @@ const emptyProductivity: MyProductivity = {
 };
 
 const hardcodedDefaults: MyDailyGoals = {
-  target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60,
+  target_replies: 50, target_dms: 50, target_leads: 5, target_session_minutes: 60,
   target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10,
   target_leads_closed: 2, target_checklist_items: 10,
 };
