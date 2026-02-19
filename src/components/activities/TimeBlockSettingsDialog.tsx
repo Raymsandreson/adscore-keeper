@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { Settings2, RotateCcw, Save, Plus, Trash2, Search, X, Sparkles, Loader2, Wand2 } from 'lucide-react';
+import { Settings2, RotateCcw, Save, Plus, Trash2, Search, X, Sparkles, Loader2, Wand2, GripVertical } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -93,6 +93,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [showAddForm, setShowAddForm] = useState(false);
   const [search, setSearch] = useState('');
 
+  // Drag and drop state
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
+
   // AI assistant state
   const [showAI, setShowAI] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
@@ -109,8 +115,9 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   }, [configs, open]);
 
   const visibleConfigs = useMemo(() => {
-    if (!search) return local;
-    return local.filter(c => c.label.toLowerCase().includes(search.toLowerCase()));
+    const indexed = local.map((c, i) => ({ ...c, _realIdx: i }));
+    if (!search) return indexed;
+    return indexed.filter(c => c.label.toLowerCase().includes(search.toLowerCase()));
   }, [local, search]);
 
   const updateConfig = (type: string, patch: Partial<TimeBlockConfig>) => {
@@ -150,6 +157,32 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   };
 
   const handleReset = () => setLocal(getDefaultTimeBlockConfigs());
+
+  // Drag and drop handlers — operate on the full `local` array by real index
+  const handleDragStart = (realIdx: number) => {
+    dragItem.current = realIdx;
+    setDraggedIdx(realIdx);
+  };
+
+  const handleDragEnter = (realIdx: number) => {
+    dragOverItem.current = realIdx;
+    setDropTargetIdx(realIdx);
+  };
+
+  const handleDragEnd = () => {
+    if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
+      setLocal(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(dragItem.current!, 1);
+        next.splice(dragOverItem.current!, 0, moved);
+        return next;
+      });
+    }
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setDraggedIdx(null);
+    setDropTargetIdx(null);
+  };
 
   const handleSave = () => {
     onSave(local);
@@ -288,10 +321,27 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
           )}
 
           {visibleConfigs.map((cfg) => (
-            <div key={cfg.activityType} className="rounded-lg border p-4 space-y-3">
+            <div
+              key={cfg.activityType}
+              draggable={!search}
+              onDragStart={() => handleDragStart(cfg._realIdx)}
+              onDragEnter={() => handleDragEnter(cfg._realIdx)}
+              onDragEnd={handleDragEnd}
+              onDragOver={e => e.preventDefault()}
+              className={cn(
+                'rounded-lg border p-4 space-y-3 transition-all',
+                !search && 'cursor-grab active:cursor-grabbing',
+                draggedIdx === cfg._realIdx && 'opacity-40 scale-[0.98]',
+                dropTargetIdx === cfg._realIdx && draggedIdx !== cfg._realIdx && 'border-primary border-2 bg-primary/5'
+              )}
+            >
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {/* Drag handle */}
+                  {!search && (
+                    <GripVertical className="h-4 w-4 text-muted-foreground/40 flex-shrink-0 cursor-grab" />
+                  )}
                   {/* Color picker (for all types) */}
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <span className={cn('h-3 w-3 rounded-full', cfg.color)} />
