@@ -144,6 +144,8 @@ const ActivitiesPage = () => {
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
+  // Map: leadId -> activityType derived from workflow step (used in blocks view)
+  const [leadWorkflowActivityTypes, setLeadWorkflowActivityTypes] = useState<Record<string, string>>({});
   const [leadPreview, setLeadPreview] = useState<{
     case_type?: string | null;
     damage_description?: string | null;
@@ -191,6 +193,38 @@ const ActivitiesPage = () => {
     };
     loadSupport();
   }, []);
+
+  // Load workflow step activity types: for each lead, find the activityType from workflow checklist items
+  useEffect(() => {
+    const loadWorkflowStepTypes = async () => {
+      const { data: leadsData } = await supabase.from('leads').select('id, status, board_id');
+      if (!leadsData || leadsData.length === 0) return;
+      const { data: linksData } = await supabase.from('checklist_stage_links').select('stage_id, checklist_template_id');
+      if (!linksData || linksData.length === 0) return;
+      const templateIds = [...new Set(linksData.map(l => l.checklist_template_id))];
+      const { data: templatesData } = await supabase.from('checklist_templates').select('id, items').in('id', templateIds);
+      if (!templatesData) return;
+      // Build map: stage_id -> first activityType found in any step
+      const stageTypeMap: Record<string, string> = {};
+      linksData.forEach(link => {
+        if (stageTypeMap[link.stage_id]) return;
+        const tmpl = templatesData.find(t => t.id === link.checklist_template_id);
+        if (!tmpl) return;
+        const items = (tmpl.items as any[]) || [];
+        const stepWithType = items.find((item: any) => item.activityType);
+        if (stepWithType?.activityType) stageTypeMap[link.stage_id] = stepWithType.activityType;
+      });
+      // Build map: lead_id -> activityType
+      const leadTypeMap: Record<string, string> = {};
+      leadsData.forEach(lead => {
+        if (!lead.status) return;
+        const type = stageTypeMap[lead.status];
+        if (type) leadTypeMap[lead.id] = type;
+      });
+      setLeadWorkflowActivityTypes(leadTypeMap);
+    };
+    loadWorkflowStepTypes();
+  }, [activities]);
 
 
   // Pre-filter raw activities based on OTHER active filters (excluding the field being counted)
@@ -1698,6 +1732,14 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             try { return parseISO(dateStr); } catch { return null; }
           };
 
+          // Helper: resolve effective activity type considering workflow step type
+          const getEffectiveType = (a: LeadActivity): string => {
+            if (a.lead_id && leadWorkflowActivityTypes[a.lead_id]) {
+              return leadWorkflowActivityTypes[a.lead_id];
+            }
+            return a.activity_type;
+          };
+
           // For each day, collect activities by type
           const byDayAndType = weekDates.map((dayDate, dayColIdx) => {
             const dayActivities = displayedActivities.filter(a => {
@@ -1707,29 +1749,31 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             // Also activities with no date but whose type config includes this day (as "default" slot)
             const noDateForDay = displayedActivities.filter(a => {
               if (a.deadline || a.notification_date) return false;
-              const cfg = timeBlockSettings.find(c => c.activityType === a.activity_type);
+              const effectiveType = getEffectiveType(a);
+              const cfg = timeBlockSettings.find(c => c.activityType === effectiveType);
               return cfg?.days.includes(dayColIdx) ?? false;
             });
             const byType = ACTIVITY_TYPES.map(t => ({
               ...t,
-              items: dayActivities.filter(a => a.activity_type === t.value),
-              noDateItems: noDateForDay.filter(a => a.activity_type === t.value),
+              items: dayActivities.filter(a => getEffectiveType(a) === t.value),
+              noDateItems: noDateForDay.filter(a => getEffectiveType(a) === t.value),
             })).filter(t => t.items.length > 0 || t.noDateItems.length > 0);
             const knownTypes = ACTIVITY_TYPES.map(t => t.value);
-            const otherItems = dayActivities.filter(a => !knownTypes.includes(a.activity_type));
+            const otherItems = dayActivities.filter(a => !knownTypes.includes(getEffectiveType(a)));
             return { dayDate, byType, otherItems, total: dayActivities.length, dayColIdx };
           });
 
           const unscheduled = displayedActivities.filter(a => {
             if (a.deadline || a.notification_date) return false;
-            const cfg = timeBlockSettings.find(c => c.activityType === a.activity_type);
+            const effectiveType = getEffectiveType(a);
+            const cfg = timeBlockSettings.find(c => c.activityType === effectiveType);
             return !cfg || cfg.days.length === 0;
           });
 
           const typeSummary = ACTIVITY_TYPES.map(t => ({
             ...t,
-            total: displayedActivities.filter(a => a.activity_type === t.value).length,
-            open: displayedActivities.filter(a => a.activity_type === t.value && a.status !== 'concluida').length,
+            total: displayedActivities.filter(a => getEffectiveType(a) === t.value).length,
+            open: displayedActivities.filter(a => getEffectiveType(a) === t.value && a.status !== 'concluida').length,
           }));
 
           return (
