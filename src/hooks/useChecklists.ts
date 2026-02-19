@@ -7,6 +7,7 @@ export interface ChecklistItem {
   label: string;
   description?: string;
   checked?: boolean;
+  activityType?: string; // tipo de atividade associado a este passo
 }
 
 export interface ChecklistTemplate {

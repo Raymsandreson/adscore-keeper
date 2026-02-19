@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem } from '@/hooks/useChecklists';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface WorkflowBuilderProps {
   open: boolean;
@@ -68,6 +70,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     linkChecklistToStage,
     unlinkChecklistFromStage,
   } = useChecklists();
+  const { types: activityTypes } = useActivityTypes();
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
@@ -230,6 +233,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const updateStepDescription = (phaseIdx: number, objIdx: number, stepId: string, description: string) => {
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, description } : s),
+    });
+  };
+
+  const updateStepActivityType = (phaseIdx: number, objIdx: number, stepId: string, activityType: string) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, activityType: activityType || undefined } : s),
     });
   };
 
@@ -463,7 +472,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                   <p className="text-[11px] text-muted-foreground italic">Nenhum passo adicionado</p>
                                 ) : (
                                   obj.items.map((step) => (
-                                    <div key={step.id} className="ml-4 border-l-2 border-muted pl-3 py-2 space-y-1">
+                                    <div key={step.id} className="ml-4 border-l-2 border-muted pl-3 py-2 space-y-1.5">
                                       <div className="flex items-center gap-2">
                                         <span className="font-medium text-sm flex-1">{step.label}</span>
                                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => {
@@ -476,9 +485,31 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                           <Trash2 className="h-2.5 w-2.5" />
                                         </Button>
                                       </div>
-                                      {step.description && (
-                                        <p className="text-xs text-muted-foreground">{step.description}</p>
-                                      )}
+                                      {/* Activity type selector */}
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">Tipo de ativ.:</span>
+                                        <Select
+                                          value={step.activityType || '__none__'}
+                                          onValueChange={v => updateStepActivityType(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                        >
+                                          <SelectTrigger className="h-6 text-[11px] flex-1">
+                                            <SelectValue placeholder="Nenhum" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="__none__">
+                                              <span className="text-muted-foreground">Nenhum</span>
+                                            </SelectItem>
+                                            {activityTypes.filter(t => t.is_active).map(t => (
+                                              <SelectItem key={t.id} value={t.key}>
+                                                <div className="flex items-center gap-1.5">
+                                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                                                  {t.label}
+                                                </div>
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
                                       <Input
                                         value={step.description || ''}
                                         onChange={e => updateStepDescription(phaseIdx, objIdx, step.id, e.target.value)}
