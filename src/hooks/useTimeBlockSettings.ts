@@ -51,10 +51,21 @@ export function useTimeBlockSettings(targetUserId?: string) {
       end_hour: c.endHour,
     }));
 
+    // Delete rows that no longer exist (removed custom types)
+    const existingTypes = newConfigs.map(c => c.activityType);
+    await supabase
+      .from('user_timeblock_settings')
+      .delete()
+      .eq('user_id', effectiveUserId)
+      .not('activity_type', 'in', `(${existingTypes.join(',')})`);
+
     await supabase
       .from('user_timeblock_settings')
       .upsert(upsertRows, { onConflict: 'user_id,activity_type' });
-  }, [effectiveUserId]);
+
+    // Refetch to ensure local state matches DB
+    await fetchSettings();
+  }, [effectiveUserId, fetchSettings]);
 
   return { configs, loading, saveSettings };
 }
