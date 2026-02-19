@@ -166,12 +166,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     }
     setCreating(true);
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const { data: newContact, error: createError } = await supabase
         .from('contacts')
         .insert({
           full_name: newName.trim(),
           phone: newPhone || null,
           instagram_username: newInstagram ? (newInstagram.startsWith('@') ? newInstagram : `@${newInstagram}`) : null,
+          created_by: currentUser?.id || null,
         })
         .select('id')
         .single();
