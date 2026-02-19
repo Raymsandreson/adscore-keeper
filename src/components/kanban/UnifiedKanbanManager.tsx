@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { getStageType } from '@/utils/kanbanStageTypes';
 import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters } from './LeadAdvancedFilters';
@@ -56,14 +57,14 @@ interface UnifiedKanbanManagerProps {
 }
 
 export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
-  const [showAddLeadDialog, setShowAddLeadDialog] = useState(false);
+  const [showAddLeadDialog, setShowAddLeadDialog] = usePageState<boolean>('kanban_addLeadOpen', false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<LeadFilters>(emptyFilters);
+  const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
   
   // New lead form state - expanded for accident cases
@@ -119,6 +120,9 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   // Stage history hook
   const { addHistoryEntry } = useLeadStageHistory();
   const { createLeadInstances, markStageInstancesReadonly } = useChecklists();
+
+  // Derive editingLead from persisted ID
+  const editingLead = allLeads.find(l => l.id === editingLeadId) ?? null;
 
   // Filter leads by selected board
   const boardLeads = useMemo(() => {
@@ -558,7 +562,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           onMoveToStage={handleMoveToStage}
           onMoveToBoard={handleMoveToBoard}
           onDeleteLead={deleteLead}
-          onEditLead={(lead) => setEditingLead(lead)}
+          onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
         />
       ) : (
@@ -621,7 +625,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       {/* Lead Edit Dialog */}
       <LeadEditDialog
         open={!!editingLead}
-        onOpenChange={(open) => !open && setEditingLead(null)}
+        onOpenChange={(open) => !open && setEditingLeadId(null)}
         lead={editingLead}
         onSave={async (leadId, updates) => {
           await updateLead(leadId, updates);

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -374,14 +375,14 @@ export const ContactsManager: React.FC = () => {
     isSystem: c.is_system
   }));
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterClassification, setFilterClassification] = useState<ContactClassification | 'all' | 'none'>('all');
-  const [filterTag, setFilterTag] = useState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('all');
-  const [filterProfessions, setFilterProfessions] = useState<string[]>([]);
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
-  const [filterLeadLinked, setFilterLeadLinked] = useState<'all' | 'linked' | 'not_linked'>('all');
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = usePageState<string>('contacts_searchTerm', '');
+  const [filterClassification, setFilterClassification] = usePageState<ContactClassification | 'all' | 'none'>('contacts_filterClass', 'all');
+  const [filterTag, setFilterTag] = usePageState<'all' | 'seguidor' | 'seguindo' | 'mutual'>('contacts_filterTag', 'all');
+  const [filterProfessions, setFilterProfessions] = usePageState<string[]>('contacts_filterProf', []);
+  const [filterDateFrom, setFilterDateFrom] = usePageState<string>('contacts_dateFrom', '');
+  const [filterDateTo, setFilterDateTo] = usePageState<string>('contacts_dateTo', '');
+  const [filterLeadLinked, setFilterLeadLinked] = usePageState<'all' | 'linked' | 'not_linked'>('contacts_filterLead', 'all');
+  const [isAddDialogOpen, setIsAddDialogOpen] = usePageState<boolean>('contacts_addOpen', false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isMetaImportDialogOpen, setIsMetaImportDialogOpen] = useState(false);
@@ -404,8 +405,8 @@ export const ContactsManager: React.FC = () => {
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchTagInput, setBatchTagInput] = useState('');
   const [showBatchTagDialog, setShowBatchTagDialog] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [currentPage, setCurrentPage] = usePageState<number>('contacts_page', 1);
+  const [itemsPerPage, setItemsPerPage] = usePageState<number>('contacts_perPage', 50);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const metaFileInputRef = useRef<HTMLInputElement>(null);
   
@@ -433,8 +434,9 @@ export const ContactsManager: React.FC = () => {
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   
   // State for contact detail sheet
-  const [detailContact, setDetailContact] = useState<Contact | null>(null);
-  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+  const [detailContactId, setDetailContactId] = usePageState<string | null>('contacts_detailId', null);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = usePageState<boolean>('contacts_detailOpen', false);
+  const detailContact = contacts.find(c => c.id === detailContactId) ?? null;
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1862,10 +1864,10 @@ export const ContactsManager: React.FC = () => {
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 flex-shrink-0"
-                                onClick={() => {
-                                  setDetailContact(contact);
-                                  setIsDetailSheetOpen(true);
-                                }}
+                                 onClick={() => {
+                                   setDetailContactId(contact.id);
+                                   setIsDetailSheetOpen(true);
+                                 }}
                                 title="Ver detalhes completos"
                               >
                                 <Eye className="h-3.5 w-3.5 text-primary" />
@@ -2791,7 +2793,10 @@ export const ContactsManager: React.FC = () => {
       <ContactDetailSheet
         contact={detailContact}
         open={isDetailSheetOpen}
-        onOpenChange={setIsDetailSheetOpen}
+        onOpenChange={(open) => {
+          setIsDetailSheetOpen(open);
+          if (!open) setDetailContactId(null);
+        }}
         onContactUpdated={() => {
           fetchContacts(currentPage, itemsPerPage);
         }}
