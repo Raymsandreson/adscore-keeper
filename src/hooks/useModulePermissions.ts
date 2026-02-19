@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 
 export type AccessLevel = 'none' | 'view' | 'edit';
@@ -24,7 +24,7 @@ export const MODULE_DEFINITIONS = [
 ] as const;
 
 export function useModulePermissions() {
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const [permissions, setPermissions] = useState<ModulePermission[]>([]);
   const [loading, setLoading] = useState(true);
