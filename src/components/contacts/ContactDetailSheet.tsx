@@ -325,14 +325,18 @@ export function ContactDetailSheet({
             <TabsContent value="info" className="space-y-4 mt-0">
               {/* Meta info */}
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="gap-1">
-                  <Calendar className="h-3 w-3" />
-                  Criado: {format(new Date(contact.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <History className="h-3 w-3" />
-                  Atualizado: {format(new Date(contact.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                </Badge>
+                {contact.created_at && !isNaN(new Date(contact.created_at).getTime()) && (
+                  <Badge variant="outline" className="gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Criado: {format(new Date(contact.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                  </Badge>
+                )}
+                {contact.updated_at && !isNaN(new Date(contact.updated_at).getTime()) && (
+                  <Badge variant="outline" className="gap-1">
+                    <History className="h-3 w-3" />
+                    Atualizado: {format(new Date(contact.updated_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </Badge>
+                )}
               </div>
 
               {isEditing ? (
