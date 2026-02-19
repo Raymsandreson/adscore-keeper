@@ -188,6 +188,36 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_types: {
+        Row: {
+          color: string
+          created_at: string
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          key: string
+          label: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          key: string
+          label: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          key?: string
+          label?: string
+        }
+        Relationships: []
+      }
       ad_briefings: {
         Row: {
           approved_by: string | null
@@ -3807,36 +3837,30 @@ export type Database = {
       user_timeblock_settings: {
         Row: {
           activity_type: string
-          color: string
           created_at: string
           days: number[]
           end_hour: number
           id: string
-          label: string
           start_hour: number
           updated_at: string
           user_id: string
         }
         Insert: {
           activity_type: string
-          color: string
           created_at?: string
           days?: number[]
           end_hour?: number
           id?: string
-          label: string
           start_hour?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           activity_type?: string
-          color?: string
           created_at?: string
           days?: number[]
           end_hour?: number
           id?: string
-          label?: string
           start_hour?: number
           updated_at?: string
           user_id?: string

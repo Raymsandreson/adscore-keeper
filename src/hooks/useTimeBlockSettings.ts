@@ -3,36 +3,61 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TimeBlockConfig, getDefaultTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
 
-const DEFAULT_TYPES = ['tarefa','audiencia','prazo','acompanhamento','reuniao','diligencia'];
-
 export function useTimeBlockSettings(targetUserId?: string) {
   const { user } = useAuthContext();
-  const [configs, setConfigs] = useState<TimeBlockConfig[]>(getDefaultTimeBlockConfigs());
+  const [configs, setConfigs] = useState<TimeBlockConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
   const effectiveUserId = targetUserId || user?.id;
 
   const fetchSettings = useCallback(async (userId: string) => {
     setLoading(true);
-    const { data, error } = await supabase
+
+    // Fetch global types
+    const { data: typesData } = await supabase
+      .from('activity_types')
+      .select('*')
+      .order('display_order', { ascending: true });
+
+    // Fetch user's schedule settings
+    const { data: settingsData } = await supabase
       .from('user_timeblock_settings')
       .select('*')
       .eq('user_id', userId);
 
-    if (!error && data && data.length > 0) {
-      const loaded: TimeBlockConfig[] = data.map(row => ({
-        activityType: row.activity_type,
-        label: row.label,
-        color: row.color,
-        days: (row.days as number[]) || [],
-        startHour: row.start_hour,
-        endHour: row.end_hour,
-        isCustom: !DEFAULT_TYPES.includes(row.activity_type),
-      }));
-      setConfigs(loaded);
+    if (typesData && typesData.length > 0) {
+      if (settingsData && settingsData.length > 0) {
+        // User has configured settings — merge with global type info
+        const loaded: TimeBlockConfig[] = [];
+        settingsData.forEach(row => {
+          const globalType = typesData.find((t: any) => t.key === row.activity_type);
+          if (globalType) {
+            loaded.push({
+              activityType: row.activity_type,
+              label: (globalType as any).label,
+              color: (globalType as any).color,
+              days: (row.days as number[]) || [],
+              startHour: row.start_hour,
+              endHour: row.end_hour,
+              isCustom: false,
+            });
+          }
+        });
+        // Preserve order from global types for items in user's list
+        loaded.sort((a, b) => {
+          const ai = typesData.findIndex((t: any) => t.key === a.activityType);
+          const bi = typesData.findIndex((t: any) => t.key === b.activityType);
+          return ai - bi;
+        });
+        setConfigs(loaded);
+      } else {
+        // No settings yet — show empty (user hasn't picked types yet)
+        setConfigs([]);
+      }
     } else {
-      setConfigs(getDefaultTimeBlockConfigs());
+      setConfigs([]);
     }
+
     setLoading(false);
   }, []);
 
@@ -50,30 +75,34 @@ export function useTimeBlockSettings(targetUserId?: string) {
     const rows = newConfigs.map(c => ({
       user_id: uid,
       activity_type: c.activityType,
-      label: c.label,
-      color: c.color,
       days: c.days,
       start_hour: c.startHour,
       end_hour: c.endHour,
     }));
 
-    const { error: deleteError } = await supabase.from('user_timeblock_settings').delete().eq('user_id', uid);
+    const { error: deleteError } = await supabase
+      .from('user_timeblock_settings')
+      .delete()
+      .eq('user_id', uid);
+
     if (deleteError) {
-      console.error('Error deleting timeblock settings:', deleteError);
       const { toast } = await import('sonner');
       toast.error('Erro ao salvar rotina. Verifique suas permissões.');
       return;
     }
 
-    const { error } = await supabase.from('user_timeblock_settings').insert(rows);
-
-    if (error) {
-      console.error('Error saving timeblock settings:', error);
-      const { toast } = await import('sonner');
-      toast.error('Erro ao salvar rotina: ' + error.message);
+    if (rows.length > 0) {
+      const { error } = await supabase.from('user_timeblock_settings').insert(rows as any);
+      if (error) {
+        const { toast } = await import('sonner');
+        toast.error('Erro ao salvar rotina: ' + error.message);
+      } else {
+        const { toast } = await import('sonner');
+        toast.success('Rotina salva com sucesso!');
+      }
     } else {
       const { toast } = await import('sonner');
-      toast.success('Rotina salva com sucesso!');
+      toast.success('Rotina salva (sem tipos selecionados).');
     }
 
     await fetchSettings(uid);
