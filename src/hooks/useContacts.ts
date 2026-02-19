@@ -413,6 +413,10 @@ export const useContacts = () => {
     let errors = 0;
     let duplicates = 0;
 
+    // Get current user for created_by attribution
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const currentUserId = currentUser?.id || null;
+
     for (const contact of csvData) {
       try {
         // Check for duplicates by phone or email or instagram
@@ -455,6 +459,7 @@ export const useContacts = () => {
             state: contact.state,
             notes: contact.notes,
             tags: contact.tags || [],
+            created_by: currentUserId,
           });
 
         if (error) {
@@ -486,6 +491,10 @@ export const useContacts = () => {
     let duplicates = 0;
     let upgradedToMutual = 0;
     const total = data.length;
+
+    // Get current user for created_by attribution
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    const currentUserId = currentUser?.id || null;
 
     for (let i = 0; i < data.length; i++) {
       const item = data[i];
@@ -587,6 +596,7 @@ export const useContacts = () => {
             classification,
             tags,
             follower_status: followerStatus,
+            created_by: currentUserId,
           });
 
         if (error) {
