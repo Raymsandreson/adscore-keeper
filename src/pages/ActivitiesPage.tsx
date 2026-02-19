@@ -137,6 +137,7 @@ const ActivitiesPage = () => {
   const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
+  const [calendarExpanded, setCalendarExpanded] = useState(true);
   const [leadPreview, setLeadPreview] = useState<{
     case_type?: string | null;
     damage_description?: string | null;
@@ -1193,7 +1194,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
   return (
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
-      {/* WhatsApp-style Header */}
+      {/* Header */}
       <div className={cn("bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20", isEditing && "hidden md:flex")}>
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
@@ -1202,10 +1203,34 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             <span className="bg-primary-foreground/20 rounded-full px-2 py-0.5 font-medium">{stats.done} concluídas</span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setViewMode(viewMode === 'matrix' ? 'list' : 'matrix')} title={viewMode === 'matrix' ? 'Modo lista' : 'Matriz de Eisenhower'}>
-            {viewMode === 'matrix' ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-          </Button>
+        <div className="flex items-center gap-2">
+          {/* View mode toggle - prominent pill */}
+          <div className="flex items-center bg-primary-foreground/15 rounded-full p-0.5 gap-0.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'list'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              Lista
+            </button>
+            <button
+              onClick={() => setViewMode('matrix')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'matrix'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Eisenhower
+            </button>
+          </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
           </Button>
@@ -1617,79 +1642,111 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           viewMode === 'matrix' && !isEditing ? "hidden" : "",
           isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
-          {/* Calendar - always visible, compact */}
+          {/* Calendar - collapsible */}
           <div className="shrink-0 border-b bg-card/50">
-            <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCalendarMonth(prev => subMonths(prev, 1))}>
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-sm font-semibold capitalize">
-                {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
-              </span>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <div className="px-3 pb-2">
-              <div className="grid grid-cols-7 gap-0.5 text-center">
-                {weekDays.map(d => (
-                  <div key={d} className="text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
-                ))}
-                {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
-                  <div key={`pad-${i}`} />
-                ))}
-                {calendarDays.map(day => {
-                  const dateKey = format(day, 'yyyy-MM-dd');
-                  const dayActivities = activitiesByDate[dateKey] || [];
-                  const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
-                  const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
-                  const isSelected = selectedCalDay === dateKey;
-
-                  return (
-                    <button
-                      key={dateKey}
-                      onClick={() => setSelectedCalDay(isSelected ? null : dateKey)}
-                      className={cn(
-                        "relative p-0.5 rounded-md text-xs transition-colors",
-                        isToday(day) && "ring-1.5 ring-primary font-bold",
-                        isSelected && "bg-primary text-primary-foreground",
-                        !isSelected && dayActivities.length > 0 && "bg-muted/60 hover:bg-muted",
-                        !isSelected && dayActivities.length === 0 && "hover:bg-muted/30"
-                      )}
-                    >
-                      <div className="text-center leading-tight">{format(day, 'd')}</div>
-                      {dayActivities.length > 0 && (
-                        <div className="flex justify-center gap-0.5 leading-none">
-                          {openCount > 0 && (
-                            <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-red-500")}>{openCount}</span>
-                          )}
-                          {doneCount > 0 && (
-                            <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-green-500")}>{doneCount}</span>
-                          )}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
+            {/* Calendar header - always visible, clickable to expand/collapse */}
+            <button
+              className="w-full px-3 pt-2 pb-2 flex items-center justify-between hover:bg-muted/30 transition-colors"
+              onClick={() => setCalendarExpanded(prev => !prev)}
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm font-semibold capitalize">
+                  {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+                </span>
+                {selectedCalDay && (
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                    {format(parseISO(selectedCalDay), "dd/MM")}
+                  </Badge>
+                )}
               </div>
-            </div>
-
-            {/* Stats by type - horizontal compact */}
-            <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-none">
-              {ACTIVITY_TYPES.map(t => {
-                const typeActivities = activities.filter(a => a.activity_type === t.value);
-                const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
-                const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
-                if (openCount === 0 && doneCount === 0) return null;
-                return (
-                  <div key={t.value} className="flex items-center gap-1.5 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
-                    <span className="font-medium text-muted-foreground">{t.label}</span>
-                    <span className="text-red-500 font-bold">{openCount}</span>
-                    <span className="text-green-500 font-bold">{doneCount}</span>
+              <div className="flex items-center gap-1">
+                {/* Stats mini preview when collapsed */}
+                {!calendarExpanded && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mr-2">
+                    <span className="text-destructive font-bold">{stats.open}⏳</span>
+                    <span className="text-green-600 font-bold">{stats.done}✓</span>
                   </div>
-                );
-              })}
-            </div>
+                )}
+                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", calendarExpanded && "rotate-90")} />
+              </div>
+            </button>
+
+            {calendarExpanded && (
+              <>
+                <div className="px-3 pb-1 flex items-center justify-between -mt-1">
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setCalendarMonth(prev => subMonths(prev, 1)); }}>
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {format(calendarMonth, 'MMMM yyyy', { locale: ptBR })}
+                  </span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setCalendarMonth(prev => addMonths(prev, 1)); }}>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="px-3 pb-2">
+                  <div className="grid grid-cols-7 gap-0.5 text-center">
+                    {weekDays.map(d => (
+                      <div key={d} className="text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+                    ))}
+                    {Array.from({ length: (calendarDays[0]?.getDay() || 7) - 1 }).map((_, i) => (
+                      <div key={`pad-${i}`} />
+                    ))}
+                    {calendarDays.map(day => {
+                      const dateKey = format(day, 'yyyy-MM-dd');
+                      const dayActivities = activitiesByDate[dateKey] || [];
+                      const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
+                      const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
+                      const isSelected = selectedCalDay === dateKey;
+
+                      return (
+                        <button
+                          key={dateKey}
+                          onClick={() => setSelectedCalDay(isSelected ? null : dateKey)}
+                          className={cn(
+                            "relative p-0.5 rounded-md text-xs transition-colors",
+                            isToday(day) && "ring-1 ring-primary font-bold",
+                            isSelected && "bg-primary text-primary-foreground",
+                            !isSelected && dayActivities.length > 0 && "bg-muted/60 hover:bg-muted",
+                            !isSelected && dayActivities.length === 0 && "hover:bg-muted/30"
+                          )}
+                        >
+                          <div className="text-center leading-tight">{format(day, 'd')}</div>
+                          {dayActivities.length > 0 && (
+                            <div className="flex justify-center gap-0.5 leading-none">
+                              {openCount > 0 && (
+                                <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-destructive")}>{openCount}</span>
+                              )}
+                              {doneCount > 0 && (
+                                <span className={cn("text-[8px] font-bold leading-none", isSelected ? "text-primary-foreground/80" : "text-green-600")}>{doneCount}</span>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Stats by type - horizontal compact */}
+                <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-none">
+                  {ACTIVITY_TYPES.map(t => {
+                    const typeActivities = activities.filter(a => a.activity_type === t.value);
+                    const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
+                    const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
+                    if (openCount === 0 && doneCount === 0) return null;
+                    return (
+                      <div key={t.value} className="flex items-center gap-1.5 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
+                        <span className="font-medium text-muted-foreground">{t.label}</span>
+                        <span className="text-destructive font-bold">{openCount}</span>
+                        <span className="text-green-600 font-bold">{doneCount}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Activity list - scrollable like WhatsApp chat */}
