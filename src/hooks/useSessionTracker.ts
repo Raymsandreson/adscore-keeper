@@ -45,11 +45,12 @@ export function useSessionTracker() {
     } catch (error) {
       console.error('Error starting session:', error);
     }
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // use user.id to avoid recreating on object reference changes
 
   // End current session
   const endSession = useCallback(async (reason: string = 'logout') => {
-    if (!sessionIdRef.current || !user) return;
+    if (!sessionIdRef.current) return;
 
     try {
       const now = new Date();
@@ -84,7 +85,7 @@ export function useSessionTracker() {
     } catch (error) {
       console.error('Error ending session:', error);
     }
-  }, [user]);
+  }, []); // no deps - uses ref which is always current
 
   // Update last activity timestamp
   const updateActivity = useCallback(async () => {
@@ -137,8 +138,6 @@ export function useSessionTracker() {
   useEffect(() => {
     if (!user) return;
 
-    // Throttle: only update DB at most once per 30s on real user interaction
-    let activityThrottleTimer: NodeJS.Timeout | null = null;
     const handleActivity = () => {
       hasRecentActivityRef.current = true;
       lastActivityRef.current = Date.now();
@@ -165,7 +164,6 @@ export function useSessionTracker() {
     heartbeatTimerRef.current = setInterval(() => {
       if (sessionIdRef.current && hasRecentActivityRef.current) {
         hasRecentActivityRef.current = false;
-        // Update last_activity_at in DB without resetting inactivity timer
         supabase
           .from('user_sessions')
           .update({ last_activity_at: new Date().toISOString() })
@@ -174,10 +172,9 @@ export function useSessionTracker() {
       }
     }, HEARTBEAT_INTERVAL);
 
-    // Handle page visibility change (tab switch, minimize)
+    // Handle page visibility change (tab switch, minimize) - no state reset, just mark active
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        // User came back - mark as active
         handleActivity();
       }
     };
@@ -185,8 +182,7 @@ export function useSessionTracker() {
 
     // Handle before unload (closing tab/browser)
     const handleBeforeUnload = () => {
-      if (sessionIdRef.current && user) {
-        // Use sendBeacon for reliable delivery on page close
+      if (sessionIdRef.current) {
         const payload = JSON.stringify({
           session_id: sessionIdRef.current,
           end_reason: 'tab_close',
@@ -221,7 +217,8 @@ export function useSessionTracker() {
       // End session on cleanup
       endSession('logout');
     };
-  }, [user, startSession, endSession, updateActivity]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); // only re-run when user ID changes, not on every render
 
   return {
     sessionId: sessionIdRef.current,
