@@ -1,17 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TimeBlockConfig, getDefaultTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
+
+const DEFAULT_TYPES = ['tarefa','audiencia','prazo','acompanhamento','reuniao','diligencia'];
 
 export function useTimeBlockSettings(targetUserId?: string) {
   const { user } = useAuthContext();
   const [configs, setConfigs] = useState<TimeBlockConfig[]>(getDefaultTimeBlockConfigs());
   const [loading, setLoading] = useState(true);
 
-  // Use targetUserId if provided (admin editing another user), otherwise use own user id
   const effectiveUserId = targetUserId || user?.id;
-  const effectiveUserIdRef = useRef(effectiveUserId);
-  effectiveUserIdRef.current = effectiveUserId;
 
   const fetchSettings = useCallback(async (userId: string) => {
     setLoading(true);
@@ -28,7 +27,7 @@ export function useTimeBlockSettings(targetUserId?: string) {
         days: (row.days as number[]) || [],
         startHour: row.start_hour,
         endHour: row.end_hour,
-        isCustom: !['tarefa','audiencia','prazo','acompanhamento','reuniao','diligencia'].includes(row.activity_type),
+        isCustom: !DEFAULT_TYPES.includes(row.activity_type),
       }));
       setConfigs(loaded);
     } else {
@@ -42,15 +41,14 @@ export function useTimeBlockSettings(targetUserId?: string) {
     fetchSettings(effectiveUserId);
   }, [effectiveUserId, fetchSettings]);
 
-  const saveSettings = useCallback(async (newConfigs: TimeBlockConfig[]) => {
-    const userId = effectiveUserIdRef.current;
-    if (!userId) return;
+  const saveSettings = useCallback(async (newConfigs: TimeBlockConfig[], userId?: string) => {
+    const uid = userId || effectiveUserId;
+    if (!uid) return;
 
-    // Optimistically update UI
     setConfigs(newConfigs);
 
-    const upsertRows = newConfigs.map(c => ({
-      user_id: userId,
+    const rows = newConfigs.map(c => ({
+      user_id: uid,
       activity_type: c.activityType,
       label: c.label,
       color: c.color,
@@ -59,30 +57,16 @@ export function useTimeBlockSettings(targetUserId?: string) {
       end_hour: c.endHour,
     }));
 
-    // First delete all existing rows for this user, then insert fresh
-    const { error: deleteError } = await supabase
-      .from('user_timeblock_settings')
-      .delete()
-      .eq('user_id', userId);
+    await supabase.from('user_timeblock_settings').delete().eq('user_id', uid);
+    const { error } = await supabase.from('user_timeblock_settings').insert(rows);
 
-    if (deleteError) {
-      console.error('Error deleting timeblock settings:', deleteError);
+    if (error) {
+      console.error('Error saving timeblock settings:', error);
     }
 
-    const { error: insertError } = await supabase
-      .from('user_timeblock_settings')
-      .insert(upsertRows);
-
-    if (insertError) {
-      console.error('Error inserting timeblock settings:', insertError);
-      // Refetch to restore correct state
-      await fetchSettings(userId);
-      return;
-    }
-
-    // Refetch to confirm DB state
-    await fetchSettings(userId);
-  }, [fetchSettings]);
+    await fetchSettings(uid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveUserId, fetchSettings]);
 
   return { configs, loading, saveSettings };
 }
