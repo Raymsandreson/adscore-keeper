@@ -22,13 +22,14 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { TimeBlockSettingsDialog, TimeBlockConfig, loadTimeBlockConfigs, saveTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
@@ -138,6 +139,8 @@ const ActivitiesPage = () => {
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
+  const [timeBlockSettings, setTimeBlockSettings] = useState<TimeBlockConfig[]>(() => loadTimeBlockConfigs());
+  const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   const [leadPreview, setLeadPreview] = useState<{
     case_type?: string | null;
     damage_description?: string | null;
@@ -1651,22 +1654,24 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
         {/* === BLOCOS DE TEMPO (AGENDA SEMANAL) === */}
         {viewMode === 'blocks' && !isEditing && (() => {
-          const WEEK_HOURS = Array.from({ length: 11 }, (_, i) => i + 8); // 8h-18h
+          // Derive the hour range from settings
+          const allStartHours = timeBlockSettings.map(c => c.startHour);
+          const allEndHours = timeBlockSettings.map(c => c.endHour);
+          const minHour = Math.min(...allStartHours, 8);
+          const maxHour = Math.max(...allEndHours, 18);
+          const WEEK_HOURS = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour);
           const WEEK_DAYS = [
-            { label: 'SEG', dayIdx: 1 },
-            { label: 'TER', dayIdx: 2 },
-            { label: 'QUA', dayIdx: 3 },
-            { label: 'QUI', dayIdx: 4 },
-            { label: 'SEX', dayIdx: 5 },
+            { label: 'SEG', dayIdx: 0 },
+            { label: 'TER', dayIdx: 1 },
+            { label: 'QUA', dayIdx: 2 },
+            { label: 'QUI', dayIdx: 3 },
+            { label: 'SEX', dayIdx: 4 },
           ];
 
-          // Get the current week's dates
           const today = new Date();
           const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-          const weekDates = WEEK_DAYS.map(d => addDays(weekStart, d.dayIdx - 1));
+          const weekDates = WEEK_DAYS.map(d => addDays(weekStart, d.dayIdx));
 
-          // Group activities by day-of-week (using deadline or notification_date)
-          // Each activity gets slotted into a column (day) and stacked in the grid
           const getActivityDay = (a: LeadActivity) => {
             const dateStr = a.deadline || a.notification_date;
             if (!dateStr) return null;
@@ -1674,25 +1679,33 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           };
 
           // For each day, collect activities by type
-          const byDayAndType = weekDates.map((dayDate) => {
+          const byDayAndType = weekDates.map((dayDate, dayColIdx) => {
             const dayActivities = displayedActivities.filter(a => {
               const d = getActivityDay(a);
               return d && isSameDay(d, dayDate);
             });
+            // Also activities with no date but whose type config includes this day (as "default" slot)
+            const noDateForDay = displayedActivities.filter(a => {
+              if (a.deadline || a.notification_date) return false;
+              const cfg = timeBlockSettings.find(c => c.activityType === a.activity_type);
+              return cfg?.days.includes(dayColIdx) ?? false;
+            });
             const byType = ACTIVITY_TYPES.map(t => ({
               ...t,
               items: dayActivities.filter(a => a.activity_type === t.value),
-            })).filter(t => t.items.length > 0);
-            // Also collect "other" types
+              noDateItems: noDateForDay.filter(a => a.activity_type === t.value),
+            })).filter(t => t.items.length > 0 || t.noDateItems.length > 0);
             const knownTypes = ACTIVITY_TYPES.map(t => t.value);
             const otherItems = dayActivities.filter(a => !knownTypes.includes(a.activity_type));
-            return { dayDate, byType, otherItems, total: dayActivities.length };
+            return { dayDate, byType, otherItems, total: dayActivities.length, dayColIdx };
           });
 
-          // Activities without deadline (unscheduled)
-          const unscheduled = displayedActivities.filter(a => !a.deadline && !a.notification_date);
+          const unscheduled = displayedActivities.filter(a => {
+            if (a.deadline || a.notification_date) return false;
+            const cfg = timeBlockSettings.find(c => c.activityType === a.activity_type);
+            return !cfg || cfg.days.length === 0;
+          });
 
-          // Type summary for left panel
           const typeSummary = ACTIVITY_TYPES.map(t => ({
             ...t,
             total: displayedActivities.filter(a => a.activity_type === t.value).length,
@@ -1703,8 +1716,42 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             <div className="flex flex-1 overflow-hidden h-full">
               {/* LEFT: Type legend panel */}
               <div className="w-[200px] shrink-0 border-r bg-card/50 flex flex-col overflow-y-auto">
-                <div className="px-3 py-2 border-b">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">TIPO DE ATIVIDADE</p>
+                <div className="px-3 py-2 border-b flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">TIPO</p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setTimeBlockSettingsOpen(true)}
+                    title="Configurar distribuição dos blocos"
+                  >
+                    <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </div>
+                {/* Schedule preview per type */}
+                <div className="px-3 py-2 border-b space-y-1.5">
+                  {timeBlockSettings.filter(c => c.days.length > 0).map(cfg => {
+                    const daysLabels = ['S','T','Q','Q','S'];
+                    return (
+                      <div key={cfg.activityType} className="text-[10px]">
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className={cn('h-2 w-2 rounded-full shrink-0', cfg.color)} />
+                          <span className="font-semibold text-muted-foreground truncate">{cfg.label}</span>
+                        </div>
+                        <div className="flex items-center gap-0.5 ml-3">
+                          {[0,1,2,3,4].map(d => (
+                            <span key={d} className={cn(
+                              'h-4 w-4 rounded text-[8px] flex items-center justify-center font-bold',
+                              cfg.days.includes(d) ? `${cfg.color} text-white` : 'bg-muted/30 text-muted-foreground/40'
+                            )}>
+                              {daysLabels[d]}
+                            </span>
+                          ))}
+                          <span className="ml-1 text-muted-foreground/60">{cfg.startHour}h-{cfg.endHour}h</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="flex-1 divide-y">
                   {typeSummary.map(t => (
@@ -1729,7 +1776,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               <div className="flex-1 overflow-auto">
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex">
-                  <div className="w-10 shrink-0" /> {/* hour gutter */}
+                  <div className="w-10 shrink-0" />
                   {byDayAndType.map(({ dayDate }, i) => (
                     <div key={i} className={cn(
                       'flex-1 text-center py-2 border-l text-xs font-bold uppercase tracking-wider',
@@ -1743,78 +1790,117 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
                 {/* Time grid */}
                 <div className="relative">
-                  {WEEK_HOURS.map((hour) => (
-                    <div key={hour} className="flex border-b min-h-[80px]">
-                      {/* Hour label */}
-                      <div className="w-10 shrink-0 text-[10px] text-muted-foreground pt-1 pl-1 font-medium">{hour}h</div>
-                      {/* Day cells */}
-                      {byDayAndType.map(({ dayDate, byType, otherItems }, dayIdx) => {
-                        // Activities in this hour slot: check if deadline hour matches
-                        const cellActivities: { typeConfig: typeof ACTIVITY_TYPES[0] | null; items: LeadActivity[] }[] = [];
+                  {WEEK_HOURS.map((hour) => {
+                    const hourActiveTypes = timeBlockSettings.filter(
+                      cfg => hour >= cfg.startHour && hour < cfg.endHour
+                    );
+                    const isConfiguredHour = hourActiveTypes.length > 0;
 
-                        byType.forEach(t => {
-                          const hourItems = t.items.filter(a => {
+                    return (
+                      <div
+                        key={hour}
+                        className={cn('flex border-b', isConfiguredHour ? 'min-h-[72px]' : 'min-h-[36px] opacity-60')}
+                      >
+                        {/* Hour label with type color indicators */}
+                        <div className={cn(
+                          'w-10 shrink-0 text-[10px] text-muted-foreground pt-1 pl-1 font-medium flex flex-col',
+                          isConfiguredHour && 'font-bold'
+                        )}>
+                          {hour}h
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            {hourActiveTypes.map(cfg => (
+                              <span key={cfg.activityType} className={cn('h-1 w-6 rounded-full', cfg.color)} title={cfg.label} />
+                            ))}
+                          </div>
+                        </div>
+                        {/* Day cells */}
+                        {byDayAndType.map(({ dayDate, byType, otherItems, dayColIdx }) => {
+                          const cellActivities: { typeConfig: typeof ACTIVITY_TYPES[0] | null; items: LeadActivity[]; isDefault: boolean }[] = [];
+
+                          byType.forEach(t => {
+                            const cfg = timeBlockSettings.find(c => c.activityType === t.value);
+                            const hourItems = t.items.filter(a => {
+                              const dateStr = a.deadline || a.notification_date;
+                              if (!dateStr) return false;
+                              try {
+                                const d = parseISO(dateStr);
+                                const hasTime = dateStr.includes('T') || dateStr.length > 10;
+                                if (hasTime) return d.getHours() === hour;
+                                return cfg ? hour === cfg.startHour : hour === 8;
+                              } catch { return false; }
+                            });
+                            const noDateInSlot = (t.noDateItems || []).filter(() =>
+                              cfg ? hour === cfg.startHour : hour === 8
+                            );
+                            if (hourItems.length > 0 || noDateInSlot.length > 0) {
+                              cellActivities.push({ typeConfig: t, items: [...hourItems, ...noDateInSlot], isDefault: noDateInSlot.length > 0 && hourItems.length === 0 });
+                            }
+                          });
+
+                          const otherHourItems = otherItems.filter(a => {
                             const dateStr = a.deadline || a.notification_date;
                             if (!dateStr) return false;
                             try {
                               const d = parseISO(dateStr);
-                              // If time info available, use hour; otherwise distribute by index
                               const hasTime = dateStr.includes('T') || dateStr.length > 10;
-                              if (hasTime) return d.getHours() === hour;
-                              // No time: distribute evenly across hours based on type order
-                              const typeIdx = ACTIVITY_TYPES.findIndex(at => at.value === t.value);
-                              const assignedHour = 8 + (typeIdx % 11);
-                              return assignedHour === hour;
+                              return hasTime ? d.getHours() === hour : hour === 8;
                             } catch { return false; }
                           });
-                          if (hourItems.length > 0) cellActivities.push({ typeConfig: t, items: hourItems });
-                        });
+                          if (otherHourItems.length > 0) cellActivities.push({ typeConfig: null, items: otherHourItems, isDefault: false });
 
-                        // Other items
-                        const otherHourItems = otherItems.filter(a => {
-                          const dateStr = a.deadline || a.notification_date;
-                          if (!dateStr) return false;
-                          try {
-                            const d = parseISO(dateStr);
-                            const hasTime = dateStr.includes('T') || dateStr.length > 10;
-                            return hasTime ? d.getHours() === hour : hour === 8;
-                          } catch { return false; }
-                        });
-                        if (otherHourItems.length > 0) cellActivities.push({ typeConfig: null, items: otherHourItems });
+                          const slotCfgs = timeBlockSettings.filter(cfg =>
+                            cfg.days.includes(dayColIdx) && hour >= cfg.startHour && hour < cfg.endHour
+                          );
+                          const hasConfiguredSlot = slotCfgs.length > 0;
 
-                        return (
-                          <div
-                            key={dayIdx}
-                            className={cn(
-                              'flex-1 border-l p-1 flex flex-col gap-1',
-                              isSameDay(dayDate, today) && 'bg-primary/5'
-                            )}
-                          >
-                            {cellActivities.map((cell, ci) => {
-                              const tc = cell.typeConfig || { header: 'bg-muted-foreground', dot: 'bg-muted-foreground', label: 'Outro', value: 'outro', bg: '', border: '' };
-                              return (
-                                <div
-                                  key={ci}
-                                  className={cn(
-                                    'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
-                                    tc.header
-                                  )}
-                                  onClick={() => handleOpenEdit(cell.items[0])}
-                                  title={cell.items.map(a => a.title).join('\n')}
-                                >
-                                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
-                                  <div className="text-sm font-bold leading-none">{cell.items.length}</div>
-                                  {cell.items.length === 1 && (
-                                    <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
-                                  )}
+                          return (
+                            <div
+                              key={dayColIdx}
+                              className={cn(
+                                'flex-1 border-l p-1 flex flex-col gap-1 transition-colors',
+                                isSameDay(dayDate, today) && 'bg-primary/5',
+                                hasConfiguredSlot && !isSameDay(dayDate, today) && 'bg-muted/10',
+                              )}
+                            >
+                              {cellActivities.length === 0 && hasConfiguredSlot && (
+                                <div className="flex flex-wrap gap-0.5">
+                                  {slotCfgs.map(cfg => (
+                                    <span
+                                      key={cfg.activityType}
+                                      className={cn('opacity-20 rounded px-1 text-[8px] font-bold text-white', cfg.color)}
+                                    >
+                                      {cfg.label.slice(0, 3)}
+                                    </span>
+                                  ))}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
+                              )}
+                              {cellActivities.map((cell, ci) => {
+                                const tc = cell.typeConfig || { header: 'bg-muted-foreground', dot: 'bg-muted-foreground', label: 'Outro', value: 'outro', bg: '', border: '' };
+                                return (
+                                  <div
+                                    key={ci}
+                                    className={cn(
+                                      'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
+                                      tc.header,
+                                      cell.isDefault && 'opacity-60 border-2 border-dashed border-white/40'
+                                    )}
+                                    onClick={() => handleOpenEdit(cell.items[0])}
+                                    title={cell.items.map(a => a.title).join('\n')}
+                                  >
+                                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
+                                    <div className="text-sm font-bold leading-none">{cell.items.length}</div>
+                                    {cell.items.length === 1 && (
+                                      <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Unscheduled activities */}
@@ -2272,6 +2358,16 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           if (suggestion.current_status_notes) setFormCurrentStatus(suggestion.current_status_notes);
           if (suggestion.next_steps) setFormNextSteps(suggestion.next_steps);
           if (suggestion.notes) setFormNotes(suggestion.notes);
+        }}
+      />
+
+      <TimeBlockSettingsDialog
+        open={timeBlockSettingsOpen}
+        onOpenChange={setTimeBlockSettingsOpen}
+        configs={timeBlockSettings}
+        onSave={(configs) => {
+          setTimeBlockSettings(configs);
+          saveTimeBlockConfigs(configs);
         }}
       />
     </div>
