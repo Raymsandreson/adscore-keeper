@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { usePageState } from "@/hooks/usePageState";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -130,8 +131,8 @@ export default function FinancePage() {
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
-  const [activeTab, setActiveTab] = useState("workflow");
-  const [financialSection, setFinancialSection] = useState("credit-card");
+  const [activeTab, setActiveTab] = usePageState<string>('finance_activeTab', 'workflow');
+  const [financialSection, setFinancialSection] = usePageState<string>('finance_section', 'credit-card');
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");

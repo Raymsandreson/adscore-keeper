@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -88,11 +89,11 @@ const ActivitiesPage = () => {
   const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
-  const [filterStatus, setFilterStatus] = useState<string[]>([]);
-  const [filterType, setFilterType] = useState<string[]>([]);
-  const [filterAssignee, setFilterAssignee] = useState<string[]>(() => user?.id ? [user.id] : []);
-  const [filterLead, setFilterLead] = useState<string[]>([]);
-  const [filterContact, setFilterContact] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
+  const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
+  const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id] : []);
+  const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
+  const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
@@ -136,7 +137,7 @@ const ActivitiesPage = () => {
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
-  const [viewMode, setViewMode] = useState<'list' | 'matrix' | 'blocks'>('list');
+  const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
