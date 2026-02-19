@@ -20,6 +20,7 @@ const WEEK_DAYS = [
 function MemberRoutineView({ userId, memberName }: { userId: string; memberName: string }) {
   const { configs, loading, saveSettings } = useTimeBlockSettings(userId);
   const [editOpen, setEditOpen] = useState(false);
+  const handleSave = (newConfigs: Parameters<typeof saveSettings>[0]) => saveSettings(newConfigs, userId);
 
   if (loading) {
     return (
@@ -85,7 +86,7 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         open={editOpen}
         onOpenChange={setEditOpen}
         configs={configs}
-        onSave={saveSettings}
+        onSave={handleSave}
       />
     </div>
   );
