@@ -92,6 +92,20 @@ const DEFAULT_TIERS: CommissionTier[] = [
 
 const emptyGoalValues = { target_replies: 20, target_dms: 10, target_leads: 5, target_session_minutes: 60, target_contacts: 5, target_calls: 10, target_activities: 5, target_stage_changes: 10, target_leads_closed: 2, target_checklist_items: 10 };
 
+// Migrate old format { board_id: number } to new format { board_id: { target, period } }
+const migrateClosedByBoard = (data: any): Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> => {
+  if (!data || typeof data !== 'object') return {};
+  const result: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> = {};
+  Object.entries(data).forEach(([key, value]) => {
+    if (typeof value === 'number') {
+      result[key] = { target: value, period: 'daily' };
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = value as any;
+    }
+  });
+  return result;
+};
+
 export function CommissionGoals() {
   const [goals, setGoals] = useState<CommissionGoal[]>([]);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
@@ -114,12 +128,12 @@ export function CommissionGoals() {
   const defaultGoals = defaultGoalsMap[selectedDefaultBoard] || { ...emptyGoalValues };
 
   // Per-user daily goals state
-  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, number> }>>({});
+  const [userDailyGoals, setUserDailyGoals] = useState<Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }>>({});
   const [userGoalsDialogOpen, setUserGoalsDialogOpen] = useState(false);
   const [selectedUserForGoals, setSelectedUserForGoals] = useState('');
   const [editingUserGoals, setEditingUserGoals] = useState<typeof emptyGoalValues>({ ...emptyGoalValues });
   const [editingTargetDays, setEditingTargetDays] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [editingClosedByBoard, setEditingClosedByBoard] = useState<Record<string, number>>({});
+  const [editingClosedByBoard, setEditingClosedByBoard] = useState<Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }>>({});
   const [savingUserGoals, setSavingUserGoals] = useState(false);
 
   // Form state
@@ -230,7 +244,7 @@ export function CommissionGoals() {
   useEffect(() => {
     supabase.from('user_daily_goal_defaults').select('*').then(({ data }) => {
       if (data && data.length > 0) {
-        const map: Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, number> }> = {};
+        const map: Record<string, typeof emptyGoalValues & { target_days?: number[]; target_closed_by_board?: Record<string, { target: number; period: string; custom_start?: string; custom_end?: string }> }> = {};
         data.forEach((d: any) => {
           map[d.user_id] = {
             target_replies: d.target_replies,
@@ -244,7 +258,7 @@ export function CommissionGoals() {
             target_leads_closed: d.target_leads_closed ?? 2,
             target_checklist_items: d.target_checklist_items ?? 10,
             target_days: d.target_days ?? [1, 2, 3, 4, 5],
-            target_closed_by_board: d.target_closed_by_board ?? {},
+            target_closed_by_board: d.target_closed_by_board ? migrateClosedByBoard(d.target_closed_by_board) : {},
           };
         });
         setUserDailyGoals(map);
@@ -350,7 +364,7 @@ export function CommissionGoals() {
         await supabase.from('user_daily_goal_defaults').insert(payload);
       }
       
-      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard } }));
+      setUserDailyGoals(prev => ({ ...prev, [selectedUserForGoals]: { ...editingUserGoals, target_days: editingTargetDays, target_closed_by_board: editingClosedByBoard } as any }));
       toast.success('Metas diárias do usuário salvas!');
       setUserGoalsDialogOpen(false);
     } catch (err) {
@@ -365,7 +379,7 @@ export function CommissionGoals() {
     const existing = userDailyGoals[userId];
     setEditingUserGoals(existing ? { target_replies: existing.target_replies, target_dms: existing.target_dms, target_leads: existing.target_leads, target_session_minutes: existing.target_session_minutes, target_contacts: existing.target_contacts, target_calls: existing.target_calls, target_activities: existing.target_activities, target_stage_changes: existing.target_stage_changes, target_leads_closed: existing.target_leads_closed, target_checklist_items: existing.target_checklist_items } : { ...emptyGoalValues });
     setEditingTargetDays(existing?.target_days ?? [1, 2, 3, 4, 5]);
-    setEditingClosedByBoard(existing?.target_closed_by_board ?? {});
+    setEditingClosedByBoard(existing?.target_closed_by_board ? migrateClosedByBoard(existing.target_closed_by_board) : {});
     setUserGoalsDialogOpen(true);
   };
 
@@ -1344,35 +1358,76 @@ export function CommissionGoals() {
                 <Input type="number" min={0} value={editingUserGoals.target_stage_changes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Fechados / dia (geral)</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_leads_closed} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_leads_closed: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-xs">Passos / dia</Label>
                 <Input type="number" min={0} value={editingUserGoals.target_checklist_items} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
               </div>
             </div>
-            {/* Per-board closing targets */}
+            {/* Per-board closing targets with period selector */}
             {boards.length > 0 && (
-              <div className="space-y-2 border-t pt-3">
-                <Label className="text-xs font-medium">Fechamentos por funil / dia</Label>
-                <p className="text-[10px] text-muted-foreground">Defina a meta mínima de fechamentos diários para cada funil. Deixe 0 para ignorar.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {boards.map(board => (
-                    <div key={board.id} className="space-y-1">
-                      <Label className="text-[10px] flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: board.color || 'hsl(var(--primary))' }} />
-                        {board.name}
-                      </Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        className="h-8 text-sm"
-                        value={editingClosedByBoard[board.id] ?? 0}
-                        onChange={e => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: Number(e.target.value) || 0 }))}
-                      />
-                    </div>
-                  ))}
+              <div className="space-y-3 border-t pt-3">
+                <Label className="text-xs font-medium">Fechamentos por funil</Label>
+                <p className="text-[10px] text-muted-foreground">Defina a meta de fechamentos e o período para cada funil. Deixe 0 para ignorar.</p>
+                <div className="space-y-3">
+                  {boards.map(board => {
+                    const boardConfig = editingClosedByBoard[board.id] || { target: 0, period: 'daily' };
+                    return (
+                      <div key={board.id} className="space-y-1.5 p-2 rounded-md border bg-muted/30">
+                        <Label className="text-[10px] flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: board.color || 'hsl(var(--primary))' }} />
+                          {board.name}
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Meta</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="h-8 text-sm"
+                              value={boardConfig.target}
+                              onChange={e => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id] || { period: 'daily' }, target: Number(e.target.value) || 0 } }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground">Período</Label>
+                            <Select
+                              value={boardConfig.period}
+                              onValueChange={v => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id] || { target: 0 }, period: v } }))}
+                            >
+                              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">Diário</SelectItem>
+                                <SelectItem value="weekly">Semanal</SelectItem>
+                                <SelectItem value="monthly">Mensal</SelectItem>
+                                <SelectItem value="custom">Personalizado</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        {boardConfig.period === 'custom' && (
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Início</Label>
+                              <Input
+                                type="date"
+                                className="h-8 text-sm"
+                                value={boardConfig.custom_start || ''}
+                                onChange={e => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id], custom_start: e.target.value } }))}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-muted-foreground">Fim</Label>
+                              <Input
+                                type="date"
+                                className="h-8 text-sm"
+                                value={boardConfig.custom_end || ''}
+                                onChange={e => setEditingClosedByBoard(prev => ({ ...prev, [board.id]: { ...prev[board.id], custom_end: e.target.value } }))}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
