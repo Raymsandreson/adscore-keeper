@@ -113,7 +113,8 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
           .gte('created_at', startDate).lte('created_at', endDate)
           .order('created_at', { ascending: false }),
         supabase.from('lead_stage_history')
-          .select('id, lead_id, from_stage, to_stage, changed_at')
+          .select('id, lead_id, from_stage, to_stage, changed_at, changed_by')
+          .eq('changed_by', userId)
           .gte('changed_at', startDate).lte('changed_at', endDate)
           .order('changed_at', { ascending: false })
           .limit(50),
@@ -161,22 +162,41 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
         entityId: l.id,
       })));
 
-      setClosedCases(allLeads.filter(l => ['converted', 'won', 'closed', 'fechado', 'done'].includes(l.status || '')).map(l => ({
-        id: l.id,
-        time: format(new Date(l.created_at), "HH:mm", { locale: ptBR }),
-        description: l.lead_name || 'Sem nome',
-        extra: l.status || '',
+      // Closed and refused from stage history (not lead status)
+      const CLOSED_STAGES = ['closed', 'fechado', 'done'];
+      const REFUSED_STAGES = ['recusado', 'refused', 'lost', 'not_qualified'];
+      const allStages = stageRes.data || [];
+
+      // Fetch lead names for closed/refused stages
+      const closedStageEntries = allStages.filter(s => CLOSED_STAGES.includes(s.to_stage || ''));
+      const refusedStageEntries = allStages.filter(s => REFUSED_STAGES.includes(s.to_stage || ''));
+
+      const closedLeadIds = closedStageEntries.map(s => s.lead_id).filter(Boolean);
+      const refusedLeadIds = refusedStageEntries.map(s => s.lead_id).filter(Boolean);
+      const allNeededIds = [...new Set([...closedLeadIds, ...refusedLeadIds])];
+
+      let leadNameMap = new Map<string, string>();
+      if (allNeededIds.length > 0) {
+        const { data: leadNames } = await supabase.from('leads').select('id, lead_name').in('id', allNeededIds);
+        (leadNames || []).forEach(l => leadNameMap.set(l.id, l.lead_name || 'Sem nome'));
+      }
+
+      setClosedCases(closedStageEntries.map(s => ({
+        id: s.id,
+        time: format(new Date(s.changed_at), "HH:mm", { locale: ptBR }),
+        description: leadNameMap.get(s.lead_id) || 'Sem nome',
+        extra: s.to_stage || '',
         entityType: 'lead' as EntityNav,
-        entityId: l.id,
+        entityId: s.lead_id,
       })));
 
-      setRefusedCases(allLeads.filter(l => ['recusado', 'refused', 'lost'].includes(l.status || '')).map(l => ({
-        id: l.id,
-        time: format(new Date(l.created_at), "HH:mm", { locale: ptBR }),
-        description: l.lead_name || 'Sem nome',
-        extra: l.status || '',
+      setRefusedCases(refusedStageEntries.map(s => ({
+        id: s.id,
+        time: format(new Date(s.changed_at), "HH:mm", { locale: ptBR }),
+        description: leadNameMap.get(s.lead_id) || 'Sem nome',
+        extra: s.to_stage || '',
         entityType: 'lead' as EntityNav,
-        entityId: l.id,
+        entityId: s.lead_id,
       })));
 
       setCalls((callsRes.data || []).map(c => ({
