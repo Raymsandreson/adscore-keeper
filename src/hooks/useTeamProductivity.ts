@@ -231,9 +231,16 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       leads.forEach(l => {
         if (l.created_by) {
           getUser(l.created_by).leadsCreated++;
-          if (l.status === 'converted' || l.status === 'won' || l.status === 'closed') {
-            getUser(l.created_by).leadsClosed++;
-          }
+        }
+      });
+
+      // Count leads closed per user - use stage history to detect closed stages
+      const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
+      stageHistory.forEach(s => {
+        const changedBy = (s as any).changed_by;
+        const toStage = (s as any).to_stage;
+        if (changedBy && toStage && CLOSED_STAGE_IDS.includes(toStage)) {
+          getUser(changedBy).leadsClosed++;
         }
       });
 
@@ -317,7 +324,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         totalCommentReplies: replies.length,
         totalStageChanges: stageHistory.length,
         totalFollowups: followups.length,
-        totalLeadsClosed: leads.filter(l => l.status === 'converted' || l.status === 'won' || l.status === 'closed').length,
+        totalLeadsClosed: stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length,
         totalPageVisits: activities.filter(a => a.action_type === 'page_visit').length,
         totalCallsMade: catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length,
         totalChecklistItems: activities.filter(a => a.action_type === 'checklist_item_checked').length,
