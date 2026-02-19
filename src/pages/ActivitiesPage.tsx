@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
@@ -33,6 +33,7 @@ import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -85,6 +86,7 @@ interface TeamMember {
 
 const ActivitiesPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
@@ -403,6 +405,21 @@ const ActivitiesPage = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activities, selectedActivityId]);
+
+  // Handle URL param to auto-open an activity
+  useEffect(() => {
+    const openActivityId = searchParams.get('openActivity');
+    if (openActivityId && activities.length > 0) {
+      const activity = activities.find(a => a.id === openActivityId);
+      if (activity) {
+        handleOpenEdit(activity);
+      }
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('openActivity');
+      setSearchParams(newParams, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities.length, searchParams]);
 
   const handleUpdate = async () => {
     if (!selectedActivity) return;
@@ -2193,8 +2210,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 </div>
               ) : (
                 displayedActivities.map(activity => (
+                  <ContextMenu key={activity.id}>
+                    <ContextMenuTrigger asChild>
                   <div
-                    key={activity.id}
                     className={cn(
                       "bg-card rounded-lg shadow-sm border border-border/50 p-3 cursor-pointer transition-all hover:shadow-md active:scale-[0.99]",
                       selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30"
@@ -2258,6 +2276,18 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       <span>{format(parseISO(activity.created_at), "dd/MM 'às' HH:mm")}</span>
                     </div>
                   </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={() => {
+                          window.open(`${window.location.origin}/?openActivity=${activity.id}`, '_blank');
+                        }}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                        Abrir em nova aba
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 ))
               )}
             </div>
