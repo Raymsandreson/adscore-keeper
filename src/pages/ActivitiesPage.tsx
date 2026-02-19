@@ -1649,140 +1649,203 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         )}
 
 
-        {/* === BLOCOS POR NATUREZA VIEW === */}
-        {viewMode === 'blocks' && !isEditing && (
-          <div className="flex-1 overflow-auto p-3">
-            {/* Legend / summary row */}
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Natureza das Atividades</span>
-              {ACTIVITY_TYPES.map(t => {
-                const count = displayedActivities.filter(a => a.activity_type === t.value).length;
-                if (count === 0) return null;
-                return (
-                  <div key={t.value} className="flex items-center gap-1 text-xs bg-muted/40 rounded-full px-2 py-0.5">
-                    <span className={cn("h-2 w-2 rounded-full inline-block", t.dot)} />
-                    <span className="font-medium">{t.label}</span>
-                    <span className="text-muted-foreground">{count}</span>
-                  </div>
-                );
-              })}
-              {displayedActivities.filter(a => !ACTIVITY_TYPES.find(t => t.value === a.activity_type)).length > 0 && (
-                <div className="flex items-center gap-1 text-xs bg-muted/40 rounded-full px-2 py-0.5">
-                  <span className="h-2 w-2 rounded-full inline-block bg-muted-foreground" />
-                  <span className="font-medium">Outros</span>
-                  <span className="text-muted-foreground">{displayedActivities.filter(a => !ACTIVITY_TYPES.find(t => t.value === a.activity_type)).length}</span>
+        {/* === BLOCOS DE TEMPO (AGENDA SEMANAL) === */}
+        {viewMode === 'blocks' && !isEditing && (() => {
+          const WEEK_HOURS = Array.from({ length: 11 }, (_, i) => i + 8); // 8h-18h
+          const WEEK_DAYS = [
+            { label: 'SEG', dayIdx: 1 },
+            { label: 'TER', dayIdx: 2 },
+            { label: 'QUA', dayIdx: 3 },
+            { label: 'QUI', dayIdx: 4 },
+            { label: 'SEX', dayIdx: 5 },
+          ];
+
+          // Get the current week's dates
+          const today = new Date();
+          const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+          const weekDates = WEEK_DAYS.map(d => addDays(weekStart, d.dayIdx - 1));
+
+          // Group activities by day-of-week (using deadline or notification_date)
+          // Each activity gets slotted into a column (day) and stacked in the grid
+          const getActivityDay = (a: LeadActivity) => {
+            const dateStr = a.deadline || a.notification_date;
+            if (!dateStr) return null;
+            try { return parseISO(dateStr); } catch { return null; }
+          };
+
+          // For each day, collect activities by type
+          const byDayAndType = weekDates.map((dayDate) => {
+            const dayActivities = displayedActivities.filter(a => {
+              const d = getActivityDay(a);
+              return d && isSameDay(d, dayDate);
+            });
+            const byType = ACTIVITY_TYPES.map(t => ({
+              ...t,
+              items: dayActivities.filter(a => a.activity_type === t.value),
+            })).filter(t => t.items.length > 0);
+            // Also collect "other" types
+            const knownTypes = ACTIVITY_TYPES.map(t => t.value);
+            const otherItems = dayActivities.filter(a => !knownTypes.includes(a.activity_type));
+            return { dayDate, byType, otherItems, total: dayActivities.length };
+          });
+
+          // Activities without deadline (unscheduled)
+          const unscheduled = displayedActivities.filter(a => !a.deadline && !a.notification_date);
+
+          // Type summary for left panel
+          const typeSummary = ACTIVITY_TYPES.map(t => ({
+            ...t,
+            total: displayedActivities.filter(a => a.activity_type === t.value).length,
+            open: displayedActivities.filter(a => a.activity_type === t.value && a.status !== 'concluida').length,
+          }));
+
+          return (
+            <div className="flex flex-1 overflow-hidden h-full">
+              {/* LEFT: Type legend panel */}
+              <div className="w-[200px] shrink-0 border-r bg-card/50 flex flex-col overflow-y-auto">
+                <div className="px-3 py-2 border-b">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">TIPO DE ATIVIDADE</p>
                 </div>
-              )}
-            </div>
-
-            {/* Columns by type */}
-            <div className="flex gap-3 overflow-x-auto pb-3 items-start min-h-[calc(100vh-240px)]">
-              {ACTIVITY_TYPES.map(typeConfig => {
-                const typeActivities = displayedActivities.filter(a => a.activity_type === typeConfig.value);
-                const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
-                const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
-
-                return (
-                  <div
-                    key={typeConfig.value}
-                    className={cn(
-                      'flex flex-col rounded-xl border-2 shrink-0 overflow-hidden transition-all',
-                      'w-[220px] min-h-[120px]',
-                      typeConfig.bg, typeConfig.border
-                    )}
-                  >
-                    {/* Column Header */}
-                    <div className={cn('px-3 py-2.5 text-white flex items-center justify-between', typeConfig.header)}>
-                      <div>
-                        <div className="font-bold text-sm leading-tight">{typeConfig.label}</div>
-                        <div className="text-[10px] opacity-80 mt-0.5 flex gap-1.5">
-                          <span>{openCount} abertas</span>
-                          {doneCount > 0 && <span>· {doneCount} concluídas</span>}
-                        </div>
-                      </div>
-                      <div className="bg-white/25 rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold shrink-0">
-                        {typeActivities.length}
+                <div className="flex-1 divide-y">
+                  {typeSummary.map(t => (
+                    <div key={t.value} className={cn('flex items-center gap-2 px-3 py-2.5', t.bg)}>
+                      <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.dot)} />
+                      <span className="text-xs font-semibold flex-1 truncate uppercase">{t.label}</span>
+                      <div className="text-right text-[10px] text-muted-foreground shrink-0">
+                        <span className="font-bold text-foreground">{t.open}</span>
+                        <span className="opacity-60">/{t.total}</span>
                       </div>
                     </div>
+                  ))}
+                  <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/20">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/50" />
+                    <span className="text-xs font-bold flex-1 uppercase">TOTAL</span>
+                    <span className="text-xs font-bold text-foreground">{displayedActivities.filter(a=>a.status!=='concluida').length}/{displayedActivities.length}</span>
+                  </div>
+                </div>
+              </div>
 
-                    {/* Cards */}
-                    <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[calc(100vh-280px)]">
-                      {typeActivities.length === 0 && (
-                        <div className="flex items-center justify-center py-8 text-muted-foreground text-xs opacity-40">
-                          Nenhuma atividade
-                        </div>
-                      )}
-                      {typeActivities.map(activity => (
-                        <div
-                          key={activity.id}
-                          className={cn(
-                            'bg-card rounded-lg border border-border/50 p-2.5 cursor-pointer shadow-sm hover:shadow-md transition-all active:scale-[0.98]',
-                            activity.status === 'concluida' && 'opacity-60',
-                            selectedActivity?.id === activity.id && 'ring-2 ring-primary'
-                          )}
-                          onClick={() => handleOpenEdit(activity)}
-                        >
-                          {/* Status + priority */}
-                          <div className="flex items-center gap-1 mb-1.5 flex-wrap">
-                            <Badge className={cn("text-[9px] px-1.5 py-0 h-4", statusColors[activity.status] || 'bg-muted')}>
-                              {STATUS_OPTIONS.find(s => s.value === activity.status)?.label || activity.status}
-                            </Badge>
-                            {activity.priority && activity.priority !== 'normal' && (
-                              <Badge className={cn("text-[9px] px-1.5 py-0 h-4", priorityColors[activity.priority] || '')}>
-                                {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
-                              </Badge>
+              {/* RIGHT: Weekly grid */}
+              <div className="flex-1 overflow-auto">
+                {/* Day headers */}
+                <div className="sticky top-0 z-10 bg-card border-b flex">
+                  <div className="w-10 shrink-0" /> {/* hour gutter */}
+                  {byDayAndType.map(({ dayDate }, i) => (
+                    <div key={i} className={cn(
+                      'flex-1 text-center py-2 border-l text-xs font-bold uppercase tracking-wider',
+                      isSameDay(dayDate, today) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                    )}>
+                      {WEEK_DAYS[i].label}
+                      <div className="text-[10px] font-normal opacity-70">{format(dayDate, 'dd/MM')}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Time grid */}
+                <div className="relative">
+                  {WEEK_HOURS.map((hour) => (
+                    <div key={hour} className="flex border-b min-h-[80px]">
+                      {/* Hour label */}
+                      <div className="w-10 shrink-0 text-[10px] text-muted-foreground pt-1 pl-1 font-medium">{hour}h</div>
+                      {/* Day cells */}
+                      {byDayAndType.map(({ dayDate, byType, otherItems }, dayIdx) => {
+                        // Activities in this hour slot: check if deadline hour matches
+                        const cellActivities: { typeConfig: typeof ACTIVITY_TYPES[0] | null; items: LeadActivity[] }[] = [];
+
+                        byType.forEach(t => {
+                          const hourItems = t.items.filter(a => {
+                            const dateStr = a.deadline || a.notification_date;
+                            if (!dateStr) return false;
+                            try {
+                              const d = parseISO(dateStr);
+                              // If time info available, use hour; otherwise distribute by index
+                              const hasTime = dateStr.includes('T') || dateStr.length > 10;
+                              if (hasTime) return d.getHours() === hour;
+                              // No time: distribute evenly across hours based on type order
+                              const typeIdx = ACTIVITY_TYPES.findIndex(at => at.value === t.value);
+                              const assignedHour = 8 + (typeIdx % 11);
+                              return assignedHour === hour;
+                            } catch { return false; }
+                          });
+                          if (hourItems.length > 0) cellActivities.push({ typeConfig: t, items: hourItems });
+                        });
+
+                        // Other items
+                        const otherHourItems = otherItems.filter(a => {
+                          const dateStr = a.deadline || a.notification_date;
+                          if (!dateStr) return false;
+                          try {
+                            const d = parseISO(dateStr);
+                            const hasTime = dateStr.includes('T') || dateStr.length > 10;
+                            return hasTime ? d.getHours() === hour : hour === 8;
+                          } catch { return false; }
+                        });
+                        if (otherHourItems.length > 0) cellActivities.push({ typeConfig: null, items: otherHourItems });
+
+                        return (
+                          <div
+                            key={dayIdx}
+                            className={cn(
+                              'flex-1 border-l p-1 flex flex-col gap-1',
+                              isSameDay(dayDate, today) && 'bg-primary/5'
                             )}
-                          </div>
-
-                          {/* Title */}
-                          <p className={cn("text-xs font-semibold leading-snug", activity.status === 'concluida' && 'line-through')}>{activity.title}</p>
-
-                          {/* Lead */}
-                          {activity.lead_name && (
-                            <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {activity.lead_name}</p>
-                          )}
-
-                          {/* Footer */}
-                          <div className="flex items-center justify-between mt-2 gap-1">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {activity.deadline && (
-                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
-                                  <Calendar className="h-2.5 w-2.5" />
-                                  {format(parseISO(activity.deadline), 'dd/MM')}
-                                </span>
-                              )}
-                              {activity.assigned_to_name && (
-                                <span className="text-[9px] text-muted-foreground truncate max-w-[80px]">• {activity.assigned_to_name.split(' ')[0]}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              {activity.status !== 'concluida' && (
-                                <button
-                                  className="text-green-600 hover:text-green-700 p-0.5 rounded"
-                                  onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
-                                  title="Concluir"
+                          >
+                            {cellActivities.map((cell, ci) => {
+                              const tc = cell.typeConfig || { header: 'bg-muted-foreground', dot: 'bg-muted-foreground', label: 'Outro', value: 'outro', bg: '', border: '' };
+                              return (
+                                <div
+                                  key={ci}
+                                  className={cn(
+                                    'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
+                                    tc.header
+                                  )}
+                                  onClick={() => handleOpenEdit(cell.items[0])}
+                                  title={cell.items.map(a => a.title).join('\n')}
                                 >
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                              <button
-                                className="text-muted-foreground hover:text-destructive p-0.5 rounded"
-                                onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
-                                title="Excluir"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
+                                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
+                                  <div className="text-sm font-bold leading-none">{cell.items.length}</div>
+                                  {cell.items.length === 1 && (
+                                    <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Unscheduled activities */}
+                {unscheduled.length > 0 && (
+                  <div className="border-t p-3 bg-muted/20">
+                    <p className="text-[11px] font-bold text-muted-foreground uppercase mb-2">
+                      Sem data ({unscheduled.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {unscheduled.map(a => {
+                        const tc = ACTIVITY_TYPES.find(t => t.value === a.activity_type);
+                        return (
+                          <div
+                            key={a.id}
+                            className={cn(
+                              'rounded-md px-2 py-1 text-white text-[10px] font-medium cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
+                              tc ? tc.header : 'bg-muted-foreground'
+                            )}
+                            onClick={() => handleOpenEdit(a)}
+                          >
+                            {a.title.length > 20 ? a.title.slice(0, 20) + '…' : a.title}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
