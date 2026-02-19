@@ -1,0 +1,1 @@
+ALTER TABLE public.user_daily_goal_defaults ADD COLUMN target_refused_by_board jsonb DEFAULT '{}'::jsonb;
