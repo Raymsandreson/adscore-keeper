@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { getStageType } from '@/utils/kanbanStageTypes';
@@ -57,6 +58,7 @@ interface UnifiedKanbanManagerProps {
 }
 
 export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
   const [showAddLeadDialog, setShowAddLeadDialog] = usePageState<boolean>('kanban_addLeadOpen', false);
@@ -66,7 +68,19 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [showExtractor, setShowExtractor] = useState(false);
   const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
-  
+
+  // Handle URL param to auto-open a lead
+  useEffect(() => {
+    const openLeadId = searchParams.get('openLead');
+    if (openLeadId) {
+      setEditingLeadId(openLeadId);
+      // Clean up URL param
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('openLead');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, setEditingLeadId]);
+
   // New lead form state - expanded for accident cases
   const [newLeadFormData, setNewLeadFormData] = useState<AccidentLeadFormData>({
     lead_name: '',

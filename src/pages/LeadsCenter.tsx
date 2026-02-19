@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePageState } from "@/hooks/usePageState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,9 +84,17 @@ const chartConfig = {
 };
 
 const LeadsCenter = () => {
+  const [searchParams] = useSearchParams();
   const [adAccountId, setAdAccountId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = usePageState<string>('leads_activeTab', 'kanban');
-  
+
+  // Handle tab URL param
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
   // Get connected ad account from localStorage (saved by useUnifiedMetaConnection hook)
   useEffect(() => {
     // Try to get from unified_meta_credentials first

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -456,8 +457,9 @@ export function DynamicKanbanBoard({
                         const isStagnant = isLeadStagnant(lead, stage.id);
                         
                         return (
+                          <ContextMenu key={lead.id}>
+                            <ContextMenuTrigger asChild>
                           <Card
-                            key={lead.id}
                             className={`cursor-grab active:cursor-grabbing transition-all hover:shadow-md ${
                               draggedLead?.id === lead.id ? 'opacity-50' : ''
                             } ${isStagnant ? 'ring-2 ring-red-400 bg-red-50/50 dark:bg-red-950/20' : ''}`}
@@ -814,6 +816,18 @@ export function DynamicKanbanBoard({
                               </div>
                             </CardContent>
                           </Card>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => {
+                                  window.open(`${window.location.origin}/leads?openLead=${lead.id}`, '_blank');
+                                }}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                                Abrir em nova aba
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         );
                       })
                     )}

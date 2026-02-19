@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +41,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import {
   Pagination,
   PaginationContent,
@@ -337,6 +339,7 @@ const followerStatusConfig: Record<FollowerStatus, { label: string; color: strin
 };
 
 export const ContactsManager: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport, mergeDuplicateContacts } = useContacts();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
@@ -437,6 +440,18 @@ export const ContactsManager: React.FC = () => {
   const [detailContactId, setDetailContactId] = usePageState<string | null>('contacts_detailId', null);
   const [isDetailSheetOpen, setIsDetailSheetOpen] = usePageState<boolean>('contacts_detailOpen', false);
   const detailContact = contacts.find(c => c.id === detailContactId) ?? null;
+
+  // Handle URL param to auto-open a contact
+  useEffect(() => {
+    const openContactId = searchParams.get('openContact');
+    if (openContactId && contacts.length > 0) {
+      setDetailContactId(openContactId);
+      setIsDetailSheetOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('openContact');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, contacts.length]);
 
   const [newContact, setNewContact] = useState({
     full_name: '',
@@ -1849,7 +1864,9 @@ export const ContactsManager: React.FC = () => {
                     const classConfig = classificationConfig[contact.classification || 'none'];
                     const isSelected = selectedContacts.has(contact.id);
                     return (
-                      <TableRow key={contact.id} className={isSelected ? 'bg-muted/50' : ''}>
+                      <ContextMenu key={contact.id}>
+                        <ContextMenuTrigger asChild>
+                      <TableRow className={isSelected ? 'bg-muted/50' : ''}>
                         <TableCell>
                           <Checkbox
                             checked={isSelected}
@@ -2138,6 +2155,18 @@ export const ContactsManager: React.FC = () => {
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            onClick={() => {
+                              window.open(`${window.location.origin}/leads?tab=contacts&openContact=${contact.id}`, '_blank');
+                            }}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                            Abrir em nova aba
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     );
                   })
                 )}
