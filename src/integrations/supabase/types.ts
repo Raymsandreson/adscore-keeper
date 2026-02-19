@@ -1466,6 +1466,39 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_goal_snapshots: {
+        Row: {
+          achieved: boolean
+          created_at: string
+          id: string
+          metrics_detail: Json | null
+          progress_percent: number
+          snapshot_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achieved?: boolean
+          created_at?: string
+          id?: string
+          metrics_detail?: Json | null
+          progress_percent?: number
+          snapshot_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          achieved?: boolean
+          created_at?: string
+          id?: string
+          metrics_detail?: Json | null
+          progress_percent?: number
+          snapshot_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       dm_history: {
         Row: {
           action_type: string
@@ -3776,6 +3809,57 @@ export type Database = {
           granted_by?: string | null
           id?: string
           pluggy_account_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_daily_goal_defaults: {
+        Row: {
+          created_at: string
+          id: string
+          target_activities: number
+          target_calls: number
+          target_checklist_items: number
+          target_contacts: number
+          target_dms: number
+          target_leads: number
+          target_leads_closed: number
+          target_replies: number
+          target_session_minutes: number
+          target_stage_changes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          target_activities?: number
+          target_calls?: number
+          target_checklist_items?: number
+          target_contacts?: number
+          target_dms?: number
+          target_leads?: number
+          target_leads_closed?: number
+          target_replies?: number
+          target_session_minutes?: number
+          target_stage_changes?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          target_activities?: number
+          target_calls?: number
+          target_checklist_items?: number
+          target_contacts?: number
+          target_dms?: number
+          target_leads?: number
+          target_leads_closed?: number
+          target_replies?: number
+          target_session_minutes?: number
+          target_stage_changes?: number
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
