@@ -94,9 +94,10 @@ export function useMyProductivity() {
         supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
         supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
-        // Outbound comments registered manually (no replied_by, but registered_by or comment_type)
+        // Outbound comments registered manually by this user
         supabase.from('instagram_comments').select('id')
           .eq('comment_type', 'outbound_manual')
+          .eq('replied_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 

@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { MessageSquarePlus, Loader2 } from "lucide-react";
 
@@ -21,6 +22,7 @@ interface OutboundCommentDialogProps {
 }
 
 export const OutboundCommentDialog = ({ accounts, onSuccess }: OutboundCommentDialogProps) => {
+  const { user } = useAuthContext();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -42,48 +44,43 @@ export const OutboundCommentDialog = ({ accounts, onSuccess }: OutboundCommentDi
 
     try {
       const selectedAccount = accounts.find(a => a.id === formData.accountId);
-      
-      // Try n8n webhook first for automated flow
+
+      // Always insert into database first to ensure counting works
+      const { error } = await supabase.from("instagram_comments").insert({
+        ad_account_id: selectedAccount?.instagram_id,
+        author_username: selectedAccount?.account_name?.replace("@", ""),
+        comment_text: formData.commentText,
+        comment_type: "outbound_manual",
+        post_url: formData.postUrl || null,
+        prospect_name: formData.targetUsername,
+        platform: "instagram",
+        replied_by: user?.id ?? null,
+        replied_at: new Date().toISOString(),
+        metadata: {
+          target_username: formData.targetUsername,
+          registered_manually: true,
+          registered_at: new Date().toISOString(),
+        },
+      });
+
+      if (error) throw error;
+
+      // Also fire n8n webhook in background (non-blocking, no-cors so never throws)
       const n8nWebhookUrl = "https://webhooks.prudenciosolucoes.com.br/webhook/outbound-comment";
-      
-      try {
-        await fetch(n8nWebhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          mode: "no-cors",
-          body: JSON.stringify({
-            account_id: selectedAccount?.instagram_id,
-            account_name: selectedAccount?.account_name,
-            target_username: formData.targetUsername,
-            comment_text: formData.commentText,
-            post_url: formData.postUrl || "",
-          }),
-        });
-        
-        toast.success("Comentário enviado para automação n8n!");
-      } catch (n8nError) {
-        console.warn("n8n webhook failed, falling back to direct insert:", n8nError);
-        
-        // Fallback to direct database insert
-        const { error } = await supabase.from("instagram_comments").insert({
-          ad_account_id: selectedAccount?.instagram_id,
-          author_username: selectedAccount?.account_name?.replace("@", ""),
+      fetch(n8nWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        mode: "no-cors",
+        body: JSON.stringify({
+          account_id: selectedAccount?.instagram_id,
+          account_name: selectedAccount?.account_name,
+          target_username: formData.targetUsername,
           comment_text: formData.commentText,
-          comment_type: "outbound_manual",
-          post_url: formData.postUrl || null,
-          prospect_name: formData.targetUsername,
-          platform: "instagram",
-          metadata: {
-            target_username: formData.targetUsername,
-            registered_manually: true,
-            registered_at: new Date().toISOString(),
-          },
-        });
+          post_url: formData.postUrl || "",
+        }),
+      }).catch(() => {/* silent */});
 
-        if (error) throw error;
-        toast.success("Comentário outbound registrado!");
-      }
-
+      toast.success("Comentário outbound registrado!");
       setFormData({ accountId: "", targetUsername: "", postUrl: "", commentText: "" });
       setOpen(false);
       onSuccess?.();
