@@ -105,7 +105,8 @@ export function useMyProductivity() {
       const completedActivities = completedActivitiesRes.data || [];
       const overdueActivities = overdueActivitiesRes.data || [];
 
-      const dmsSent = dms.filter(d => d.action_type === 'sent').length;
+      // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
+      const dmsSent = dms.filter(d => d.action_type !== 'received').length;
       const callsMade = catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length;
       const checklistChecked = activities.filter(a => a.action_type === 'checklist_item_checked').length;
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;

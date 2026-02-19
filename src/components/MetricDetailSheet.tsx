@@ -224,8 +224,8 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
         }
         case 'dmsSent': {
           const { data } = await supabase.from('dm_history')
-            .select('id, instagram_username, dm_message, created_at')
-            .eq('user_id', userId).eq('action_type', 'sent')
+            .select('id, instagram_username, dm_message, created_at, action_type')
+            .eq('user_id', userId).neq('action_type', 'received')
             .gte('created_at', startDate).lte('created_at', endDate)
             .order('created_at', { ascending: false });
           result = (data || []).map(d => ({

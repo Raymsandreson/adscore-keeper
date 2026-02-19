@@ -137,7 +137,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
         id: d.id,
         time: format(new Date(d.created_at), "HH:mm", { locale: ptBR }),
         description: `@${d.instagram_username}`,
-        extra: `${d.action_type === 'sent' ? 'Enviada' : 'Recebida'}: ${d.dm_message?.slice(0, 60) || ''}`,
+        extra: `${d.action_type !== 'received' ? 'Enviada' : 'Recebida'}: ${d.dm_message?.slice(0, 60) || ''}`,
         entityType: 'comment' as EntityNav,
         entityId: d.comment_id || d.id,
       })));

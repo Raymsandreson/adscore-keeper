@@ -219,7 +219,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       dms.forEach(d => {
         if (d.user_id) {
           const u = getUser(d.user_id);
-          if (d.action_type === 'sent') u.dmsSent++;
+          if (d.action_type !== 'received') u.dmsSent++;
           else u.dmsReceived++;
         }
       });
@@ -313,7 +313,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       // Summary
       setSummary({
         totalContactsCreated: contacts.length,
-        totalDmsSent: dms.filter(d => d.action_type === 'sent').length,
+        totalDmsSent: dms.filter(d => d.action_type !== 'received').length,
         totalCommentReplies: replies.length,
         totalStageChanges: stageHistory.length,
         totalFollowups: followups.length,
