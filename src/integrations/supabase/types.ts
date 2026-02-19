@@ -3820,6 +3820,7 @@ export type Database = {
           target_activities: number
           target_calls: number
           target_checklist_items: number
+          target_closed_by_board: Json | null
           target_contacts: number
           target_days: number[]
           target_dms: number
@@ -3837,6 +3838,7 @@ export type Database = {
           target_activities?: number
           target_calls?: number
           target_checklist_items?: number
+          target_closed_by_board?: Json | null
           target_contacts?: number
           target_days?: number[]
           target_dms?: number
@@ -3854,6 +3856,7 @@ export type Database = {
           target_activities?: number
           target_calls?: number
           target_checklist_items?: number
+          target_closed_by_board?: Json | null
           target_contacts?: number
           target_days?: number[]
           target_dms?: number
