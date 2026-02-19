@@ -246,13 +246,21 @@ async function handleCallEvent(supabase: any, body: any) {
   const contactName = body.chat?.name || body.chat?.pushName || body.senderName || null;
   const instanceName = body.instanceName || body.chat?.instanceName || null;
 
-  // UazAPI v2: fromMe is at body level
-  const isIncoming = !(body.fromMe === true || body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true);
+  // UazAPI v2: fromMe detection for outbound calls
+  // For outbound calls: body.fromMe=true OR event.CallCreator matches instance owner OR direction field
+  const fromMeBody = body.fromMe === true || body.message?.fromMe === true || body.chat?.fromMe === true || call.fromMe === true;
+  // UazAPI also signals outbound via event.CallCreatorAlt matching the instance owner or via direction
+  const fromMeEvent = event.from_me === true || body.direction === 'outbound' || body.call_direction === 'outbound';
+  // UazAPI: for outbound calls, sender_pn is the instance owner's number
+  const instanceOwner = body.owner || body.chat?.owner || '';
+  const fromMeOwner = instanceOwner && senderPn && senderPn.includes(instanceOwner.replace(/\D/g, ''));
+  
+  const isIncoming = !(fromMeBody || fromMeEvent || fromMeOwner);
   const callId = event.CallID || event.call_id || call.CallID || '';
   const eventTag = (event.Data?.Tag || event.status || event.result || call.status || '').toLowerCase();
   const reason = (body.Reason || event.Reason || event.Data?.Attrs?.reason || '').toLowerCase();
 
-  console.log('Processing call event:', { phone, callId, eventTag, reason, isIncoming, instanceName });
+  console.log('Processing call event:', { phone, callId, eventTag, reason, isIncoming, instanceName, fromMeBody, fromMeEvent, fromMeOwner, instanceOwner, senderPn });
 
   if (!phone || !callId) {
     console.error('No phone or callId for call event');
@@ -330,7 +338,9 @@ async function handleCallEvent(supabase: any, body: any) {
   // Use phone/name from offer event if available (more reliable)
   const finalPhone = offerEvent?.phone || phone;
   const finalContactName = offerEvent?.contact_name || contactName;
-  const callType = offerEvent?.from_me ? 'realizada' : (isIncoming ? 'recebida' : 'realizada');
+  // Determine direction: offerEvent.from_me is most reliable, fallback to isIncoming detection
+  const isOutbound = offerEvent?.from_me === true || (!isIncoming && offerEvent?.from_me !== false);
+  const callType = isOutbound ? 'realizada' : 'recebida';
 
   console.log('Creating call record:', { finalPhone, callType, callResult, durationSeconds, wasAnswered });
 
