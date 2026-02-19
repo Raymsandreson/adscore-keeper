@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageState } from "@/hooks/usePageState";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -24,6 +25,7 @@ import { CaseSearchEngine } from "@/components/instagram/CaseSearchEngine";
 
 const AnalyticsPage = () => {
   const [period, setPeriod] = useState("7");
+  const [activeTab, setActiveTab] = usePageState<string>('analytics_activeTab', 'accounts');
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,7 +56,7 @@ const AnalyticsPage = () => {
 
       {/* Content */}
       <main className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="accounts" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-5xl grid-cols-8">
             <TabsTrigger value="accounts" className="gap-2">
               <Instagram className="h-4 w-4" />

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { usePageState } from "@/hooks/usePageState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +84,7 @@ const chartConfig = {
 
 const LeadsCenter = () => {
   const [adAccountId, setAdAccountId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = usePageState<string>('leads_activeTab', 'kanban');
   
   // Get connected ad account from localStorage (saved by useUnifiedMetaConnection hook)
   useEffect(() => {
@@ -197,7 +199,7 @@ const LeadsCenter = () => {
           )}
 
           {/* Tabs for Lead Management and Analytics */}
-          <Tabs defaultValue="kanban" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-8 mb-4">
               <TabsTrigger value="kanban" className="flex items-center gap-2">
                 <LayoutGrid className="h-4 w-4" />

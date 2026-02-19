@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { usePageState } from '@/hooks/usePageState';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -31,7 +32,7 @@ import {
 export default function TeamPage() {
   const navigate = useNavigate();
   const { isAdmin, loading } = useUserRole();
-  const [activeTab, setActiveTab] = useState('productivity');
+  const [activeTab, setActiveTab] = usePageState<string>('team_activeTab', 'productivity');
   
   // Fetch transactions to get available cards for permissions
   const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
