@@ -2502,6 +2502,7 @@ export type Database = {
           id: string
           lead_id: string | null
           lead_name: string | null
+          matrix_quadrant: string | null
           next_steps: string | null
           notes: string | null
           notification_date: string | null
@@ -2529,6 +2530,7 @@ export type Database = {
           id?: string
           lead_id?: string | null
           lead_name?: string | null
+          matrix_quadrant?: string | null
           next_steps?: string | null
           notes?: string | null
           notification_date?: string | null
@@ -2556,6 +2558,7 @@ export type Database = {
           id?: string
           lead_id?: string | null
           lead_name?: string | null
+          matrix_quadrant?: string | null
           next_steps?: string | null
           notes?: string | null
           notification_date?: string | null

@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -134,6 +134,9 @@ const ActivitiesPage = () => {
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
+  const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
+  const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [leadPreview, setLeadPreview] = useState<{
     case_type?: string | null;
     damage_description?: string | null;
@@ -233,6 +236,7 @@ const ActivitiesPage = () => {
     setFormContactId('');
     setFormContactName('');
     setContactSearch('');
+    setFormMatrixQuadrant('');
   };
 
   const handleCreate = async () => {
@@ -303,6 +307,7 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
+    setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
     // Load contacts and lead preview for this lead
     if (activity.lead_id) {
       try {
@@ -355,6 +360,7 @@ const ActivitiesPage = () => {
       status: formStatus,
       contact_id: formContactId || null,
       contact_name: formContactName || null,
+      matrix_quadrant: formMatrixQuadrant || null,
     } as any);
     closeSheet();
     fetchActivities(getFilterParams());
@@ -464,6 +470,7 @@ const ActivitiesPage = () => {
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
     setFormContactName(activity.contact_name || '');
+    setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
     if (activity.lead_id) {
       try {
         const [linkedData, leadPreviewRes] = await Promise.all([
@@ -739,6 +746,34 @@ const ActivitiesPage = () => {
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      {/* Eisenhower Matrix Quadrant */}
+      <div>
+        <Label className="text-xs font-medium">Matriz de Eisenhower</Label>
+        <div className="grid grid-cols-2 gap-1.5 mt-1">
+          {[
+            { value: 'do_now', label: '🔥 Faça Agora', desc: 'Urgente + Importante', className: 'border-red-400 data-[selected=true]:bg-red-500 data-[selected=true]:text-white data-[selected=true]:border-red-500' },
+            { value: 'schedule', label: '📅 Agende', desc: 'Não urgente + Importante', className: 'border-blue-400 data-[selected=true]:bg-blue-600 data-[selected=true]:text-white data-[selected=true]:border-blue-600' },
+            { value: 'delegate', label: '🤝 Delegue', desc: 'Urgente + Pouco importante', className: 'border-orange-400 data-[selected=true]:bg-orange-500 data-[selected=true]:text-white data-[selected=true]:border-orange-500' },
+            { value: 'eliminate', label: '🗑️ Retire', desc: 'Não urgente + Pouco importante', className: 'border-muted-foreground data-[selected=true]:bg-muted-foreground data-[selected=true]:text-background data-[selected=true]:border-muted-foreground' },
+          ].map(q => (
+            <button
+              key={q.value}
+              type="button"
+              data-selected={formMatrixQuadrant === q.value}
+              className={cn(
+                'text-left px-2.5 py-2 rounded-lg border-2 transition-all text-xs',
+                q.className,
+                formMatrixQuadrant !== q.value && 'hover:bg-muted/50'
+              )}
+              onClick={() => setFormMatrixQuadrant(formMatrixQuadrant === q.value ? '' : q.value)}
+            >
+              <div className="font-semibold">{q.label}</div>
+              <div className="text-[10px] opacity-70">{q.desc}</div>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -1168,6 +1203,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setViewMode(viewMode === 'matrix' ? 'list' : 'matrix')} title={viewMode === 'matrix' ? 'Modo lista' : 'Matriz de Eisenhower'}>
+            {viewMode === 'matrix' ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+          </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
           </Button>
@@ -1380,9 +1418,203 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
+
+        {/* === EISENHOWER MATRIX VIEW === */}
+        {viewMode === 'matrix' && !isEditing && (
+          <div className="flex-1 overflow-auto p-4">
+            <div className="max-w-5xl mx-auto">
+              {/* Axis labels */}
+              <div className="flex items-center justify-center gap-8 mb-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">↑ Muito Importante</span>
+                  <span>·</span>
+                  <span className="text-muted-foreground">↓ Pouco Importante</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground">← Muito Urgente</span>
+                  <span>·</span>
+                  <span className="text-muted-foreground">→ Pouco Urgente</span>
+                </div>
+              </div>
+
+              {/* Column headers */}
+              <div className="grid grid-cols-2 gap-3 mb-1 px-0">
+                <div className="text-center text-xs font-medium text-muted-foreground">🚨 Muito Urgente</div>
+                <div className="text-center text-xs font-medium text-muted-foreground">🕐 Pouco Urgente</div>
+              </div>
+
+              {/* 2x2 Matrix */}
+              <div className="grid grid-cols-2 grid-rows-2 gap-3 h-[calc(100vh-280px)]">
+                {[
+                  {
+                    id: 'do_now', label: 'Faça Agora', emoji: '🔥',
+                    desc: 'Urgente + Importante',
+                    bg: 'bg-red-50 dark:bg-red-950/20',
+                    border: 'border-red-300 dark:border-red-800',
+                    header: 'bg-red-500',
+                    rowLabel: '⬆️ Muito Importante',
+                  },
+                  {
+                    id: 'schedule', label: 'Agende para depois', emoji: '📅',
+                    desc: 'Não urgente + Importante',
+                    bg: 'bg-blue-50 dark:bg-blue-950/20',
+                    border: 'border-blue-300 dark:border-blue-800',
+                    header: 'bg-blue-600',
+                    rowLabel: null,
+                  },
+                  {
+                    id: 'delegate', label: 'Delegue para alguém', emoji: '🤝',
+                    desc: 'Urgente + Pouco importante',
+                    bg: 'bg-orange-50 dark:bg-orange-950/20',
+                    border: 'border-orange-300 dark:border-orange-800',
+                    header: 'bg-orange-500',
+                    rowLabel: '⬇️ Pouco Importante',
+                  },
+                  {
+                    id: 'eliminate', label: 'Retire da sua agenda', emoji: '🗑️',
+                    desc: 'Não urgente + Pouco importante',
+                    bg: 'bg-muted/30',
+                    border: 'border-border',
+                    header: 'bg-muted-foreground',
+                    rowLabel: null,
+                  },
+                ].map((quadrant) => {
+                  const quadrantActivities = displayedActivities.filter(
+                    a => (a as any).matrix_quadrant === quadrant.id
+                  );
+                  const isOver = dragOverQuadrant === quadrant.id;
+
+                  return (
+                    <div
+                      key={quadrant.id}
+                      className={cn(
+                        'flex flex-col rounded-xl border-2 overflow-hidden transition-all',
+                        quadrant.bg, quadrant.border,
+                        isOver && 'ring-2 ring-primary scale-[1.01]'
+                      )}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverQuadrant(quadrant.id); }}
+                      onDragLeave={() => setDragOverQuadrant(null)}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        setDragOverQuadrant(null);
+                        const actId = e.dataTransfer.getData('activityId');
+                        if (!actId) return;
+                        await updateActivity(actId, { matrix_quadrant: quadrant.id } as any);
+                        fetchActivities(getFilterParams());
+                      }}
+                    >
+                      {/* Quadrant Header */}
+                      <div className={cn('px-3 py-2 text-white flex items-center justify-between', quadrant.header)}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{quadrant.emoji}</span>
+                          <div>
+                            <div className="font-semibold text-sm leading-tight">{quadrant.label}</div>
+                            <div className="text-[10px] opacity-80">{quadrant.desc}</div>
+                          </div>
+                        </div>
+                        <div className="bg-white/20 rounded-full px-2 py-0.5 text-xs font-bold">
+                          {quadrantActivities.length}
+                        </div>
+                      </div>
+
+                      {/* Drop area + cards */}
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {quadrantActivities.length === 0 && (
+                          <div className="flex items-center justify-center h-full text-muted-foreground text-xs opacity-50 py-4">
+                            Arraste atividades aqui
+                          </div>
+                        )}
+                        {quadrantActivities.map(activity => (
+                          <div
+                            key={activity.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('activityId', activity.id);
+                            }}
+                            className={cn(
+                              'bg-card rounded-lg border border-border/50 p-2.5 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-all',
+                              selectedActivity?.id === activity.id && 'ring-2 ring-primary'
+                            )}
+                            onClick={() => handleOpenEdit(activity)}
+                          >
+                            <div className="flex items-start justify-between gap-1.5">
+                              <p className="text-xs font-medium leading-snug flex-1">{activity.title}</p>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                {activity.status !== 'concluida' && (
+                                  <button
+                                    className="text-green-600 hover:text-green-700 p-0.5 rounded"
+                                    onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  className="text-muted-foreground hover:text-destructive p-0.5 rounded"
+                                  onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                            {activity.lead_name && (
+                              <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {activity.lead_name}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                              <Badge className={cn("text-[9px] px-1.5 py-0 h-4", statusColors[activity.status] || 'bg-muted')}>
+                                {STATUS_OPTIONS.find(s => s.value === activity.status)?.label}
+                              </Badge>
+                              {activity.deadline && (
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {format(parseISO(activity.deadline), 'dd/MM')}
+                                </span>
+                              )}
+                              {activity.assigned_to_name && (
+                                <span className="text-[9px] text-muted-foreground truncate">• {activity.assigned_to_name.split(' ')[0]}</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Unclassified activities */}
+              {(() => {
+                const unclassified = displayedActivities.filter(a => !(a as any).matrix_quadrant);
+                if (unclassified.length === 0) return null;
+                return (
+                  <div className="mt-4">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">
+                      📋 Sem classificação na Matriz ({unclassified.length}) — arraste-as para os quadrantes ou clique para editar
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {unclassified.map(activity => (
+                        <div
+                          key={activity.id}
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.setData('activityId', activity.id); }}
+                          className="bg-card border border-border/60 rounded-lg px-3 py-2 text-xs cursor-grab hover:shadow-md transition-all max-w-[200px]"
+                          onClick={() => handleOpenEdit(activity)}
+                        >
+                          <p className="font-medium truncate">{activity.title}</p>
+                          {activity.lead_name && <p className="text-muted-foreground truncate">📁 {activity.lead_name}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
           "flex flex-col overflow-hidden transition-all",
+          viewMode === 'matrix' && !isEditing ? "hidden" : "",
           isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
           {/* Calendar - always visible, compact */}
