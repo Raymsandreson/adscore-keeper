@@ -94,11 +94,12 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [activeTypes, setActiveTypes] = useState<Set<string>>(() => new Set(configs.map(c => c.activityType)));
 
   useEffect(() => {
+    if (!open) return;
     setLocal(configs);
+    setActiveTypes(new Set(configs.map(c => c.activityType)));
     setShowAddForm(false);
     setSearch('');
     setShowTypeSelector(false);
-    setActiveTypes(new Set(configs.map(c => c.activityType)));
     setNewLabel('');
   }, [configs, open]);
 
@@ -148,6 +149,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
       isCustom: true,
     };
     setLocal(prev => [...prev, newCfg]);
+    setActiveTypes(prev => new Set([...prev, key]));
     setNewLabel('');
     setNewColor('bg-teal-500');
     setShowAddForm(false);
@@ -155,6 +157,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
 
   const handleRemoveCustom = (type: string) => {
     setLocal(prev => prev.filter(c => c.activityType !== type));
+    setActiveTypes(prev => { const next = new Set(prev); next.delete(type); return next; });
   };
 
   const handleReset = () => setLocal(getDefaultTimeBlockConfigs());
