@@ -94,7 +94,8 @@ const ActivitiesPage = () => {
   const [filterAssignee, setFilterAssignee] = usePageState<string[]>('activities_filterAssignee', user?.id ? [user.id] : []);
   const [filterLead, setFilterLead] = usePageState<string[]>('activities_filterLead', []);
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
-  const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
+  const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
+  const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -190,6 +191,7 @@ const ActivitiesPage = () => {
     };
     loadSupport();
   }, []);
+
 
   // Pre-filter raw activities based on OTHER active filters (excluding the field being counted)
   const getFilteredRaw = useMemo(() => {
@@ -297,6 +299,7 @@ const ActivitiesPage = () => {
 
   const handleOpenEdit = async (activity: LeadActivity) => {
     setSelectedActivity(activity);
+    setSelectedActivityId(activity.id);
     setFormTitle(activity.title);
     setFormWhatWasDone(activity.what_was_done || '');
     setFormCurrentStatus(activity.current_status_notes || '');
@@ -345,6 +348,20 @@ const ActivitiesPage = () => {
     }
     setSheetMode('edit');
   };
+
+  // Restore selected activity after activities load (persist across browser tab switches)
+  useEffect(() => {
+    if (selectedActivityId && activities.length > 0 && !selectedActivity) {
+      const activity = activities.find(a => a.id === selectedActivityId);
+      if (activity) {
+        handleOpenEdit(activity);
+      } else {
+        setSelectedActivityId(null);
+        setSheetMode(null);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities, selectedActivityId]);
 
   const handleUpdate = async () => {
     if (!selectedActivity) return;
@@ -435,6 +452,7 @@ const ActivitiesPage = () => {
   const closeSheet = () => {
     setSheetMode(null);
     setSelectedActivity(null);
+    setSelectedActivityId(null);
     setRightPanelTab('form');
     setLeadPreview(null);
     resetForm();
