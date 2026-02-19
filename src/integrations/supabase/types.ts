@@ -3840,8 +3840,10 @@ export type Database = {
           created_at: string
           days: number[]
           end_hour: number
+          end_minute: number
           id: string
           start_hour: number
+          start_minute: number
           updated_at: string
           user_id: string
         }
@@ -3850,8 +3852,10 @@ export type Database = {
           created_at?: string
           days?: number[]
           end_hour?: number
+          end_minute?: number
           id?: string
           start_hour?: number
+          start_minute?: number
           updated_at?: string
           user_id: string
         }
@@ -3860,8 +3864,10 @@ export type Database = {
           created_at?: string
           days?: number[]
           end_hour?: number
+          end_minute?: number
           id?: string
           start_hour?: number
+          start_minute?: number
           updated_at?: string
           user_id?: string
         }
