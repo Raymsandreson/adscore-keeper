@@ -216,7 +216,7 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
   const currentStageChecked = currentStageInstances.reduce((s, i) => s + i.items.filter(it => it.checked).length, 0);
 
   return (
-    <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()}>
+    <div className="mt-2 space-y-1" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} draggable={false}>
       {/* Overall progress bar */}
       <div className="flex items-center gap-1.5">
         <ListChecks className="h-3 w-3 text-muted-foreground flex-shrink-0" />
