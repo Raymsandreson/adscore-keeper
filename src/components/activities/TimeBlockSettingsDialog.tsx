@@ -226,6 +226,46 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
 
   const selectedCount = Object.keys(selected).length;
 
+  // Returns hours that are already occupied by OTHER blocks on the given days
+  const getOccupiedHours = (currentKey: string, days: number[]): Set<number> => {
+    const occupied = new Set<number>();
+    Object.entries(selected).forEach(([key, sched]) => {
+      if (key === currentKey) return;
+      // Only block if the other block shares at least one of the same days
+      const sharesDay = days.some(d => sched.days.includes(d));
+      if (!sharesDay) return;
+      for (let h = sched.startHour; h < sched.endHour; h++) {
+        occupied.add(h);
+      }
+    });
+    return occupied;
+  };
+
+  // Returns available start hours (not occupied by other blocks on same days)
+  const getAvailableStartHours = (currentKey: string, days: number[]): number[] => {
+    if (days.length === 0) return HOURS.slice(0, -1); // no days selected → show all
+    const occupied = getOccupiedHours(currentKey, days);
+    return HOURS.slice(0, -1).filter(h => !occupied.has(h));
+  };
+
+  // Returns available end hours for a given start (no overlap with others on same days)
+  const getAvailableEndHours = (currentKey: string, days: number[], startHour: number): number[] => {
+    if (days.length === 0) return HOURS.filter(h => h > startHour);
+    const occupied = getOccupiedHours(currentKey, days);
+    const available: number[] = [];
+    for (const h of HOURS) {
+      if (h <= startHour) continue;
+      // End hour is exclusive — we need the range [startHour, h) to be free
+      let blocked = false;
+      for (let t = startHour; t < h; t++) {
+        if (occupied.has(t)) { blocked = true; break; }
+      }
+      if (!blocked) available.push(h);
+      else break; // stop at first blocked hour
+    }
+    return available;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -368,43 +408,58 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                       </div>
 
                       {/* Hours */}
-                      <div className="flex items-center gap-3">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Horário</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">De</span>
-                          <select
-                            value={schedule.startHour}
-                            onChange={e => {
-                              const v = Number(e.target.value);
-                              updateSchedule(type.key, { startHour: v, endHour: Math.max(schedule.endHour, v + 1) });
-                            }}
-                            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                          >
-                            {HOURS.map(h => <option key={h} value={h}>{h}:00</option>)}
-                          </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">até</span>
-                          <select
-                            value={schedule.endHour}
-                            onChange={e => updateSchedule(type.key, { endHour: Math.max(Number(e.target.value), schedule.startHour + 1) })}
-                            className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                          >
-                            {HOURS.filter(h => h > schedule.startHour).map(h => <option key={h} value={h}>{h}:00</option>)}
-                          </select>
-                        </div>
-                        {/* Mini bar */}
-                        <div className="flex-1 relative h-5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
-                          {(() => {
-                            const total = HOURS[HOURS.length - 1] - HOURS[0];
-                            const sp = ((schedule.startHour - HOURS[0]) / total) * 100;
-                            const wp = ((schedule.endHour - schedule.startHour) / total) * 100;
-                            return (
-                              <div className={cn('absolute top-0 bottom-0 rounded-full opacity-70', type.color)} style={{ left: `${sp}%`, width: `${wp}%` }} />
-                            );
-                          })()}
-                        </div>
-                      </div>
+                      {(() => {
+                        const availStart = getAvailableStartHours(type.key, schedule.days);
+                        const availEnd = getAvailableEndHours(type.key, schedule.days, schedule.startHour);
+                        const correctedStart = availStart.includes(schedule.startHour) ? schedule.startHour : (availStart[0] ?? schedule.startHour);
+                        const correctedEnd = availEnd.includes(schedule.endHour) ? schedule.endHour : (availEnd[0] ?? schedule.endHour);
+                        return (
+                          <div className="flex items-center gap-3">
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Horário</p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">De</span>
+                              <select
+                                value={correctedStart}
+                                onChange={e => {
+                                  const v = Number(e.target.value);
+                                  const newEnd = getAvailableEndHours(type.key, schedule.days, v);
+                                  updateSchedule(type.key, { startHour: v, endHour: newEnd[0] ?? v + 1 });
+                                }}
+                                className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                {availStart.length > 0
+                                  ? availStart.map(h => <option key={h} value={h}>{h}:00</option>)
+                                  : <option value={correctedStart}>{correctedStart}:00</option>}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">até</span>
+                              <select
+                                value={correctedEnd}
+                                onChange={e => updateSchedule(type.key, { endHour: Number(e.target.value) })}
+                                className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                {availEnd.length > 0
+                                  ? availEnd.map(h => <option key={h} value={h}>{h}:00</option>)
+                                  : <option value={correctedEnd}>{correctedEnd}:00</option>}
+                              </select>
+                            </div>
+                            <div className="flex-1 relative h-5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
+                              {(() => {
+                                const total = HOURS[HOURS.length - 1] - HOURS[0];
+                                const sp = ((correctedStart - HOURS[0]) / total) * 100;
+                                const wp = ((correctedEnd - correctedStart) / total) * 100;
+                                return (
+                                  <div
+                                    className={cn('absolute top-0 bottom-0 rounded-full opacity-70', type.color)}
+                                    style={{ left: `${sp}%`, width: `${wp}%` }}
+                                  />
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {schedule.days.length === 0 && (
                         <p className="text-[11px] text-destructive">⚠️ Nenhum dia selecionado</p>
