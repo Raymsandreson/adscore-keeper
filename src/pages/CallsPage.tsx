@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,13 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Voicemail,
-  Clock, Star, Tag, Calendar, Search, Loader2, Play, Trash2, Save,
+  Clock, Star, Tag, Calendar, Search, Loader2, Play, Trash2, Save, Plus,
   TrendingUp, Users, Timer, CheckCircle, XCircle, BarChart3,
 } from 'lucide-react';
 import { format, formatDistanceToNow, startOfDay, endOfDay, isToday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
@@ -41,7 +43,8 @@ function formatDuration(seconds: number) {
 }
 
 export default function CallsPage() {
-  const { records, loading, updateRecord, deleteRecord } = useCallRecords();
+  const { user } = useAuthContext();
+  const { records, loading, updateRecord, deleteRecord, createRecord } = useCallRecords();
   const [search, setSearch] = useState('');
   const [filterResult, setFilterResult] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -49,6 +52,19 @@ export default function CallsPage() {
   const [editData, setEditData] = useState<Partial<CallRecord>>({});
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('list');
+  const [showNewCallDialog, setShowNewCallDialog] = useState(false);
+  const [newCall, setNewCall] = useState({
+    call_type: 'outbound',
+    call_result: 'answered',
+    contact_name: '',
+    contact_phone: '',
+    lead_name: '',
+    duration_minutes: 0,
+    duration_seconds: 0,
+    notes: '',
+    next_step: '',
+    phone_used: '',
+  });
 
   // Filter records
   const filtered = useMemo(() => {
@@ -144,6 +160,34 @@ export default function CallsPage() {
     }
   };
 
+  const handleCreateCall = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const totalSeconds = (newCall.duration_minutes * 60) + newCall.duration_seconds;
+      await createRecord({
+        user_id: user.id,
+        call_type: newCall.call_type === 'outbound' ? 'realizada' : 'recebida',
+        call_result: newCall.call_result,
+        contact_name: newCall.contact_name || null,
+        contact_phone: newCall.contact_phone || null,
+        lead_name: newCall.lead_name || null,
+        duration_seconds: totalSeconds,
+        notes: newCall.notes || null,
+        next_step: newCall.next_step || null,
+        phone_used: newCall.phone_used || null,
+        tags: ['manual'],
+      });
+      toast.success('Ligação registrada!');
+      setShowNewCallDialog(false);
+      setNewCall({ call_type: 'outbound', call_result: 'answered', contact_name: '', contact_phone: '', lead_name: '', duration_minutes: 0, duration_seconds: 0, notes: '', next_step: '', phone_used: '' });
+    } catch (e) {
+      toast.error('Erro ao registrar ligação');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const normalizeResult = (result: string) => {
     const map: Record<string, string> = { atendeu: 'answered', 'não_atendeu': 'not_answered', ocupado: 'busy' };
     return map[result] || result;
@@ -176,8 +220,84 @@ export default function CallsPage() {
       <div className="flex items-center gap-3">
         <Phone className="h-6 w-6 text-primary" />
         <h1 className="text-2xl font-bold">Ligações</h1>
-        <Badge variant="secondary" className="ml-auto">{records.length} total</Badge>
+        <Button size="sm" className="ml-auto gap-1.5" onClick={() => setShowNewCallDialog(true)}>
+          <Plus className="h-4 w-4" /> Registrar
+        </Button>
+        <Badge variant="secondary">{records.length} total</Badge>
       </div>
+
+      {/* New Call Dialog */}
+      <Dialog open={showNewCallDialog} onOpenChange={setShowNewCallDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-primary" /> Registrar Ligação
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Tipo</label>
+                <Select value={newCall.call_type} onValueChange={v => setNewCall(p => ({ ...p, call_type: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TYPE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Resultado</label>
+                <Select value={newCall.call_result} onValueChange={v => setNewCall(p => ({ ...p, call_result: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {RESULT_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Nome do Contato</label>
+              <Input value={newCall.contact_name} onChange={e => setNewCall(p => ({ ...p, contact_name: e.target.value }))} placeholder="Nome..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Telefone</label>
+                <Input value={newCall.contact_phone} onChange={e => setNewCall(p => ({ ...p, contact_phone: e.target.value }))} placeholder="(11) 99999-9999" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Lead</label>
+                <Input value={newCall.lead_name} onChange={e => setNewCall(p => ({ ...p, lead_name: e.target.value }))} placeholder="Nome do lead..." />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Duração (min)</label>
+                <Input type="number" min={0} value={newCall.duration_minutes} onChange={e => setNewCall(p => ({ ...p, duration_minutes: parseInt(e.target.value) || 0 }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Duração (seg)</label>
+                <Input type="number" min={0} max={59} value={newCall.duration_seconds} onChange={e => setNewCall(p => ({ ...p, duration_seconds: parseInt(e.target.value) || 0 }))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Telefone Usado</label>
+              <Input value={newCall.phone_used} onChange={e => setNewCall(p => ({ ...p, phone_used: e.target.value }))} placeholder="Ex: WhatsApp, celular..." />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Próximo Passo</label>
+              <Input value={newCall.next_step} onChange={e => setNewCall(p => ({ ...p, next_step: e.target.value }))} placeholder="O que fazer em seguida?" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Observações</label>
+              <Textarea value={newCall.notes} onChange={e => setNewCall(p => ({ ...p, notes: e.target.value }))} placeholder="Anotações..." rows={3} />
+            </div>
+            <Button onClick={handleCreateCall} disabled={saving} className="w-full">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+              Salvar Ligação
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dashboard Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

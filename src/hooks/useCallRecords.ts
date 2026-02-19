@@ -78,5 +78,11 @@ export function useCallRecords() {
     await fetchRecords();
   };
 
-  return { records, loading, fetchRecords, updateRecord, deleteRecord };
+  const createRecord = async (data: Partial<CallRecord> & { user_id: string }) => {
+    const { error } = await supabase.from('call_records').insert(data as any);
+    if (error) throw error;
+    await fetchRecords();
+  };
+
+  return { records, loading, fetchRecords, updateRecord, deleteRecord, createRecord };
 }
