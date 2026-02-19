@@ -57,11 +57,23 @@ export function useTimeBlockSettings(targetUserId?: string) {
       end_hour: c.endHour,
     }));
 
-    await supabase.from('user_timeblock_settings').delete().eq('user_id', uid);
+    const { error: deleteError } = await supabase.from('user_timeblock_settings').delete().eq('user_id', uid);
+    if (deleteError) {
+      console.error('Error deleting timeblock settings:', deleteError);
+      const { toast } = await import('sonner');
+      toast.error('Erro ao salvar rotina. Verifique suas permissões.');
+      return;
+    }
+
     const { error } = await supabase.from('user_timeblock_settings').insert(rows);
 
     if (error) {
       console.error('Error saving timeblock settings:', error);
+      const { toast } = await import('sonner');
+      toast.error('Erro ao salvar rotina: ' + error.message);
+    } else {
+      const { toast } = await import('sonner');
+      toast.success('Rotina salva com sucesso!');
     }
 
     await fetchSettings(uid);
