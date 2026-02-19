@@ -64,11 +64,13 @@ export function useMyProductivity() {
         contactsRes, dmsRes, repliesRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
+        outboundCommentsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('dm_history').select('id, action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
+        // Replies on own posts (comment was replied by this user)
         supabase.from('instagram_comments').select('id').eq('replied_by', userId)
           .gte('replied_at', startDate).lte('replied_at', endDate),
         supabase.from('lead_stage_history').select('id, lead_id')
@@ -92,6 +94,10 @@ export function useMyProductivity() {
         supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
         supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
+        // Outbound comments registered manually (no replied_by, but registered_by or comment_type)
+        supabase.from('instagram_comments').select('id')
+          .eq('comment_type', 'outbound_manual')
+          .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -104,6 +110,7 @@ export function useMyProductivity() {
       const catContacts = catContactsRes.data || [];
       const completedActivities = completedActivitiesRes.data || [];
       const overdueActivities = overdueActivitiesRes.data || [];
+      const outboundComments = outboundCommentsRes.data || [];
 
       // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
@@ -114,9 +121,11 @@ export function useMyProductivity() {
       const sessionMinutes = sessions.reduce((acc, s) => acc + Math.round((s.duration_seconds || 0) / 60), 0);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const leadsClosed = leads.filter(l => ['converted', 'won', 'closed', 'fechado', 'done'].includes(l.status || '')).length;
+      // Total comment replies = replied to comments on own posts + outbound comments registered manually
+      const totalCommentReplies = replies.length + outboundComments.length;
 
       const prod: MyProductivity = {
-        commentReplies: replies.length,
+        commentReplies: totalCommentReplies,
         dmsSent,
         contactsCreated: contacts.length,
         leadsCreated: leads.length,
@@ -128,7 +137,7 @@ export function useMyProductivity() {
         activitiesCompleted: completedActivities.length,
         activitiesOverdue: overdueActivities.length,
         sessionMinutes,
-        totalActions: contacts.length + dmsSent + replies.length + leads.length +
+        totalActions: contacts.length + dmsSent + totalCommentReplies + leads.length +
           callsMade + checklistItemsChecked + completedActivities.length - overdueActivities.length,
       };
 
@@ -179,23 +188,18 @@ export function useMyProductivity() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Overall goal progress — average of ALL active goals (only those with target > 0)
+  // Overall goal progress — uses only the 4 core daily metrics to avoid dilution
+  // by secondary metrics (calls, checklists, etc.) which many users may not have targets for
   const goalProgress = (() => {
-    const metrics = [
+    const core = [
       { current: data.commentReplies, target: goals.target_replies },
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
-      { current: data.contactsCreated, target: goals.target_contacts },
-      { current: data.callsMade, target: goals.target_calls },
-      { current: data.activitiesCompleted, target: goals.target_activities },
-      { current: data.stageChanges, target: goals.target_stage_changes },
-      { current: data.leadsClosed, target: goals.target_leads_closed },
-      { current: data.checklistItemsChecked, target: goals.target_checklist_items },
-    ].filter(m => m.target > 0); // only count metrics that have an active target
+    ].filter(m => m.target > 0);
 
-    if (metrics.length === 0) return 100;
-    const percentages = metrics.map(m => Math.min(100, (m.current / m.target) * 100));
+    if (core.length === 0) return 100;
+    const percentages = core.map(m => Math.min(100, (m.current / m.target) * 100));
     return Math.round(percentages.reduce((a, b) => a + b, 0) / percentages.length);
   })();
 
