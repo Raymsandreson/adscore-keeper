@@ -22,7 +22,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
-  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List,
+  Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers,
 } from 'lucide-react';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -35,12 +35,12 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 const ACTIVITY_TYPES = [
-  { value: 'tarefa', label: 'Tarefa' },
-  { value: 'audiencia', label: 'Audiência' },
-  { value: 'prazo', label: 'Prazo' },
-  { value: 'acompanhamento', label: 'Acompanhamento' },
-  { value: 'reuniao', label: 'Reunião' },
-  { value: 'diligencia', label: 'Diligência' },
+  { value: 'tarefa', label: 'Tarefa', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-300 dark:border-blue-700', header: 'bg-blue-500', dot: 'bg-blue-500' },
+  { value: 'audiencia', label: 'Audiência', bg: 'bg-green-50 dark:bg-green-950/20', border: 'border-green-300 dark:border-green-700', header: 'bg-green-500', dot: 'bg-green-500' },
+  { value: 'prazo', label: 'Prazo', bg: 'bg-yellow-50 dark:bg-yellow-950/20', border: 'border-yellow-300 dark:border-yellow-700', header: 'bg-yellow-500', dot: 'bg-yellow-500' },
+  { value: 'acompanhamento', label: 'Acompanhamento', bg: 'bg-purple-50 dark:bg-purple-950/20', border: 'border-purple-300 dark:border-purple-700', header: 'bg-purple-500', dot: 'bg-purple-500' },
+  { value: 'reuniao', label: 'Reunião', bg: 'bg-pink-50 dark:bg-pink-950/20', border: 'border-pink-300 dark:border-pink-700', header: 'bg-pink-500', dot: 'bg-pink-500' },
+  { value: 'diligencia', label: 'Diligência', bg: 'bg-orange-50 dark:bg-orange-950/20', border: 'border-orange-300 dark:border-orange-700', header: 'bg-orange-500', dot: 'bg-orange-500' },
 ];
 
 const STATUS_OPTIONS = [
@@ -134,7 +134,7 @@ const ActivitiesPage = () => {
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
-  const [viewMode, setViewMode] = useState<'list' | 'matrix'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'matrix' | 'blocks'>('list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
@@ -1219,6 +1219,18 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               Lista
             </button>
             <button
+              onClick={() => setViewMode('blocks')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'blocks'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Blocos
+            </button>
+            <button
               onClick={() => setViewMode('matrix')}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
@@ -1636,10 +1648,146 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           </div>
         )}
 
+
+        {/* === BLOCOS POR NATUREZA VIEW === */}
+        {viewMode === 'blocks' && !isEditing && (
+          <div className="flex-1 overflow-auto p-3">
+            {/* Legend / summary row */}
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Natureza das Atividades</span>
+              {ACTIVITY_TYPES.map(t => {
+                const count = displayedActivities.filter(a => a.activity_type === t.value).length;
+                if (count === 0) return null;
+                return (
+                  <div key={t.value} className="flex items-center gap-1 text-xs bg-muted/40 rounded-full px-2 py-0.5">
+                    <span className={cn("h-2 w-2 rounded-full inline-block", t.dot)} />
+                    <span className="font-medium">{t.label}</span>
+                    <span className="text-muted-foreground">{count}</span>
+                  </div>
+                );
+              })}
+              {displayedActivities.filter(a => !ACTIVITY_TYPES.find(t => t.value === a.activity_type)).length > 0 && (
+                <div className="flex items-center gap-1 text-xs bg-muted/40 rounded-full px-2 py-0.5">
+                  <span className="h-2 w-2 rounded-full inline-block bg-muted-foreground" />
+                  <span className="font-medium">Outros</span>
+                  <span className="text-muted-foreground">{displayedActivities.filter(a => !ACTIVITY_TYPES.find(t => t.value === a.activity_type)).length}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Columns by type */}
+            <div className="flex gap-3 overflow-x-auto pb-3 items-start min-h-[calc(100vh-240px)]">
+              {ACTIVITY_TYPES.map(typeConfig => {
+                const typeActivities = displayedActivities.filter(a => a.activity_type === typeConfig.value);
+                const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
+                const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
+
+                return (
+                  <div
+                    key={typeConfig.value}
+                    className={cn(
+                      'flex flex-col rounded-xl border-2 shrink-0 overflow-hidden transition-all',
+                      'w-[220px] min-h-[120px]',
+                      typeConfig.bg, typeConfig.border
+                    )}
+                  >
+                    {/* Column Header */}
+                    <div className={cn('px-3 py-2.5 text-white flex items-center justify-between', typeConfig.header)}>
+                      <div>
+                        <div className="font-bold text-sm leading-tight">{typeConfig.label}</div>
+                        <div className="text-[10px] opacity-80 mt-0.5 flex gap-1.5">
+                          <span>{openCount} abertas</span>
+                          {doneCount > 0 && <span>· {doneCount} concluídas</span>}
+                        </div>
+                      </div>
+                      <div className="bg-white/25 rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold shrink-0">
+                        {typeActivities.length}
+                      </div>
+                    </div>
+
+                    {/* Cards */}
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2 max-h-[calc(100vh-280px)]">
+                      {typeActivities.length === 0 && (
+                        <div className="flex items-center justify-center py-8 text-muted-foreground text-xs opacity-40">
+                          Nenhuma atividade
+                        </div>
+                      )}
+                      {typeActivities.map(activity => (
+                        <div
+                          key={activity.id}
+                          className={cn(
+                            'bg-card rounded-lg border border-border/50 p-2.5 cursor-pointer shadow-sm hover:shadow-md transition-all active:scale-[0.98]',
+                            activity.status === 'concluida' && 'opacity-60',
+                            selectedActivity?.id === activity.id && 'ring-2 ring-primary'
+                          )}
+                          onClick={() => handleOpenEdit(activity)}
+                        >
+                          {/* Status + priority */}
+                          <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+                            <Badge className={cn("text-[9px] px-1.5 py-0 h-4", statusColors[activity.status] || 'bg-muted')}>
+                              {STATUS_OPTIONS.find(s => s.value === activity.status)?.label || activity.status}
+                            </Badge>
+                            {activity.priority && activity.priority !== 'normal' && (
+                              <Badge className={cn("text-[9px] px-1.5 py-0 h-4", priorityColors[activity.priority] || '')}>
+                                {PRIORITY_OPTIONS.find(p => p.value === activity.priority)?.label}
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Title */}
+                          <p className={cn("text-xs font-semibold leading-snug", activity.status === 'concluida' && 'line-through')}>{activity.title}</p>
+
+                          {/* Lead */}
+                          {activity.lead_name && (
+                            <p className="text-[10px] text-muted-foreground mt-1 truncate">📁 {activity.lead_name}</p>
+                          )}
+
+                          {/* Footer */}
+                          <div className="flex items-center justify-between mt-2 gap-1">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {activity.deadline && (
+                                <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {format(parseISO(activity.deadline), 'dd/MM')}
+                                </span>
+                              )}
+                              {activity.assigned_to_name && (
+                                <span className="text-[9px] text-muted-foreground truncate max-w-[80px]">• {activity.assigned_to_name.split(' ')[0]}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {activity.status !== 'concluida' && (
+                                <button
+                                  className="text-green-600 hover:text-green-700 p-0.5 rounded"
+                                  onClick={e => { e.stopPropagation(); handleComplete(activity.id); }}
+                                  title="Concluir"
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <button
+                                className="text-muted-foreground hover:text-destructive p-0.5 rounded"
+                                onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div className={cn(
           "flex flex-col overflow-hidden transition-all",
-          viewMode === 'matrix' && !isEditing ? "hidden" : "",
+          (viewMode === 'matrix' || viewMode === 'blocks') && !isEditing ? "hidden" : "",
           isEditing ? "hidden md:flex w-[400px] min-w-[340px] border-r" : "flex-1"
         )}>
           {/* Calendar - collapsible */}
