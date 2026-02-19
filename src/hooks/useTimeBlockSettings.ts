@@ -39,13 +39,15 @@ export function useTimeBlockSettings(targetUserId?: string) {
               color: (globalType as any).color,
               days: (row.days as number[]) || [],
               startHour: row.start_hour,
+              startMinute: (row as any).start_minute ?? 0,
               endHour: row.end_hour,
+              endMinute: (row as any).end_minute ?? 0,
               isCustom: false,
             });
           }
         });
-        // Sort chronologically: by startHour
-        loaded.sort((a, b) => a.startHour - b.startHour);
+        // Sort chronologically by start time (hour + minute)
+        loaded.sort((a, b) => (a.startHour + (a.startMinute ?? 0) / 60) - (b.startHour + (b.startMinute ?? 0) / 60));
         setConfigs(loaded);
       } else {
         // No settings yet — show empty (user hasn't picked types yet)
@@ -72,7 +74,9 @@ export function useTimeBlockSettings(targetUserId?: string) {
       activity_type: c.activityType,
       days: c.days,
       start_hour: c.startHour,
+      start_minute: c.startMinute ?? 0,
       end_hour: c.endHour,
+      end_minute: c.endMinute ?? 0,
     }));
 
     // Validate before deleting: try inserting to a temp check first
