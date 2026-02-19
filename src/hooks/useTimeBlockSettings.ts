@@ -33,6 +33,7 @@ export function useTimeBlockSettings(targetUserId?: string) {
           const globalType = typesData.find((t: any) => t.key === row.activity_type);
           if (globalType) {
             loaded.push({
+              blockId: (row as any).id || `${row.activity_type}_${row.start_hour}`,
               activityType: row.activity_type,
               label: (globalType as any).label,
               color: (globalType as any).color,
@@ -43,12 +44,8 @@ export function useTimeBlockSettings(targetUserId?: string) {
             });
           }
         });
-        // Preserve order from global types for items in user's list
-        loaded.sort((a, b) => {
-          const ai = typesData.findIndex((t: any) => t.key === a.activityType);
-          const bi = typesData.findIndex((t: any) => t.key === b.activityType);
-          return ai - bi;
-        });
+        // Sort chronologically: by startHour
+        loaded.sort((a, b) => a.startHour - b.startHour);
         setConfigs(loaded);
       } else {
         // No settings yet — show empty (user hasn't picked types yet)

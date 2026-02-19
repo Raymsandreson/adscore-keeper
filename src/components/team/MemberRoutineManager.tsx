@@ -50,9 +50,12 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
           {WEEK_DAYS.map(d => (
             <div key={d.idx} className="space-y-1.5">
               <div className="text-center text-xs font-bold text-muted-foreground">{d.label}</div>
-              {configs.filter(c => c.days.includes(d.idx)).map(c => (
+              {configs
+                .filter(c => c.days.includes(d.idx))
+                .sort((a, b) => a.startHour - b.startHour)
+                .map(c => (
                 <div
-                  key={c.activityType}
+                  key={c.blockId || `${c.activityType}_${c.startHour}`}
                   className={cn('rounded-md px-2 py-1.5 text-white text-[10px] font-semibold', c.color)}
                 >
                   <div className="truncate">{c.label}</div>
@@ -69,17 +72,21 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         </div>
       </div>
 
-      {/* Resumo dos blocos */}
+      {/* Resumo dos blocos — agrupado por tipo */}
       <div className="flex flex-wrap gap-2">
-        {configs.map(c => (
-          <Badge key={c.activityType} variant="outline" className="gap-1.5 text-xs">
-            <span className={cn('h-2 w-2 rounded-full', c.color)} />
-            {c.label}
-            <span className="text-muted-foreground">
-              {c.days.length === 0 ? 'nenhum dia' : `${c.days.length} dia${c.days.length > 1 ? 's' : ''}`}
-            </span>
-          </Badge>
-        ))}
+        {Array.from(new Set(configs.map(c => c.activityType))).map(key => {
+          const typeBlocks = configs.filter(c => c.activityType === key);
+          const c = typeBlocks[0];
+          return (
+            <Badge key={key} variant="outline" className="gap-1.5 text-xs">
+              <span className={cn('h-2 w-2 rounded-full', c.color)} />
+              {c.label}
+              <span className="text-muted-foreground">
+                {typeBlocks.length} bloco{typeBlocks.length > 1 ? 's' : ''}
+              </span>
+            </Badge>
+          );
+        })}
       </div>
 
       <TimeBlockSettingsDialog

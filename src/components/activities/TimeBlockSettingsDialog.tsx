@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import {
   Settings2, RotateCcw, Save, Plus, Trash2, X,
@@ -16,7 +15,10 @@ import { toast } from 'sonner';
 import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';
 
+/** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
+  /** Unique id for this block (temp uuid while editing, DB id after save) */
+  blockId: string;
   activityType: string;
   days: number[];
   startHour: number;
@@ -56,19 +58,77 @@ export const getDefaultTimeBlockConfigs = (): TimeBlockConfig[] => [];
 export const loadTimeBlockConfigs = (): TimeBlockConfig[] => [];
 export const saveTimeBlockConfigs = (_: TimeBlockConfig[]) => {};
 
+let _blockIdCounter = 0;
+const newBlockId = () => `block_${Date.now()}_${_blockIdCounter++}`;
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  configs: TimeBlockConfig[]; // user's current selections
+  configs: TimeBlockConfig[];
   onSave: (configs: TimeBlockConfig[]) => void;
 }
+
+// ------------------------------------------------------------------
+// Helpers for overlap detection
+// ------------------------------------------------------------------
+
+/** All blocks that belong to OTHER types or OTHER blockIds */
+function getOccupiedRanges(
+  blocks: TimeBlockConfig[],
+  currentBlockId: string,
+  days: number[],
+): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  blocks.forEach(b => {
+    if (b.blockId === currentBlockId) return;
+    const sharesDay = days.some(d => b.days.includes(d));
+    if (!sharesDay) return;
+    ranges.push({ start: b.startHour, end: b.endHour });
+  });
+  return ranges;
+}
+
+function getAvailableStartHours(
+  blocks: TimeBlockConfig[],
+  blockId: string,
+  days: number[],
+): number[] {
+  if (days.length === 0) return HOURS.slice(0, -1);
+  const ranges = getOccupiedRanges(blocks, blockId, days);
+  return HOURS.slice(0, -1).filter(h =>
+    !ranges.some(r => h >= r.start && h < r.end)
+  );
+}
+
+function getAvailableEndHours(
+  blocks: TimeBlockConfig[],
+  blockId: string,
+  days: number[],
+  startHour: number,
+): number[] {
+  if (days.length === 0) return HOURS.filter(h => h > startHour);
+  const ranges = getOccupiedRanges(blocks, blockId, days);
+  const available: number[] = [];
+  for (const h of HOURS) {
+    if (h <= startHour) continue;
+    // Range [startHour, h) must be free
+    const blocked = ranges.some(r => r.start < h && r.end > startHour);
+    if (!blocked) available.push(h);
+    else break;
+  }
+  return available;
+}
+
+// ------------------------------------------------------------------
+// Component
+// ------------------------------------------------------------------
 
 export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }: Props) {
   const { types: globalTypes, loading: typesLoading, addType, deleteType, updateType, reorder } = useActivityTypes();
   const { isAdmin } = useUserRole();
 
-  // User's local selection: map of activityType key → schedule config
-  const [selected, setSelected] = useState<Record<string, { days: number[]; startHour: number; endHour: number }>>({});
+  // Working copy — list of all blocks being edited
+  const [blocks, setBlocks] = useState<TimeBlockConfig[]>([]);
 
   // Admin: manage global types
   const [showAddType, setShowAddType] = useState(false);
@@ -86,60 +146,76 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
 
-  // Init selected from configs
+  // Init blocks from configs
   useEffect(() => {
     if (!open) return;
-    const map: Record<string, { days: number[]; startHour: number; endHour: number }> = {};
-    configs.forEach(c => {
-      map[c.activityType] = { days: c.days, startHour: c.startHour, endHour: c.endHour };
-    });
-    setSelected(map);
+    setBlocks(configs.map(c => ({ ...c, blockId: c.blockId || newBlockId() })));
     setShowAI(false);
     setAiDescription('');
     setShowAddType(false);
     setNewLabel('');
   }, [open, configs]);
 
-  const isSelected = (key: string) => key in selected;
+  // Types that have at least one block
+  const activeTypeKeys = new Set(blocks.map(b => b.activityType));
 
-  // Fixed toggle
+  // Toggle a type: if it has blocks → remove all; if not → add one default block
   const handleToggle = (type: ActivityType) => {
-    const k = type.key;
-    setSelected(prev => {
-      if (k in prev) {
-        const next = { ...prev };
-        delete next[k];
-        return next;
-      }
-      return { ...prev, [k]: { days: [0, 1, 2, 3, 4], startHour: 9, endHour: 11 } };
-    });
+    if (activeTypeKeys.has(type.key)) {
+      setBlocks(prev => prev.filter(b => b.activityType !== type.key));
+    } else {
+      setBlocks(prev => [
+        ...prev,
+        {
+          blockId: newBlockId(),
+          activityType: type.key,
+          label: type.label,
+          color: type.color,
+          days: [0, 1, 2, 3, 4],
+          startHour: 9,
+          endHour: 11,
+          isCustom: false,
+        },
+      ]);
+    }
   };
 
-  const updateSchedule = (key: string, patch: Partial<{ days: number[]; startHour: number; endHour: number }>) => {
-    setSelected(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  const addBlock = (type: ActivityType) => {
+    setBlocks(prev => [
+      ...prev,
+      {
+        blockId: newBlockId(),
+        activityType: type.key,
+        label: type.label,
+        color: type.color,
+        days: [0, 1, 2, 3, 4],
+        startHour: 9,
+        endHour: 11,
+        isCustom: false,
+      },
+    ]);
   };
 
-  const toggleDay = (key: string, dayIdx: number) => {
-    const current = selected[key]?.days || [];
-    const days = current.includes(dayIdx)
-      ? current.filter(d => d !== dayIdx)
-      : [...current, dayIdx].sort();
-    updateSchedule(key, { days });
+  const removeBlock = (blockId: string) => {
+    setBlocks(prev => prev.filter(b => b.blockId !== blockId));
+  };
+
+  const updateBlock = (blockId: string, patch: Partial<TimeBlockConfig>) => {
+    setBlocks(prev => prev.map(b => b.blockId === blockId ? { ...b, ...patch } : b));
+  };
+
+  const toggleDay = (blockId: string, dayIdx: number) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.blockId !== blockId) return b;
+      const days = b.days.includes(dayIdx)
+        ? b.days.filter(d => d !== dayIdx)
+        : [...b.days, dayIdx].sort();
+      return { ...b, days };
+    }));
   };
 
   const handleSave = () => {
-    const result: TimeBlockConfig[] = globalTypes
-      .filter(t => t.key in selected)
-      .map(t => ({
-        activityType: t.key,
-        label: t.label,
-        color: t.color,
-        days: selected[t.key].days,
-        startHour: selected[t.key].startHour,
-        endHour: selected[t.key].endHour,
-        isCustom: false,
-      }));
-    onSave(result);
+    onSave(blocks);
     onOpenChange(false);
   };
 
@@ -168,26 +244,30 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
       const suggested: Array<{ activityType: string; days: number[]; startHour: number; endHour: number }> =
         (data?.configs || []);
 
-      // Map AI suggestions to global types by key match
-      const newSelected: Record<string, { days: number[]; startHour: number; endHour: number }> = {};
+      const newBlocks: TimeBlockConfig[] = [];
       suggested.forEach((s: any) => {
         const globalMatch = globalTypes.find(
           t => t.key === s.activityType || t.label.toLowerCase() === (s.label || '').toLowerCase()
         );
         if (globalMatch) {
-          newSelected[globalMatch.key] = {
+          newBlocks.push({
+            blockId: newBlockId(),
+            activityType: globalMatch.key,
+            label: globalMatch.label,
+            color: globalMatch.color,
             days: Array.isArray(s.days) ? s.days : [0, 1, 2, 3, 4],
             startHour: Number(s.startHour) || 9,
             endHour: Number(s.endHour) || 11,
-          };
+            isCustom: false,
+          });
         }
       });
 
-      if (Object.keys(newSelected).length === 0) {
-        toast.warning('A IA não conseguiu mapear sugestões aos tipos globais existentes. Selecione os tipos manualmente.');
+      if (newBlocks.length === 0) {
+        toast.warning('A IA não conseguiu mapear sugestões aos tipos globais existentes.');
       } else {
-        setSelected(newSelected);
-        toast.success(`✨ ${Object.keys(newSelected).length} tipos configurados pela IA!`);
+        setBlocks(newBlocks);
+        toast.success(`✨ ${newBlocks.length} bloco${newBlocks.length !== 1 ? 's' : ''} configurados pela IA!`);
       }
       setShowAI(false);
       setAiDescription('');
@@ -199,14 +279,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   };
 
   // Drag handlers for global type reorder (admin)
-  const handleDragStart = (idx: number) => {
-    dragItem.current = idx;
-    setDraggedIdx(idx);
-  };
-  const handleDragEnter = (idx: number) => {
-    dragOverItem.current = idx;
-    setDropTargetIdx(idx);
-  };
+  const handleDragStart = (idx: number) => { dragItem.current = idx; setDraggedIdx(idx); };
+  const handleDragEnter = (idx: number) => { dragOverItem.current = idx; setDropTargetIdx(idx); };
   const handleDragEnd = () => {
     if (
       dragItem.current !== null &&
@@ -224,47 +298,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
     setDropTargetIdx(null);
   };
 
-  const selectedCount = Object.keys(selected).length;
-
-  // Returns hours that are already occupied by OTHER blocks on the given days
-  const getOccupiedHours = (currentKey: string, days: number[]): Set<number> => {
-    const occupied = new Set<number>();
-    Object.entries(selected).forEach(([key, sched]) => {
-      if (key === currentKey) return;
-      // Only block if the other block shares at least one of the same days
-      const sharesDay = days.some(d => sched.days.includes(d));
-      if (!sharesDay) return;
-      for (let h = sched.startHour; h < sched.endHour; h++) {
-        occupied.add(h);
-      }
-    });
-    return occupied;
-  };
-
-  // Returns available start hours (not occupied by other blocks on same days)
-  const getAvailableStartHours = (currentKey: string, days: number[]): number[] => {
-    if (days.length === 0) return HOURS.slice(0, -1); // no days selected → show all
-    const occupied = getOccupiedHours(currentKey, days);
-    return HOURS.slice(0, -1).filter(h => !occupied.has(h));
-  };
-
-  // Returns available end hours for a given start (no overlap with others on same days)
-  const getAvailableEndHours = (currentKey: string, days: number[], startHour: number): number[] => {
-    if (days.length === 0) return HOURS.filter(h => h > startHour);
-    const occupied = getOccupiedHours(currentKey, days);
-    const available: number[] = [];
-    for (const h of HOURS) {
-      if (h <= startHour) continue;
-      // End hour is exclusive — we need the range [startHour, h) to be free
-      let blocked = false;
-      for (let t = startHour; t < h; t++) {
-        if (occupied.has(t)) { blocked = true; break; }
-      }
-      if (!blocked) available.push(h);
-      else break; // stop at first blocked hour
-    }
-    return available;
-  };
+  const selectedCount = activeTypeKeys.size;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -275,7 +309,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
             Configurar Minha Rotina
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Selecione os tipos de atividade que fazem parte da sua semana e defina os horários.
+            Selecione os tipos de atividade e adicione quantos blocos de horário quiser por tipo.
           </p>
         </DialogHeader>
 
@@ -338,8 +372,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
         ) : (
           <div className="space-y-2">
             {globalTypes.map((type, idx) => {
-              const sel = isSelected(type.key);
-              const schedule = selected[type.key];
+              const typeBlocks = blocks.filter(b => b.activityType === type.key);
+              const sel = typeBlocks.length > 0;
               return (
                 <div
                   key={type.key}
@@ -356,7 +390,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                     dropTargetIdx === idx && draggedIdx !== idx && 'border-primary border-2'
                   )}
                 >
-                  {/* Type header — always visible */}
+                  {/* Type header */}
                   <div
                     className="flex items-center gap-3 p-3 cursor-pointer select-none"
                     onClick={() => handleToggle(type)}
@@ -374,96 +408,131 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                       : <Circle className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />}
                   </div>
 
-                  {/* Schedule config — only when selected */}
-                  {sel && schedule && (
-                    <div className="px-3 pb-3 space-y-3 border-t border-primary/20 pt-3">
-                      {/* Days */}
-                      <div>
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">Dias da semana</p>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {WEEK_DAYS.map(d => (
-                            <button
-                              key={d.idx}
-                              onClick={() => toggleDay(type.key, d.idx)}
-                              className={cn(
-                                'h-7 w-9 rounded-md text-[11px] font-bold border transition-all',
-                                schedule.days.includes(d.idx)
-                                  ? `${type.color} text-white border-transparent`
-                                  : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/60'
-                              )}
-                            >
-                              {d.label}
-                            </button>
-                          ))}
-                          <button
-                            onClick={() => {
-                              const allActive = WEEK_DAYS.every(d => schedule.days.includes(d.idx));
-                              updateSchedule(type.key, { days: allActive ? [] : WEEK_DAYS.map(d => d.idx) });
-                            }}
-                            className="h-7 px-2 rounded-md text-[10px] font-medium border border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted/30 transition-all"
-                          >
-                            {WEEK_DAYS.every(d => schedule.days.includes(d.idx)) ? 'Nenhum' : 'Todos'}
-                          </button>
-                        </div>
-                      </div>
+                  {/* Blocks — only when selected */}
+                  {sel && (
+                    <div className="px-3 pb-3 border-t border-primary/20 pt-3 space-y-3">
+                      {typeBlocks.map((block, bi) => {
+                        const availStart = getAvailableStartHours(blocks, block.blockId, block.days);
+                        const availEnd = getAvailableEndHours(blocks, block.blockId, block.days, block.startHour);
+                        const correctedStart = availStart.includes(block.startHour) ? block.startHour : (availStart[0] ?? block.startHour);
+                        const correctedEnd = availEnd.includes(block.endHour) ? block.endHour : (availEnd[0] ?? block.endHour);
 
-                      {/* Hours */}
-                      {(() => {
-                        const availStart = getAvailableStartHours(type.key, schedule.days);
-                        const availEnd = getAvailableEndHours(type.key, schedule.days, schedule.startHour);
-                        const correctedStart = availStart.includes(schedule.startHour) ? schedule.startHour : (availStart[0] ?? schedule.startHour);
-                        const correctedEnd = availEnd.includes(schedule.endHour) ? schedule.endHour : (availEnd[0] ?? schedule.endHour);
                         return (
-                          <div className="flex items-center gap-3">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Horário</p>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">De</span>
-                              <select
-                                value={correctedStart}
-                                onChange={e => {
-                                  const v = Number(e.target.value);
-                                  const newEnd = getAvailableEndHours(type.key, schedule.days, v);
-                                  updateSchedule(type.key, { startHour: v, endHour: newEnd[0] ?? v + 1 });
-                                }}
-                                className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                              >
-                                {availStart.length > 0
-                                  ? availStart.map(h => <option key={h} value={h}>{h}:00</option>)
-                                  : <option value={correctedStart}>{correctedStart}:00</option>}
-                              </select>
+                          <div key={block.blockId} className={cn(
+                            'space-y-2 rounded-md p-2 bg-background/60',
+                            typeBlocks.length > 1 && 'border border-border'
+                          )}>
+                            {/* Block header with remove button (only if >1 block) */}
+                            {typeBlocks.length > 1 && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
+                                  Bloco {bi + 1}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeBlock(block.blockId)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            )}
+
+                            {/* Days */}
+                            <div>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">Dias da semana</p>
+                              <div className="flex gap-1.5 flex-wrap">
+                                {WEEK_DAYS.map(d => (
+                                  <button
+                                    key={d.idx}
+                                    onClick={() => toggleDay(block.blockId, d.idx)}
+                                    className={cn(
+                                      'h-7 w-9 rounded-md text-[11px] font-bold border transition-all',
+                                      block.days.includes(d.idx)
+                                        ? `${type.color} text-white border-transparent`
+                                        : 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/60'
+                                    )}
+                                  >
+                                    {d.label}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => {
+                                    const allActive = WEEK_DAYS.every(d => block.days.includes(d.idx));
+                                    updateBlock(block.blockId, { days: allActive ? [] : WEEK_DAYS.map(d => d.idx) });
+                                  }}
+                                  className="h-7 px-2 rounded-md text-[10px] font-medium border border-dashed border-muted-foreground/40 text-muted-foreground hover:bg-muted/30 transition-all"
+                                >
+                                  {WEEK_DAYS.every(d => block.days.includes(d.idx)) ? 'Nenhum' : 'Todos'}
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">até</span>
-                              <select
-                                value={correctedEnd}
-                                onChange={e => updateSchedule(type.key, { endHour: Number(e.target.value) })}
-                                className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                              >
-                                {availEnd.length > 0
-                                  ? availEnd.map(h => <option key={h} value={h}>{h}:00</option>)
-                                  : <option value={correctedEnd}>{correctedEnd}:00</option>}
-                              </select>
+
+                            {/* Hours */}
+                            <div className="flex items-center gap-3">
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">Horário</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">De</span>
+                                <select
+                                  value={correctedStart}
+                                  onChange={e => {
+                                    const v = Number(e.target.value);
+                                    const newEnd = getAvailableEndHours(blocks, block.blockId, block.days, v);
+                                    updateBlock(block.blockId, { startHour: v, endHour: newEnd[0] ?? v + 1 });
+                                  }}
+                                  className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                >
+                                  {availStart.length > 0
+                                    ? availStart.map(h => <option key={h} value={h}>{h}:00</option>)
+                                    : <option value={correctedStart}>{correctedStart}:00</option>}
+                                </select>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">até</span>
+                                <select
+                                  value={correctedEnd}
+                                  onChange={e => updateBlock(block.blockId, { endHour: Number(e.target.value) })}
+                                  className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                >
+                                  {availEnd.length > 0
+                                    ? availEnd.map(h => <option key={h} value={h}>{h}:00</option>)
+                                    : <option value={correctedEnd}>{correctedEnd}:00</option>}
+                                </select>
+                              </div>
+                              {/* Mini bar */}
+                              <div className="flex-1 relative h-5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
+                                {(() => {
+                                  const total = HOURS[HOURS.length - 1] - HOURS[0];
+                                  const sp = ((correctedStart - HOURS[0]) / total) * 100;
+                                  const wp = ((correctedEnd - correctedStart) / total) * 100;
+                                  return (
+                                    <div
+                                      className={cn('absolute top-0 bottom-0 rounded-full opacity-70', type.color)}
+                                      style={{ left: `${sp}%`, width: `${wp}%` }}
+                                    />
+                                  );
+                                })()}
+                              </div>
                             </div>
-                            <div className="flex-1 relative h-5 bg-muted/30 rounded-full overflow-hidden hidden sm:block">
-                              {(() => {
-                                const total = HOURS[HOURS.length - 1] - HOURS[0];
-                                const sp = ((correctedStart - HOURS[0]) / total) * 100;
-                                const wp = ((correctedEnd - correctedStart) / total) * 100;
-                                return (
-                                  <div
-                                    className={cn('absolute top-0 bottom-0 rounded-full opacity-70', type.color)}
-                                    style={{ left: `${sp}%`, width: `${wp}%` }}
-                                  />
-                                );
-                              })()}
-                            </div>
+
+                            {block.days.length === 0 && (
+                              <p className="text-[11px] text-destructive">⚠️ Nenhum dia selecionado</p>
+                            )}
                           </div>
                         );
-                      })()}
+                      })}
 
-                      {schedule.days.length === 0 && (
-                        <p className="text-[11px] text-destructive">⚠️ Nenhum dia selecionado</p>
-                      )}
+                      {/* Add another block for this type */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-1.5 text-xs h-7 border-dashed"
+                        onClick={e => { e.stopPropagation(); addBlock(type); }}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar outro horário para "{type.label}"
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -478,89 +547,69 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
             <Separator />
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                  🔧 Gerenciar tipos globais (Admin)
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Tipos Globais (Admin)
                 </p>
                 <Button
                   size="sm"
                   variant="outline"
+                  className="h-7 text-xs gap-1"
                   onClick={() => setShowAddType(v => !v)}
-                  className="gap-1.5 h-7 text-xs border-dashed"
                 >
                   <Plus className="h-3 w-3" />
-                  Novo tipo
+                  Novo Tipo
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground -mt-1">
-                Estes tipos ficam disponíveis para todos os usuários escolherem em suas rotinas. Arraste para reordenar.
-              </p>
 
               {showAddType && (
-                <div className="rounded-lg border border-dashed p-3 space-y-3 bg-muted/10">
-                  <Input
-                    placeholder="Nome do tipo (ex: Perícia, Triagem...)"
-                    value={newLabel}
-                    onChange={e => setNewLabel(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleAddGlobalType()}
-                    autoFocus
-                    className="h-8 text-sm"
-                  />
-                  <div>
-                    <p className="text-[10px] text-muted-foreground mb-1.5">Cor</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {COLOR_OPTIONS.map(c => (
-                        <button
-                          key={c.value}
-                          onClick={() => setNewColor(c.value)}
-                          className={cn('h-5 w-5 rounded-full border-2 transition-all', c.value,
-                            newColor === c.value ? 'border-foreground scale-110' : 'border-transparent')}
-                          title={c.label}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddGlobalType} disabled={!newLabel.trim()} className="gap-1 h-7 text-xs">
-                      <Plus className="h-3 w-3" /> Adicionar
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowAddType(false); setNewLabel(''); }}>
-                      Cancelar
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Edit existing global types inline */}
-              <div className="space-y-1">
-                {globalTypes.map((type, idx) => (
-                  <div
-                    key={type.key}
-                    className="flex items-center gap-2 rounded-md border px-3 py-1.5 bg-background"
-                  >
-                    <span className={cn('h-2.5 w-2.5 rounded-full flex-shrink-0', type.color)} />
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Nome do tipo</p>
                     <Input
-                      value={type.label}
-                      onChange={e => updateType(type.id, { label: e.target.value })}
-                      className="h-6 text-xs border-0 p-0 focus-visible:ring-0 flex-1 bg-transparent"
+                      value={newLabel}
+                      onChange={e => setNewLabel(e.target.value)}
+                      placeholder="Ex: Audiência"
+                      className="h-8 text-sm"
+                      onKeyDown={e => e.key === 'Enter' && handleAddGlobalType()}
+                      autoFocus
                     />
-                    <div className="flex gap-1">
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Cor</p>
+                    <div className="flex gap-1 flex-wrap max-w-[120px]">
                       {COLOR_OPTIONS.slice(0, 6).map(c => (
                         <button
                           key={c.value}
-                          onClick={() => updateType(type.id, { color: c.value })}
-                          className={cn('h-3.5 w-3.5 rounded-full border-2 transition-all', c.value,
-                            type.color === c.value ? 'border-foreground scale-110' : 'border-transparent')}
+                          onClick={() => setNewColor(c.value)}
+                          className={cn(
+                            'h-5 w-5 rounded-full border-2 transition-all',
+                            c.value,
+                            newColor === c.value ? 'border-foreground scale-110' : 'border-transparent'
+                          )}
                         />
                       ))}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                      onClick={() => deleteType(type.id)}
+                  </div>
+                  <Button size="sm" className="h-8" onClick={handleAddGlobalType} disabled={!newLabel.trim()}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setShowAddType(false)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                {globalTypes.map(t => (
+                  <div key={t.key} className="flex items-center gap-1 rounded-full border px-3 py-1 text-xs bg-background">
+                    <span className={cn('h-2 w-2 rounded-full', t.color)} />
+                    <span>{t.label}</span>
+                    <button
+                      onClick={() => deleteType(t.id)}
+                      className="ml-1 text-muted-foreground/50 hover:text-destructive transition-colors"
                     >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                      <X className="h-3 w-3" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -568,51 +617,13 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
           </>
         )}
 
-        {/* Preview mini-grid */}
-        {Object.keys(selected).length > 0 && (
-          <div className="rounded-lg border p-3 bg-muted/20">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">Prévia da grade semanal</p>
-            <div className="grid grid-cols-5 gap-1">
-              {WEEK_DAYS.map(d => (
-                <div key={d.idx} className="space-y-1">
-                  <div className="text-center text-[10px] font-bold text-muted-foreground">{d.label}</div>
-                  {globalTypes
-                    .filter(t => t.key in selected && selected[t.key].days.includes(d.idx))
-                    .map(t => (
-                      <div key={t.key} className={cn('rounded px-1.5 py-1 text-[9px] text-white font-bold', t.color)}>
-                        <div className="truncate">{t.label.slice(0, 6)}</div>
-                        <div className="opacity-80">{selected[t.key].startHour}h-{selected[t.key].endHour}h</div>
-                      </div>
-                    ))}
-                  {globalTypes.filter(t => t.key in selected && selected[t.key].days.includes(d.idx)).length === 0 && (
-                    <div className="rounded border border-dashed border-muted-foreground/20 h-8 flex items-center justify-center">
-                      <span className="text-[9px] text-muted-foreground/40">vazio</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <Separator />
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSelected({})}
-            className="gap-1.5 text-muted-foreground"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Limpar seleção
+        {/* Save footer */}
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={handleSave} className="gap-1.5">
+            <Save className="h-3.5 w-3.5" />
+            Salvar Rotina
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleSave} className="gap-1.5">
-              <Save className="h-3.5 w-3.5" />
-              Salvar rotina
-            </Button>
-          </div>
         </div>
       </DialogContent>
     </Dialog>
