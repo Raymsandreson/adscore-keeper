@@ -64,7 +64,7 @@ export function useMyProductivity() {
         contactsRes, dmsRes, repliesRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
-        outboundCommentsRes,
+        outboundCommentsRes, sentCommentsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
@@ -99,6 +99,10 @@ export function useMyProductivity() {
           .eq('comment_type', 'outbound_manual')
           .eq('replied_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
+        // All sent comments today (outbound on third-party posts — no user attribution column)
+        supabase.from('instagram_comments').select('id')
+          .eq('comment_type', 'sent')
+          .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -112,6 +116,7 @@ export function useMyProductivity() {
       const completedActivities = completedActivitiesRes.data || [];
       const overdueActivities = overdueActivitiesRes.data || [];
       const outboundComments = outboundCommentsRes.data || [];
+      const sentComments = sentCommentsRes.data || [];
 
       // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
@@ -123,8 +128,8 @@ export function useMyProductivity() {
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
-      // Total comment replies = replied to comments on own posts + outbound comments registered manually
-      const totalCommentReplies = replies.length + outboundComments.length;
+      // Total comment replies = replied on own posts + outbound_manual + sent (outbound on third-party posts)
+      const totalCommentReplies = replies.length + outboundComments.length + sentComments.length;
 
       const prod: MyProductivity = {
         commentReplies: totalCommentReplies,
