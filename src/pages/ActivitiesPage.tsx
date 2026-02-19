@@ -144,6 +144,9 @@ const ActivitiesPage = () => {
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
+  // Countdown timer state for time block click
+  const [countdownBlock, setCountdownBlock] = useState<TimeBlockConfig | null>(null);
+  const [countdownRemaining, setCountdownRemaining] = useState(0);
   // Map: leadId -> activityType derived from workflow step (used in blocks view)
   const [leadWorkflowActivityTypes, setLeadWorkflowActivityTypes] = useState<Record<string, string>>({});
   const [leadPreview, setLeadPreview] = useState<{
@@ -263,7 +266,7 @@ const ActivitiesPage = () => {
     setFormWhatWasDone('');
     setFormCurrentStatus('');
     setFormNextSteps('');
-    setFormType('tarefa');
+    setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : 'tarefa');
     setFormPriority('normal');
     setFormLeadId('');
     setFormLeadName('');
@@ -284,6 +287,10 @@ const ActivitiesPage = () => {
   const handleCreate = async () => {
     if (!formTitle.trim()) {
       toast.error('Informe o assunto da atividade');
+      return;
+    }
+    if (timeBlockSettings.length > 0 && !timeBlockSettings.some(c => c.activityType === formType)) {
+      toast.error('Selecione um tipo de atividade que esteja na sua rotina');
       return;
     }
 
@@ -746,6 +753,32 @@ const ActivitiesPage = () => {
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
     : leads.slice(0, 20);
 
+  // Only show activity types that are in the user's routine
+  const routineActivityTypes = useMemo(() => {
+    if (timeBlockSettings.length === 0) return ACTIVITY_TYPES; // fallback if no routine configured
+    const routineKeys = new Set(timeBlockSettings.map(c => c.activityType));
+    return ACTIVITY_TYPES.filter(t => routineKeys.has(t.value));
+  }, [timeBlockSettings]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!countdownBlock) return;
+    const endMinutes = (countdownBlock.endHour * 60) + (countdownBlock.endMinute ?? 0);
+    const calcRemaining = () => {
+      const now = new Date();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const nowSeconds = now.getSeconds();
+      return Math.max(0, (endMinutes - nowMinutes) * 60 - nowSeconds);
+    };
+    setCountdownRemaining(calcRemaining());
+    const interval = setInterval(() => {
+      const r = calcRemaining();
+      setCountdownRemaining(r);
+      if (r <= 0) { clearInterval(interval); }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [countdownBlock]);
+
   const weekDays = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 
   const activityFormContent = (
@@ -773,11 +806,19 @@ const ActivitiesPage = () => {
           <Select value={formType} onValueChange={setFormType}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {ACTIVITY_TYPES.map(t => (
+              {routineActivityTypes.map(t => (
                 <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
               ))}
+              {routineActivityTypes.length === 0 && (
+                <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                  Configure sua rotina primeiro
+                </div>
+              )}
             </SelectContent>
           </Select>
+          {timeBlockSettings.length > 0 && !timeBlockSettings.some(c => c.activityType === formType) && (
+            <p className="text-[10px] text-destructive mt-0.5">Tipo não está na sua rotina</p>
+          )}
         </div>
       </div>
 
@@ -1797,7 +1838,11 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   {timeBlockSettings.filter(c => c.days.length > 0).map(cfg => {
                     const daysLabels = ['S','T','Q','Q','S'];
                     return (
-                      <div key={cfg.activityType} className="text-[10px]">
+                      <div
+                        key={cfg.blockId || cfg.activityType}
+                        className="text-[10px] cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
+                        onClick={() => setCountdownBlock(cfg)}
+                      >
                         <div className="flex items-center gap-1 mb-0.5">
                           <span className={cn('h-2 w-2 rounded-full shrink-0', cfg.color)} />
                           <span className="font-semibold text-muted-foreground truncate">{cfg.label}</span>
@@ -1921,10 +1966,17 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             <div
                               key={dayColIdx}
                               className={cn(
-                                'flex-1 border-l p-1 flex flex-col gap-1 transition-colors',
+                                'flex-1 border-l p-1 flex flex-col gap-1 transition-colors cursor-pointer',
                                 isSameDay(dayDate, today) && 'bg-primary/5',
                                 hasConfiguredSlot && !isSameDay(dayDate, today) && 'bg-muted/10',
                               )}
+                              onClick={() => {
+                                if (hasConfiguredSlot && isSameDay(dayDate, today)) {
+                                  // Find the matching block for this hour+day
+                                  const matchingBlock = slotCfgs[0];
+                                  if (matchingBlock) setCountdownBlock(matchingBlock);
+                                }
+                              }}
                             >
                               {cellActivities.length === 0 && hasConfiguredSlot && (
                                 <div className="flex flex-wrap gap-0.5">
@@ -2431,6 +2483,56 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         configs={timeBlockSettings}
         onSave={saveTimeBlockConfigs}
       />
+
+      {/* Countdown Timer Overlay */}
+      {countdownBlock && (
+        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center" onClick={() => setCountdownBlock(null)}>
+          <div className="bg-card rounded-2xl shadow-2xl border p-8 max-w-sm w-full mx-4 text-center space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-center gap-2">
+              <span className={cn('h-4 w-4 rounded-full', countdownBlock.color)} />
+              <h2 className="text-lg font-bold">{countdownBlock.label}</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {String(countdownBlock.startHour).padStart(2,'0')}:{String(countdownBlock.startMinute ?? 0).padStart(2,'0')}
+              {' – '}
+              {String(countdownBlock.endHour).padStart(2,'0')}:{String(countdownBlock.endMinute ?? 0).padStart(2,'0')}
+            </p>
+            <div className={cn('rounded-xl p-6', countdownBlock.color)}>
+              <p className="text-white/70 text-xs font-medium uppercase tracking-widest mb-1">Tempo restante</p>
+              <p className="text-white text-5xl font-mono font-bold tabular-nums">
+                {(() => {
+                  const h = Math.floor(countdownRemaining / 3600);
+                  const m = Math.floor((countdownRemaining % 3600) / 60);
+                  const s = countdownRemaining % 60;
+                  if (h > 0) return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                })()}
+              </p>
+              {countdownRemaining <= 0 && (
+                <p className="text-white/80 text-sm font-semibold mt-2">⏰ Tempo esgotado!</p>
+              )}
+            </div>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" size="sm" onClick={() => setCountdownBlock(null)}>
+                Fechar
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setFormType(countdownBlock.activityType);
+                  setCountdownBlock(null);
+                  resetForm();
+                  setFormType(countdownBlock.activityType);
+                  setSheetMode('create');
+                }}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Nova Atividade
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
