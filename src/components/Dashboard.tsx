@@ -348,12 +348,6 @@ const Dashboard = () => {
               </Button>
             </Link>
             
-            <Link to="/editorial">
-              <Button variant="outline" size="sm">
-                <CalendarDays className="h-4 w-4 mr-2" />
-                Calendário Editorial
-              </Button>
-            </Link>
 
             <Link to="/analytics">
               <Button variant="outline" size="sm">
