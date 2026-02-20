@@ -420,7 +420,7 @@ export function WorkflowProgressView({
                   </CollapsibleTrigger>
 
                   <CollapsibleContent>
-                    <div className="ml-4 mt-1 space-y-1">
+                    <div className="ml-6 mt-1 space-y-1 border-l-2 border-blue-300/40 pl-3">
                       {phase.objectives.length === 0 ? (
                         <p className="text-xs text-muted-foreground pl-4 py-2">
                           Nenhum objetivo vinculado a esta fase
@@ -478,7 +478,7 @@ export function WorkflowProgressView({
                               </CollapsibleTrigger>
 
                               <CollapsibleContent>
-                                <div className="ml-8 mt-0.5 space-y-0.5">
+                                <div className="ml-6 mt-0.5 space-y-0.5 border-l-2 border-green-300/40 pl-3">
                                   {objective.instance.items.length === 0 ? (
                                     <p className="text-xs text-muted-foreground py-2 pl-2">
                                       Nenhum passo definido
