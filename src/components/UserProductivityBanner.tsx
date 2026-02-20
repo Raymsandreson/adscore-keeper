@@ -40,6 +40,7 @@ import {
   Briefcase,
   Medal,
   Eye,
+  Circle,
 } from 'lucide-react';
 
 const METRICS = [
@@ -220,7 +221,14 @@ export function UserProductivityBanner() {
   }, [ranking, watchedUserIds, allMembers]);
 
   // Fetch time block settings for watched users
-  const [watchedUserBlocks, setWatchedUserBlocks] = useState<Record<string, { label: string; color: string; endHour: number; endMinute: number } | null>>({});
+  interface WatchedBlockInfo {
+    label: string; color: string; activityType: string;
+    startHour: number; startMinute: number; endHour: number; endMinute: number;
+    isCurrent: boolean;
+  }
+  const [watchedUserBlocks, setWatchedUserBlocks] = useState<Record<string, { current: WatchedBlockInfo | null; todayBlocks: WatchedBlockInfo[] }>>({});
+  const [expandedWatchedRoutine, setExpandedWatchedRoutine] = useState<Set<string>>(new Set());
+  const [watchedBlockActivities, setWatchedBlockActivities] = useState<Record<string, { title: string; status: string; leadName: string | null }[]>>({});
   
   useEffect(() => {
     if (watchedUserIds.size === 0) {
@@ -230,7 +238,6 @@ export function UserProductivityBanner() {
     const userIdsArr = Array.from(watchedUserIds);
     
     const fetchBlocks = async () => {
-      // Fetch all time block settings for watched users
       const { data: settingsData } = await supabase
         .from('user_timeblock_settings')
         .select('*')
@@ -247,50 +254,56 @@ export function UserProductivityBanner() {
       const currentDay = jsDay === 0 ? 6 : jsDay - 1;
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
-      const result: Record<string, { label: string; color: string; endHour: number; endMinute: number } | null> = {};
+      const result: Record<string, { current: WatchedBlockInfo | null; todayBlocks: WatchedBlockInfo[] }> = {};
       
       userIdsArr.forEach(uid => {
         const userSettings = settingsData.filter((s: any) => s.user_id === uid);
-        const activeBlock = userSettings.find((s: any) => {
+        const todaySettings = userSettings.filter((s: any) => {
           const days = (s.days as number[]) || [];
-          const startMin = s.start_hour * 60 + ((s as any).start_minute ?? 0);
-          const endMin = s.end_hour * 60 + ((s as any).end_minute ?? 0);
-          return days.includes(currentDay) && currentMinutes >= startMin && currentMinutes < endMin;
+          return days.includes(currentDay);
         });
         
-        if (activeBlock) {
-          const typeInfo = typesData.find((t: any) => t.key === (activeBlock as any).activity_type);
-          result[uid] = {
-            label: typeInfo?.label || (activeBlock as any).activity_type,
+        const blocks: WatchedBlockInfo[] = todaySettings.map((s: any) => {
+          const typeInfo = typesData.find((t: any) => t.key === s.activity_type);
+          const startMin = s.start_hour * 60 + (s.start_minute ?? 0);
+          const endMin = s.end_hour * 60 + (s.end_minute ?? 0);
+          return {
+            label: typeInfo?.label || s.activity_type,
             color: typeInfo?.color || '#888',
-            endHour: activeBlock.end_hour,
-            endMinute: (activeBlock as any).end_minute ?? 0,
+            activityType: s.activity_type,
+            startHour: s.start_hour,
+            startMinute: s.start_minute ?? 0,
+            endHour: s.end_hour,
+            endMinute: s.end_minute ?? 0,
+            isCurrent: currentMinutes >= startMin && currentMinutes < endMin,
           };
-        } else {
-          result[uid] = null;
-        }
+        }).sort((a: WatchedBlockInfo, b: WatchedBlockInfo) => (a.startHour * 60 + a.startMinute) - (b.startHour * 60 + b.startMinute));
+        
+        result[uid] = {
+          current: blocks.find(b => b.isCurrent) || null,
+          todayBlocks: blocks,
+        };
       });
       
       setWatchedUserBlocks(result);
     };
     
     fetchBlocks();
-    const interval = setInterval(fetchBlocks, 60000); // Refresh every minute
+    const interval = setInterval(fetchBlocks, 60000);
     return () => clearInterval(interval);
   }, [watchedUserIds]);
 
   // Countdown for watched users (updates every second)
   const [watchedCountdowns, setWatchedCountdowns] = useState<Record<string, string>>({});
   useEffect(() => {
-    const ids = Object.keys(watchedUserBlocks).filter(id => watchedUserBlocks[id] !== null);
-    if (ids.length === 0) { setWatchedCountdowns({}); return; }
+    const entries = Object.entries(watchedUserBlocks).filter(([, v]) => v.current !== null);
+    if (entries.length === 0) { setWatchedCountdowns({}); return; }
     
     const tick = () => {
       const now = new Date();
       const result: Record<string, string> = {};
-      ids.forEach(id => {
-        const block = watchedUserBlocks[id];
-        if (!block) return;
+      entries.forEach(([id, v]) => {
+        const block = v.current!;
         const endMs = new Date(now);
         endMs.setHours(block.endHour, block.endMinute, 0, 0);
         const diff = endMs.getTime() - now.getTime();
@@ -306,6 +319,52 @@ export function UserProductivityBanner() {
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [watchedUserBlocks]);
+
+  // Fetch activities for a watched user's activity type
+  const fetchWatchedBlockActivities = useCallback(async (userId: string, activityType: string) => {
+    const key = `${userId}_${activityType}`;
+    const todayStart = startOfDay(new Date()).toISOString();
+    const todayEnd = endOfDay(new Date()).toISOString();
+    
+    const { data } = await supabase
+      .from('lead_activities')
+      .select('title, status, lead_name')
+      .eq('assigned_to', userId)
+      .eq('activity_type', activityType)
+      .gte('created_at', todayStart)
+      .lte('created_at', todayEnd)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    
+    setWatchedBlockActivities(prev => ({
+      ...prev,
+      [key]: (data || []).map(d => ({ title: d.title, status: d.status, leadName: d.lead_name })),
+    }));
+  }, []);
+
+  const toggleWatchedRoutine = (userId: string) => {
+    setExpandedWatchedRoutine(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const [expandedWatchedBlocks, setExpandedWatchedBlocks] = useState<Set<string>>(new Set());
+  const toggleWatchedBlock = (userId: string, activityType: string) => {
+    const key = `${userId}_${activityType}`;
+    setExpandedWatchedBlocks(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        fetchWatchedBlockActivities(userId, activityType);
+      }
+      return next;
+    });
+  };
 
   const filteredMembers = useMemo(() => {
     if (!memberSearch.trim()) return allMembers;
@@ -556,68 +615,144 @@ export function UserProductivityBanner() {
         <div className="border-t">
           {watchedUsersData.map(wu => {
             const globalPos = ranking.findIndex(r => r.userId === wu.userId) + 1;
+            const wuBlocks = watchedUserBlocks[wu.userId];
+            const currentBlock = wuBlocks?.current;
+            const isRoutineExpanded = expandedWatchedRoutine.has(wu.userId);
             return (
-               <div key={wu.userId} className="flex items-center gap-3 px-4 py-1.5 bg-muted/30 border-b last:border-b-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-bold text-muted-foreground w-5 text-center">{positionIcon(globalPos)}</span>
-                  <span className="text-xs font-medium truncate max-w-[120px]">{wu.userName?.split(' ')[0] || '?'}</span>
-                </div>
-                {/* Current activity badge for watched user */}
-                {watchedUserBlocks[wu.userId] && (
-                  <>
-                    <Badge
-                      className="text-[10px] h-5 px-1.5 flex-shrink-0 text-white font-semibold"
-                      style={{ backgroundColor: watchedUserBlocks[wu.userId]!.color }}
+              <div key={wu.userId} className="border-b last:border-b-0">
+                <div className="flex items-center gap-3 px-4 py-1.5 bg-muted/30">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold text-muted-foreground w-5 text-center">{positionIcon(globalPos)}</span>
+                    <span className="text-xs font-medium truncate max-w-[120px]">{wu.userName?.split(' ')[0] || '?'}</span>
+                  </div>
+                  {/* Current activity badge - clickable to expand routine */}
+                  {currentBlock ? (
+                    <button
+                      onClick={() => toggleWatchedRoutine(wu.userId)}
+                      className="flex items-center gap-1.5 flex-shrink-0 rounded-md px-1 py-0.5 hover:bg-muted/50 transition-colors"
                     >
-                      {watchedUserBlocks[wu.userId]!.label}
-                    </Badge>
-                    {watchedCountdowns[wu.userId] && (
-                      <span className="text-[10px] font-medium text-orange-500 flex-shrink-0 flex items-center gap-0.5">
-                        <Clock className="h-3 w-3" />
-                        {watchedCountdowns[wu.userId]}
-                      </span>
-                    )}
-                  </>
-                )}
-                <div className="h-3 w-px bg-border flex-shrink-0" />
-                <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Target className="h-3 w-3 text-indigo-500" />
-                    <span className="text-xs font-semibold">{wu.leadsCreated}</span>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Leads</span>
+                      <Badge
+                        className="text-[10px] h-5 px-1.5 text-white font-semibold cursor-pointer"
+                        style={{ backgroundColor: currentBlock.color }}
+                      >
+                        {currentBlock.label}
+                      </Badge>
+                      {watchedCountdowns[wu.userId] && (
+                        <span className="text-[10px] font-medium text-orange-500 flex items-center gap-0.5">
+                          <Clock className="h-3 w-3" />
+                          {watchedCountdowns[wu.userId]}
+                        </span>
+                      )}
+                      <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isRoutineExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  ) : wuBlocks && wuBlocks.todayBlocks.length > 0 ? (
+                    <button
+                      onClick={() => toggleWatchedRoutine(wu.userId)}
+                      className="flex items-center gap-1 flex-shrink-0 rounded-md px-1 py-0.5 hover:bg-muted/50 transition-colors"
+                    >
+                      <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-medium cursor-pointer text-muted-foreground">
+                        Rotina
+                      </Badge>
+                      <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isRoutineExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  ) : null}
+                  <div className="h-3 w-px bg-border flex-shrink-0" />
+                  <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Target className="h-3 w-3 text-indigo-500" />
+                      <span className="text-xs font-semibold">{wu.leadsCreated}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Leads</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <ListChecks className="h-3 w-3 text-cyan-500" />
+                      <span className="text-xs font-semibold">{wu.checklistItemsChecked}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Passos</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <ArrowRightLeft className="h-3 w-3 text-amber-500" />
+                      <span className="text-xs font-semibold">{wu.stageChanges}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Etapas</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Trophy className="h-3 w-3 text-yellow-500" />
+                      <span className="text-xs font-semibold">{wu.leadsClosed}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Fechados</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Users className="h-3 w-3 text-teal-500" />
+                      <span className="text-xs font-semibold">{wu.contactsCreated}</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Contatos</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <ListChecks className="h-3 w-3 text-cyan-500" />
-                    <span className="text-xs font-semibold">{wu.checklistItemsChecked}</span>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Passos</span>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <ArrowRightLeft className="h-3 w-3 text-amber-500" />
-                    <span className="text-xs font-semibold">{wu.stageChanges}</span>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Etapas</span>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Trophy className="h-3 w-3 text-yellow-500" />
-                    <span className="text-xs font-semibold">{wu.leadsClosed}</span>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Fechados</span>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <Users className="h-3 w-3 text-teal-500" />
-                    <span className="text-xs font-semibold">{wu.contactsCreated}</span>
-                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Contatos</span>
-                  </div>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1 flex-shrink-0">
+                    {wu.totalPoints} pts
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => toggleWatchedUser(wu.userId)}
+                  >
+                    <span className="text-xs">✕</span>
+                  </Button>
                 </div>
-                <Badge variant="secondary" className="text-[10px] h-4 px-1 flex-shrink-0">
-                  {wu.totalPoints} pts
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 flex-shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => toggleWatchedUser(wu.userId)}
-                >
-                  <span className="text-xs">✕</span>
-                </Button>
+                {/* Expanded routine blocks */}
+                {isRoutineExpanded && wuBlocks && (
+                  <div className="px-4 py-2 bg-muted/10 border-t space-y-1 ml-7">
+                    <p className="text-[10px] font-medium text-muted-foreground mb-1">Blocos de hoje:</p>
+                    {wuBlocks.todayBlocks.map((block, i) => {
+                      const fmt = (h: number, m: number = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                      const blockKey = `${wu.userId}_${block.activityType}`;
+                      const isBlockExpanded = expandedWatchedBlocks.has(blockKey);
+                      const activities = watchedBlockActivities[blockKey];
+                      return (
+                        <div key={`${block.activityType}_${i}`}>
+                          <button
+                            onClick={() => toggleWatchedBlock(wu.userId, block.activityType)}
+                            className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60 ${block.isCurrent ? 'ring-1 ring-primary bg-muted/40' : ''}`}
+                          >
+                            <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: block.color }} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium truncate">{block.label}</div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {fmt(block.startHour, block.startMinute)}–{fmt(block.endHour, block.endMinute)}
+                              </div>
+                            </div>
+                            {block.isCurrent && (
+                              <Badge variant="secondary" className="text-[9px] h-4 px-1">Agora</Badge>
+                            )}
+                            <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isBlockExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          {isBlockExpanded && (
+                            <div className="ml-5 mt-1 mb-2 space-y-0.5">
+                              {!activities ? (
+                                <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
+                              ) : activities.length === 0 ? (
+                                <p className="text-[10px] text-muted-foreground py-1 italic">Nenhuma atividade hoje</p>
+                              ) : (
+                                activities.map((act, j) => (
+                                  <div key={j} className="flex items-center gap-2 text-[11px] py-0.5 px-2 rounded bg-muted/30">
+                                    {act.status === 'concluida' ? (
+                                      <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                    ) : act.status === 'em_andamento' ? (
+                                      <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                    ) : (
+                                      <Circle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                    )}
+                                    <span className="truncate flex-1">{act.title}</span>
+                                    {act.leadName && (
+                                      <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{act.leadName}</span>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
