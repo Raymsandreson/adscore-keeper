@@ -139,8 +139,8 @@ export function UserProductivityBanner() {
   const currentActivity = useMemo(() => {
     if (!timeBlocks.length) return null;
     const now = new Date();
-    const jsDay = now.getDay(); // 0=Sun, 1=Mon...
-    const currentDay = jsDay === 0 ? 6 : jsDay - 1; // Convert to 0=Mon, 1=Tue... 6=Sun
+    const jsDay = now.getDay();
+    const currentDay = jsDay === 0 ? 6 : jsDay - 1;
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     return timeBlocks.find(block => {
@@ -149,6 +149,25 @@ export function UserProductivityBanner() {
       return block.days.includes(currentDay) && currentMinutes >= blockStart && currentMinutes < blockEnd;
     }) || null;
   }, [timeBlocks]);
+
+  // Countdown timer for current activity block
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    if (!currentActivity) { setCountdown(''); return; }
+    const tick = () => {
+      const now = new Date();
+      const endMs = new Date(now);
+      endMs.setHours(currentActivity.endHour, currentActivity.endMinute ?? 0, 0, 0);
+      const diff = endMs.getTime() - now.getTime();
+      if (diff <= 0) { setCountdown('00:00'); return; }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [currentActivity]);
 
   // All blocks for today, sorted by time
   const todayBlocks = useMemo(() => {
@@ -278,15 +297,19 @@ export function UserProductivityBanner() {
             <PopoverTrigger asChild>
               <button className="flex items-center gap-1 flex-shrink-0 rounded-md px-1.5 py-0.5 hover:bg-muted/50 transition-colors">
                 {currentActivity ? (
-                  <Badge 
-                    className="text-[10px] h-5 px-1.5 border-0 font-medium cursor-pointer"
-                    style={{ backgroundColor: currentActivity.color + '22', color: currentActivity.color }}
-                  >
-                    {currentActivity.label}
-                    <span className="ml-1 opacity-70">
-                      {String(currentActivity.startHour).padStart(2,'0')}:{String(currentActivity.startMinute ?? 0).padStart(2,'0')}–{String(currentActivity.endHour).padStart(2,'0')}:{String(currentActivity.endMinute ?? 0).padStart(2,'0')}
-                    </span>
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge 
+                      className="text-[10px] h-5 px-1.5 border-0 font-medium cursor-pointer"
+                      style={{ backgroundColor: currentActivity.color + '22', color: currentActivity.color }}
+                    >
+                      {currentActivity.label}
+                    </Badge>
+                    {countdown && (
+                      <span className="text-[10px] font-mono font-bold text-destructive tabular-nums">
+                        ⏱ {countdown}
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-medium cursor-pointer text-muted-foreground">
                     Rotina
