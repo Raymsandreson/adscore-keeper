@@ -214,11 +214,13 @@ export function useMyProductivity() {
         target_session_minutes: goalsRes.data.target_session_minutes ?? fallback.target_session_minutes,
       } : fallback;
 
+      const resolvedTargetCalls = (goalsRes.data as any)?.target_calls ?? fallback.target_calls;
       const baseCore = [
         { current: prod.commentReplies, target: resolvedGoals.target_replies },
         { current: prod.dmsSent, target: resolvedGoals.target_dms },
         { current: prod.leadsCreated, target: resolvedGoals.target_leads },
         { current: prod.sessionMinutes, target: resolvedGoals.target_session_minutes },
+        { current: prod.callsMade, target: resolvedTargetCalls },
       ].filter(m => m.target > 0);
 
       const actTarget = (goalsRes.data as any)?.target_activities ?? fallback.target_activities;
@@ -272,6 +274,7 @@ export function useMyProductivity() {
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
+      { current: data.callsMade, target: goals.target_calls },
     ].filter(m => m.target > 0);
 
     const actPercent = goals.target_activities > 0 ? Math.min(100, (data.activitiesCompleted / goals.target_activities) * 100) : 0;
