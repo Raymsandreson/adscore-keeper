@@ -27,11 +27,15 @@ interface Props {
   onSelect: (conv: WhatsAppConversation) => void;
   boards: KanbanBoard[];
   selectedInstanceId: string;
+  bulkMode?: boolean;
+  selectedPhones?: Set<string>;
+  onToggleBulkPhone?: (phone: string) => void;
+  onSelectAllFiltered?: (phones: string[]) => void;
 }
 
 type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls';
 
-export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId }: Props) {
+export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered }: Props) {
   const [search, setSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
@@ -336,8 +340,18 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       </div>
 
       {/* Count */}
-      <div className="px-3 py-1 text-[10px] text-muted-foreground border-b bg-muted/30">
-        {filtered.length} conversa{filtered.length !== 1 ? 's' : ''}
+      <div className="px-3 py-1 text-[10px] text-muted-foreground border-b bg-muted/30 flex items-center gap-2">
+        {bulkMode && (
+          <Checkbox
+            checked={filtered.length > 0 && filtered.every(c => selectedPhones?.has(c.phone))}
+            onCheckedChange={() => onSelectAllFiltered?.(filtered.map(c => c.phone))}
+            className="h-3.5 w-3.5"
+          />
+        )}
+        <span>{filtered.length} conversa{filtered.length !== 1 ? 's' : ''}</span>
+        {bulkMode && selectedPhones && selectedPhones.size > 0 && (
+          <Badge variant="secondary" className="text-[9px] ml-auto">{selectedPhones.size} selecionada{selectedPhones.size > 1 ? 's' : ''}</Badge>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -356,16 +370,27 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
             const isSelected = selectedPhone === conv.phone;
 
             return (
-              <button
-                key={conv.phone}
-                onClick={() => onSelect(conv)}
-                className={cn(
-                  "w-full flex items-start gap-3 p-3 text-left transition-all duration-150 border-b border-border/30",
-                  isSelected
-                    ? "bg-primary border-l-2 border-l-primary shadow-sm"
-                    : "hover:bg-accent/40 border-l-2 border-l-transparent"
+              <div key={conv.phone} className="flex items-center">
+                {bulkMode && (
+                  <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedPhones?.has(conv.phone) || false}
+                      onCheckedChange={() => onToggleBulkPhone?.(conv.phone)}
+                      className="h-4 w-4"
+                    />
+                  </div>
                 )}
-              >
+                <button
+                  onClick={() => bulkMode ? onToggleBulkPhone?.(conv.phone) : onSelect(conv)}
+                  className={cn(
+                    "flex-1 flex items-start gap-3 p-3 text-left transition-all duration-150 border-b border-border/30",
+                    isSelected && !bulkMode
+                      ? "bg-primary border-l-2 border-l-primary shadow-sm"
+                      : bulkMode && selectedPhones?.has(conv.phone)
+                        ? "bg-accent/60 border-l-2 border-l-primary"
+                        : "hover:bg-accent/40 border-l-2 border-l-transparent"
+                  )}
+                >
                 <div className={cn(
                   "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 transition-colors",
                   isSelected
@@ -473,6 +498,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                   )}
                 </div>
               </button>
+              </div>
             );
           })
         )}
