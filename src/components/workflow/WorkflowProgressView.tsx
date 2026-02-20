@@ -364,7 +364,7 @@ export function WorkflowProgressView({
 
       {/* Phases */}
       <ScrollArea className="max-h-[60vh]">
-        <div className="space-y-2 pr-2">
+        <div className="space-y-1 pr-2">
           {visiblePhases.map((phase, phaseIndex) => {
             const isExpanded = expandedPhases.has(phase.stage.id);
             const phaseCompleted = phase.objectives.length > 0 &&
@@ -374,14 +374,15 @@ export function WorkflowProgressView({
 
             return (
               <div key={phase.stage.id}>
-                {/* Phase header */}
+                {/* FASE — Capítulo */}
                 <Collapsible open={isExpanded} onOpenChange={() => togglePhase(phase.stage.id)}>
                   <CollapsibleTrigger className="w-full">
                     <div
                       className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border bg-muted/30 transition-all hover:bg-muted/50 cursor-pointer",
-                        phase.isCurrent && "ring-2 ring-primary/40 bg-primary/5",
+                        "flex items-center gap-3 px-3 py-3 border-l-4 transition-all hover:bg-muted/40 cursor-pointer",
+                        phase.isCurrent ? "border-primary bg-primary/5" : "border-muted-foreground/30 bg-muted/20",
                       )}
+                      style={{ borderLeftColor: phase.isCurrent ? undefined : phase.stage.color }}
                     >
                       <ChevronRight className={cn(
                         "h-4 w-4 text-muted-foreground transition-transform flex-shrink-0",
@@ -389,11 +390,13 @@ export function WorkflowProgressView({
                       )} />
 
                       <div className="flex-1 text-left">
-                        <span className="font-semibold text-sm">
-                          Fase {phaseIndex + 1}: {phase.stage.name}
+                        <span className="font-bold text-sm uppercase tracking-wide">
+                          {phaseIndex + 1}. {phase.stage.name}
                         </span>
-                        {phase.stage.name && phase.isCurrent && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">Fase atual do fluxo</p>
+                        {phase.isCurrent && (
+                          <Badge variant="outline" className="ml-2 text-[9px] h-4 border-primary text-primary">
+                            Atual
+                          </Badge>
                         )}
                       </div>
 
@@ -402,30 +405,17 @@ export function WorkflowProgressView({
                       )}
 
                       {phaseItemsTotal > 0 && (
-                        <Checkbox
-                          checked={phaseItemsChecked === phaseItemsTotal && phaseItemsTotal > 0}
-                          className="flex-shrink-0"
-                          onCheckedChange={(checked) => {
-                            phase.objectives.forEach(o => {
-                              if (!o.instance.is_readonly && !o.instance.id.startsWith('placeholder-')) {
-                                handleMarkAll(o.instance, !!checked);
-                              }
-                            });
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {phaseItemsChecked}/{phaseItemsTotal}
+                        </span>
                       )}
-
-                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                        Marcar todos
-                      </span>
                     </div>
                   </CollapsibleTrigger>
 
                   <CollapsibleContent>
-                    <div className="ml-6 mt-1 space-y-1 border-l-2 border-blue-300/40 pl-3">
+                    <div className="ml-4 mt-0.5 space-y-0.5">
                       {phase.objectives.length === 0 ? (
-                        <p className="text-xs text-muted-foreground pl-4 py-2">
+                        <p className="text-xs text-muted-foreground pl-6 py-2">
                           Nenhum objetivo vinculado a esta fase
                         </p>
                       ) : (
@@ -443,69 +433,63 @@ export function WorkflowProgressView({
                               open={objExpanded}
                               onOpenChange={() => toggleObjective(objective.instance.id)}
                             >
+                              {/* OBJETIVO — Subcapítulo */}
                               <CollapsibleTrigger className="w-full">
                                 <div className={cn(
-                                  "flex items-center gap-2 p-2.5 rounded-md transition-all cursor-pointer hover:bg-muted/30",
-                                  allChecked && "bg-green-50/60 dark:bg-green-950/20",
+                                  "flex items-center gap-2 px-3 py-2 border-l-2 border-blue-400/50 ml-2 transition-all cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-950/10",
+                                  allChecked && "bg-green-50/40 dark:bg-green-950/10 border-green-400/50",
                                   isPlaceholder && "opacity-50",
                                 )}>
                                   <ChevronRight className={cn(
-                                    "h-3.5 w-3.5 text-muted-foreground transition-transform flex-shrink-0",
+                                    "h-3.5 w-3.5 text-blue-500 transition-transform flex-shrink-0",
                                     objExpanded && "rotate-90"
                                   )} />
 
-                                  <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
-                                    {objIndex + 1}
+                                  <span className="flex-shrink-0 text-blue-600 dark:text-blue-400 text-xs font-bold">
+                                    {phaseIndex + 1}.{objIndex + 1}
                                   </span>
 
                                   <div className="flex-1 text-left min-w-0">
-                                    <span className="text-sm font-medium">
+                                    <span className="text-sm font-semibold text-foreground/90">
                                       {objective.templateName}
                                     </span>
                                     {objective.templateDescription && (
-                                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{objective.templateDescription}</p>
+                                      <p className="text-[10px] text-muted-foreground/60 mt-0.5 line-clamp-1 italic">{objective.templateDescription}</p>
                                     )}
                                   </div>
 
-                                  {allChecked && (
-                                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                                  {allChecked && totalCount > 0 && (
+                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
                                   )}
 
                                   {!isPlaceholder && totalCount > 0 && (
-                                    <>
-                                      <Checkbox
-                                        checked={allChecked}
-                                        className="flex-shrink-0"
-                                        onCheckedChange={(checked) => {
-                                          handleMarkAll(objective.instance, !!checked);
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                      />
-                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                        {allChecked ? 'Desmarcar' : 'Marcar'}
-                                      </span>
-                                    </>
+                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                      {completedCount}/{totalCount}
+                                    </span>
                                   )}
                                 </div>
                               </CollapsibleTrigger>
 
                               <CollapsibleContent>
-                                <div className="ml-6 mt-1 space-y-1.5 border-l-2 border-green-300/40 pl-3">
+                                {/* PASSOS — Alíneas */}
+                                <div className="ml-8 mt-0.5 space-y-1 border-l border-green-300/30 pl-3">
                                   {objective.instance.items.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground py-2 pl-2">
+                                    <p className="text-xs text-muted-foreground py-2">
                                       Nenhum passo definido
                                     </p>
                                   ) : (
                                     objective.instance.items.map((item, itemIndex) => {
                                       const isNext = itemIndex === nextUncheckedIndex && !item.checked;
                                       const isReadonly = objective.instance.is_readonly || isPlaceholder;
+                                      const letter = String.fromCharCode(97 + itemIndex); // a, b, c...
 
                                       return (
                                         <div key={item.id}>
                                           <div
                                             className={cn(
-                                              "flex items-start gap-2.5 p-2.5 rounded-md transition-all border border-green-200/60 dark:border-green-900/30 bg-green-50/20 dark:bg-green-950/10",
-                                              isNext && "ring-1 ring-primary/30 bg-primary/5 border-primary/20",
+                                              "flex items-start gap-2 px-3 py-2 rounded-md transition-all",
+                                              isNext && "bg-primary/5 ring-1 ring-primary/20",
+                                              !isNext && "hover:bg-muted/20",
                                             )}
                                           >
                                             <Checkbox
@@ -515,14 +499,14 @@ export function WorkflowProgressView({
                                               className="mt-0.5"
                                             />
 
-                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center mt-0.5">
-                                              {itemIndex + 1}
+                                            <span className="flex-shrink-0 text-green-600 dark:text-green-400 text-xs font-medium mt-0.5">
+                                              {letter})
                                             </span>
 
                                             <div className="flex-1 min-w-0">
                                               <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={cn(
-                                                  "text-sm font-medium",
+                                                  "text-sm",
                                                   item.checked && "line-through text-muted-foreground"
                                                 )}>
                                                   {item.label}
@@ -530,7 +514,7 @@ export function WorkflowProgressView({
                                                 {isNext && (
                                                   <Badge
                                                     variant="outline"
-                                                    className="text-[10px] h-4 border-primary text-primary"
+                                                    className="text-[9px] h-4 border-primary text-primary"
                                                   >
                                                     <ArrowRight className="h-2.5 w-2.5 mr-0.5" />
                                                     Próximo
@@ -539,14 +523,14 @@ export function WorkflowProgressView({
                                                 {item.nextStageId && (() => {
                                                   if (item.nextStageId === '__finalize__') {
                                                     return (
-                                                      <Badge variant="secondary" className="text-[10px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                                      <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
                                                         ✅ Finalizar
                                                       </Badge>
                                                     );
                                                   }
                                                   const targetStage = board.stages.find(s => s.id === item.nextStageId);
                                                   return targetStage ? (
-                                                    <Badge variant="secondary" className="text-[10px] h-4 gap-1">
+                                                    <Badge variant="secondary" className="text-[9px] h-4 gap-1">
                                                       <ArrowRight className="h-2.5 w-2.5" />
                                                       {targetStage.name}
                                                     </Badge>
@@ -554,9 +538,8 @@ export function WorkflowProgressView({
                                                 })()}
                                               </div>
 
-                                              {/* Description inline under step title */}
                                               {item.description && (
-                                                <p className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug line-clamp-2">
+                                                <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-snug line-clamp-2 italic">
                                                   {item.description}
                                                 </p>
                                               )}
