@@ -565,76 +565,38 @@ export function UserProductivityBanner() {
                         <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isBlockExpanded ? 'rotate-180' : ''}`} />
                       </button>
                       {isBlockExpanded && (
-                        <div className="ml-5 mt-1 mb-2 space-y-1">
-                          {/* Metrics */}
+                        <div className="ml-5 mt-1 mb-2">
                           {metrics ? (
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap gap-1.5 py-1">
-                                {(() => {
-                                  const now = new Date();
-                                  const bStart = new Date(now); bStart.setHours(block.startHour, block.startMinute ?? 0, 0, 0);
-                                  const bEnd = new Date(now); bEnd.setHours(block.endHour, block.endMinute ?? 0, 0, 0);
-                                  const openSheet = (mk: MetricKey) => {
-                                    setBlockMetricSheet({ open: true, metricKey: mk, userId: user?.id || '', userName: firstName, dateRange: { start: bStart, end: bEnd } });
-                                  };
-                                  const badgeItems: { key: MetricKey; val: number; icon: React.ElementType; color: string; label?: string }[] = [
-                                    { key: 'callsMade', val: metrics.calls, icon: Phone, color: 'text-green-500', label: ` (${metrics.callsAnswered}✅ ${metrics.callsUnanswered}❌)` },
-                                    { key: 'leadsCreated', val: metrics.leads, icon: Target, color: 'text-indigo-500' },
-                                    { key: 'contactsCreated', val: metrics.contacts, icon: Users, color: 'text-teal-500' },
-                                    { key: 'dmsSent', val: metrics.dms, icon: Send, color: 'text-violet-500' },
-                                    { key: 'commentReplies', val: metrics.comments, icon: MessageSquare, color: 'text-blue-500' },
-                                    { key: 'stageChanges', val: metrics.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
-                                    { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
-                                    { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
-                                  ];
-                                  const visibleBadges = badgeItems.filter(b => b.val > 0);
-                                  if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
-                                  return visibleBadges.map(b => (
-                                    <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
-                                      onClick={(e) => { e.stopPropagation(); openSheet(b.key); }}>
-                                      <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
-                                    </Badge>
-                                  ));
-                                })()}
-                              </div>
-                              {/* Lead names created in this block */}
-                              {metrics.leadNames && metrics.leadNames.length > 0 && (
-                                <div className="bg-muted/30 rounded-md px-2 py-1.5">
-                                  <p className="text-[10px] font-medium text-muted-foreground mb-1">
-                                    <Target className="h-3 w-3 inline mr-1 text-indigo-500" />
-                                    Leads cadastrados ({metrics.leadNames.length}):
-                                  </p>
-                                  {metrics.leadNames.map((name, idx) => (
-                                    <div key={idx} className="text-[11px] py-0.5 pl-4 truncate">{name}</div>
-                                  ))}
-                                </div>
-                              )}
+                            <div className="flex flex-wrap gap-1.5 py-1">
+                              {(() => {
+                                const now = new Date();
+                                const bStart = new Date(now); bStart.setHours(block.startHour, block.startMinute ?? 0, 0, 0);
+                                const bEnd = new Date(now); bEnd.setHours(block.endHour, block.endMinute ?? 0, 0, 0);
+                                const openSheet = (mk: MetricKey) => {
+                                  setBlockMetricSheet({ open: true, metricKey: mk, userId: user?.id || '', userName: firstName, dateRange: { start: bStart, end: bEnd } });
+                                };
+                                const badgeItems: { key: MetricKey; val: number; icon: React.ElementType; color: string; label?: string }[] = [
+                                  { key: 'callsMade', val: metrics.calls, icon: Phone, color: 'text-green-500', label: ` (${metrics.callsAnswered}✅ ${metrics.callsUnanswered}❌)` },
+                                  { key: 'leadsCreated', val: metrics.leads, icon: Target, color: 'text-indigo-500' },
+                                  { key: 'contactsCreated', val: metrics.contacts, icon: Users, color: 'text-teal-500' },
+                                  { key: 'dmsSent', val: metrics.dms, icon: Send, color: 'text-violet-500' },
+                                  { key: 'commentReplies', val: metrics.comments, icon: MessageSquare, color: 'text-blue-500' },
+                                  { key: 'stageChanges', val: metrics.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
+                                  { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
+                                  { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
+                                ];
+                                const visibleBadges = badgeItems.filter(b => b.val > 0);
+                                if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
+                                return visibleBadges.map(b => (
+                                  <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
+                                    onClick={(e) => { e.stopPropagation(); openSheet(b.key); }}>
+                                    <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
+                                  </Badge>
+                                ));
+                              })()}
                             </div>
                           ) : (
                             <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
-                          )}
-                          {/* Activities list */}
-                          {activities && activities.length > 0 && (
-                            <div className="space-y-0.5 mt-1">
-                              {activities.map((act, j) => (
-                                <div key={j} className="flex items-center gap-2 text-[11px] py-0.5 px-2 rounded bg-muted/30">
-                                  {act.status === 'concluida' ? (
-                                    <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                  ) : act.status === 'em_andamento' ? (
-                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                  ) : (
-                                    <Circle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                  )}
-                                  <span className="truncate flex-1">{act.title}</span>
-                                  {act.leadName && (
-                                    <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{act.leadName}</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {activities && activities.length === 0 && (
-                            <p className="text-[10px] text-muted-foreground italic">Nenhuma atividade hoje</p>
                           )}
                         </div>
                       )}
@@ -875,10 +837,8 @@ export function UserProductivityBanner() {
                             <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isBlockExpanded ? 'rotate-180' : ''}`} />
                           </button>
                           {isBlockExpanded && (
-                            <div className="ml-5 mt-1 mb-2 space-y-1">
-                              {/* Metrics summary for this block */}
-                              {metrics && (
-                                <>
+                            <div className="ml-5 mt-1 mb-2">
+                              {metrics ? (
                                 <div className="flex flex-wrap gap-1.5 py-1">
                                   {(() => {
                                     const now = new Date();
@@ -907,40 +867,8 @@ export function UserProductivityBanner() {
                                     ));
                                   })()}
                                 </div>
-                                {metrics.leadNames && metrics.leadNames.length > 0 && (
-                                  <div className="bg-muted/30 rounded-md px-2 py-1.5 mt-1">
-                                    <p className="text-[10px] font-medium text-muted-foreground mb-1">
-                                      <Target className="h-3 w-3 inline mr-1 text-indigo-500" />
-                                      Leads cadastrados ({metrics.leadNames.length}):
-                                    </p>
-                                    {metrics.leadNames.map((name, idx) => (
-                                      <div key={idx} className="text-[11px] py-0.5 pl-4 truncate">{name}</div>
-                                    ))}
-                                  </div>
-                                )}
-                                </>
-                              )}
-                              {/* Activities list */}
-                              {!activities ? (
-                                <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
-                              ) : activities.length === 0 ? (
-                                <p className="text-[10px] text-muted-foreground py-1 italic">Nenhuma atividade hoje</p>
                               ) : (
-                                activities.map((act, j) => (
-                                  <div key={j} className="flex items-center gap-2 text-[11px] py-0.5 px-2 rounded bg-muted/30">
-                                    {act.status === 'concluida' ? (
-                                      <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                    ) : act.status === 'em_andamento' ? (
-                                      <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                                    ) : (
-                                      <Circle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                    )}
-                                    <span className="truncate flex-1">{act.title}</span>
-                                    {act.leadName && (
-                                      <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{act.leadName}</span>
-                                    )}
-                                  </div>
-                                ))
+                                <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
                               )}
                             </div>
                           )}
