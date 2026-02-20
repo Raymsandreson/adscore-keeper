@@ -27,11 +27,25 @@ Cada passo pode ter:
 - label: nome curto da ação
 - description: instrução detalhada (opcional)
 - script: texto de script de contato para WhatsApp/telefone (opcional, use quando o passo envolve contato direto)
-- docChecklist: lista de itens a verificar (documentos, requisitos, perguntas de triagem, verificações). Cada item tem label e type (documentos, requisitos, perguntas, verificacao, outro)
+- docChecklist: lista de itens a verificar. OBRIGATÓRIO para TODOS os passos. Cada item tem label e type.
+
+REGRAS PARA docChecklist:
+- TODOS os passos DEVEM ter pelo menos 2-5 itens de checklist gerados automaticamente com base na descrição e contexto do passo.
+- Use os tipos adequados ao contexto:
+  - "documentos": quando o item é um documento a coletar/verificar (ex: CAT, atestado médico, CTPS)
+  - "requisitos": quando é uma condição/critério a ser atendido (ex: nexo causal comprovado, afastamento > 15 dias)
+  - "perguntas": quando é uma pergunta de triagem/qualificação a ser feita (ex: "Houve afastamento?", "Recebe benefício?")
+  - "verificacao": quando é algo a ser conferido/validado (ex: confirmar dados cadastrais, verificar prazo prescricional)
+  - "outro": para itens que não se encaixam nos anteriores
+
+Exemplos:
+- Passo "Ligar para o lead": checklist com perguntas de triagem ("Ainda trabalha na empresa?", "Já tem advogado?")
+- Passo "Coletar documentação": checklist com documentos ("CAT", "Atestado médico", "CTPS")
+- Passo "Analisar viabilidade": checklist com requisitos ("Nexo causal", "Prazo não prescrito") e verificações ("Conferir CID-10")
 
 ${activityTypes?.length ? `Tipos de atividade disponíveis no sistema: ${activityTypes.join(', ')}` : ''}
 
-IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia brasileiro.`;
+IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia brasileiro. Sempre gere checklists relevantes e contextuais para cada passo.`;
 
     const response = await fetch(
       "https://ai.gateway.lovable.dev/v1/chat/completions",
