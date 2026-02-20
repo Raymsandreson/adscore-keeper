@@ -104,17 +104,22 @@ export function UserProductivityBanner() {
     setExpanded(false);
   }, [location.pathname]);
 
-  // Fetch ranking only when expanded for the first time
+  // Fetch ranking when expanded or when watching users
   useEffect(() => {
-    if (expanded && !rankingFetched) {
+    if ((expanded || watchedUserIds.size > 0) && !rankingFetched) {
       fetchRanking();
       setRankingFetched(true);
     }
-  }, [expanded, rankingFetched, fetchRanking]);
+  }, [expanded, rankingFetched, fetchRanking, watchedUserIds.size]);
 
   const filteredRanking = useMemo(() => {
     if (watchedUserIds.size === 0) return ranking;
     return ranking.filter(e => e.isCurrentUser || watchedUserIds.has(e.userId));
+  }, [ranking, watchedUserIds]);
+
+  const watchedUsersData = useMemo(() => {
+    if (watchedUserIds.size === 0) return [];
+    return ranking.filter(e => !e.isCurrentUser && watchedUserIds.has(e.userId));
   }, [ranking, watchedUserIds]);
 
   // Don't show for unauthenticated users or on certain pages
@@ -222,6 +227,55 @@ export function UserProductivityBanner() {
           <AnimatedNumber value={data.totalActions} suffix=" pts" />
         </Badge>
 
+        {/* Watch users picker */}
+        <Popover open={showUserPicker} onOpenChange={(open) => {
+          if (open && !rankingFetched) {
+            fetchRanking();
+            setRankingFetched(true);
+          }
+          setShowUserPicker(open);
+        }}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" title="Acompanhar membros">
+              <Eye className={`h-3.5 w-3.5 ${watchedUserIds.size > 0 ? 'text-primary' : ''}`} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-56 p-2" align="end">
+            <p className="text-xs font-medium mb-2">Acompanhar membros:</p>
+            {rankingLoading ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Carregando...</p>
+            ) : ranking.filter(e => !e.isCurrentUser).length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Sem membros no time</p>
+            ) : (
+              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                {ranking.filter(e => !e.isCurrentUser).map(entry => (
+                  <label
+                    key={entry.userId}
+                    className="flex items-center gap-2 p-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-xs"
+                  >
+                    <Checkbox
+                      checked={watchedUserIds.has(entry.userId)}
+                      onCheckedChange={() => toggleWatchedUser(entry.userId)}
+                    />
+                    <span className="truncate">{entry.userName?.split(' ')[0] || '?'}</span>
+                    <span className="ml-auto text-muted-foreground">{entry.totalPoints} pts</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {watchedUserIds.size > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full mt-2 h-6 text-[10px]"
+                onClick={() => setWatchedUserIds(new Set())}
+              >
+                Limpar seleção
+              </Button>
+            )}
+          </PopoverContent>
+        </Popover>
+
         {/* Expand/collapse */}
         <Button
           variant="ghost"
@@ -232,6 +286,62 @@ export function UserProductivityBanner() {
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
       </div>
+
+      {/* Watched users compact bars */}
+      {watchedUsersData.length > 0 && (
+        <div className="border-t">
+          {watchedUsersData.map(wu => {
+            const globalPos = ranking.findIndex(r => r.userId === wu.userId) + 1;
+            return (
+              <div key={wu.userId} className="flex items-center gap-3 px-4 py-1.5 bg-muted/30 border-b last:border-b-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-bold text-muted-foreground w-5 text-center">{positionIcon(globalPos)}</span>
+                  <span className="text-xs font-medium truncate max-w-[120px]">{wu.userName?.split(' ')[0] || '?'}</span>
+                </div>
+                <div className="h-3 w-px bg-border flex-shrink-0" />
+                <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Target className="h-3 w-3 text-indigo-500" />
+                    <span className="text-xs font-semibold">{wu.leadsCreated}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Leads</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <ListChecks className="h-3 w-3 text-cyan-500" />
+                    <span className="text-xs font-semibold">{wu.checklistItemsChecked}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Passos</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <ArrowRightLeft className="h-3 w-3 text-amber-500" />
+                    <span className="text-xs font-semibold">{wu.stageChanges}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Etapas</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Trophy className="h-3 w-3 text-yellow-500" />
+                    <span className="text-xs font-semibold">{wu.leadsClosed}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Fechados</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Users className="h-3 w-3 text-teal-500" />
+                    <span className="text-xs font-semibold">{wu.contactsCreated}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">Contatos</span>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="text-[10px] h-4 px-1 flex-shrink-0">
+                  {wu.totalPoints} pts
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => toggleWatchedUser(wu.userId)}
+                >
+                  <span className="text-xs">✕</span>
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Expanded detail view */}
       {expanded && (
