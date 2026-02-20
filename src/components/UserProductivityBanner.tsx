@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMyProductivity } from '@/hooks/useMyProductivity';
 import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { useLocation } from 'react-router-dom';
 import { MemberProductivitySheet } from '@/components/team/MemberProductivitySheet';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
 import { startOfDay, endOfDay } from 'date-fns';
@@ -74,7 +74,9 @@ export function UserProductivityBanner() {
   const [allMembers, setAllMembers] = useState<{ userId: string; name: string }[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
+  const [showBlockPicker, setShowBlockPicker] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const today = useMemo(() => ({ start: startOfDay(new Date()), end: endOfDay(new Date()) }), []);
 
@@ -146,6 +148,28 @@ export function UserProductivityBanner() {
       return block.days.includes(currentDay) && currentMinutes >= blockStart && currentMinutes < blockEnd;
     }) || null;
   }, [timeBlocks]);
+
+  // All blocks for today, sorted by time
+  const todayBlocks = useMemo(() => {
+    if (!timeBlocks.length) return [];
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    return timeBlocks
+      .filter(b => b.days.includes(dayOfWeek))
+      .sort((a, b) => (a.startHour * 60 + (a.startMinute ?? 0)) - (b.startHour * 60 + (b.startMinute ?? 0)));
+  }, [timeBlocks]);
+
+  const navigateToActivitiesWithType = useCallback((activityType: string) => {
+    localStorage.setItem('page_state_activities_filterType', JSON.stringify([activityType]));
+    setShowBlockPicker(false);
+    if (location.pathname === '/') {
+      // Force re-render by dispatching storage event
+      window.dispatchEvent(new Event('storage'));
+      window.location.reload();
+    } else {
+      navigate('/');
+    }
+  }, [navigate, location.pathname]);
 
   const filteredRanking = useMemo(() => {
     if (watchedUserIds.size === 0) return ranking;
@@ -246,14 +270,57 @@ export function UserProductivityBanner() {
           )}
         </div>
 
-        {/* Current activity from routine */}
-        {currentActivity && (
-          <Badge 
-            className="text-[10px] h-5 px-1.5 flex-shrink-0 border-0 font-medium"
-            style={{ backgroundColor: currentActivity.color + '22', color: currentActivity.color }}
-          >
-            {currentActivity.label}
-          </Badge>
+        {/* Current activity from routine - clickable popover */}
+        {todayBlocks.length > 0 && (
+          <Popover open={showBlockPicker} onOpenChange={setShowBlockPicker}>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-1 flex-shrink-0 rounded-md px-1.5 py-0.5 hover:bg-muted/50 transition-colors">
+                {currentActivity ? (
+                  <Badge 
+                    className="text-[10px] h-5 px-1.5 border-0 font-medium cursor-pointer"
+                    style={{ backgroundColor: currentActivity.color + '22', color: currentActivity.color }}
+                  >
+                    {currentActivity.label}
+                    <span className="ml-1 opacity-70">
+                      {String(currentActivity.startHour).padStart(2,'0')}:{String(currentActivity.startMinute ?? 0).padStart(2,'0')}–{String(currentActivity.endHour).padStart(2,'0')}:{String(currentActivity.endMinute ?? 0).padStart(2,'0')}
+                    </span>
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-medium cursor-pointer text-muted-foreground">
+                    Rotina
+                  </Badge>
+                )}
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="start">
+              <p className="text-xs font-medium mb-2 text-muted-foreground">Blocos de hoje:</p>
+              <div className="space-y-1">
+                {todayBlocks.map((block, i) => {
+                  const isCurrent = currentActivity?.blockId === block.blockId && currentActivity?.startHour === block.startHour;
+                  const fmt = (h: number, m: number = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+                  return (
+                    <button
+                      key={block.blockId || `${block.activityType}_${i}`}
+                      onClick={() => navigateToActivitiesWithType(block.activityType)}
+                      className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60 ${isCurrent ? 'ring-1 ring-primary bg-muted/40' : ''}`}
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${block.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">{block.label}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {fmt(block.startHour, block.startMinute)}–{fmt(block.endHour, block.endMinute)}
+                        </div>
+                      </div>
+                      {isCurrent && (
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1">Agora</Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
         )}
 
         {/* Progress bar */}
