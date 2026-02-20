@@ -345,50 +345,51 @@ export function WorkflowProgressView({
                   <CollapsibleTrigger className="w-full">
                     <div
                       className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border transition-all hover:shadow-sm cursor-pointer",
-                        phase.isCurrent && "ring-2 ring-primary/50 bg-primary/5",
-                        phase.isPast && phaseCompleted && "bg-muted/50 opacity-80",
+                        "flex items-center gap-3 p-3 rounded-lg border bg-muted/30 transition-all hover:bg-muted/50 cursor-pointer",
+                        phase.isCurrent && "ring-2 ring-primary/40 bg-primary/5",
                       )}
-                      style={{
-                        borderColor: `${phase.stage.color}40`,
-                        backgroundColor: phase.isCurrent ? undefined : `${phase.stage.color}08`,
-                      }}
                     >
                       <ChevronRight className={cn(
                         "h-4 w-4 text-muted-foreground transition-transform flex-shrink-0",
                         isExpanded && "rotate-90"
                       )} />
 
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: phase.stage.color }}
-                      />
-
                       <div className="flex-1 text-left">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">
-                            Fase {phaseIndex + 1}: {phase.stage.name}
-                          </span>
-                          {phase.isCurrent && (
-                            <Badge variant="default" className="text-[10px] h-4">Atual</Badge>
-                          )}
-                          {phaseCompleted && phase.objectives.length > 0 && (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          )}
-                        </div>
+                        <span className="font-semibold text-sm">
+                          Fase {phaseIndex + 1}: {phase.stage.name}
+                        </span>
+                        {phase.stage.name && phase.isCurrent && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">Fase atual do fluxo</p>
+                        )}
                       </div>
 
-                      {/* Mark all checkbox */}
-                      {phaseItemsTotal > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          {phaseItemsChecked}/{phaseItemsTotal}
-                        </span>
+                      {phaseCompleted && phase.objectives.length > 0 && (
+                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
                       )}
+
+                      {phaseItemsTotal > 0 && (
+                        <Checkbox
+                          checked={phaseItemsChecked === phaseItemsTotal && phaseItemsTotal > 0}
+                          className="flex-shrink-0"
+                          onCheckedChange={(checked) => {
+                            phase.objectives.forEach(o => {
+                              if (!o.instance.is_readonly && !o.instance.id.startsWith('placeholder-')) {
+                                handleMarkAll(o.instance, !!checked);
+                              }
+                            });
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      )}
+
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                        Marcar todos
+                      </span>
                     </div>
                   </CollapsibleTrigger>
 
                   <CollapsibleContent>
-                    <div className="ml-6 pl-3 mt-1 space-y-1.5 border-l-2 border-muted">
+                    <div className="ml-4 mt-1 space-y-1">
                       {phase.objectives.length === 0 ? (
                         <p className="text-xs text-muted-foreground pl-4 py-2">
                           Nenhum objetivo vinculado a esta fase
@@ -400,8 +401,6 @@ export function WorkflowProgressView({
                           const totalCount = objective.instance.items.length;
                           const isPlaceholder = objective.instance.id.startsWith('placeholder-');
                           const allChecked = totalCount > 0 && completedCount === totalCount;
-
-                          // Find the next unchecked item
                           const nextUncheckedIndex = objective.instance.items.findIndex(i => !i.checked);
 
                           return (
@@ -412,18 +411,13 @@ export function WorkflowProgressView({
                             >
                               <CollapsibleTrigger className="w-full">
                                 <div className={cn(
-                                  "flex items-center gap-2 p-2.5 rounded-md border transition-all hover:shadow-sm cursor-pointer",
-                                  allChecked && "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900",
+                                  "flex items-center gap-2 p-2.5 rounded-md transition-all cursor-pointer hover:bg-muted/30",
+                                  allChecked && "bg-green-50/60 dark:bg-green-950/20",
                                   isPlaceholder && "opacity-50",
                                 )}>
                                   <ChevronRight className={cn(
                                     "h-3.5 w-3.5 text-muted-foreground transition-transform flex-shrink-0",
                                     objExpanded && "rotate-90"
-                                  )} />
-
-                                  <Target className={cn(
-                                    "h-4 w-4 flex-shrink-0",
-                                    allChecked ? "text-green-500" : "text-muted-foreground"
                                   )} />
 
                                   <span className="text-sm font-medium flex-1 text-left">
@@ -435,21 +429,25 @@ export function WorkflowProgressView({
                                   )}
 
                                   {!isPlaceholder && totalCount > 0 && (
-                                    <button
-                                      className="text-[10px] text-primary hover:underline flex-shrink-0"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleMarkAll(objective.instance, !allChecked);
-                                      }}
-                                    >
-                                      {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
-                                    </button>
+                                    <>
+                                      <Checkbox
+                                        checked={allChecked}
+                                        className="flex-shrink-0"
+                                        onCheckedChange={(checked) => {
+                                          handleMarkAll(objective.instance, !!checked);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                        {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                                      </span>
+                                    </>
                                   )}
                                 </div>
                               </CollapsibleTrigger>
 
                               <CollapsibleContent>
-                                <div className="ml-6 pl-3 mt-1 space-y-1 border-l-2 border-muted/60">
+                                <div className="ml-8 mt-0.5 space-y-0.5">
                                   {objective.instance.items.length === 0 ? (
                                     <p className="text-xs text-muted-foreground py-2 pl-2">
                                       Nenhum passo definido
@@ -460,72 +458,73 @@ export function WorkflowProgressView({
                                       const isReadonly = objective.instance.is_readonly || isPlaceholder;
 
                                       return (
-                                        <div
-                                          key={item.id}
-                                          className={cn(
-                                            "flex items-start gap-2.5 p-2.5 rounded-md border transition-all",
-                                            item.checked
-                                              ? "bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30"
-                                              : "bg-background border-border",
-                                            isNext && "ring-2 ring-primary/30 bg-primary/5",
-                                          )}
-                                        >
-                                          <Checkbox
-                                            checked={item.checked || false}
-                                            onCheckedChange={() => handleToggleItem(objective.instance, item.id)}
-                                            disabled={isReadonly}
-                                            className="mt-0.5"
-                                          />
+                                        <div key={item.id}>
+                                          <div
+                                            className={cn(
+                                              "flex items-start gap-2.5 p-2.5 rounded-md transition-all",
+                                              isNext && "bg-primary/5 ring-1 ring-primary/20",
+                                            )}
+                                          >
+                                            <Checkbox
+                                              checked={item.checked || false}
+                                              onCheckedChange={() => handleToggleItem(objective.instance, item.id)}
+                                              disabled={isReadonly}
+                                              className="mt-0.5"
+                                            />
 
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                              <span className={cn(
-                                                "text-sm font-medium",
-                                                item.checked && "line-through text-muted-foreground"
-                                              )}>
-                                                Passo {itemIndex + 1}: {item.label}
-                                              </span>
-                                              {isNext && (
-                                                <Badge
-                                                  variant="outline"
-                                                  className="text-[10px] h-4 border-primary text-primary"
-                                                >
-                                                  <ArrowRight className="h-2.5 w-2.5 mr-0.5" />
-                                                  Próximo
-                                                </Badge>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <span className={cn(
+                                                  "text-sm font-medium",
+                                                  item.checked && "line-through text-muted-foreground"
+                                                )}>
+                                                  Passo {itemIndex + 1}: {item.label}
+                                                </span>
+                                                {isNext && (
+                                                  <Badge
+                                                    variant="outline"
+                                                    className="text-[10px] h-4 border-primary text-primary"
+                                                  >
+                                                    <ArrowRight className="h-2.5 w-2.5 mr-0.5" />
+                                                    Próximo
+                                                  </Badge>
+                                                )}
+                                              </div>
+
+                                              {/* Description inline under step title */}
+                                              {item.description && (
+                                                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                                  {item.description}
+                                                </p>
                                               )}
-                                              {item.script && (
-                                                <Badge variant="outline" className="text-[10px] h-4 gap-0.5">
-                                                  <MessageSquareText className="h-2.5 w-2.5" />
-                                                  Script
-                                                </Badge>
+
+                                              {/* Script section */}
+                                              {item.script && (isNext || expandedObjectives.has(`script-${item.id}`)) && (
+                                                <div className="mt-2 p-2.5 rounded-md bg-primary/5 border border-primary/20">
+                                                  <div className="flex items-center gap-1.5 mb-1.5">
+                                                    <MessageSquareText className="h-3.5 w-3.5 text-primary" />
+                                                    <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">Script de Contato</span>
+                                                  </div>
+                                                  <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                                                </div>
+                                              )}
+                                              {item.script && !isNext && (
+                                                <button
+                                                  className="text-[10px] text-primary hover:underline mt-1"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setExpandedObjectives(prev => {
+                                                      const next = new Set(prev);
+                                                      const key = `script-${item.id}`;
+                                                      if (next.has(key)) next.delete(key); else next.add(key);
+                                                      return next;
+                                                    });
+                                                  }}
+                                                >
+                                                  {expandedObjectives.has(`script-${item.id}`) ? 'Ocultar script' : 'Ver script'}
+                                                </button>
                                               )}
                                             </div>
-                                            {item.script && (isNext || expandedObjectives.has(`script-${item.id}`)) && (
-                                              <div className="mt-2 p-2.5 rounded-md bg-primary/5 border border-primary/20">
-                                                <div className="flex items-center gap-1.5 mb-1.5">
-                                                  <MessageSquareText className="h-3.5 w-3.5 text-primary" />
-                                                  <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">Script de Contato</span>
-                                                </div>
-                                                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
-                                              </div>
-                                            )}
-                                            {item.script && !isNext && (
-                                              <button
-                                                className="text-[10px] text-primary hover:underline mt-1"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setExpandedObjectives(prev => {
-                                                    const next = new Set(prev);
-                                                    const key = `script-${item.id}`;
-                                                    if (next.has(key)) next.delete(key); else next.add(key);
-                                                    return next;
-                                                  });
-                                                }}
-                                              >
-                                                {expandedObjectives.has(`script-${item.id}`) ? 'Ocultar script' : 'Ver script'}
-                                              </button>
-                                            )}
                                           </div>
                                         </div>
                                       );
