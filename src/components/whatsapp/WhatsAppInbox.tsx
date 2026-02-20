@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
+import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
@@ -13,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +27,8 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
+  const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
+  const [dismissedAlert, setDismissedAlert] = useState(false);
   const { boards } = useKanbanBoards();
   const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
@@ -238,7 +241,7 @@ export function WhatsAppInbox() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col relative">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <MessageSquare className="h-6 w-6 text-green-600" />
@@ -247,19 +250,36 @@ export function WhatsAppInbox() {
           <Badge variant="destructive" className="text-xs">{totalUnread}</Badge>
         )}
 
-        {instances.length > 1 && (
+        {instances.length > 0 && (
           <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
-            <SelectTrigger className="w-48 h-8 text-xs ml-2">
+            <SelectTrigger className="w-52 h-8 text-xs ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas instâncias</SelectItem>
-              {instances.map(inst => (
-                <SelectItem key={inst.id} value={inst.id}>
-                  {inst.instance_name}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">
+                <div className="flex items-center gap-2">
+                  Todas conectadas
+                  {statuses.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      ({statuses.filter(s => s.connected).length}/{statuses.length})
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+              {instances.map(inst => {
+                const status = statuses.find(s => s.id === inst.id);
+                const isConnected = status ? status.connected : true; // assume connected if not checked yet
+                return (
+                  <SelectItem key={inst.id} value={inst.id}>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${isConnected ? 'bg-green-500' : 'bg-destructive'}`} />
+                      <span className={!isConnected ? 'text-muted-foreground' : ''}>{inst.instance_name}</span>
+                      {!isConnected && <span className="text-[10px] text-destructive">offline</span>}
+                    </div>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         )}
@@ -305,6 +325,56 @@ export function WhatsAppInbox() {
           <Button variant="ghost" size="sm" onClick={handleToggleBulkMode}>
             Cancelar
           </Button>
+        </div>
+      )}
+
+      {/* Disconnection Alert Overlay */}
+      {disconnectedInstances.length > 0 && !dismissedAlert && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-auto">
+          <div className="relative bg-card border-2 border-destructive rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 text-center space-y-4 animate-in fade-in zoom-in-95">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-3 right-3 h-7 w-7"
+              onClick={() => setDismissedAlert(true)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+
+            <div className="flex justify-center">
+              <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center">
+                <WifiOff className="h-8 w-8 text-destructive" />
+              </div>
+            </div>
+
+            <h2 className="text-xl font-bold text-destructive">
+              {disconnectedInstances.length === 1 ? 'Instância Desconectada!' : `${disconnectedInstances.length} Instâncias Desconectadas!`}
+            </h2>
+
+            <div className="space-y-2">
+              {disconnectedInstances.map(inst => (
+                <div key={inst.id} className="flex items-center justify-center gap-2 text-sm">
+                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                  <span className="font-medium">{inst.instance_name}</span>
+                  <span className="text-muted-foreground text-xs">— offline</span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              As instâncias acima perderam conexão com o WhatsApp. Reconecte-as para continuar recebendo mensagens.
+            </p>
+
+            <div className="flex gap-2 justify-center pt-2">
+              <Button variant="outline" size="sm" onClick={() => setDismissedAlert(true)}>
+                Fechar
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => { setDismissedAlert(true); setShowSetup(true); }}>
+                <Settings className="h-4 w-4 mr-1" />
+                Ir para Configuração
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
