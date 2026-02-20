@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
+import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -176,6 +177,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               <UserPlus className="h-3 w-3" /> Criar Contato
             </Button>
           )}
+          <WhatsAppCallRecorder
+            phone={conversation.phone}
+            contactName={conversation.contact_name}
+            contactId={conversation.contact_id}
+            leadId={conversation.lead_id}
+          />
         </div>
       </div>
 
