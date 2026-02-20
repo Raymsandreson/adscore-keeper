@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Voicemail,
-  Clock, Star, Tag, Calendar, Search, Loader2, Play, Trash2, Save, Plus,
+  Clock, Star, Tag, Calendar, Search, Loader2, Play, Trash2, Save, Plus, X,
   TrendingUp, Users, Timer, CheckCircle, XCircle, BarChart3,
 } from 'lucide-react';
 import { format, formatDistanceToNow, startOfDay, endOfDay, isToday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
@@ -56,15 +57,82 @@ export default function CallsPage() {
   const [newCall, setNewCall] = useState({
     call_type: 'outbound',
     call_result: 'answered',
+    lead_id: '' as string,
+    lead_name: '',
+    contact_id: '' as string,
     contact_name: '',
     contact_phone: '',
-    lead_name: '',
     duration_minutes: 0,
     duration_seconds: 0,
     notes: '',
     next_step: '',
     phone_used: '',
   });
+
+  // Lead search
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadResults, setLeadResults] = useState<any[]>([]);
+  const [leadSearching, setLeadSearching] = useState(false);
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+
+  // Contact search (filtered by selected lead)
+  const [contactResults, setContactResults] = useState<any[]>([]);
+  const [contactSearching, setContactSearching] = useState(false);
+
+  const searchLeads = useCallback(async (q: string) => {
+    if (!q.trim()) { setLeadResults([]); return; }
+    setLeadSearching(true);
+    try {
+      const { data } = await supabase
+        .from('leads')
+        .select('id, lead_name, lead_phone, status')
+        .ilike('lead_name', `%${q}%`)
+        .limit(8);
+      setLeadResults(data || []);
+    } catch { setLeadResults([]); }
+    finally { setLeadSearching(false); }
+  }, []);
+
+  // Debounced lead search
+  useEffect(() => {
+    if (!leadSearch.trim()) { setLeadResults([]); return; }
+    const t = setTimeout(() => searchLeads(leadSearch), 300);
+    return () => clearTimeout(t);
+  }, [leadSearch, searchLeads]);
+
+  // Fetch contacts for selected lead
+  useEffect(() => {
+    if (!newCall.lead_id) { setContactResults([]); return; }
+    setContactSearching(true);
+    const fetchContacts = async () => {
+      try {
+        // Get contacts from junction table
+        const { data: links } = await supabase
+          .from('contact_leads')
+          .select('contact_id')
+          .eq('lead_id', newCall.lead_id);
+        const junctionIds = (links || []).map((l: any) => l.contact_id);
+
+        // Also get legacy contacts
+        const { data: legacy } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('lead_id', newCall.lead_id);
+        const legacyIds = (legacy || []).map((c: any) => c.id);
+
+        const allIds = [...new Set([...junctionIds, ...legacyIds])];
+        if (allIds.length === 0) { setContactResults([]); setContactSearching(false); return; }
+
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('id, full_name, phone')
+          .in('id', allIds);
+        setContactResults(contacts || []);
+      } catch { setContactResults([]); }
+      finally { setContactSearching(false); }
+    };
+    fetchContacts();
+  }, [newCall.lead_id]);
 
   // Filter records
   const filtered = useMemo(() => {
@@ -162,6 +230,8 @@ export default function CallsPage() {
 
   const handleCreateCall = async () => {
     if (!user) return;
+    if (!newCall.lead_id) { toast.error('Selecione um lead'); return; }
+    if (!newCall.contact_id) { toast.error('Selecione um contato'); return; }
     setSaving(true);
     try {
       const totalSeconds = (newCall.duration_minutes * 60) + newCall.duration_seconds;
@@ -169,9 +239,11 @@ export default function CallsPage() {
         user_id: user.id,
         call_type: newCall.call_type === 'outbound' ? 'realizada' : 'recebida',
         call_result: newCall.call_result,
+        lead_id: newCall.lead_id || null,
+        lead_name: newCall.lead_name || null,
+        contact_id: newCall.contact_id || null,
         contact_name: newCall.contact_name || null,
         contact_phone: newCall.contact_phone || null,
-        lead_name: newCall.lead_name || null,
         duration_seconds: totalSeconds,
         notes: newCall.notes || null,
         next_step: newCall.next_step || null,
@@ -180,7 +252,8 @@ export default function CallsPage() {
       });
       toast.success('Ligação registrada!');
       setShowNewCallDialog(false);
-      setNewCall({ call_type: 'outbound', call_result: 'answered', contact_name: '', contact_phone: '', lead_name: '', duration_minutes: 0, duration_seconds: 0, notes: '', next_step: '', phone_used: '' });
+      setNewCall({ call_type: 'outbound', call_result: 'answered', lead_id: '', lead_name: '', contact_id: '', contact_name: '', contact_phone: '', duration_minutes: 0, duration_seconds: 0, notes: '', next_step: '', phone_used: '' });
+      setLeadSearch('');
     } catch (e) {
       toast.error('Erro ao registrar ligação');
     } finally {
@@ -255,19 +328,77 @@ export default function CallsPage() {
                 </Select>
               </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Nome do Contato</label>
-              <Input value={newCall.contact_name} onChange={e => setNewCall(p => ({ ...p, contact_name: e.target.value }))} placeholder="Nome..." />
+            {/* Lead selector */}
+            <div className="space-y-1 relative">
+              <label className="text-xs font-medium text-muted-foreground">Lead *</label>
+              {newCall.lead_id ? (
+                <div className="flex items-center gap-2 border rounded-md px-3 py-2 bg-muted/30">
+                  <span className="text-sm flex-1 truncate">{newCall.lead_name}</span>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                    setNewCall(p => ({ ...p, lead_id: '', lead_name: '', contact_id: '', contact_name: '', contact_phone: '' }));
+                    setLeadSearch('');
+                  }}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    value={leadSearch}
+                    onChange={e => { setLeadSearch(e.target.value); setShowLeadDropdown(true); }}
+                    onFocus={() => setShowLeadDropdown(true)}
+                    placeholder="Buscar lead..."
+                  />
+                  {showLeadDropdown && leadResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                      {leadResults.map(lead => (
+                        <button
+                          key={lead.id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent/50 transition-colors"
+                          onClick={() => {
+                            setNewCall(p => ({ ...p, lead_id: lead.id, lead_name: lead.lead_name || '', contact_id: '', contact_name: '', contact_phone: '' }));
+                            setLeadSearch('');
+                            setShowLeadDropdown(false);
+                          }}
+                        >
+                          <div className="font-medium truncate">{lead.lead_name || 'Sem nome'}</div>
+                          {lead.status && <div className="text-xs text-muted-foreground">{lead.status}</div>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {leadSearching && <Loader2 className="absolute right-3 top-7 h-4 w-4 animate-spin text-muted-foreground" />}
+                </>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Telefone</label>
-                <Input value={newCall.contact_phone} onChange={e => setNewCall(p => ({ ...p, contact_phone: e.target.value }))} placeholder="(11) 99999-9999" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Lead</label>
-                <Input value={newCall.lead_name} onChange={e => setNewCall(p => ({ ...p, lead_name: e.target.value }))} placeholder="Nome do lead..." />
-              </div>
+
+            {/* Contact selector (depends on lead) */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Contato *</label>
+              {!newCall.lead_id ? (
+                <p className="text-xs text-muted-foreground italic py-2">Selecione um lead primeiro</p>
+              ) : contactSearching ? (
+                <div className="flex items-center gap-2 py-2"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-xs text-muted-foreground">Carregando contatos...</span></div>
+              ) : contactResults.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic py-2">Nenhum contato vinculado a este lead</p>
+              ) : (
+                <Select
+                  value={newCall.contact_id}
+                  onValueChange={v => {
+                    const ct = contactResults.find(c => c.id === v);
+                    setNewCall(p => ({ ...p, contact_id: v, contact_name: ct?.full_name || '', contact_phone: ct?.phone || '' }));
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione um contato" /></SelectTrigger>
+                  <SelectContent>
+                    {contactResults.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.full_name}{c.phone ? ` — ${c.phone}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
