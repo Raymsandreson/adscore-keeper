@@ -27,7 +27,7 @@ Cada passo pode ter:
 - label: nome curto da ação
 - description: instrução detalhada (opcional)
 - script: texto de script de contato para WhatsApp/telefone (opcional, use quando o passo envolve contato direto)
-- docChecklist: lista de documentos necessários naquele passo (opcional)
+- docChecklist: lista de itens a verificar (documentos, requisitos, perguntas de triagem, verificações). Cada item tem label e type (documentos, requisitos, perguntas, verificacao, outro)
 
 ${activityTypes?.length ? `Tipos de atividade disponíveis no sistema: ${activityTypes.join(', ')}` : ''}
 
@@ -126,17 +126,23 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
                                       docChecklist: {
                                         type: "array",
                                         description:
-                                          "Lista de documentos necessários",
+                                          "Checklist de itens para este passo (documentos, requisitos, perguntas, verificação, etc.)",
                                         items: {
                                           type: "object",
                                           properties: {
                                             label: {
                                               type: "string",
                                               description:
-                                                "Nome do documento",
+                                                "Texto do item do checklist",
+                                            },
+                                            type: {
+                                              type: "string",
+                                              enum: ["documentos", "requisitos", "perguntas", "verificacao", "outro"],
+                                              description:
+                                                "Tipo do checklist: documentos, requisitos, perguntas, verificacao ou outro",
                                             },
                                           },
-                                          required: ["label"],
+                                          required: ["label", "type"],
                                           additionalProperties: false,
                                         },
                                       },

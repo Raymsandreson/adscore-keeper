@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { ChecklistItem, LeadChecklistInstance, DocChecklistItem } from '@/hooks/useChecklists';
+import { ChecklistItem, LeadChecklistInstance, DocChecklistItem, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { toast } from 'sonner';
 
@@ -571,12 +571,17 @@ export function WorkflowProgressView({
                                                 </button>
                                               )}
 
-                                              {/* Doc Checklist section */}
-                                              {item.docChecklist && item.docChecklist.length > 0 && (isNext || expandedObjectives.has(`docs-${item.id}`)) && (
+                                              {/* Checklist section */}
+                                              {item.docChecklist && item.docChecklist.length > 0 && (isNext || expandedObjectives.has(`docs-${item.id}`)) && (() => {
+                                                const checklistType = item.docChecklist[0]?.type || 'documentos';
+                                                const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
+                                                return (
                                                 <div className="mt-2 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
                                                   <div className="flex items-center gap-1.5 mb-2">
                                                     <ClipboardList className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
-                                                    <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">Documentação</span>
+                                                    <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">
+                                                      {typeInfo.icon} Checklist — {typeInfo.label}
+                                                    </span>
                                                   </div>
                                                   <div className="space-y-1">
                                                     {item.docChecklist.map(doc => {
@@ -613,7 +618,8 @@ export function WorkflowProgressView({
                                                     })}
                                                   </div>
                                                 </div>
-                                              )}
+                                                );
+                                              })()}
                                               {item.docChecklist && item.docChecklist.length > 0 && !isNext && (
                                                 <button
                                                   className="text-[10px] text-orange-600 dark:text-orange-400 hover:underline mt-1"
@@ -627,7 +633,7 @@ export function WorkflowProgressView({
                                                     });
                                                   }}
                                                 >
-                                                  {expandedObjectives.has(`docs-${item.id}`) ? 'Ocultar documentação' : `Ver documentação (${item.docChecklist.length})`}
+                                                  {expandedObjectives.has(`docs-${item.id}`) ? 'Ocultar checklist' : `Ver checklist (${item.docChecklist.length})`}
                                                 </button>
                                               )}
                                             </div>
