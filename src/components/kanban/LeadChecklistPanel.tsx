@@ -37,6 +37,18 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
 
     const data = await fetchLeadInstances(leadId);
 
+    // Reset readonly for instances that match the current stage
+    if (currentStageId) {
+      const readonlyCurrentStage = data.filter(i => i.stage_id === currentStageId && i.is_readonly);
+      for (const inst of readonlyCurrentStage) {
+        await supabase
+          .from('lead_checklist_instances')
+          .update({ is_readonly: false })
+          .eq('id', inst.id);
+        inst.is_readonly = false;
+      }
+    }
+
     if (data.length > 0) {
       const templateIds = [...new Set(data.map(d => d.checklist_template_id))];
       const { data: templates } = await supabase
