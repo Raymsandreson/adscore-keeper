@@ -555,31 +555,32 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                             </Select>
                                           </div>
 
-                                          {/* Descrição do passo - compact */}
-                                          {step.description ? (
-                                            <div className="flex items-start gap-1.5 px-1">
-                                              <Info className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
-                                              <p className="text-[11px] text-muted-foreground flex-1 line-clamp-2">{step.description}</p>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-5 w-5 flex-shrink-0 text-muted-foreground"
+                                          {/* Descrição do passo - minimal icon */}
+                                          <div className="flex items-start gap-1.5">
+                                            <button
+                                              className={cn(
+                                                "flex items-center gap-1 text-[10px] rounded px-1 py-0.5 transition-colors",
+                                                step.description
+                                                  ? "text-muted-foreground hover:text-foreground"
+                                                  : "text-muted-foreground/40 hover:text-muted-foreground"
+                                              )}
+                                              title={step.description || 'Adicionar descrição'}
+                                              onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
+                                            >
+                                              <Info className="h-3 w-3 flex-shrink-0" />
+                                              {step.description && (
+                                                <span className="line-clamp-1 max-w-[200px] text-left">{step.description}</span>
+                                              )}
+                                            </button>
+                                            {step.description && (
+                                              <button
+                                                className="text-muted-foreground/60 hover:text-foreground p-0.5"
                                                 onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
                                               >
                                                 <Edit3 className="h-3 w-3" />
-                                              </Button>
-                                            </div>
-                                          ) : (
-                                            <Button
-                                              variant="ghost"
-                                              size="sm"
-                                              className="h-6 text-[10px] text-muted-foreground px-1.5 gap-1"
-                                              onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: '' })}
-                                            >
-                                              <Plus className="h-3 w-3" />
-                                              Descrição
-                                            </Button>
-                                          )}
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
                                       ))
                                     )}
