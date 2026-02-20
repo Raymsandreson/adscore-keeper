@@ -229,6 +229,11 @@ export function UserProductivityBanner() {
   const [watchedUserBlocks, setWatchedUserBlocks] = useState<Record<string, { current: WatchedBlockInfo | null; todayBlocks: WatchedBlockInfo[] }>>({});
   const [expandedWatchedRoutine, setExpandedWatchedRoutine] = useState<Set<string>>(new Set());
   const [watchedBlockActivities, setWatchedBlockActivities] = useState<Record<string, { title: string; status: string; leadName: string | null }[]>>({});
+  const [watchedBlockMetrics, setWatchedBlockMetrics] = useState<Record<string, {
+    calls: number; callsAnswered: number; callsUnanswered: number;
+    leads: number; contacts: number; dms: number; comments: number;
+    stageChanges: number; checklistItems: number; activitiesCompleted: number;
+  }>>({});
   
   useEffect(() => {
     if (watchedUserIds.size === 0) {
@@ -320,25 +325,66 @@ export function UserProductivityBanner() {
     return () => clearInterval(interval);
   }, [watchedUserBlocks]);
 
-  // Fetch activities for a watched user's activity type
-  const fetchWatchedBlockActivities = useCallback(async (userId: string, activityType: string) => {
+  // Fetch activities AND metrics for a watched user's time block
+  const fetchWatchedBlockActivities = useCallback(async (userId: string, activityType: string, blockStartH?: number, blockStartM?: number, blockEndH?: number, blockEndM?: number) => {
     const key = `${userId}_${activityType}`;
     const todayStart = startOfDay(new Date()).toISOString();
     const todayEnd = endOfDay(new Date()).toISOString();
-    
-    const { data } = await supabase
-      .from('lead_activities')
-      .select('title, status, lead_name')
-      .eq('assigned_to', userId)
-      .eq('activity_type', activityType)
-      .gte('created_at', todayStart)
-      .lte('created_at', todayEnd)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    
+
+    // Calculate block time range for metrics
+    const now = new Date();
+    const blockStart = new Date(now);
+    blockStart.setHours(blockStartH ?? 0, blockStartM ?? 0, 0, 0);
+    const blockEnd = new Date(now);
+    blockEnd.setHours(blockEndH ?? 23, blockEndM ?? 59, 59, 999);
+    const bStart = blockStart.toISOString();
+    const bEnd = blockEnd.toISOString();
+
+    const [activitiesRes, callsRes, leadsRes, contactsRes, dmsRes, commentsRes, stageRes, checklistRes, completedRes] = await Promise.all([
+      supabase.from('lead_activities').select('title, status, lead_name')
+        .eq('assigned_to', userId).eq('activity_type', activityType)
+        .gte('created_at', todayStart).lte('created_at', todayEnd)
+        .order('created_at', { ascending: false }).limit(20),
+      supabase.from('call_records').select('id, call_result')
+        .eq('user_id', userId).gte('created_at', bStart).lte('created_at', bEnd),
+      supabase.from('leads').select('id')
+        .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
+      supabase.from('contacts').select('id')
+        .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
+      supabase.from('dm_history').select('id')
+        .eq('user_id', userId).neq('action_type', 'received')
+        .gte('created_at', bStart).lte('created_at', bEnd),
+      supabase.from('instagram_comments').select('id')
+        .eq('replied_by', userId).gte('replied_at', bStart).lte('replied_at', bEnd),
+      supabase.from('lead_stage_history').select('id')
+        .eq('changed_by', userId).gte('changed_at', bStart).lte('changed_at', bEnd),
+      supabase.from('user_activity_log').select('id')
+        .eq('user_id', userId).eq('action_type', 'checklist_item_checked')
+        .gte('created_at', bStart).lte('created_at', bEnd),
+      supabase.from('lead_activities').select('id')
+        .eq('status', 'concluida').eq('completed_by', userId)
+        .gte('completed_at', bStart).lte('completed_at', bEnd),
+    ]);
+
+    const calls = callsRes.data || [];
     setWatchedBlockActivities(prev => ({
       ...prev,
-      [key]: (data || []).map(d => ({ title: d.title, status: d.status, leadName: d.lead_name })),
+      [key]: (activitiesRes.data || []).map(d => ({ title: d.title, status: d.status, leadName: d.lead_name })),
+    }));
+    setWatchedBlockMetrics(prev => ({
+      ...prev,
+      [key]: {
+        calls: calls.length,
+        callsAnswered: calls.filter(c => c.call_result === 'atendida').length,
+        callsUnanswered: calls.filter(c => c.call_result !== 'atendida').length,
+        leads: (leadsRes.data || []).length,
+        contacts: (contactsRes.data || []).length,
+        dms: (dmsRes.data || []).length,
+        comments: (commentsRes.data || []).length,
+        stageChanges: (stageRes.data || []).length,
+        checklistItems: (checklistRes.data || []).length,
+        activitiesCompleted: (completedRes.data || []).length,
+      },
     }));
   }, []);
 
@@ -352,7 +398,7 @@ export function UserProductivityBanner() {
   };
 
   const [expandedWatchedBlocks, setExpandedWatchedBlocks] = useState<Set<string>>(new Set());
-  const toggleWatchedBlock = (userId: string, activityType: string) => {
+  const toggleWatchedBlock = (userId: string, activityType: string, startH?: number, startM?: number, endH?: number, endM?: number) => {
     const key = `${userId}_${activityType}`;
     setExpandedWatchedBlocks(prev => {
       const next = new Set(prev);
@@ -360,7 +406,7 @@ export function UserProductivityBanner() {
         next.delete(key);
       } else {
         next.add(key);
-        fetchWatchedBlockActivities(userId, activityType);
+        fetchWatchedBlockActivities(userId, activityType, startH, startM, endH, endM);
       }
       return next;
     });
@@ -705,10 +751,11 @@ export function UserProductivityBanner() {
                       const blockKey = `${wu.userId}_${block.activityType}`;
                       const isBlockExpanded = expandedWatchedBlocks.has(blockKey);
                       const activities = watchedBlockActivities[blockKey];
+                      const metrics = watchedBlockMetrics[blockKey];
                       return (
                         <div key={`${block.activityType}_${i}`}>
                           <button
-                            onClick={() => toggleWatchedBlock(wu.userId, block.activityType)}
+                            onClick={() => toggleWatchedBlock(wu.userId, block.activityType, block.startHour, block.startMinute, block.endHour, block.endMinute)}
                             className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60 ${block.isCurrent ? 'ring-1 ring-primary bg-muted/40' : ''}`}
                           >
                             <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: block.color }} />
@@ -724,7 +771,57 @@ export function UserProductivityBanner() {
                             <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isBlockExpanded ? 'rotate-180' : ''}`} />
                           </button>
                           {isBlockExpanded && (
-                            <div className="ml-5 mt-1 mb-2 space-y-0.5">
+                            <div className="ml-5 mt-1 mb-2 space-y-1">
+                              {/* Metrics summary for this block */}
+                              {metrics && (
+                                <div className="flex flex-wrap gap-1.5 py-1">
+                                  {metrics.calls > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <Phone className="h-2.5 w-2.5 text-green-500" />
+                                      {metrics.calls} ({metrics.callsAnswered}✅ {metrics.callsUnanswered}❌)
+                                    </Badge>
+                                  )}
+                                  {metrics.leads > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <Target className="h-2.5 w-2.5 text-indigo-500" /> {metrics.leads}
+                                    </Badge>
+                                  )}
+                                  {metrics.contacts > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <Users className="h-2.5 w-2.5 text-teal-500" /> {metrics.contacts}
+                                    </Badge>
+                                  )}
+                                  {metrics.dms > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <Send className="h-2.5 w-2.5 text-violet-500" /> {metrics.dms}
+                                    </Badge>
+                                  )}
+                                  {metrics.comments > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <MessageSquare className="h-2.5 w-2.5 text-blue-500" /> {metrics.comments}
+                                    </Badge>
+                                  )}
+                                  {metrics.stageChanges > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <ArrowRightLeft className="h-2.5 w-2.5 text-amber-500" /> {metrics.stageChanges}
+                                    </Badge>
+                                  )}
+                                  {metrics.checklistItems > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <ListChecks className="h-2.5 w-2.5 text-cyan-500" /> {metrics.checklistItems}
+                                    </Badge>
+                                  )}
+                                  {metrics.activitiesCompleted > 0 && (
+                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" /> {metrics.activitiesCompleted}
+                                    </Badge>
+                                  )}
+                                  {metrics.calls === 0 && metrics.leads === 0 && metrics.contacts === 0 && metrics.dms === 0 && metrics.comments === 0 && metrics.stageChanges === 0 && metrics.checklistItems === 0 && metrics.activitiesCompleted === 0 && (
+                                    <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>
+                                  )}
+                                </div>
+                              )}
+                              {/* Activities list */}
                               {!activities ? (
                                 <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
                               ) : activities.length === 0 ? (
