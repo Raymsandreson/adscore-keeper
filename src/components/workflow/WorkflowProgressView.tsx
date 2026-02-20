@@ -91,26 +91,55 @@ export function WorkflowProgressView({
 
       setStageLinks(linksData || []);
 
-      // Fetch template info
+      // Fetch template info (including items for sync)
       const templateIds = [...new Set([
         ...parsed.map(i => i.checklist_template_id),
         ...(linksData || []).map(l => l.checklist_template_id),
       ])];
 
+      let templatesFullData: { id: string; name: string; is_mandatory: boolean; description: string | null; items: unknown }[] = [];
       if (templateIds.length > 0) {
         const { data: templates } = await supabase
           .from('checklist_templates')
-          .select('id, name, is_mandatory, description')
+          .select('id, name, is_mandatory, description, items')
           .in('id', templateIds);
 
+        templatesFullData = templates || [];
         const info: Record<string, { name: string; is_mandatory: boolean; description?: string }> = {};
-        (templates || []).forEach(t => {
+        templatesFullData.forEach(t => {
           info[t.id] = { name: t.name, is_mandatory: t.is_mandatory, description: t.description || undefined };
         });
         setTemplateInfo(info);
       }
 
-      setInstances(parsed);
+      // Sync: merge new template items into existing instances
+      const updatedParsed = [...parsed];
+      for (const instance of updatedParsed) {
+        const template = templatesFullData.find(t => t.id === instance.checklist_template_id);
+        if (!template) continue;
+        const templateItems = (template.items as unknown as ChecklistItem[]) || [];
+        const existingIds = new Set(instance.items.map(i => i.id));
+        const newItems = templateItems.filter(ti => !existingIds.has(ti.id)).map(ti => ({ ...ti, checked: false }));
+        
+        // Also remove items that no longer exist in template
+        const templateItemIds = new Set(templateItems.map(ti => ti.id));
+        const filteredItems = instance.items.filter(i => templateItemIds.has(i.id));
+
+        if (newItems.length > 0 || filteredItems.length !== instance.items.length) {
+          const mergedItems = [...filteredItems, ...newItems];
+          instance.items = mergedItems;
+          // Update in DB
+          await supabase
+            .from('lead_checklist_instances')
+            .update({
+              items: JSON.parse(JSON.stringify(mergedItems)),
+              is_completed: mergedItems.length > 0 && mergedItems.every(i => i.checked),
+            })
+            .eq('id', instance.id);
+        }
+      }
+
+      setInstances(updatedParsed);
 
       // Auto-expand current phase
       setExpandedPhases(new Set([currentStageId]));
