@@ -15,7 +15,7 @@ import { IncomingCallBanner } from "@/components/IncomingCallBanner";
 import Index from "./pages/Index";
 import ActivitiesPage from "./pages/ActivitiesPage";
 import LeadsCenter from "./pages/LeadsCenter";
-import EditorialCalendarPage from "./pages/EditorialCalendarPage";
+
 import AnalyticsPage from "./pages/AnalyticsPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import TeamPage from "./pages/TeamPage";
@@ -61,7 +61,7 @@ function AppRoutes() {
         <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
         <Route path="/dashboard" element={<Index />} />
         <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
-        <Route path="/editorial" element={<ProtectedRoute><EditorialCalendarPage /></ProtectedRoute>} />
+        
         <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
         <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
         <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
