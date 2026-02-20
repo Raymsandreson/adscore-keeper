@@ -36,6 +36,11 @@ interface MetricDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   metricKey: MetricKey | null;
+  /** Optional: show data for a different user instead of the logged-in user */
+  targetUserId?: string;
+  targetUserName?: string;
+  /** Optional: lock the date range (disables period picker) */
+  dateRangeOverride?: { start: Date; end: Date };
 }
 
 const METRIC_CONFIG: Record<MetricKey, { label: string; icon: React.ElementType; color: string }> = {
@@ -106,7 +111,7 @@ const METRIC_TO_GOAL: Partial<Record<MetricKey, string>> = {
   activitiesCompleted: 'target_activities',
 };
 
-export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetailSheetProps) {
+export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId, targetUserName, dateRangeOverride }: MetricDetailSheetProps) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
   const [items, setItems] = useState<ListItem[]>([]);
@@ -119,19 +124,19 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
   const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
-    if (open) { setPeriod('today'); setHistoryOpen(false); }
-  }, [open]);
+    if (open) { if (!dateRangeOverride) setPeriod('today'); setHistoryOpen(false); }
+  }, [open, dateRangeOverride]);
 
-  const dateRange = useMemo(() => getDateRange(period, lastXDays, customFrom, customTo), [period, lastXDays, customFrom, customTo]);
+  const dateRange = useMemo(() => dateRangeOverride || getDateRange(period, lastXDays, customFrom, customTo), [dateRangeOverride, period, lastXDays, customFrom, customTo]);
 
   const isMultiDay = useMemo(() => {
     return format(dateRange.start, 'yyyy-MM-dd') !== format(dateRange.end, 'yyyy-MM-dd');
   }, [dateRange]);
 
   useEffect(() => {
-    if (!open || !metricKey || !user) return;
+    if (!open || !metricKey || (!user && !targetUserId)) return;
     fetchItems(metricKey);
-  }, [open, metricKey, user, dateRange]);
+  }, [open, metricKey, user, targetUserId, dateRange]);
 
   useEffect(() => {
     if (!open || !metricKey || !user) return;
@@ -165,12 +170,12 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
   };
 
   const fetchItems = async (key: MetricKey) => {
-    if (!user) return;
+    if (!user && !targetUserId) return;
     setLoading(true);
     setItems([]);
     const startDate = dateRange.start.toISOString();
     const endDate = dateRange.end.toISOString();
-    const userId = user.id;
+    const userId = targetUserId || user!.id;
     try {
       let result: ListItem[] = [];
       switch (key) {
@@ -378,11 +383,15 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               {config && <Icon className={`h-5 w-5 ${config.color}`} />}
-              {config?.label || 'Detalhes'}
+              <span className="truncate">
+                {config?.label || 'Detalhes'}
+                {targetUserName && <span className="text-muted-foreground font-normal text-sm"> — {targetUserName}</span>}
+              </span>
             </SheetTitle>
           </SheetHeader>
 
-          {/* Period selector */}
+          {/* Period selector - hidden when dateRangeOverride is set */}
+          {!dateRangeOverride && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
               <CalendarIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -438,6 +447,12 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey }: MetricDetai
               {format(dateRange.start, "dd/MM/yyyy")} — {format(dateRange.end, "dd/MM/yyyy")}
             </p>
           </div>
+          )}
+          {dateRangeOverride && (
+            <p className="mt-3 text-[10px] text-muted-foreground">
+              {format(dateRange.start, 'HH:mm')} — {format(dateRange.end, 'HH:mm')}
+            </p>
+          )}
 
           {/* Summary card */}
           {!loading && (
