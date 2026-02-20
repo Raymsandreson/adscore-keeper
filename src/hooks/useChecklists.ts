@@ -8,6 +8,7 @@ export interface ChecklistItem {
   description?: string;
   checked?: boolean;
   activityType?: string; // tipo de atividade associado a este passo
+  script?: string; // script de contato para este passo
 }
 
 export interface ChecklistTemplate {

@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowRight, CheckSquare, ListChecks, Lock, Loader2 } from 'lucide-react';
+import { ArrowRight, CheckSquare, ListChecks, Lock, Loader2, MessageSquareText, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, LeadChecklistInstance, ChecklistItem } from '@/hooks/useChecklists';
@@ -31,6 +31,7 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
   const [templateNames, setTemplateNames] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
   const [loadingChecklist, setLoadingChecklist] = useState(true);
+  const [expandedScripts, setExpandedScripts] = useState<Set<string>>(new Set());
 
   // Fetch board data
   useEffect(() => {
@@ -123,10 +124,33 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     ));
   };
 
+
   if (!board || !boardId) return null;
 
   const currentStage = board.stages.find(s => s.id === stageId);
   const currentInstances = instances.filter(i => i.stage_id === stageId && !i.is_readonly);
+
+  // Find next unchecked step with script across all current instances
+  const nextStepWithScript = (() => {
+    for (const inst of currentInstances) {
+      const nextItem = inst.items.find(i => !i.checked && i.script);
+      if (nextItem) return nextItem;
+    }
+    return null;
+  })();
+
+  const toggleScriptExpanded = (itemId: string) => {
+    setExpandedScripts(prev => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      return next;
+    });
+  };
+
+  const copyScript = (script: string) => {
+    navigator.clipboard.writeText(script);
+    toast.success('Script copiado!');
+  };
 
   return (
     <div className="px-3 py-2 space-y-2">
@@ -185,21 +209,51 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
                   />
                 </div>
                 <div className="space-y-0.5">
-                  {instance.items.map(item => (
-                    <label
-                      key={item.id}
-                      className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1"
-                    >
-                      <Checkbox
-                        checked={item.checked || false}
-                        onCheckedChange={() => handleToggleItem(instance, item.id)}
-                        className="h-3.5 w-3.5"
-                      />
-                      <span className={cn(item.checked ? 'line-through text-muted-foreground' : '')}>
-                        {item.label}
-                      </span>
-                    </label>
-                  ))}
+                  {instance.items.map(item => {
+                    const isNextUnchecked = !item.checked && instance.items.findIndex(i => !i.checked) === instance.items.indexOf(item);
+                    const showScript = item.script && (isNextUnchecked || expandedScripts.has(item.id));
+
+                    return (
+                      <div key={item.id}>
+                        <div className="flex items-center gap-1.5 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1">
+                          <Checkbox
+                            checked={item.checked || false}
+                            onCheckedChange={() => handleToggleItem(instance, item.id)}
+                            className="h-3.5 w-3.5"
+                          />
+                          <span className={cn("flex-1", item.checked ? 'line-through text-muted-foreground' : '')}>
+                            {item.label}
+                          </span>
+                          {item.script && (
+                            <button
+                              onClick={(e) => { e.preventDefault(); toggleScriptExpanded(item.id); }}
+                              className={cn("p-0.5 rounded", expandedScripts.has(item.id) || isNextUnchecked ? "text-primary" : "text-muted-foreground hover:text-primary")}
+                              title="Ver script"
+                            >
+                              <MessageSquareText className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                        {showScript && item.script && (
+                          <div className="ml-5 mt-1 mb-1.5 p-2 rounded-md bg-primary/5 border border-primary/20">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[9px] font-semibold text-primary uppercase tracking-wide">Script</span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5"
+                                onClick={() => copyScript(item.script!)}
+                                title="Copiar script"
+                              >
+                                <Copy className="h-2.5 w-2.5" />
+                              </Button>
+                            </div>
+                            <p className="text-[11px] text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

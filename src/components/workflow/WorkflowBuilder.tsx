@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +19,12 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Plus,
   Trash2,
   Edit3,
@@ -26,6 +33,7 @@ import {
   ChevronDown,
   GripVertical,
   Workflow,
+  MessageSquareText,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem } from '@/hooks/useChecklists';
@@ -79,6 +87,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -242,6 +251,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     });
   };
 
+  const updateStepScript = (phaseIdx: number, objIdx: number, stepId: string, script: string) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, script: script || undefined } : s),
+    });
+  };
+
   // Save
   const handleSave = async () => {
     if (!formName.trim() || phases.length === 0) return;
@@ -326,6 +341,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col p-0">
         <SheetHeader className="px-6 py-4 border-b">
@@ -497,6 +513,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                                 className="h-7 text-sm font-medium"
                                               />
                                             </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.script ? "text-primary" : "text-muted-foreground")}
+                                              title={step.script ? "Editar script de contato" : "Adicionar script de contato"}
+                                              onClick={() => setScriptDialog({ phaseIdx, objIdx, stepId: step.id, script: step.script || '' })}
+                                            >
+                                              <MessageSquareText className="h-3.5 w-3.5" />
+                                            </Button>
                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
                                               <Trash2 className="h-3 w-3" />
                                             </Button>
@@ -592,6 +617,42 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Script dialog */}
+    <Dialog open={!!scriptDialog} onOpenChange={(open) => !open && setScriptDialog(null)}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageSquareText className="h-5 w-5" />
+            Script de Contato
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Defina o roteiro que o usuário deve seguir ao fazer contato neste passo. Este script ficará disponível no WhatsApp, nas atividades e no progresso do fluxo.
+          </p>
+          <Textarea
+            value={scriptDialog?.script || ''}
+            onChange={e => setScriptDialog(prev => prev ? { ...prev, script: e.target.value } : null)}
+            placeholder="Ex: Olá [nome], tudo bem? Sou [seu nome] do escritório... Estou entrando em contato porque..."
+            className="min-h-[200px] text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setScriptDialog(null)}>Cancelar</Button>
+            <Button size="sm" onClick={() => {
+              if (scriptDialog) {
+                updateStepScript(scriptDialog.phaseIdx, scriptDialog.objIdx, scriptDialog.stepId, scriptDialog.script);
+                setScriptDialog(null);
+                toast.success('Script salvo!');
+              }
+            }}>
+              Salvar Script
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
