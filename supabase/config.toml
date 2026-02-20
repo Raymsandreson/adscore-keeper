@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.google-check-connection]
 verify_jwt = false
+
+[functions.generate-workflow]
+verify_jwt = false
