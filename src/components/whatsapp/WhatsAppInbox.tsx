@@ -5,6 +5,7 @@ import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
+import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
 import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -44,6 +45,11 @@ export function WhatsAppInbox() {
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+
+  // Bulk selection state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelectedPhones, setBulkSelectedPhones] = useState<Set<string>>(new Set());
+  const [showBulkDialog, setShowBulkDialog] = useState(false);
 
   const selectedConversation = conversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
@@ -152,6 +158,42 @@ export function WhatsAppInbox() {
       setShowContactPanel(true);
     }
   };
+  const handleToggleBulkPhone = (phone: string) => {
+    setBulkSelectedPhones(prev => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = (phones: string[]) => {
+    setBulkSelectedPhones(prev => {
+      const allSelected = phones.every(p => prev.has(p));
+      if (allSelected) return new Set();
+      return new Set(phones);
+    });
+  };
+
+  const handleToggleBulkMode = () => {
+    if (bulkMode) {
+      setBulkMode(false);
+      setBulkSelectedPhones(new Set());
+    } else {
+      setBulkMode(true);
+    }
+  };
+
+  const handleOpenBulkDialog = () => {
+    if (bulkSelectedPhones.size === 0) return;
+    setShowBulkDialog(true);
+  };
+
+  const handleBulkCreated = () => {
+    setBulkMode(false);
+    setBulkSelectedPhones(new Set());
+    refetch();
+  };
 
   if (showSetup) {
     return (
@@ -223,6 +265,15 @@ export function WhatsAppInbox() {
         )}
 
         <div className="ml-auto flex gap-2">
+          <Button
+            variant={bulkMode ? "default" : "ghost"}
+            size={bulkMode ? "sm" : "icon"}
+            onClick={handleToggleBulkMode}
+            title="Seleção em lote"
+          >
+            <ListChecks className="h-4 w-4" />
+            {bulkMode && <span className="ml-1 text-xs">Lote</span>}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
             <Chrome className="h-4 w-4" />
           </Button>
@@ -238,6 +289,25 @@ export function WhatsAppInbox() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {bulkMode && (
+        <div className="flex items-center gap-3 px-4 py-2 border-b bg-accent/40 shrink-0">
+          <span className="text-sm font-medium">
+            {bulkSelectedPhones.size} conversa{bulkSelectedPhones.size !== 1 ? 's' : ''} selecionada{bulkSelectedPhones.size !== 1 ? 's' : ''}
+          </span>
+          <Button
+            size="sm"
+            onClick={handleOpenBulkDialog}
+            disabled={bulkSelectedPhones.size === 0}
+          >
+            Criar Leads em Lote
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleToggleBulkMode}>
+            Cancelar
+          </Button>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Conversation List */}
@@ -249,6 +319,10 @@ export function WhatsAppInbox() {
             onSelect={handleSelectConversation}
             boards={boards}
             selectedInstanceId={selectedInstanceId}
+            bulkMode={bulkMode}
+            selectedPhones={bulkSelectedPhones}
+            onToggleBulkPhone={handleToggleBulkPhone}
+            onSelectAllFiltered={handleSelectAllFiltered}
           />
         </div>
 
@@ -350,6 +424,15 @@ export function WhatsAppInbox() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Lead Creation Dialog */}
+      <BulkLeadCreationDialog
+        open={showBulkDialog}
+        onOpenChange={setShowBulkDialog}
+        selectedConversations={conversations.filter(c => bulkSelectedPhones.has(c.phone))}
+        boards={boards}
+        onCreated={handleBulkCreated}
+      />
     </div>
   );
 }
