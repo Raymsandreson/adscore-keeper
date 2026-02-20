@@ -379,8 +379,8 @@ export function WorkflowProgressView({
                   <CollapsibleTrigger className="w-full">
                     <div
                       className={cn(
-                        "flex items-center gap-3 px-3 py-3 border-l-4 transition-all hover:bg-muted/40 cursor-pointer",
-                        phase.isCurrent ? "border-primary bg-primary/5" : "border-muted-foreground/30 bg-muted/20",
+                        "flex items-center gap-3 px-3 py-3 border-l-4 transition-all hover:bg-muted/50 cursor-pointer",
+                        phase.isCurrent ? "border-primary bg-primary/5" : "border-muted-foreground/50 bg-muted/40",
                       )}
                       style={{ borderLeftColor: phase.isCurrent ? undefined : phase.stage.color }}
                     >
@@ -472,7 +472,7 @@ export function WorkflowProgressView({
 
                               <CollapsibleContent>
                                 {/* PASSOS — Alíneas */}
-                                <div className="ml-8 mt-0.5 space-y-1 border-l border-green-300/30 pl-3">
+                                <div className="ml-10 mt-0.5 space-y-1 border-l-2 border-green-500/40 pl-3">
                                   {objective.instance.items.length === 0 ? (
                                     <p className="text-xs text-muted-foreground py-2">
                                       Nenhum passo definido
