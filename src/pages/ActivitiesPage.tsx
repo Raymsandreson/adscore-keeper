@@ -272,8 +272,9 @@ const ActivitiesPage = () => {
     setFormPriority('normal');
     setFormLeadId('');
     setFormLeadName('');
-    setFormAssignedTo('');
-    setFormAssignedToName('');
+    const currentUser = teamMembers.find(m => m.user_id === user?.id);
+    setFormAssignedTo(user?.id || '');
+    setFormAssignedToName(currentUser?.full_name || '');
     setFormDeadline('');
     setFormNotificationDate('');
     setFormNotes('');
