@@ -35,6 +35,11 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
   const startRecording = useCallback(async () => {
+    // Open native dialer
+    const cleanPhone = phone.replace(/\D/g, '');
+    const telUrl = cleanPhone.startsWith('55') ? `tel:+${cleanPhone}` : `tel:+55${cleanPhone}`;
+    window.open(telUrl, '_blank');
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -61,12 +66,12 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      toast.success('Gravação de ligação iniciada!');
+      toast.success('Discador aberto! Gravação iniciada.');
     } catch (err) {
       console.error('Mic access error:', err);
-      toast.error('Não foi possível acessar o microfone');
+      toast.error('Não foi possível acessar o microfone. A ligação foi aberta no discador.');
     }
-  }, []);
+  }, [phone]);
 
   const stopRecording = useCallback((callResult: string = 'atendeu') => {
     const recorder = mediaRecorderRef.current;
