@@ -11,6 +11,8 @@ export interface MyProductivity {
   leadsClosed: number;
   leadsProgressed: number;
   callsMade: number;
+  callsAnswered: number;
+  callsUnanswered: number;
   stageChanges: number;
   checklistItemsChecked: number;
   activitiesCompleted: number;
@@ -34,8 +36,8 @@ export interface MyDailyGoals {
 
 const emptyProductivity: MyProductivity = {
   commentReplies: 0, dmsSent: 0, contactsCreated: 0, leadsCreated: 0,
-  leadsClosed: 0, leadsProgressed: 0, callsMade: 0, stageChanges: 0,
-  checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
+  leadsClosed: 0, leadsProgressed: 0, callsMade: 0, callsAnswered: 0, callsUnanswered: 0,
+  stageChanges: 0, checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
   sessionMinutes: 0, totalActions: 0,
 };
 
@@ -64,7 +66,7 @@ export function useMyProductivity() {
         contactsRes, dmsRes, repliesRes, stageHistoryRes,
         leadsRes, sessionsRes, activitiesRes, catContactsRes,
         completedActivitiesRes, overdueActivitiesRes, goalsRes, defaultGoalsRes,
-        outboundCommentsRes, sentCommentsRes, userDefaultGoalsRes,
+        outboundCommentsRes, sentCommentsRes, userDefaultGoalsRes, callRecordsRes,
       ] = await Promise.all([
         supabase.from('contacts').select('id').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
@@ -93,17 +95,17 @@ export function useMyProductivity() {
         supabase.from('workflow_daily_goals').select('*').eq('user_id', userId)
           .eq('goal_date', format(now, 'yyyy-MM-dd')).maybeSingle(),
         supabase.from('workflow_default_goals').select('*').limit(1).maybeSingle(),
-        // Outbound comments registered manually by this user
         supabase.from('instagram_comments').select('id')
           .eq('comment_type', 'outbound_manual')
           .eq('replied_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        // All sent comments today (outbound on third-party posts — no user attribution column)
         supabase.from('instagram_comments').select('id')
           .eq('comment_type', 'sent')
           .gte('created_at', startDate).lte('created_at', endDate),
-        // Per-user daily goal defaults
         supabase.from('user_daily_goal_defaults').select('*').eq('user_id', userId).maybeSingle(),
+        // Call records from call_records table
+        supabase.from('call_records').select('id, call_result').eq('user_id', userId)
+          .gte('created_at', startDate).lte('created_at', endDate),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -123,7 +125,11 @@ export function useMyProductivity() {
 
       // Count all outbound DM actions (copied, copied_and_opened, sent) — any DM registered by the user counts
       const dmsSent = dms.filter(d => d.action_type !== 'received').length;
-      const callsMade = catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length;
+      const catCalls = catContacts.filter(c => c.contact_channel === 'phone' || c.contact_channel === 'ligacao').length;
+      const callRecords = callRecordsRes.data || [];
+      const callsMade = catCalls + callRecords.length;
+      const callsAnswered = catCalls + callRecords.filter(c => c.call_result === 'atendeu').length;
+      const callsUnanswered = callRecords.filter(c => c.call_result !== 'atendeu').length;
       const checklistChecked = activities.filter(a => a.action_type === 'checklist_item_checked').length;
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
@@ -142,6 +148,8 @@ export function useMyProductivity() {
         leadsClosed,
         leadsProgressed: uniqueLeadsProgressed,
         callsMade,
+        callsAnswered,
+        callsUnanswered,
         stageChanges: stageHistory.length,
         checklistItemsChecked,
         activitiesCompleted: completedActivities.length,
