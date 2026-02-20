@@ -109,7 +109,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
 
         const audioUrl = urlData.publicUrl;
 
-        const { error: insertError } = await supabase
+        const { data: insertData, error: insertError } = await supabase
           .from('call_records')
           .insert({
             user_id: currentUser.id,
@@ -125,13 +125,15 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
             phone_used: 'whatsapp',
             notes: 'Gravação manual via chat WhatsApp.',
             tags: ['whatsapp', 'gravacao_manual'],
-          });
+          })
+          .select('id')
+          .single();
 
         if (insertError) throw insertError;
 
-        // Trigger transcription in background
+        // Trigger transcription in background with call_record_id for DB update
         supabase.functions.invoke('analyze-activity-chat', {
-          body: { action: 'transcribe_call', audio_url: audioUrl, call_id: `whatsapp_${Date.now()}`, phone },
+          body: { action: 'transcribe_call', audio_url: audioUrl, call_record_id: insertData?.id, phone },
         }).catch(() => {});
 
         toast.success('Ligação gravada e salva!');

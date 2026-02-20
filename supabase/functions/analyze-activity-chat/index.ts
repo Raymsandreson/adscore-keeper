@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,29 +30,126 @@ serve(async (req) => {
     const body = await req.json();
     const { messages, mode, context, action } = body;
 
-    // Mode: transcribe_call — fire-and-forget transcription request from WhatsApp call recorder
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+    // Mode: transcribe_call — transcribe audio and save AI summary to call_records
     if (action === "transcribe_call") {
-      const { audio_url, call_id, phone } = body;
+      const { audio_url, call_record_id, phone } = body;
       if (!audio_url) {
         return new Response(JSON.stringify({ error: "audio_url required" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      // Re-use the describe_file flow internally
-      const fakeReq = { messages: [], mode: "describe_file", context: { file_url: audio_url, file_type: "audio", file_name: `call_${call_id || "unknown"}.webm` } };
-      // For now just return success — transcription happens via describe_file mode called separately
-      return new Response(JSON.stringify({ success: true, message: "transcription_queued" }), {
+
+      if (!LOVABLE_API_KEY) {
+        return new Response(JSON.stringify({ success: false, error: "LOVABLE_API_KEY not configured" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Fetch audio and transcribe with AI
+      const fileData = await fetchFileAsBase64(audio_url);
+      if (!fileData) {
+        return new Response(JSON.stringify({ success: false, error: "Could not fetch audio file" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const transcribePrompt = `Você recebeu uma gravação de áudio de uma ligação telefônica de um escritório de advocacia trabalhista.
+
+Faça o seguinte:
+1. Transcreva o áudio completo
+2. Faça um resumo objetivo em bullet points
+3. Identifique os próximos passos mencionados
+
+Responda em português do Brasil.`;
+
+      const contentParts: any[] = [
+        { type: "text", text: transcribePrompt },
+        { type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } },
+      ];
+
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas." },
+            { role: "user", content: contentParts },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "save_transcription",
+              description: "Salva a transcrição e resumo da ligação",
+              parameters: {
+                type: "object",
+                properties: {
+                  transcript: { type: "string", description: "Transcrição completa do áudio" },
+                  summary: { type: "string", description: "Resumo objetivo em bullet points" },
+                  next_steps: { type: "string", description: "Próximos passos identificados" },
+                },
+                required: ["transcript", "summary", "next_steps"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "save_transcription" } },
+        }),
+      });
+
+      let transcript = "";
+      let summary = "";
+      let nextSteps = "";
+
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) {
+          const parsed = JSON.parse(toolCall.function.arguments);
+          transcript = parsed.transcript || "";
+          summary = parsed.summary || "";
+          nextSteps = parsed.next_steps || "";
+        } else {
+          // Fallback: use raw content
+          transcript = aiData.choices?.[0]?.message?.content || "";
+          summary = transcript;
+        }
+      } else {
+        console.error("AI transcription error:", aiResponse.status, await aiResponse.text());
+      }
+
+      // Update call_record in database if we have call_record_id
+      if (call_record_id && (transcript || summary)) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        await supabase
+          .from("call_records")
+          .update({
+            ai_transcript: transcript,
+            ai_summary: summary,
+            next_step: nextSteps,
+          })
+          .eq("id", call_record_id);
+      }
+
+      return new Response(JSON.stringify({ success: true, transcript, summary, next_steps: nextSteps }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     // Mode: describe_file - auto-analyze a single uploaded file (image, pdf, audio)
     if (mode === "describe_file") {
       const { file_url: fUrl, file_type: fType, file_name: fName, audio_duration: fDuration, custom_prompt: customPrompt, max_chars: maxChars } = context || {};
 
-      // Default: ~9 lines / 3 paragraphs ≈ 600 chars
       const charLimit = maxChars || 600;
       const lengthInstruction = `\nIMPORTANTE: O resumo deve ter no máximo ${charLimit} caracteres (aproximadamente ${Math.round(charLimit / 70)} linhas). Seja conciso e direto.`;
       const customInstruction = customPrompt ? `\nInstruções adicionais do usuário: ${customPrompt}` : '';
@@ -134,7 +232,7 @@ Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
       });
     }
 
-    // Mode: suggest_actions - generate 3 actionable suggestions from context
+    // Mode: suggest_actions
     if (mode === "suggest_actions" && context) {
       const actionsPrompt = `Você é um assistente jurídico de um CRM de advocacia trabalhista. Com base no contexto abaixo, gere exatamente 3 ações práticas e objetivas que o usuário pode tomar agora para dar continuidade ao caso.
 
@@ -218,6 +316,7 @@ Cada ação deve ser uma frase curta (máximo 15 palavras) e começar com um ver
       });
     }
 
+    // Default: analyze chat messages
     const systemPrompt = `Você é um assistente jurídico que analisa conversas de chat de atividades de um CRM de advocacia trabalhista.
 
 Analise TODAS as mensagens do chat, incluindo o conteúdo de áudios transcritos, imagens analisadas e documentos PDF.
@@ -232,10 +331,7 @@ Seja conciso mas completo. Use linguagem profissional. Se algum campo não tiver
 
 IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.`;
 
-    // Build multimodal content parts
     const contentParts: any[] = [];
-    
-    // Add text summary of the conversation
     let textSummary = "Analise estas mensagens de chat e extraia as informações:\n\n";
     
     for (const m of messages) {
@@ -244,11 +340,9 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
       if (m.message_type === 'text') {
         textSummary += `[${senderLabel}]: ${m.content || ''}\n`;
       } else if (m.message_type === 'ai_suggestion') {
-        // Skip AI suggestions from analysis
         continue;
       } else if (m.message_type === 'image' && m.file_url) {
         textSummary += `[${senderLabel}] enviou uma imagem (${m.file_name || 'imagem'}). Analise o conteúdo da imagem abaixo:\n`;
-        // Add image as multimodal content
         const fileData = await fetchFileAsBase64(m.file_url);
         if (fileData) {
           contentParts.push({
@@ -269,7 +363,6 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
         textSummary += `[${senderLabel}] enviou um documento PDF (${m.file_name || 'documento'}). Analise o conteúdo do documento abaixo:\n`;
         const fileData = await fetchFileAsBase64(m.file_url);
         if (fileData) {
-          // Send PDF as file content for Gemini
           contentParts.push({
             type: "image_url",
             image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
@@ -278,7 +371,6 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
       }
     }
 
-    // Build the user message with text first, then media
     const userContent: any[] = [{ type: "text", text: textSummary }, ...contentParts];
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
