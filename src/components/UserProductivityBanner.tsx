@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMyProductivity } from '@/hooks/useMyProductivity';
 import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
+import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { useLocation } from 'react-router-dom';
 import { MemberProductivitySheet } from '@/components/team/MemberProductivitySheet';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
@@ -11,6 +13,7 @@ import { AnimatedNumber } from '@/components/ui/animated-number';
 import { MetricDetailSheet, type MetricKey } from '@/components/MetricDetailSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -60,6 +63,7 @@ export function UserProductivityBanner() {
   const { user, profile } = useAuthContext();
   const { data, goals, goalProgress, loading } = useMyProductivity();
   const { ranking, myTeams, selectedTeamId, selectTeam, myPosition, loading: rankingLoading, fetchRanking } = useMyTeamRanking();
+  const { configs: timeBlocks } = useTimeBlockSettings();
   const [expanded, setExpanded] = useState(false);
   const [rankingFetched, setRankingFetched] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
@@ -67,6 +71,9 @@ export function UserProductivityBanner() {
   const [selectedMetricKey, setSelectedMetricKey] = useState<MetricKey | null>(null);
   const [watchedUserIds, setWatchedUserIds] = useState<Set<string>>(new Set());
   const [showUserPicker, setShowUserPicker] = useState(false);
+  const [allMembers, setAllMembers] = useState<{ userId: string; name: string }[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
   const location = useLocation();
 
   const today = useMemo(() => ({ start: startOfDay(new Date()), end: endOfDay(new Date()) }), []);
@@ -112,6 +119,34 @@ export function UserProductivityBanner() {
     }
   }, [expanded, rankingFetched, fetchRanking, watchedUserIds.size]);
 
+  // Fetch all members when picker opens
+  const fetchAllMembers = useCallback(async () => {
+    if (membersLoaded || !user) return;
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('user_id, full_name')
+      .neq('user_id', user.id)
+      .order('full_name');
+    if (profiles) {
+      setAllMembers(profiles.map(p => ({ userId: p.user_id, name: p.full_name || 'Sem nome' })));
+    }
+    setMembersLoaded(true);
+  }, [user, membersLoaded]);
+
+  // Current time block activity
+  const currentActivity = useMemo(() => {
+    if (!timeBlocks.length) return null;
+    const now = new Date();
+    const currentDay = now.getDay(); // 0=Sun
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    return timeBlocks.find(block => {
+      const blockStart = block.startHour * 60 + (block.startMinute ?? 0);
+      const blockEnd = block.endHour * 60 + (block.endMinute ?? 0);
+      return block.days.includes(currentDay) && currentMinutes >= blockStart && currentMinutes < blockEnd;
+    }) || null;
+  }, [timeBlocks]);
+
   const filteredRanking = useMemo(() => {
     if (watchedUserIds.size === 0) return ranking;
     return ranking.filter(e => e.isCurrentUser || watchedUserIds.has(e.userId));
@@ -119,8 +154,30 @@ export function UserProductivityBanner() {
 
   const watchedUsersData = useMemo(() => {
     if (watchedUserIds.size === 0) return [];
-    return ranking.filter(e => !e.isCurrentUser && watchedUserIds.has(e.userId));
-  }, [ranking, watchedUserIds]);
+    const result: Array<{ userId: string; userName: string | null; totalPoints: number; leadsCreated: number; checklistItemsChecked: number; stageChanges: number; leadsClosed: number; contactsCreated: number; inRanking: boolean }> = [];
+    watchedUserIds.forEach(id => {
+      const rankEntry = ranking.find(r => r.userId === id);
+      if (rankEntry && !rankEntry.isCurrentUser) {
+        result.push({ ...rankEntry, inRanking: true });
+      } else if (!rankEntry) {
+        const member = allMembers.find(m => m.userId === id);
+        result.push({
+          userId: id,
+          userName: member?.name || null,
+          totalPoints: 0, leadsCreated: 0, checklistItemsChecked: 0,
+          stageChanges: 0, leadsClosed: 0, contactsCreated: 0,
+          inRanking: false,
+        });
+      }
+    });
+    return result;
+  }, [ranking, watchedUserIds, allMembers]);
+
+  const filteredMembers = useMemo(() => {
+    if (!memberSearch.trim()) return allMembers;
+    const q = memberSearch.toLowerCase();
+    return allMembers.filter(m => m.name.toLowerCase().includes(q));
+  }, [allMembers, memberSearch]);
 
   // Don't show for unauthenticated users or on certain pages
   if (!user || loading || HIDDEN_ROUTES.some(r => location.pathname.startsWith(r))) {
@@ -189,6 +246,16 @@ export function UserProductivityBanner() {
           )}
         </div>
 
+        {/* Current activity from routine */}
+        {currentActivity && (
+          <Badge 
+            className="text-[10px] h-5 px-1.5 flex-shrink-0 border-0 font-medium"
+            style={{ backgroundColor: currentActivity.color + '22', color: currentActivity.color }}
+          >
+            {currentActivity.label}
+          </Badge>
+        )}
+
         {/* Progress bar */}
         <div className="w-20 flex-shrink-0">
           <Progress value={goalProgress} className="h-2" />
@@ -229,9 +296,14 @@ export function UserProductivityBanner() {
 
         {/* Watch users picker */}
         <Popover open={showUserPicker} onOpenChange={(open) => {
-          if (open && !rankingFetched) {
-            fetchRanking();
-            setRankingFetched(true);
+          if (open) {
+            fetchAllMembers();
+            if (!rankingFetched) {
+              fetchRanking();
+              setRankingFetched(true);
+            }
+          } else {
+            setMemberSearch('');
           }
           setShowUserPicker(open);
         }}>
@@ -240,27 +312,38 @@ export function UserProductivityBanner() {
               <Eye className={`h-3.5 w-3.5 ${watchedUserIds.size > 0 ? 'text-primary' : ''}`} />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 p-2" align="end">
+          <PopoverContent className="w-64 p-2" align="end">
             <p className="text-xs font-medium mb-2">Acompanhar membros:</p>
-            {rankingLoading ? (
+            <Input
+              placeholder="Buscar membro..."
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              className="h-7 text-xs mb-2"
+            />
+            {!membersLoaded ? (
               <p className="text-xs text-muted-foreground text-center py-2">Carregando...</p>
-            ) : ranking.filter(e => !e.isCurrentUser).length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-2">Sem membros no time</p>
+            ) : filteredMembers.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">Nenhum membro encontrado</p>
             ) : (
-              <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                {ranking.filter(e => !e.isCurrentUser).map(entry => (
-                  <label
-                    key={entry.userId}
-                    className="flex items-center gap-2 p-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-xs"
-                  >
-                    <Checkbox
-                      checked={watchedUserIds.has(entry.userId)}
-                      onCheckedChange={() => toggleWatchedUser(entry.userId)}
-                    />
-                    <span className="truncate">{entry.userName?.split(' ')[0] || '?'}</span>
-                    <span className="ml-auto text-muted-foreground">{entry.totalPoints} pts</span>
-                  </label>
-                ))}
+              <div className="space-y-0.5 max-h-[250px] overflow-y-auto">
+                {filteredMembers.map(member => {
+                  const rankEntry = ranking.find(r => r.userId === member.userId);
+                  return (
+                    <label
+                      key={member.userId}
+                      className="flex items-center gap-2 p-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-xs"
+                    >
+                      <Checkbox
+                        checked={watchedUserIds.has(member.userId)}
+                        onCheckedChange={() => toggleWatchedUser(member.userId)}
+                      />
+                      <span className="truncate flex-1">{member.name.split(' ')[0]}</span>
+                      {rankEntry && (
+                        <span className="text-muted-foreground text-[10px]">{rankEntry.totalPoints} pts</span>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             )}
             {watchedUserIds.size > 0 && (
@@ -270,7 +353,7 @@ export function UserProductivityBanner() {
                 className="w-full mt-2 h-6 text-[10px]"
                 onClick={() => setWatchedUserIds(new Set())}
               >
-                Limpar seleção
+                Limpar seleção ({watchedUserIds.size})
               </Button>
             )}
           </PopoverContent>
