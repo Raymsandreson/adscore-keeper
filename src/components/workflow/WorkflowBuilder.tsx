@@ -40,7 +40,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { useChecklists, ChecklistItem, DocChecklistItem } from '@/hooks/useChecklists';
+import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType } from '@/hooks/useChecklists';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -94,7 +94,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [saving, setSaving] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
-  const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[] } | null>(null);
+  const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
@@ -162,7 +162,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
             script: step.script || undefined,
             activityType: step.activityType || undefined,
             docChecklist: step.docChecklist?.length
-              ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label }))
+              ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label, type: d.type || 'documentos' }))
               : undefined,
           })),
           isExpanded: true,
@@ -688,8 +688,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                               variant="ghost"
                                               size="icon"
                                               className={cn("h-6 w-6 flex-shrink-0", step.docChecklist?.length ? "text-orange-500" : "text-muted-foreground")}
-                                              title={step.docChecklist?.length ? `Checklist de documentação (${step.docChecklist.length})` : "Adicionar checklist de documentação"}
-                                              onClick={() => setDocChecklistDialog({ phaseIdx, objIdx, stepId: step.id, items: step.docChecklist ? [...step.docChecklist] : [] })}
+                                              title={step.docChecklist?.length ? `Checklist (${step.docChecklist.length})` : "Adicionar checklist"}
+                                              onClick={() => {
+                                                const existingType = step.docChecklist?.[0]?.type || 'documentos';
+                                                setDocChecklistDialog({ phaseIdx, objIdx, stepId: step.id, items: step.docChecklist ? [...step.docChecklist] : [], checklistType: existingType });
+                                              }}
                                             >
                                               <ClipboardList className="h-3.5 w-3.5" />
                                             </Button>
@@ -904,18 +907,41 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
       </DialogContent>
     </Dialog>
 
-    {/* Doc Checklist dialog */}
+    {/* Checklist dialog */}
     <Dialog open={!!docChecklistDialog} onOpenChange={(open) => { if (!open) { setDocChecklistDialog(null); setNewDocItem(''); } }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5" />
-            Checklist de Documentação
+            Checklist
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
+          {/* Type selector */}
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground">Tipo do Checklist</Label>
+            <Select
+              value={docChecklistDialog?.checklistType || 'documentos'}
+              onValueChange={v => setDocChecklistDialog(prev => prev ? { ...prev, checklistType: v as ChecklistType } : null)}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CHECKLIST_TYPES.map(t => (
+                  <SelectItem key={t.value} value={t.value}>
+                    <span className="flex items-center gap-2">
+                      <span>{t.icon}</span>
+                      {t.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <p className="text-xs text-muted-foreground">
-            Defina os documentos ou itens que precisam ser verificados neste passo. Eles aparecerão como checklist na atividade correspondente.
+            Defina os itens que precisam ser verificados neste passo. Eles aparecerão como checklist na atividade correspondente.
           </p>
 
           {/* Existing items */}
@@ -937,7 +963,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               </div>
             ))}
             {(docChecklistDialog?.items || []).length === 0 && (
-              <p className="text-xs text-muted-foreground italic text-center py-2">Nenhum documento adicionado</p>
+              <p className="text-xs text-muted-foreground italic text-center py-2">Nenhum item adicionado</p>
             )}
           </div>
 
@@ -946,13 +972,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
             <Input
               value={newDocItem}
               onChange={e => setNewDocItem(e.target.value)}
-              placeholder="Ex: RG, CPF, Comprovante de residência..."
+              placeholder={
+                docChecklistDialog?.checklistType === 'documentos' ? 'Ex: RG, CPF, Comprovante...' :
+                docChecklistDialog?.checklistType === 'perguntas' ? 'Ex: Qual a data do acidente?' :
+                docChecklistDialog?.checklistType === 'requisitos' ? 'Ex: Nexo causal comprovado' :
+                'Ex: Item do checklist...'
+              }
               className="flex-1 text-sm"
               onKeyDown={e => {
                 if (e.key === 'Enter' && newDocItem.trim()) {
                   setDocChecklistDialog(prev => prev ? {
                     ...prev,
-                    items: [...prev.items, { id: crypto.randomUUID(), label: newDocItem.trim() }],
+                    items: [...prev.items, { id: crypto.randomUUID(), label: newDocItem.trim(), type: prev.checklistType }],
                   } : null);
                   setNewDocItem('');
                 }
@@ -965,7 +996,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 if (newDocItem.trim()) {
                   setDocChecklistDialog(prev => prev ? {
                     ...prev,
-                    items: [...prev.items, { id: crypto.randomUUID(), label: newDocItem.trim() }],
+                    items: [...prev.items, { id: crypto.randomUUID(), label: newDocItem.trim(), type: prev.checklistType }],
                   } : null);
                   setNewDocItem('');
                 }
@@ -979,10 +1010,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
             <Button variant="outline" size="sm" onClick={() => { setDocChecklistDialog(null); setNewDocItem(''); }}>Cancelar</Button>
             <Button size="sm" onClick={() => {
               if (docChecklistDialog) {
-                updateStepDocChecklist(docChecklistDialog.phaseIdx, docChecklistDialog.objIdx, docChecklistDialog.stepId, docChecklistDialog.items);
+                // Apply the type to all items
+                const typedItems = docChecklistDialog.items.map(item => ({ ...item, type: item.type || docChecklistDialog.checklistType }));
+                updateStepDocChecklist(docChecklistDialog.phaseIdx, docChecklistDialog.objIdx, docChecklistDialog.stepId, typedItems);
                 setDocChecklistDialog(null);
                 setNewDocItem('');
-                toast.success('Checklist de documentação salvo!');
+                toast.success('Checklist salvo!');
               }
             }}>
               Salvar Checklist

@@ -2,10 +2,21 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export type ChecklistType = 'documentos' | 'requisitos' | 'perguntas' | 'verificacao' | 'outro';
+
+export const CHECKLIST_TYPES: { value: ChecklistType; label: string; color: string; icon: string }[] = [
+  { value: 'documentos', label: 'Documentos', color: 'orange', icon: '📄' },
+  { value: 'requisitos', label: 'Requisitos', color: 'blue', icon: '✅' },
+  { value: 'perguntas', label: 'Perguntas', color: 'purple', icon: '❓' },
+  { value: 'verificacao', label: 'Verificação', color: 'green', icon: '🔍' },
+  { value: 'outro', label: 'Outro', color: 'gray', icon: '📋' },
+];
+
 export interface DocChecklistItem {
   id: string;
   label: string;
   checked?: boolean;
+  type?: ChecklistType;
 }
 
 export interface ChecklistItem {
