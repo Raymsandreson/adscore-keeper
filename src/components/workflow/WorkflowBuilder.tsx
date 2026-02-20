@@ -36,12 +36,15 @@ import {
   MessageSquareText,
   Info,
   ClipboardList,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem } from '@/hooks/useChecklists';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
 
 interface WorkflowBuilderProps {
   open: boolean;
@@ -95,6 +98,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [showAiDialog, setShowAiDialog] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -122,6 +128,58 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
       { stageId: 'done_' + Date.now(), stageName: 'Concluído', stageColor: '#22c55e', objectives: [], isExpanded: false },
     ]);
     setViewMode('edit');
+  };
+
+  const handleGenerateWithAI = async () => {
+    if (!aiPrompt.trim()) return;
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-workflow', {
+        body: {
+          description: aiPrompt,
+          activityTypes: activityTypes.map(t => t.label),
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      setFormName(data.name || '');
+      setFormDescription(data.description || '');
+
+      const generatedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
+        stageId: phase.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        stageName: phase.name,
+        stageColor: phase.color || '#3b82f6',
+        objectives: (phase.objectives || []).map((obj: any) => ({
+          name: obj.name,
+          description: obj.description || '',
+          is_mandatory: obj.is_mandatory || false,
+          items: (obj.steps || []).map((step: any) => ({
+            id: crypto.randomUUID(),
+            label: step.label,
+            description: step.description || undefined,
+            script: step.script || undefined,
+            activityType: step.activityType || undefined,
+            docChecklist: step.docChecklist?.length
+              ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label }))
+              : undefined,
+          })),
+          isExpanded: true,
+        })),
+        isExpanded: true,
+      }));
+
+      setPhases(generatedPhases);
+      setShowAiDialog(false);
+      setAiPrompt('');
+      toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
+    } catch (error: any) {
+      console.error('Error generating workflow:', error);
+      toast.error(error.message || 'Erro ao gerar fluxo com IA');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleEditWorkflow = async (board: KanbanBoard) => {
@@ -448,10 +506,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 </Card>
               ))
             )}
-            <Button className="w-full" variant="outline" onClick={handleNewWorkflow}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Fluxo de Trabalho
-            </Button>
+            <div className="flex gap-2">
+              <Button className="flex-1" variant="outline" onClick={handleNewWorkflow}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Fluxo
+              </Button>
+              <Button className="flex-1" variant="default" onClick={() => { resetForm(); setViewMode('edit'); setShowAiDialog(true); }}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Gerar com IA
+              </Button>
+            </div>
           </div>
         ) : (
           /* ===== INLINE HIERARCHICAL EDITOR ===== */
@@ -468,6 +532,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 <Label className="text-xs font-medium text-muted-foreground">Descrição:</Label>
                 <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Descreva o propósito..." className="mt-1 min-h-[60px]" />
               </div>
+
+              {/* AI Generate Button */}
+              {!editingBoardId && (
+                <Button variant="outline" className="w-full border-dashed" onClick={() => setShowAiDialog(true)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Preencher com IA a partir de uma descrição
+                </Button>
+              )}
 
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
@@ -914,6 +986,47 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               }
             }}>
               Salvar Checklist
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* AI Generation Dialog */}
+    <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Gerar Fluxo com IA
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists.
+          </p>
+          <Textarea
+            value={aiPrompt}
+            onChange={e => setAiPrompt(e.target.value)}
+            placeholder="Ex: Fluxo para prospecção de clientes de acidente de trabalho, começando pelo contato inicial via WhatsApp, passando por coleta de documentos, análise jurídica e ajuizamento da ação..."
+            className="min-h-[120px]"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setShowAiDialog(false)} disabled={generating}>
+              Cancelar
+            </Button>
+            <Button onClick={handleGenerateWithAI} disabled={generating || !aiPrompt.trim()}>
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Gerando...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Gerar Fluxo
+                </>
+              )}
             </Button>
           </div>
         </div>
