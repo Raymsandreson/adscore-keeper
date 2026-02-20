@@ -418,18 +418,21 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                        <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                        <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
-                           {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
-                           {phase.isExpanded ? (
-                             <Input
-                               value={phase.stageName}
-                               onChange={e => updatePhaseName(phaseIdx, e.target.value)}
-                               onClick={e => e.stopPropagation()}
-                               placeholder="Nome da fase..."
-                               className="h-7 text-sm font-semibold text-foreground flex-1"
-                             />
-                           ) : (
-                             <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
-                           )}
+                            {phase.isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-muted-foreground/20 text-muted-foreground text-[10px] font-bold flex items-center justify-center">
+                              {phaseIdx + 1}
+                            </span>
+                            {phase.isExpanded ? (
+                              <Input
+                                value={phase.stageName}
+                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                placeholder="Nome da fase..."
+                                className="h-7 text-sm font-semibold text-foreground flex-1"
+                              />
+                            ) : (
+                              <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
+                            )}
                          </CollapsibleTrigger>
                        </Collapsible>
                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
@@ -438,9 +441,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                        <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0" title="Adicionar objetivo" onClick={() => addObjective(phaseIdx)}>
                          <Plus className="h-3.5 w-3.5" />
                        </Button>
-                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
-                         <Trash2 className="h-3 w-3" />
-                       </Button>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removePhase(phaseIdx)}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                      </div>
 
                     {/* Phase description row */}
@@ -455,28 +458,31 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                            <div key={objIdx} className="border-t first:border-t-0">
                              {/* Objective header */}
                              <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
-                               <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
-                                 <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
-                                   {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
-                                   {obj.isExpanded ? (
-                                     <Input
-                                       value={obj.name}
-                                       onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
-                                       onClick={e => e.stopPropagation()}
-                                       placeholder="Nome do objetivo..."
-                                       className="h-7 text-sm font-medium flex-1"
-                                     />
-                                   ) : (
-                                     <span className="font-medium text-sm truncate">{obj.name}</span>
-                                   )}
+                                <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
+                                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
+                                    {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
+                                    <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
+                                      {objIdx + 1}
+                                    </span>
+                                    {obj.isExpanded ? (
+                                      <Input
+                                        value={obj.name}
+                                        onChange={e => updateObjective(phaseIdx, objIdx, { name: e.target.value })}
+                                        onClick={e => e.stopPropagation()}
+                                        placeholder="Nome do objetivo..."
+                                        className="h-7 text-sm font-medium flex-1"
+                                      />
+                                    ) : (
+                                      <span className="font-medium text-sm truncate">{obj.name}</span>
+                                    )}
                                  </CollapsibleTrigger>
                                </Collapsible>
                                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                                  {obj.items.length} passo(s)
                                </span>
-                               <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
-                                 <Trash2 className="h-3 w-3" />
-                               </Button>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeObjective(phaseIdx, objIdx)}>
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
                              </div>
 
                             {/* Objective content */}
@@ -524,8 +530,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                             >
                                               <MessageSquareText className="h-3.5 w-3.5" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
-                                              <Trash2 className="h-3 w-3" />
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
+                                              <X className="h-3.5 w-3.5" />
                                             </Button>
                                           </div>
 
