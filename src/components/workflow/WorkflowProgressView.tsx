@@ -43,6 +43,7 @@ interface PhaseData {
 interface ObjectiveData {
   instance: LeadChecklistInstance;
   templateName: string;
+  templateDescription?: string;
   isMandatory: boolean;
 }
 
@@ -55,7 +56,7 @@ export function WorkflowProgressView({
   onStageChange,
 }: WorkflowProgressViewProps) {
   const [instances, setInstances] = useState<LeadChecklistInstance[]>([]);
-  const [templateInfo, setTemplateInfo] = useState<Record<string, { name: string; is_mandatory: boolean }>>({});
+  const [templateInfo, setTemplateInfo] = useState<Record<string, { name: string; is_mandatory: boolean; description?: string }>>({});
   const [stageLinks, setStageLinks] = useState<{ checklist_template_id: string; stage_id: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'current' | 'full'>('full');
@@ -99,12 +100,12 @@ export function WorkflowProgressView({
       if (templateIds.length > 0) {
         const { data: templates } = await supabase
           .from('checklist_templates')
-          .select('id, name, is_mandatory')
+          .select('id, name, is_mandatory, description')
           .in('id', templateIds);
 
-        const info: Record<string, { name: string; is_mandatory: boolean }> = {};
+        const info: Record<string, { name: string; is_mandatory: boolean; description?: string }> = {};
         (templates || []).forEach(t => {
-          info[t.id] = { name: t.name, is_mandatory: t.is_mandatory };
+          info[t.id] = { name: t.name, is_mandatory: t.is_mandatory, description: t.description || undefined };
         });
         setTemplateInfo(info);
       }
@@ -144,6 +145,7 @@ export function WorkflowProgressView({
       const objectives: ObjectiveData[] = stageInstances.map(inst => ({
         instance: inst,
         templateName: templateInfo[inst.checklist_template_id]?.name || 'Objetivo',
+        templateDescription: templateInfo[inst.checklist_template_id]?.description,
         isMandatory: templateInfo[inst.checklist_template_id]?.is_mandatory || false,
       }));
 
@@ -167,6 +169,7 @@ export function WorkflowProgressView({
                 updated_at: '',
               },
               templateName: info.name,
+              templateDescription: info.description,
               isMandatory: info.is_mandatory,
             });
           }
@@ -451,9 +454,18 @@ export function WorkflowProgressView({
                                     objExpanded && "rotate-90"
                                   )} />
 
-                                  <span className="text-sm font-medium flex-1 text-left">
-                                    Objetivo {objIndex + 1}: {objective.templateName}
+                                  <span className="flex-shrink-0 h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-[10px] font-bold flex items-center justify-center">
+                                    {objIndex + 1}
                                   </span>
+
+                                  <div className="flex-1 text-left min-w-0">
+                                    <span className="text-sm font-medium">
+                                      {objective.templateName}
+                                    </span>
+                                    {objective.templateDescription && (
+                                      <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{objective.templateDescription}</p>
+                                    )}
+                                  </div>
 
                                   {allChecked && (
                                     <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
@@ -470,7 +482,7 @@ export function WorkflowProgressView({
                                         onClick={(e) => e.stopPropagation()}
                                       />
                                       <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                        {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                                        {allChecked ? 'Desmarcar' : 'Marcar'}
                                       </span>
                                     </>
                                   )}
@@ -478,7 +490,7 @@ export function WorkflowProgressView({
                               </CollapsibleTrigger>
 
                               <CollapsibleContent>
-                                <div className="ml-6 mt-0.5 space-y-0.5 border-l-2 border-green-300/40 pl-3">
+                                <div className="ml-6 mt-1 space-y-1.5 border-l-2 border-green-300/40 pl-3">
                                   {objective.instance.items.length === 0 ? (
                                     <p className="text-xs text-muted-foreground py-2 pl-2">
                                       Nenhum passo definido
@@ -492,8 +504,8 @@ export function WorkflowProgressView({
                                         <div key={item.id}>
                                           <div
                                             className={cn(
-                                              "flex items-start gap-2.5 p-2.5 rounded-md transition-all",
-                                              isNext && "bg-primary/5 ring-1 ring-primary/20",
+                                              "flex items-start gap-2.5 p-2.5 rounded-md transition-all border border-green-200/60 dark:border-green-900/30 bg-green-50/20 dark:bg-green-950/10",
+                                              isNext && "ring-1 ring-primary/30 bg-primary/5 border-primary/20",
                                             )}
                                           >
                                             <Checkbox
@@ -503,13 +515,17 @@ export function WorkflowProgressView({
                                               className="mt-0.5"
                                             />
 
+                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center mt-0.5">
+                                              {itemIndex + 1}
+                                            </span>
+
                                             <div className="flex-1 min-w-0">
                                               <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={cn(
                                                   "text-sm font-medium",
                                                   item.checked && "line-through text-muted-foreground"
                                                 )}>
-                                                  Passo {itemIndex + 1}: {item.label}
+                                                  {item.label}
                                                 </span>
                                                 {isNext && (
                                                   <Badge
@@ -540,7 +556,7 @@ export function WorkflowProgressView({
 
                                               {/* Description inline under step title */}
                                               {item.description && (
-                                                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                                <p className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug line-clamp-2">
                                                   {item.description}
                                                 </p>
                                               )}
