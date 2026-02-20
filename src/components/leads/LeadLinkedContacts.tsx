@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const RELATIONSHIP_OPTIONS = [
@@ -390,6 +391,14 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                     </div>
                     <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   </button>
+                  {cl.contact.phone && (
+                    <WhatsAppCallRecorder
+                      phone={cl.contact.phone}
+                      contactName={cl.contact.full_name}
+                      contactId={cl.contact.id}
+                      leadId={leadId}
+                    />
+                  )}
                   <Button
                     type="button"
                     variant="ghost"

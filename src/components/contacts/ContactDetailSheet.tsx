@@ -53,6 +53,7 @@ import { useContactRelationships } from '@/hooks/useContactRelationships';
 import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
+import { useProfileNames } from '@/hooks/useProfileNames';
 import { MultiClassificationSelect } from './MultiClassificationSelect';
 import { ContactInteractionHistory } from './ContactInteractionHistory';
 import { supabase } from '@/integrations/supabase/client';
@@ -131,6 +132,7 @@ export function ContactDetailSheet({
   const { leads: contactLeads, loading: loadingLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
+  const { fetchProfileNames, getDisplayName } = useProfileNames();
 
   // Load contact data
   useEffect(() => {
@@ -151,6 +153,12 @@ export function ContactDetailSheet({
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
       setIsEditing(true);
+      
+      // Fetch profile name for created_by
+      const contactAny = contact as any;
+      if (contactAny.created_by) {
+        fetchProfileNames([contactAny.created_by]);
+      }
     }
   }, [contact, open]);
 
@@ -331,6 +339,15 @@ export function ContactDetailSheet({
                   <Badge variant="outline" className="gap-1">
                     <Calendar className="h-3 w-3" />
                     Criado: {format(new Date(contact.created_at), "dd/MM/yyyy", { locale: ptBR })}
+                    {(() => {
+                      const creatorName = getDisplayName((contact as any).created_by);
+                      return creatorName ? (
+                        <span className="ml-1 flex items-center gap-0.5">
+                          <User className="h-3 w-3" />
+                          {creatorName}
+                        </span>
+                      ) : null;
+                    })()}
                   </Badge>
                 )}
                 {contact.updated_at && !isNaN(new Date(contact.updated_at).getTime()) && (
