@@ -804,16 +804,17 @@ const ActivitiesPage = () => {
     try {
       const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
       if (!error && data?.suggested_type) {
-        const availableKeys = routineActivityTypes.map(t => t.value);
-        if (availableKeys.includes(data.suggested_type)) {
+        // Use ACTIVITY_TYPES constant to avoid TDZ issues
+        const allKeys = ACTIVITY_TYPES.map(t => t.value);
+        if (allKeys.includes(data.suggested_type)) {
           setFormType(data.suggested_type);
-          const label = routineActivityTypes.find(t => t.value === data.suggested_type)?.label;
+          const label = ACTIVITY_TYPES.find(t => t.value === data.suggested_type)?.label;
           toast.info(`Tipo sugerido pela IA: ${label}`, { duration: 2000 });
         }
       }
     } catch { /* silent */ }
     setAiSuggestingType(false);
-  }, [routineActivityTypes]);
+  }, []);
 
   const handleTitleChange = useCallback((value: string) => {
     setFormTitle(value);
