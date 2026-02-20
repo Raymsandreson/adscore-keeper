@@ -34,11 +34,16 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const startRecording = useCallback(async () => {
-    // Open native dialer
+  const makeCall = useCallback(() => {
     const cleanPhone = phone.replace(/\D/g, '');
     const telUrl = cleanPhone.startsWith('55') ? `tel:+${cleanPhone}` : `tel:+55${cleanPhone}`;
-    window.open(telUrl, '_blank');
+    const a = document.createElement('a');
+    a.href = telUrl;
+    a.click();
+  }, [phone]);
+
+  const startRecording = useCallback(async () => {
+    makeCall();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -66,12 +71,12 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      toast.success('Discador aberto! Gravação iniciada.');
+      toast.success('Ligação iniciada! Gravação ativa.');
     } catch (err) {
       console.error('Mic access error:', err);
-      toast.error('Não foi possível acessar o microfone. A ligação foi aberta no discador.');
+      toast.info('Ligação aberta. Gravação indisponível (microfone negado).');
     }
-  }, [phone]);
+  }, [phone, makeCall]);
 
   const stopRecording = useCallback((callResult: string = 'atendeu') => {
     const recorder = mediaRecorderRef.current;
