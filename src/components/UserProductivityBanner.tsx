@@ -139,7 +139,8 @@ export function UserProductivityBanner() {
   const currentActivity = useMemo(() => {
     if (!timeBlocks.length) return null;
     const now = new Date();
-    const currentDay = now.getDay(); // 0=Sun
+    const jsDay = now.getDay(); // 0=Sun, 1=Mon...
+    const currentDay = jsDay === 0 ? 6 : jsDay - 1; // Convert to 0=Mon, 1=Tue... 6=Sun
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
     
     return timeBlocks.find(block => {
@@ -153,7 +154,8 @@ export function UserProductivityBanner() {
   const todayBlocks = useMemo(() => {
     if (!timeBlocks.length) return [];
     const now = new Date();
-    const dayOfWeek = now.getDay();
+    const jsDay = now.getDay();
+    const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // Convert to 0=Mon
     return timeBlocks
       .filter(b => b.days.includes(dayOfWeek))
       .sort((a, b) => (a.startHour * 60 + (a.startMinute ?? 0)) - (b.startHour * 60 + (b.startMinute ?? 0)));
