@@ -162,7 +162,13 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
       const day = clean.slice(0, 2);
       const month = clean.slice(2, 4);
       const year = clean.slice(4, 8);
-      return { display: formatted, iso: `${year}-${month}-${day}` };
+      const iso = `${year}-${month}-${day}`;
+      // Validate the date is real
+      const dateObj = new Date(iso + 'T00:00:00');
+      if (!isNaN(dateObj.getTime()) && dateObj.getDate() === parseInt(day) && (dateObj.getMonth() + 1) === parseInt(month)) {
+        return { display: formatted, iso };
+      }
+      return { display: formatted, iso: '' };
     }
     return { display: formatted, iso: '' };
   };
