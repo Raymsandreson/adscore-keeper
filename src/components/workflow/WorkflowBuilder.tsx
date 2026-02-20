@@ -93,6 +93,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[] } | null>(null);
   const [newDocItem, setNewDocItem] = useState('');
+  const [dragItem, setDragItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
+  const [dragOverItem, setDragOverItem] = useState<{ type: 'objective' | 'step'; phaseIdx: number; objIdx: number; stepIdx?: number } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -272,6 +274,49 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, docChecklist: docChecklist.length > 0 ? docChecklist : undefined } : s),
     });
+  };
+
+  // Drag-and-drop handlers
+  const handleDragStart = (type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+    setDragItem({ type, phaseIdx, objIdx, stepIdx });
+  };
+
+  const handleDragOver = (e: React.DragEvent, type: 'objective' | 'step', phaseIdx: number, objIdx: number, stepIdx?: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverItem({ type, phaseIdx, objIdx, stepIdx });
+  };
+
+  const handleDragEnd = () => {
+    if (!dragItem || !dragOverItem) {
+      setDragItem(null);
+      setDragOverItem(null);
+      return;
+    }
+
+    if (dragItem.type === 'objective' && dragOverItem.type === 'objective') {
+      // Move objective within same phase or between phases
+      setPhases(prev => {
+        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
+        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx, 1);
+        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx, 0, moved);
+        return next;
+      });
+    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined) {
+      // Move step within same objective or between objectives
+      setPhases(prev => {
+        const next = prev.map(p => ({
+          ...p,
+          objectives: p.objectives.map(o => ({ ...o, items: [...o.items] })),
+        }));
+        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx].items.splice(dragItem.stepIdx!, 1);
+        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx].items.splice(dragOverItem.stepIdx!, 0, moved);
+        return next;
+      });
+    }
+
+    setDragItem(null);
+    setDragOverItem(null);
   };
 
   // Save
@@ -470,9 +515,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                         )}
 
                         {phase.objectives.map((obj, objIdx) => (
-                           <div key={objIdx} className="border-t first:border-t-0">
+                           <div
+                             key={objIdx}
+                             className={cn(
+                               "border-t first:border-t-0 transition-all",
+                               dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "border-t-2 border-t-blue-400"
+                             )}
+                             draggable
+                             onDragStart={() => handleDragStart('objective', phaseIdx, objIdx)}
+                             onDragOver={(e) => handleDragOver(e, 'objective', phaseIdx, objIdx)}
+                             onDragEnd={handleDragEnd}
+                           >
                              {/* Objective header */}
                              <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
+                                <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
                                 <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
                                   <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
                                     {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
@@ -522,9 +578,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                       <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
                                     ) : (
                                       obj.items.map((step, stepIdx) => (
-                                        <div key={step.id} className="border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2">
+                                        <div
+                                          key={step.id}
+                                          className={cn(
+                                            "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all",
+                                            dragOverItem?.type === 'step' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && dragOverItem.stepIdx === stepIdx && "ring-2 ring-green-400"
+                                          )}
+                                          draggable
+                                          onDragStart={(e) => { e.stopPropagation(); handleDragStart('step', phaseIdx, objIdx, stepIdx); }}
+                                          onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'step', phaseIdx, objIdx, stepIdx); }}
+                                          onDragEnd={handleDragEnd}
+                                        >
                                           {/* Step header: number + delete */}
                                           <div className="flex items-center gap-2">
+                                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
                                             <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center">
                                               {stepIdx + 1}
                                             </span>
