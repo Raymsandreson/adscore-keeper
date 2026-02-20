@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Phone, Mic, Square, Loader2 } from 'lucide-react';
+import { Phone, Mic, Square, Loader2, PhoneOff, PhoneCall } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -68,7 +68,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
     }
   }, []);
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((callResult: string = 'atendeu') => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
       setIsRecording(false);
@@ -114,7 +114,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
           .insert({
             user_id: currentUser.id,
             call_type: 'realizada',
-            call_result: 'atendeu',
+            call_result: callResult,
             duration_seconds: currentDuration,
             contact_phone: phone,
             contact_name: contactName,
@@ -163,16 +163,31 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
 
   if (isRecording) {
     return (
-      <Button
-        variant="destructive"
-        size="sm"
-        className="text-xs gap-1.5 animate-pulse"
-        onClick={stopRecording}
-      >
-        <Square className="h-3 w-3" />
-        <span className="font-mono">{formatTime(recordingTime)}</span>
-        Parar
-      </Button>
+      <div className="flex items-center gap-1">
+        <Badge variant="destructive" className="text-xs animate-pulse font-mono">
+          {formatTime(recordingTime)}
+        </Badge>
+        <Button
+          variant="default"
+          size="sm"
+          className="text-xs gap-1 h-7 bg-green-600 hover:bg-green-700"
+          onClick={() => stopRecording('atendeu')}
+          title="Atendeu"
+        >
+          <PhoneCall className="h-3 w-3" />
+          Atendeu
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="text-xs gap-1 h-7"
+          onClick={() => stopRecording('nao_atendeu')}
+          title="Não atendeu"
+        >
+          <PhoneOff className="h-3 w-3" />
+          Não atendeu
+        </Button>
+      </div>
     );
   }
 

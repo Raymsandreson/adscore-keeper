@@ -41,7 +41,7 @@ const METRICS = [
   { key: 'dmsSent', label: 'DMs', icon: Send, color: 'text-violet-500' },
   { key: 'contactsCreated', label: 'Contatos', icon: Users, color: 'text-teal-500' },
   { key: 'leadsCreated', label: 'Leads', icon: Target, color: 'text-indigo-500' },
-  { key: 'callsMade', label: 'Ligações', icon: Phone, color: 'text-green-500' },
+  { key: 'callsMade', label: 'Ligações', icon: Phone, color: 'text-green-500', hasBreakdown: true },
   { key: 'stageChanges', label: 'Etapas', icon: ArrowRightLeft, color: 'text-amber-500' },
   { key: 'leadsProgressed', label: 'Leads Progr.', icon: Briefcase, color: 'text-purple-500' },
   { key: 'checklistItemsChecked', label: 'Passos', icon: ListChecks, color: 'text-cyan-500' },
@@ -223,11 +223,21 @@ export function UserProductivityBanner() {
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {METRICS.map(m => {
                   const value = data[m.key as keyof typeof data] as number;
+                  const isCallMetric = m.key === 'callsMade';
                   return (
-                    <div key={m.key} className="flex items-center gap-1.5 p-1.5 rounded-md bg-muted/50 cursor-pointer hover:bg-muted transition-colors" onClick={() => openMetricSheet(m.key as MetricKey)}>
+                    <div key={m.key} className="flex items-center gap-1.5 p-1.5 rounded-md bg-muted/50 cursor-pointer hover:bg-muted transition-colors" onClick={() => openMetricSheet(m.key as MetricKey)}
+                      title={isCallMetric ? `✅ Atendidas: ${data.callsAnswered} | ❌ Não atendidas: ${data.callsUnanswered}` : undefined}
+                    >
                       <m.icon className={`h-3.5 w-3.5 ${m.color} flex-shrink-0`} />
                       <div className="min-w-0">
-                        <AnimatedNumber value={value} className="text-sm font-bold leading-none" />
+                        <div className="flex items-center gap-1">
+                          <AnimatedNumber value={value} className="text-sm font-bold leading-none" />
+                          {isCallMetric && value > 0 && (
+                            <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                              ({data.callsAnswered}✅ {data.callsUnanswered}❌)
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-muted-foreground truncate">{m.label}</p>
                       </div>
                     </div>
