@@ -14,7 +14,7 @@ export interface ModulePermission {
 export const MODULE_DEFINITIONS = [
   { key: 'activities', label: 'Atividades', icon: 'CheckSquare', route: '/' },
   { key: 'leads', label: 'Leads / Funis', icon: 'Users', route: '/leads' },
-  { key: 'editorial', label: 'Calendário Editorial', icon: 'Calendar', route: '/editorial' },
+  
   { key: 'analytics', label: 'Analytics / Métricas', icon: 'BarChart3', route: '/analytics' },
   { key: 'finance', label: 'Financeiro', icon: 'DollarSign', route: '/finance' },
   { key: 'instagram', label: 'Instagram / Comentários', icon: 'MessageCircle', route: '/workflow' },

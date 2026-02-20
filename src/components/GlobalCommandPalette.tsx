@@ -88,15 +88,6 @@ export function GlobalCommandPalette() {
       group: "Navegação",
     },
     {
-      id: "editorial",
-      label: "Calendário Editorial",
-      description: "Planejar conteúdos",
-      icon: <CalendarDays className="h-4 w-4" />,
-      action: () => navigate("/editorial"),
-      keywords: ["conteúdo", "posts", "planejamento", "calendario"],
-      group: "Navegação",
-    },
-    {
       id: "analytics",
       label: "Analytics",
       description: "Métricas de redes sociais",
