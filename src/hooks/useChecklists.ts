@@ -2,6 +2,12 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+export interface DocChecklistItem {
+  id: string;
+  label: string;
+  checked?: boolean;
+}
+
 export interface ChecklistItem {
   id: string;
   label: string;
@@ -10,6 +16,7 @@ export interface ChecklistItem {
   activityType?: string; // tipo de atividade associado a este passo
   script?: string; // script de contato para este passo
   nextStageId?: string; // ao concluir, mover lead para esta fase
+  docChecklist?: DocChecklistItem[]; // checklist de documentação
 }
 
 export interface ChecklistTemplate {
