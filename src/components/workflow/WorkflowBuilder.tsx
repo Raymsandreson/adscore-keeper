@@ -34,6 +34,7 @@ import {
   GripVertical,
   Workflow,
   MessageSquareText,
+  Info,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem } from '@/hooks/useChecklists';
@@ -88,6 +89,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
+  const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -553,16 +555,31 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                             </Select>
                                           </div>
 
-                                          {/* Descrição do passo */}
-                                          <div className="flex items-start gap-2">
-                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0 pt-1.5">Descrição:</Label>
-                                            <Textarea
-                                              value={step.description || ''}
-                                              onChange={e => updateStepDescription(phaseIdx, objIdx, step.id, e.target.value)}
-                                              placeholder="Instruções detalhadas (opcional)..."
-                                              className="flex-1 min-h-[52px] text-xs resize-none"
-                                            />
-                                          </div>
+                                          {/* Descrição do passo - compact */}
+                                          {step.description ? (
+                                            <div className="flex items-start gap-1.5 px-1">
+                                              <Info className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
+                                              <p className="text-[11px] text-muted-foreground flex-1 line-clamp-2">{step.description}</p>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-5 w-5 flex-shrink-0 text-muted-foreground"
+                                                onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: step.description || '' })}
+                                              >
+                                                <Edit3 className="h-3 w-3" />
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-6 text-[10px] text-muted-foreground px-1.5 gap-1"
+                                              onClick={() => setDescDialog({ phaseIdx, objIdx, stepId: step.id, description: '' })}
+                                            >
+                                              <Plus className="h-3 w-3" />
+                                              Descrição
+                                            </Button>
+                                          )}
                                         </div>
                                       ))
                                     )}
@@ -647,6 +664,38 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               }
             }}>
               Salvar Script
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Description dialog */}
+    <Dialog open={!!descDialog} onOpenChange={(open) => !open && setDescDialog(null)}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Info className="h-5 w-5" />
+            Descrição do Passo
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Textarea
+            value={descDialog?.description || ''}
+            onChange={e => setDescDialog(prev => prev ? { ...prev, description: e.target.value } : null)}
+            placeholder="Instruções detalhadas para este passo..."
+            className="min-h-[150px] text-sm"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDescDialog(null)}>Cancelar</Button>
+            <Button size="sm" onClick={() => {
+              if (descDialog) {
+                updateStepDescription(descDialog.phaseIdx, descDialog.objIdx, descDialog.stepId, descDialog.description);
+                setDescDialog(null);
+                toast.success('Descrição salva!');
+              }
+            }}>
+              Salvar
             </Button>
           </div>
         </div>
