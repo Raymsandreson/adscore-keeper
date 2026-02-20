@@ -233,7 +233,10 @@ export function UserProductivityBanner() {
     calls: number; callsAnswered: number; callsUnanswered: number;
     leads: number; contacts: number; dms: number; comments: number;
     stageChanges: number; checklistItems: number; activitiesCompleted: number;
+    leadNames: string[];
   }>>({});
+  // Logged-in user's block expansion state
+  const [expandedMyBlocks, setExpandedMyBlocks] = useState<Set<string>>(new Set());
   const [blockMetricSheet, setBlockMetricSheet] = useState<{
     open: boolean; metricKey: import('@/components/MetricDetailSheet').MetricKey | null;
     userId: string; userName: string; dateRange: { start: Date; end: Date };
@@ -351,7 +354,7 @@ export function UserProductivityBanner() {
         .order('created_at', { ascending: false }).limit(20),
       supabase.from('call_records').select('id, call_result')
         .eq('user_id', userId).gte('created_at', bStart).lte('created_at', bEnd),
-      supabase.from('leads').select('id')
+      supabase.from('leads').select('id, lead_name')
         .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
       supabase.from('contacts').select('id')
         .eq('created_by', userId).gte('created_at', bStart).lte('created_at', bEnd),
@@ -375,19 +378,21 @@ export function UserProductivityBanner() {
       ...prev,
       [key]: (activitiesRes.data || []).map(d => ({ title: d.title, status: d.status, leadName: d.lead_name })),
     }));
+    const leadsData = leadsRes.data || [];
     setWatchedBlockMetrics(prev => ({
       ...prev,
       [key]: {
         calls: calls.length,
         callsAnswered: calls.filter(c => c.call_result === 'atendida').length,
         callsUnanswered: calls.filter(c => c.call_result !== 'atendida').length,
-        leads: (leadsRes.data || []).length,
+        leads: leadsData.length,
         contacts: (contactsRes.data || []).length,
         dms: (dmsRes.data || []).length,
         comments: (commentsRes.data || []).length,
         stageChanges: (stageRes.data || []).length,
         checklistItems: (checklistRes.data || []).length,
         activitiesCompleted: (completedRes.data || []).length,
+        leadNames: leadsData.map((l: any) => l.lead_name || 'Sem nome').filter(Boolean),
       },
     }));
   }, []);
@@ -411,6 +416,21 @@ export function UserProductivityBanner() {
       } else {
         next.add(key);
         fetchWatchedBlockActivities(userId, activityType, startH, startM, endH, endM);
+      }
+      return next;
+    });
+  };
+
+  const toggleMyBlock = (activityType: string, startH: number, startM: number, endH: number, endM: number) => {
+    if (!user) return;
+    const key = `${user.id}_${activityType}`;
+    setExpandedMyBlocks(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+        fetchWatchedBlockActivities(user.id, activityType, startH, startM, endH, endM);
       }
       return next;
     });
@@ -516,29 +536,109 @@ export function UserProductivityBanner() {
                 <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-56 p-2" align="start">
+            <PopoverContent className="w-80 p-2 max-h-[70vh] overflow-y-auto" align="start">
               <p className="text-xs font-medium mb-2 text-muted-foreground">Blocos de hoje:</p>
               <div className="space-y-1">
                 {todayBlocks.map((block, i) => {
                   const isCurrent = currentActivity?.blockId === block.blockId && currentActivity?.startHour === block.startHour;
                   const fmt = (h: number, m: number = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+                  const blockKey = user ? `${user.id}_${block.activityType}` : '';
+                  const isBlockExpanded = expandedMyBlocks.has(blockKey);
+                  const metrics = watchedBlockMetrics[blockKey];
+                  const activities = watchedBlockActivities[blockKey];
                   return (
-                    <button
-                      key={block.blockId || `${block.activityType}_${i}`}
-                      onClick={() => navigateToActivitiesWithType(block.activityType)}
-                      className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60 ${isCurrent ? 'ring-1 ring-primary bg-muted/40' : ''}`}
-                    >
-                      <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${block.color}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium truncate">{block.label}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {fmt(block.startHour, block.startMinute)}–{fmt(block.endHour, block.endMinute)}
+                    <div key={block.blockId || `${block.activityType}_${i}`}>
+                      <button
+                        onClick={() => toggleMyBlock(block.activityType, block.startHour, block.startMinute ?? 0, block.endHour, block.endMinute ?? 0)}
+                        className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60 ${isCurrent ? 'ring-1 ring-primary bg-muted/40' : ''}`}
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${block.color}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">{block.label}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {fmt(block.startHour, block.startMinute)}–{fmt(block.endHour, block.endMinute)}
+                          </div>
                         </div>
-                      </div>
-                      {isCurrent && (
-                        <Badge variant="secondary" className="text-[9px] h-4 px-1">Agora</Badge>
+                        {isCurrent && (
+                          <Badge variant="secondary" className="text-[9px] h-4 px-1">Agora</Badge>
+                        )}
+                        <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isBlockExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isBlockExpanded && (
+                        <div className="ml-5 mt-1 mb-2 space-y-1">
+                          {/* Metrics */}
+                          {metrics ? (
+                            <div className="space-y-1.5">
+                              <div className="flex flex-wrap gap-1.5 py-1">
+                                {(() => {
+                                  const now = new Date();
+                                  const bStart = new Date(now); bStart.setHours(block.startHour, block.startMinute ?? 0, 0, 0);
+                                  const bEnd = new Date(now); bEnd.setHours(block.endHour, block.endMinute ?? 0, 0, 0);
+                                  const openSheet = (mk: MetricKey) => {
+                                    setBlockMetricSheet({ open: true, metricKey: mk, userId: user?.id || '', userName: firstName, dateRange: { start: bStart, end: bEnd } });
+                                  };
+                                  const badgeItems: { key: MetricKey; val: number; icon: React.ElementType; color: string; label?: string }[] = [
+                                    { key: 'callsMade', val: metrics.calls, icon: Phone, color: 'text-green-500', label: ` (${metrics.callsAnswered}✅ ${metrics.callsUnanswered}❌)` },
+                                    { key: 'leadsCreated', val: metrics.leads, icon: Target, color: 'text-indigo-500' },
+                                    { key: 'contactsCreated', val: metrics.contacts, icon: Users, color: 'text-teal-500' },
+                                    { key: 'dmsSent', val: metrics.dms, icon: Send, color: 'text-violet-500' },
+                                    { key: 'commentReplies', val: metrics.comments, icon: MessageSquare, color: 'text-blue-500' },
+                                    { key: 'stageChanges', val: metrics.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
+                                    { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
+                                    { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
+                                  ];
+                                  const visibleBadges = badgeItems.filter(b => b.val > 0);
+                                  if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
+                                  return visibleBadges.map(b => (
+                                    <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
+                                      onClick={(e) => { e.stopPropagation(); openSheet(b.key); }}>
+                                      <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
+                                    </Badge>
+                                  ));
+                                })()}
+                              </div>
+                              {/* Lead names created in this block */}
+                              {metrics.leadNames && metrics.leadNames.length > 0 && (
+                                <div className="bg-muted/30 rounded-md px-2 py-1.5">
+                                  <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                                    <Target className="h-3 w-3 inline mr-1 text-indigo-500" />
+                                    Leads cadastrados ({metrics.leadNames.length}):
+                                  </p>
+                                  {metrics.leadNames.map((name, idx) => (
+                                    <div key={idx} className="text-[11px] py-0.5 pl-4 truncate">{name}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground py-1">Carregando...</p>
+                          )}
+                          {/* Activities list */}
+                          {activities && activities.length > 0 && (
+                            <div className="space-y-0.5 mt-1">
+                              {activities.map((act, j) => (
+                                <div key={j} className="flex items-center gap-2 text-[11px] py-0.5 px-2 rounded bg-muted/30">
+                                  {act.status === 'concluida' ? (
+                                    <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />
+                                  ) : act.status === 'em_andamento' ? (
+                                    <Clock className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                  ) : (
+                                    <Circle className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                  )}
+                                  <span className="truncate flex-1">{act.title}</span>
+                                  {act.leadName && (
+                                    <span className="text-[10px] text-muted-foreground truncate max-w-[100px]">{act.leadName}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {activities && activities.length === 0 && (
+                            <p className="text-[10px] text-muted-foreground italic">Nenhuma atividade hoje</p>
+                          )}
+                        </div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -778,6 +878,7 @@ export function UserProductivityBanner() {
                             <div className="ml-5 mt-1 mb-2 space-y-1">
                               {/* Metrics summary for this block */}
                               {metrics && (
+                                <>
                                 <div className="flex flex-wrap gap-1.5 py-1">
                                   {(() => {
                                     const now = new Date();
@@ -806,6 +907,18 @@ export function UserProductivityBanner() {
                                     ));
                                   })()}
                                 </div>
+                                {metrics.leadNames && metrics.leadNames.length > 0 && (
+                                  <div className="bg-muted/30 rounded-md px-2 py-1.5 mt-1">
+                                    <p className="text-[10px] font-medium text-muted-foreground mb-1">
+                                      <Target className="h-3 w-3 inline mr-1 text-indigo-500" />
+                                      Leads cadastrados ({metrics.leadNames.length}):
+                                    </p>
+                                    {metrics.leadNames.map((name, idx) => (
+                                      <div key={idx} className="text-[11px] py-0.5 pl-4 truncate">{name}</div>
+                                    ))}
+                                  </div>
+                                )}
+                                </>
                               )}
                               {/* Activities list */}
                               {!activities ? (
