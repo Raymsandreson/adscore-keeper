@@ -17,6 +17,7 @@ export interface DocChecklistItem {
   label: string;
   checked?: boolean;
   type?: ChecklistType;
+  nextStageId?: string;
 }
 
 export interface ChecklistItem {

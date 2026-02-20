@@ -947,19 +947,55 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
           {/* Existing items */}
           <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
             {(docChecklistDialog?.items || []).map((item, idx) => (
-              <div key={item.id} className="flex items-center gap-2 p-2 rounded-md border bg-muted/20">
-                <span className="flex-shrink-0 h-5 w-5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-[10px] font-bold flex items-center justify-center">
-                  {idx + 1}
-                </span>
-                <span className="text-sm flex-1">{item.label}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0"
-                  onClick={() => setDocChecklistDialog(prev => prev ? { ...prev, items: prev.items.filter(i => i.id !== item.id) } : null)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+              <div key={item.id} className="p-2 rounded-md border bg-muted/20 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex-shrink-0 h-5 w-5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-[10px] font-bold flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  <span className="text-sm flex-1">{item.label}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0"
+                    onClick={() => setDocChecklistDialog(prev => prev ? { ...prev, items: prev.items.filter(i => i.id !== item.id) } : null)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                {/* Mover para fase */}
+                <div className="flex items-center gap-2 ml-7">
+                  <Label className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">Mover para:</Label>
+                  <Select
+                    value={item.nextStageId || '__none__'}
+                    onValueChange={v => setDocChecklistDialog(prev => prev ? {
+                      ...prev,
+                      items: prev.items.map(i => i.id === item.id ? { ...i, nextStageId: v === '__none__' ? undefined : v } : i),
+                    } : null)}
+                  >
+                    <SelectTrigger className="h-6 text-[10px] flex-1">
+                      <SelectValue placeholder="Não mover" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground">Não mover</span>
+                      </SelectItem>
+                      <SelectItem value="__finalize__">
+                        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
+                          <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
+                          ✅ Finalizar
+                        </div>
+                      </SelectItem>
+                      {phases.map(p => (
+                        <SelectItem key={p.stageId} value={p.stageId}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                            {p.stageName}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             ))}
             {(docChecklistDialog?.items || []).length === 0 && (

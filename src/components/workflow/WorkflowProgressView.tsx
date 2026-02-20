@@ -604,15 +604,50 @@ export function WorkflowProgressView({
                                                                   [doc.id]: !!checked,
                                                                 },
                                                               }));
+                                                              // Conditional branching for doc checklist items
+                                                              if (checked && doc.nextStageId && onStageChange) {
+                                                                if (doc.nextStageId === '__finalize__') {
+                                                                  const closedStage = board.stages.find(s =>
+                                                                    ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.name.toLowerCase())
+                                                                  );
+                                                                  const target = closedStage || board.stages[board.stages.length - 1];
+                                                                  if (target) {
+                                                                    onStageChange(target.id);
+                                                                    toast.success(`Lead finalizado! Movido para: ${target.name}`);
+                                                                  }
+                                                                } else {
+                                                                  const targetStage = board.stages.find(s => s.id === doc.nextStageId);
+                                                                  if (targetStage) {
+                                                                    onStageChange(doc.nextStageId);
+                                                                    toast.success(`Lead movido para: ${targetStage.name}`);
+                                                                  }
+                                                                }
+                                                              }
                                                             }}
                                                             className="flex-shrink-0"
                                                           />
                                                           <span className={cn(
-                                                            "text-xs",
+                                                            "text-xs flex-1",
                                                             isDocChecked && "line-through text-muted-foreground"
                                                           )}>
                                                             {doc.label}
                                                           </span>
+                                                          {doc.nextStageId && (() => {
+                                                            if (doc.nextStageId === '__finalize__') {
+                                                              return (
+                                                                <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">
+                                                                  ✅ Finalizar
+                                                                </Badge>
+                                                              );
+                                                            }
+                                                            const targetStage = board.stages.find(s => s.id === doc.nextStageId);
+                                                            return targetStage ? (
+                                                              <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 flex-shrink-0">
+                                                                <ArrowRight className="h-2 w-2" />
+                                                                {targetStage.name}
+                                                              </Badge>
+                                                            ) : null;
+                                                          })()}
                                                         </label>
                                                       );
                                                     })}
