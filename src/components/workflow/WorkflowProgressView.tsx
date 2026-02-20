@@ -16,10 +16,11 @@ import {
   Target,
   ArrowRight,
   MessageSquareText,
+  ClipboardList,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { ChecklistItem, LeadChecklistInstance } from '@/hooks/useChecklists';
+import { ChecklistItem, LeadChecklistInstance, DocChecklistItem } from '@/hooks/useChecklists';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { toast } from 'sonner';
 
@@ -60,6 +61,7 @@ export function WorkflowProgressView({
   const [viewMode, setViewMode] = useState<'current' | 'full'>('full');
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
+  const [docCheckStates, setDocCheckStates] = useState<Record<string, Record<string, boolean>>>({});
   const { logActivity } = useActivityLogger();
 
   const loadData = useCallback(async () => {
@@ -549,7 +551,7 @@ export function WorkflowProgressView({
                                                   <div className="flex items-center gap-1.5 mb-1.5">
                                                     <MessageSquareText className="h-3.5 w-3.5 text-primary" />
                                                     <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">Script de Contato</span>
-                                                  </div>
+                                                 </div>
                                                   <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
                                                 </div>
                                               )}
@@ -567,6 +569,66 @@ export function WorkflowProgressView({
                                                   }}
                                                 >
                                                   {expandedObjectives.has(`script-${item.id}`) ? 'Ocultar script' : 'Ver script'}
+                                                </button>
+                                              )}
+
+                                              {/* Doc Checklist section */}
+                                              {item.docChecklist && item.docChecklist.length > 0 && (isNext || expandedObjectives.has(`docs-${item.id}`)) && (
+                                                <div className="mt-2 p-2.5 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
+                                                  <div className="flex items-center gap-1.5 mb-2">
+                                                    <ClipboardList className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+                                                    <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">Documentação</span>
+                                                  </div>
+                                                  <div className="space-y-1">
+                                                    {item.docChecklist.map(doc => {
+                                                      const isDocChecked = docCheckStates[item.id]?.[doc.id] || false;
+                                                      return (
+                                                        <label
+                                                          key={doc.id}
+                                                          className={cn(
+                                                            "flex items-center gap-2 p-1.5 rounded cursor-pointer hover:bg-orange-100/50 dark:hover:bg-orange-900/20 transition-colors",
+                                                            isDocChecked && "opacity-60"
+                                                          )}
+                                                        >
+                                                          <Checkbox
+                                                            checked={isDocChecked}
+                                                            onCheckedChange={(checked) => {
+                                                              setDocCheckStates(prev => ({
+                                                                ...prev,
+                                                                [item.id]: {
+                                                                  ...prev[item.id],
+                                                                  [doc.id]: !!checked,
+                                                                },
+                                                              }));
+                                                            }}
+                                                            className="flex-shrink-0"
+                                                          />
+                                                          <span className={cn(
+                                                            "text-xs",
+                                                            isDocChecked && "line-through text-muted-foreground"
+                                                          )}>
+                                                            {doc.label}
+                                                          </span>
+                                                        </label>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {item.docChecklist && item.docChecklist.length > 0 && !isNext && (
+                                                <button
+                                                  className="text-[10px] text-orange-600 dark:text-orange-400 hover:underline mt-1"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setExpandedObjectives(prev => {
+                                                      const next = new Set(prev);
+                                                      const key = `docs-${item.id}`;
+                                                      if (next.has(key)) next.delete(key); else next.add(key);
+                                                      return next;
+                                                    });
+                                                  }}
+                                                >
+                                                  {expandedObjectives.has(`docs-${item.id}`) ? 'Ocultar documentação' : `Ver documentação (${item.docChecklist.length})`}
                                                 </button>
                                               )}
                                             </div>
