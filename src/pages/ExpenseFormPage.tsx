@@ -180,12 +180,14 @@ export default function ExpenseFormPage() {
         body: { action: 'validate', token },
       });
 
-      if (fnError) throw new Error(fnError.message);
+      // The edge function returns non-2xx for validation errors (expired, already submitted, etc.)
+      // supabase SDK wraps these as fnError, but the actual error details are in data
       if (data?.error) {
         setError(data.error);
         if (data.already_submitted) setSubmitted(true);
         return;
       }
+      if (fnError) throw new Error(fnError.message);
 
       setTransactions(data.transactions);
       setCategories(data.categories);
@@ -324,8 +326,8 @@ export default function ExpenseFormPage() {
         body: { action: 'submit', token, responses: toSubmit },
       });
 
-      if (fnError) throw new Error(fnError.message);
       if (data?.error) throw new Error(data.error);
+      if (fnError) throw new Error(fnError.message);
 
       setSubmitted(true);
       toast.success('Formulário enviado com sucesso!');
