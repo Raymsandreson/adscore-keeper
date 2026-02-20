@@ -259,6 +259,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     });
   };
 
+  const updateStepNextStage = (phaseIdx: number, objIdx: number, stepId: string, nextStageId: string) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, nextStageId: nextStageId || undefined } : s),
+    });
+  };
+
   // Save
   const handleSave = async () => {
     if (!formName.trim() || phases.length === 0) return;
@@ -586,6 +592,32 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                                 <Edit3 className="h-3 w-3" />
                                               </button>
                                             )}
+                                          </div>
+
+                                          {/* Ramificação condicional - mover para fase */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Mover para:</Label>
+                                            <Select
+                                              value={step.nextStageId || '__none__'}
+                                              onValueChange={v => updateStepNextStage(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                            >
+                                              <SelectTrigger className="h-7 text-xs flex-1">
+                                                <SelectValue placeholder="Não mover" />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="__none__">
+                                                  <span className="text-muted-foreground">Não mover</span>
+                                                </SelectItem>
+                                                {phases.filter((_, pi) => pi !== phaseIdx).map(p => (
+                                                  <SelectItem key={p.stageId} value={p.stageId}>
+                                                    <div className="flex items-center gap-1.5">
+                                                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                                      {p.stageName}
+                                                    </div>
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
                                           </div>
                                         </div>
                                       ))

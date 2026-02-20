@@ -9,6 +9,7 @@ export interface ChecklistItem {
   checked?: boolean;
   activityType?: string; // tipo de atividade associado a este passo
   script?: string; // script de contato para este passo
+  nextStageId?: string; // ao concluir, mover lead para esta fase
 }
 
 export interface ChecklistTemplate {
