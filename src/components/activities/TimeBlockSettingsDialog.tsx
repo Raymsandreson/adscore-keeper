@@ -61,6 +61,14 @@ export const COLOR_OPTIONS = [
   { value: 'bg-cyan-500', label: 'Ciano' },
   { value: 'bg-emerald-500', label: 'Esmeralda' },
   { value: 'bg-rose-500', label: 'Rosa escuro' },
+  { value: 'bg-amber-500', label: 'Âmbar' },
+  { value: 'bg-lime-500', label: 'Lima' },
+  { value: 'bg-sky-500', label: 'Céu' },
+  { value: 'bg-violet-500', label: 'Violeta' },
+  { value: 'bg-fuchsia-500', label: 'Fúcsia' },
+  { value: 'bg-stone-500', label: 'Pedra' },
+  { value: 'bg-slate-500', label: 'Ardósia' },
+  { value: 'bg-zinc-500', label: 'Zinco' },
 ];
 
 // Legacy exports kept for compatibility
@@ -639,8 +647,8 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground">Cor</p>
-                    <div className="flex gap-1 flex-wrap max-w-[120px]">
-                      {COLOR_OPTIONS.slice(0, 6).map(c => (
+                    <div className="flex gap-1 flex-wrap max-w-[200px]">
+                      {COLOR_OPTIONS.map(c => (
                         <button
                           key={c.value}
                           onClick={() => setNewColor(c.value)}
@@ -649,6 +657,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                             c.value,
                             newColor === c.value ? 'border-foreground scale-110' : 'border-transparent'
                           )}
+                          title={c.label}
                         />
                       ))}
                     </div>
