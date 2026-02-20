@@ -234,6 +234,10 @@ export function UserProductivityBanner() {
     leads: number; contacts: number; dms: number; comments: number;
     stageChanges: number; checklistItems: number; activitiesCompleted: number;
   }>>({});
+  const [blockMetricSheet, setBlockMetricSheet] = useState<{
+    open: boolean; metricKey: import('@/components/MetricDetailSheet').MetricKey | null;
+    userId: string; userName: string; dateRange: { start: Date; end: Date };
+  }>({ open: false, metricKey: null, userId: '', userName: '', dateRange: { start: new Date(), end: new Date() } });
   
   useEffect(() => {
     if (watchedUserIds.size === 0) {
@@ -775,50 +779,32 @@ export function UserProductivityBanner() {
                               {/* Metrics summary for this block */}
                               {metrics && (
                                 <div className="flex flex-wrap gap-1.5 py-1">
-                                  {metrics.calls > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <Phone className="h-2.5 w-2.5 text-green-500" />
-                                      {metrics.calls} ({metrics.callsAnswered}✅ {metrics.callsUnanswered}❌)
-                                    </Badge>
-                                  )}
-                                  {metrics.leads > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <Target className="h-2.5 w-2.5 text-indigo-500" /> {metrics.leads}
-                                    </Badge>
-                                  )}
-                                  {metrics.contacts > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <Users className="h-2.5 w-2.5 text-teal-500" /> {metrics.contacts}
-                                    </Badge>
-                                  )}
-                                  {metrics.dms > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <Send className="h-2.5 w-2.5 text-violet-500" /> {metrics.dms}
-                                    </Badge>
-                                  )}
-                                  {metrics.comments > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <MessageSquare className="h-2.5 w-2.5 text-blue-500" /> {metrics.comments}
-                                    </Badge>
-                                  )}
-                                  {metrics.stageChanges > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <ArrowRightLeft className="h-2.5 w-2.5 text-amber-500" /> {metrics.stageChanges}
-                                    </Badge>
-                                  )}
-                                  {metrics.checklistItems > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <ListChecks className="h-2.5 w-2.5 text-cyan-500" /> {metrics.checklistItems}
-                                    </Badge>
-                                  )}
-                                  {metrics.activitiesCompleted > 0 && (
-                                    <Badge variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
-                                      <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500" /> {metrics.activitiesCompleted}
-                                    </Badge>
-                                  )}
-                                  {metrics.calls === 0 && metrics.leads === 0 && metrics.contacts === 0 && metrics.dms === 0 && metrics.comments === 0 && metrics.stageChanges === 0 && metrics.checklistItems === 0 && metrics.activitiesCompleted === 0 && (
-                                    <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>
-                                  )}
+                                  {(() => {
+                                    const now = new Date();
+                                    const bStart = new Date(now); bStart.setHours(block.startHour, block.startMinute, 0, 0);
+                                    const bEnd = new Date(now); bEnd.setHours(block.endHour, block.endMinute, 0, 0);
+                                    const openSheet = (mk: import('@/components/MetricDetailSheet').MetricKey) => {
+                                      setBlockMetricSheet({ open: true, metricKey: mk, userId: wu.userId, userName: wu.userName?.split(' ')[0] || '?', dateRange: { start: bStart, end: bEnd } });
+                                    };
+                                    const badgeItems: { key: import('@/components/MetricDetailSheet').MetricKey; val: number; icon: React.ElementType; color: string; label?: string }[] = [
+                                      { key: 'callsMade', val: metrics.calls, icon: Phone, color: 'text-green-500', label: ` (${metrics.callsAnswered}✅ ${metrics.callsUnanswered}❌)` },
+                                      { key: 'leadsCreated', val: metrics.leads, icon: Target, color: 'text-indigo-500' },
+                                      { key: 'contactsCreated', val: metrics.contacts, icon: Users, color: 'text-teal-500' },
+                                      { key: 'dmsSent', val: metrics.dms, icon: Send, color: 'text-violet-500' },
+                                      { key: 'commentReplies', val: metrics.comments, icon: MessageSquare, color: 'text-blue-500' },
+                                      { key: 'stageChanges', val: metrics.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
+                                      { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
+                                      { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
+                                    ];
+                                    const visibleBadges = badgeItems.filter(b => b.val > 0);
+                                    if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
+                                    return visibleBadges.map(b => (
+                                      <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
+                                        onClick={() => openSheet(b.key)}>
+                                        <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
+                                      </Badge>
+                                    ));
+                                  })()}
                                 </div>
                               )}
                               {/* Activities list */}
@@ -1038,6 +1024,14 @@ export function UserProductivityBanner() {
       open={metricSheetOpen}
       onOpenChange={setMetricSheetOpen}
       metricKey={selectedMetricKey}
+    />
+    <MetricDetailSheet
+      open={blockMetricSheet.open}
+      onOpenChange={(v) => setBlockMetricSheet(prev => ({ ...prev, open: v }))}
+      metricKey={blockMetricSheet.metricKey}
+      targetUserId={blockMetricSheet.userId}
+      targetUserName={blockMetricSheet.userName}
+      dateRangeOverride={blockMetricSheet.dateRange}
     />
     </>
   );
