@@ -159,10 +159,11 @@ export function UserProductivityBanner() {
       const endMs = new Date(now);
       endMs.setHours(currentActivity.endHour, currentActivity.endMinute ?? 0, 0, 0);
       const diff = endMs.getTime() - now.getTime();
-      if (diff <= 0) { setCountdown('00:00'); return; }
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      setCountdown(`${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`);
+      if (diff <= 0) { setCountdown('0min'); return; }
+      const totalMins = Math.floor(diff / 60000);
+      const hrs = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      setCountdown(hrs > 0 ? `${hrs}h${mins > 0 ? `${String(mins).padStart(2,'0')}min` : ''}` : `${mins}min`);
     };
     tick();
     const id = setInterval(tick, 1000);
