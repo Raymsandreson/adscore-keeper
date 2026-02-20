@@ -215,6 +215,10 @@ export function useMyProductivity() {
       } : fallback;
 
       const resolvedTargetCalls = (goalsRes.data as any)?.target_calls ?? fallback.target_calls;
+      const resolvedTargetAct = (goalsRes.data as any)?.target_activities ?? fallback.target_activities;
+      const resolvedTargetChecklist = (goalsRes.data as any)?.target_checklist_items ?? fallback.target_checklist_items;
+      const resolvedTargetStages = (goalsRes.data as any)?.target_stage_changes ?? fallback.target_stage_changes;
+
       const primaryCore = [
         { current: prod.commentReplies, target: resolvedGoals.target_replies },
         { current: prod.dmsSent, target: resolvedGoals.target_dms },
@@ -227,24 +231,17 @@ export function useMyProductivity() {
         return arr.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / arr.length;
       };
 
-      // Start with primary metrics score
-      let bestScore = calcAvg(primaryCore);
+      const bonusMetrics = [
+        resolvedTargetCalls > 0 ? { current: prod.callsMade, target: resolvedTargetCalls } : null,
+        resolvedTargetAct > 0 ? { current: prod.activitiesCompleted, target: resolvedTargetAct } : null,
+        resolvedTargetChecklist > 0 ? { current: prod.checklistItemsChecked, target: resolvedTargetChecklist } : null,
+        resolvedTargetStages > 0 ? { current: prod.stageChanges, target: resolvedTargetStages } : null,
+      ].filter(Boolean) as { current: number; target: number }[];
 
-      // Try adding calls — keep only if it raises the score
-      const actTarget = (goalsRes.data as any)?.target_activities ?? fallback.target_activities;
-      if (resolvedTargetCalls > 0) {
-        const withCalls = [...primaryCore, { current: prod.callsMade, target: resolvedTargetCalls }];
-        bestScore = Math.max(bestScore, calcAvg(withCalls));
-      }
-      // Try adding activities — keep only if it raises the score
-      if (actTarget > 0) {
-        const withAct = [...primaryCore, { current: prod.activitiesCompleted, target: actTarget }];
-        bestScore = Math.max(bestScore, calcAvg(withAct));
-      }
-      // Try adding both
-      if (resolvedTargetCalls > 0 && actTarget > 0) {
-        const withBoth = [...primaryCore, { current: prod.callsMade, target: resolvedTargetCalls }, { current: prod.activitiesCompleted, target: actTarget }];
-        bestScore = Math.max(bestScore, calcAvg(withBoth));
+      let bestScore = calcAvg(primaryCore);
+      for (let mask = 1; mask < (1 << bonusMetrics.length); mask++) {
+        const combo = bonusMetrics.filter((_, i) => mask & (1 << i));
+        bestScore = Math.max(bestScore, calcAvg([...primaryCore, ...combo]));
       }
 
       const progressPercent = Math.round(bestScore);
@@ -294,16 +291,20 @@ export function useMyProductivity() {
       return arr.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / arr.length;
     };
 
+    // Bonus metrics that only add if they raise the score
+    const bonusMetrics = [
+      goals.target_calls > 0 ? { current: data.callsMade, target: goals.target_calls } : null,
+      goals.target_activities > 0 ? { current: data.activitiesCompleted, target: goals.target_activities } : null,
+      goals.target_checklist_items > 0 ? { current: data.checklistItemsChecked, target: goals.target_checklist_items } : null,
+      goals.target_stage_changes > 0 ? { current: data.stageChanges, target: goals.target_stage_changes } : null,
+    ].filter(Boolean) as { current: number; target: number }[];
+
     let best = calcAvg(primaryCore);
 
-    if (goals.target_calls > 0) {
-      best = Math.max(best, calcAvg([...primaryCore, { current: data.callsMade, target: goals.target_calls }]));
-    }
-    if (goals.target_activities > 0) {
-      best = Math.max(best, calcAvg([...primaryCore, { current: data.activitiesCompleted, target: goals.target_activities }]));
-    }
-    if (goals.target_calls > 0 && goals.target_activities > 0) {
-      best = Math.max(best, calcAvg([...primaryCore, { current: data.callsMade, target: goals.target_calls }, { current: data.activitiesCompleted, target: goals.target_activities }]));
+    // Try every combination of bonus metrics (power set)
+    for (let mask = 1; mask < (1 << bonusMetrics.length); mask++) {
+      const combo = bonusMetrics.filter((_, i) => mask & (1 << i));
+      best = Math.max(best, calcAvg([...primaryCore, ...combo]));
     }
 
     return Math.round(best);
