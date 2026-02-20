@@ -15,6 +15,7 @@ import {
   Filter,
   Target,
   ArrowRight,
+  MessageSquareText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
@@ -493,7 +494,38 @@ export function WorkflowProgressView({
                                                   Próximo
                                                 </Badge>
                                               )}
+                                              {item.script && (
+                                                <Badge variant="outline" className="text-[10px] h-4 gap-0.5">
+                                                  <MessageSquareText className="h-2.5 w-2.5" />
+                                                  Script
+                                                </Badge>
+                                              )}
                                             </div>
+                                            {item.script && (isNext || expandedObjectives.has(`script-${item.id}`)) && (
+                                              <div className="mt-2 p-2.5 rounded-md bg-primary/5 border border-primary/20">
+                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                  <MessageSquareText className="h-3.5 w-3.5 text-primary" />
+                                                  <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">Script de Contato</span>
+                                                </div>
+                                                <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                                              </div>
+                                            )}
+                                            {item.script && !isNext && (
+                                              <button
+                                                className="text-[10px] text-primary hover:underline mt-1"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setExpandedObjectives(prev => {
+                                                    const next = new Set(prev);
+                                                    const key = `script-${item.id}`;
+                                                    if (next.has(key)) next.delete(key); else next.add(key);
+                                                    return next;
+                                                  });
+                                                }}
+                                              >
+                                                {expandedObjectives.has(`script-${item.id}`) ? 'Ocultar script' : 'Ver script'}
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       );
