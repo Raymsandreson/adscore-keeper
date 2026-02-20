@@ -219,6 +219,94 @@ export function UserProductivityBanner() {
     return result;
   }, [ranking, watchedUserIds, allMembers]);
 
+  // Fetch time block settings for watched users
+  const [watchedUserBlocks, setWatchedUserBlocks] = useState<Record<string, { label: string; color: string; endHour: number; endMinute: number } | null>>({});
+  
+  useEffect(() => {
+    if (watchedUserIds.size === 0) {
+      setWatchedUserBlocks({});
+      return;
+    }
+    const userIdsArr = Array.from(watchedUserIds);
+    
+    const fetchBlocks = async () => {
+      // Fetch all time block settings for watched users
+      const { data: settingsData } = await supabase
+        .from('user_timeblock_settings')
+        .select('*')
+        .in('user_id', userIdsArr);
+      
+      const { data: typesData } = await supabase
+        .from('activity_types')
+        .select('key, label, color');
+      
+      if (!settingsData || !typesData) return;
+      
+      const now = new Date();
+      const jsDay = now.getDay();
+      const currentDay = jsDay === 0 ? 6 : jsDay - 1;
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      
+      const result: Record<string, { label: string; color: string; endHour: number; endMinute: number } | null> = {};
+      
+      userIdsArr.forEach(uid => {
+        const userSettings = settingsData.filter((s: any) => s.user_id === uid);
+        const activeBlock = userSettings.find((s: any) => {
+          const days = (s.days as number[]) || [];
+          const startMin = s.start_hour * 60 + ((s as any).start_minute ?? 0);
+          const endMin = s.end_hour * 60 + ((s as any).end_minute ?? 0);
+          return days.includes(currentDay) && currentMinutes >= startMin && currentMinutes < endMin;
+        });
+        
+        if (activeBlock) {
+          const typeInfo = typesData.find((t: any) => t.key === (activeBlock as any).activity_type);
+          result[uid] = {
+            label: typeInfo?.label || (activeBlock as any).activity_type,
+            color: typeInfo?.color || '#888',
+            endHour: activeBlock.end_hour,
+            endMinute: (activeBlock as any).end_minute ?? 0,
+          };
+        } else {
+          result[uid] = null;
+        }
+      });
+      
+      setWatchedUserBlocks(result);
+    };
+    
+    fetchBlocks();
+    const interval = setInterval(fetchBlocks, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [watchedUserIds]);
+
+  // Countdown for watched users (updates every second)
+  const [watchedCountdowns, setWatchedCountdowns] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const ids = Object.keys(watchedUserBlocks).filter(id => watchedUserBlocks[id] !== null);
+    if (ids.length === 0) { setWatchedCountdowns({}); return; }
+    
+    const tick = () => {
+      const now = new Date();
+      const result: Record<string, string> = {};
+      ids.forEach(id => {
+        const block = watchedUserBlocks[id];
+        if (!block) return;
+        const endMs = new Date(now);
+        endMs.setHours(block.endHour, block.endMinute, 0, 0);
+        const diff = endMs.getTime() - now.getTime();
+        if (diff <= 0) { result[id] = '0min'; return; }
+        const totalMins = Math.floor(diff / 60000);
+        const hrs = Math.floor(totalMins / 60);
+        const mins = totalMins % 60;
+        result[id] = hrs > 0 ? `${hrs}h${mins > 0 ? `${String(mins).padStart(2, '0')}min` : ''}` : `${mins}min`;
+      });
+      setWatchedCountdowns(result);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [watchedUserBlocks]);
+
   const filteredMembers = useMemo(() => {
     if (!memberSearch.trim()) return allMembers;
     const q = memberSearch.toLowerCase();
@@ -469,11 +557,28 @@ export function UserProductivityBanner() {
           {watchedUsersData.map(wu => {
             const globalPos = ranking.findIndex(r => r.userId === wu.userId) + 1;
             return (
-              <div key={wu.userId} className="flex items-center gap-3 px-4 py-1.5 bg-muted/30 border-b last:border-b-0">
+               <div key={wu.userId} className="flex items-center gap-3 px-4 py-1.5 bg-muted/30 border-b last:border-b-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-xs font-bold text-muted-foreground w-5 text-center">{positionIcon(globalPos)}</span>
                   <span className="text-xs font-medium truncate max-w-[120px]">{wu.userName?.split(' ')[0] || '?'}</span>
                 </div>
+                {/* Current activity badge for watched user */}
+                {watchedUserBlocks[wu.userId] && (
+                  <>
+                    <Badge
+                      className="text-[10px] h-5 px-1.5 flex-shrink-0 text-white font-semibold"
+                      style={{ backgroundColor: watchedUserBlocks[wu.userId]!.color }}
+                    >
+                      {watchedUserBlocks[wu.userId]!.label}
+                    </Badge>
+                    {watchedCountdowns[wu.userId] && (
+                      <span className="text-[10px] font-medium text-orange-500 flex-shrink-0 flex items-center gap-0.5">
+                        <Clock className="h-3 w-3" />
+                        {watchedCountdowns[wu.userId]}
+                      </span>
+                    )}
+                  </>
+                )}
                 <div className="h-3 w-px bg-border flex-shrink-0" />
                 <div className="flex items-center gap-3 overflow-x-auto flex-1 min-w-0">
                   <div className="flex items-center gap-1 flex-shrink-0">
