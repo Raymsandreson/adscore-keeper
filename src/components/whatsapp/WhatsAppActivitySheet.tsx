@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, X, Plus } from 'lucide-react';
+import { Search, X, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ACTIVITY_TYPES = [
@@ -82,6 +82,33 @@ export function WhatsAppActivitySheet({
   const [leadSearch, setLeadSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [aiSuggestingType, setAiSuggestingType] = useState(false);
+  const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const suggestActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setAiSuggestingType(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const validKeys = ACTIVITY_TYPES.map(t => t.value);
+        if (validKeys.includes(data.suggested_type)) {
+          setFormType(data.suggested_type);
+          const label = ACTIVITY_TYPES.find(t => t.value === data.suggested_type)?.label;
+          toast.info(`Tipo sugerido pela IA: ${label}`, { duration: 2000 });
+        }
+      }
+    } catch { /* silent */ }
+    setAiSuggestingType(false);
+  }, []);
+
+  const handleTitleChange = (value: string) => {
+    setFormTitle(value);
+    if (aiSuggestTimer.current) clearTimeout(aiSuggestTimer.current);
+    if (value.trim().length >= 5) {
+      aiSuggestTimer.current = setTimeout(() => suggestActivityType(value), 800);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -159,6 +186,10 @@ export function WhatsAppActivitySheet({
       toast.error('Informe o assunto da atividade');
       return;
     }
+    if (!formType) {
+      toast.error('Selecione o tipo de atividade');
+      return;
+    }
     setSaving(true);
     try {
       await createActivity({
@@ -205,7 +236,7 @@ export function WhatsAppActivitySheet({
           {/* Assunto */}
           <div>
             <Label>Assunto da atividade *</Label>
-            <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
+            <Input value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
           </div>
 
           {/* Assessor + Tipo */}
@@ -222,7 +253,7 @@ export function WhatsAppActivitySheet({
               </Select>
             </div>
             <div>
-              <Label>Tipo de atividade</Label>
+              <Label>Tipo de atividade * {aiSuggestingType && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
               <Select value={formType} onValueChange={setFormType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>

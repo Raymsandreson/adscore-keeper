@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
@@ -143,6 +143,8 @@ const ActivitiesPage = () => {
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
+  const [aiSuggestingType, setAiSuggestingType] = useState(false);
+  const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
@@ -287,9 +289,17 @@ const ActivitiesPage = () => {
     setFormMatrixQuadrant('');
   };
 
+  // suggestActivityType moved below routineActivityTypes
+
+  // handleTitleChange moved below routineActivityTypes
+
   const handleCreate = async () => {
     if (!formTitle.trim()) {
       toast.error('Informe o assunto da atividade');
+      return;
+    }
+    if (!formType) {
+      toast.error('Selecione o tipo de atividade');
       return;
     }
     if (timeBlockSettings.length > 0 && !timeBlockSettings.some(c => c.activityType === formType)) {
@@ -788,6 +798,31 @@ const ActivitiesPage = () => {
     return ACTIVITY_TYPES.filter(t => routineKeys.has(t.value));
   }, [timeBlockSettings]);
 
+  const suggestActivityType = useCallback(async (title: string) => {
+    if (!title || title.trim().length < 5) return;
+    setAiSuggestingType(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
+      if (!error && data?.suggested_type) {
+        const availableKeys = routineActivityTypes.map(t => t.value);
+        if (availableKeys.includes(data.suggested_type)) {
+          setFormType(data.suggested_type);
+          const label = routineActivityTypes.find(t => t.value === data.suggested_type)?.label;
+          toast.info(`Tipo sugerido pela IA: ${label}`, { duration: 2000 });
+        }
+      }
+    } catch { /* silent */ }
+    setAiSuggestingType(false);
+  }, [routineActivityTypes]);
+
+  const handleTitleChange = useCallback((value: string) => {
+    setFormTitle(value);
+    if (aiSuggestTimer.current) clearTimeout(aiSuggestTimer.current);
+    if (value.trim().length >= 5 && sheetMode === 'create') {
+      aiSuggestTimer.current = setTimeout(() => suggestActivityType(value), 800);
+    }
+  }, [sheetMode, suggestActivityType]);
+
   // Countdown timer effect
   useEffect(() => {
     if (!countdownBlock) return;
@@ -813,7 +848,7 @@ const ActivitiesPage = () => {
     <div className="space-y-4">
       <div>
         <Label>Assunto da atividade *</Label>
-        <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
+        <Input value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -830,7 +865,7 @@ const ActivitiesPage = () => {
         </div>
 
         <div>
-          <Label>Tipo de atividade</Label>
+          <Label>Tipo de atividade * {aiSuggestingType && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
           <Select value={formType} onValueChange={setFormType}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
