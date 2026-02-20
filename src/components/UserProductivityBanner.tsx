@@ -334,7 +334,7 @@ export function UserProductivityBanner() {
 
   // Fetch activities AND metrics for a watched user's time block
   const fetchWatchedBlockActivities = useCallback(async (userId: string, activityType: string, blockStartH?: number, blockStartM?: number, blockEndH?: number, blockEndM?: number) => {
-    const key = `${userId}_${activityType}`;
+    const key = `${userId}_${activityType}_${blockStartH ?? 0}${blockStartM ?? 0}_${blockEndH ?? 23}${blockEndM ?? 59}`;
     const todayStart = startOfDay(new Date()).toISOString();
     const todayEnd = endOfDay(new Date()).toISOString();
 
@@ -408,7 +408,7 @@ export function UserProductivityBanner() {
 
   const [expandedWatchedBlocks, setExpandedWatchedBlocks] = useState<Set<string>>(new Set());
   const toggleWatchedBlock = (userId: string, activityType: string, startH?: number, startM?: number, endH?: number, endM?: number) => {
-    const key = `${userId}_${activityType}`;
+    const key = `${userId}_${activityType}_${startH ?? 0}${startM ?? 0}_${endH ?? 23}${endM ?? 59}`;
     setExpandedWatchedBlocks(prev => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -423,7 +423,7 @@ export function UserProductivityBanner() {
 
   const toggleMyBlock = (activityType: string, startH: number, startM: number, endH: number, endM: number) => {
     if (!user) return;
-    const key = `${user.id}_${activityType}`;
+    const key = `${user.id}_${activityType}_${startH}${startM}_${endH}${endM}`;
     setExpandedMyBlocks(prev => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -542,7 +542,7 @@ export function UserProductivityBanner() {
                 {todayBlocks.map((block, i) => {
                   const isCurrent = currentActivity?.blockId === block.blockId && currentActivity?.startHour === block.startHour;
                   const fmt = (h: number, m: number = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-                  const blockKey = user ? `${user.id}_${block.activityType}` : '';
+                  const blockKey = user ? `${user.id}_${block.activityType}_${block.startHour}${block.startMinute ?? 0}_${block.endHour}${block.endMinute ?? 0}` : '';
                   const isBlockExpanded = expandedMyBlocks.has(blockKey);
                   const metrics = watchedBlockMetrics[blockKey];
                   const activities = watchedBlockActivities[blockKey];
@@ -814,7 +814,7 @@ export function UserProductivityBanner() {
                     <p className="text-[10px] font-medium text-muted-foreground mb-1">Blocos de hoje:</p>
                     {wuBlocks.todayBlocks.map((block, i) => {
                       const fmt = (h: number, m: number = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                      const blockKey = `${wu.userId}_${block.activityType}`;
+                      const blockKey = `${wu.userId}_${block.activityType}_${block.startHour}${block.startMinute}_${block.endHour}${block.endMinute}`;
                       const isBlockExpanded = expandedWatchedBlocks.has(blockKey);
                       const activities = watchedBlockActivities[blockKey];
                       const metrics = watchedBlockMetrics[blockKey];
