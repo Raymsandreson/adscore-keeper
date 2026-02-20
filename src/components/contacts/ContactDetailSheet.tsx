@@ -44,7 +44,9 @@ import {
   Tag,
   FileText,
   Globe,
+  Mic,
 } from 'lucide-react';
+import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useContactRelationships } from '@/hooks/useContactRelationships';
@@ -359,11 +361,22 @@ export function ContactDetailSheet({
                         <Phone className="h-3 w-3" />
                         Telefone
                       </Label>
-                      <Input
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="(00) 00000-0000"
-                      />
+                      <div className="flex gap-1">
+                        <Input
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          placeholder="(00) 00000-0000"
+                          className="flex-1"
+                        />
+                        {phone && (
+                          <WhatsAppCallRecorder
+                            phone={phone}
+                            contactName={fullName || contact.full_name}
+                            contactId={contact.id}
+                            leadId={contactLeads?.[0]?.lead?.id || null}
+                          />
+                        )}
+                      </div>
                     </div>
 
                     <div>

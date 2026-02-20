@@ -138,11 +138,18 @@ export function WhatsAppInbox() {
   };
 
   const handleNavigateToLead = async (leadId: string) => {
-    // Open lead in edit dialog instead of navigating away
     const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
     if (data) {
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
+    }
+  };
+
+  const handleViewContact = async (contactId: string) => {
+    const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+    if (data) {
+      setEditingContact(data as Contact);
+      setShowContactPanel(true);
     }
   };
 
@@ -257,6 +264,7 @@ export function WhatsAppInbox() {
               onCreateContact={handleCreateContact}
               onCreateActivity={handleCreateActivity}
               onNavigateToLead={handleNavigateToLead}
+              onViewContact={handleViewContact}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">

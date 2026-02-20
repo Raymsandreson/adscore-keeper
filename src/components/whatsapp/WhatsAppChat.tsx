@@ -23,9 +23,10 @@ interface Props {
   onCreateContact: () => void;
   onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
+  onViewContact?: (contactId: string) => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact }: Props) {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -172,7 +173,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               </Button>
             </>
           )}
-          {!conversation.contact_id && (
+          {conversation.contact_id ? (
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => onViewContact?.(conversation.contact_id!)}>
+              <User className="h-3 w-3" /> Ver Contato
+            </Button>
+          ) : (
             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateContact}>
               <UserPlus className="h-3 w-3" /> Criar Contato
             </Button>
