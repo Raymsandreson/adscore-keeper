@@ -220,19 +220,16 @@ export function useMyProductivity() {
         { current: prod.dmsSent, target: resolvedGoals.target_dms },
         { current: prod.leadsCreated, target: resolvedGoals.target_leads },
         { current: prod.sessionMinutes, target: resolvedGoals.target_session_minutes },
+        ...(resolvedTargetCalls > 0 ? [{ current: prod.callsMade, target: resolvedTargetCalls }] : []),
       ].filter(m => m.target > 0);
 
       const actTarget = (goalsRes.data as any)?.target_activities ?? fallback.target_activities;
       const actPercent = actTarget > 0 ? Math.min(100, (prod.activitiesCompleted / actTarget) * 100) : 0;
-      const callsPercent = resolvedTargetCalls > 0 ? Math.min(100, (prod.callsMade / resolvedTargetCalls) * 100) : 0;
       const basePercentages = baseCore.map(m => Math.min(100, (m.current / m.target) * 100));
       const baseAvg = basePercentages.length > 0 ? basePercentages.reduce((a, b) => a + b, 0) / basePercentages.length : 100;
 
-      // Only include calls/activities if they help (don't dilute the score)
+      // Only include activities if they help (don't dilute the score)
       let core = [...baseCore];
-      if (resolvedTargetCalls > 0 && callsPercent >= baseAvg) {
-        core.push({ current: prod.callsMade, target: resolvedTargetCalls });
-      }
       if (actTarget > 0 && actPercent >= baseAvg) {
         core.push({ current: prod.activitiesCompleted, target: actTarget });
       }
@@ -278,17 +275,14 @@ export function useMyProductivity() {
       { current: data.dmsSent, target: goals.target_dms },
       { current: data.leadsCreated, target: goals.target_leads },
       { current: data.sessionMinutes, target: goals.target_session_minutes },
+      ...(goals.target_calls > 0 ? [{ current: data.callsMade, target: goals.target_calls }] : []),
     ].filter(m => m.target > 0);
 
-    const callsPercent = goals.target_calls > 0 ? Math.min(100, (data.callsMade / goals.target_calls) * 100) : 0;
     const actPercent = goals.target_activities > 0 ? Math.min(100, (data.activitiesCompleted / goals.target_activities) * 100) : 0;
     const basePercentages = baseCore.map(m => Math.min(100, (m.current / m.target) * 100));
     const baseAvg = basePercentages.length > 0 ? basePercentages.reduce((a, b) => a + b, 0) / basePercentages.length : 100;
 
     let core = [...baseCore];
-    if (goals.target_calls > 0 && callsPercent >= baseAvg) {
-      core.push({ current: data.callsMade, target: goals.target_calls });
-    }
     if (goals.target_activities > 0 && actPercent >= baseAvg) {
       core.push({ current: data.activitiesCompleted, target: goals.target_activities });
     }
