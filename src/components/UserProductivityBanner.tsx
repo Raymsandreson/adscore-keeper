@@ -18,6 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ChevronDown,
   ChevronUp,
@@ -34,6 +36,7 @@ import {
   ArrowRightLeft,
   Briefcase,
   Medal,
+  Eye,
 } from 'lucide-react';
 
 const METRICS = [
@@ -62,6 +65,8 @@ export function UserProductivityBanner() {
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [metricSheetOpen, setMetricSheetOpen] = useState(false);
   const [selectedMetricKey, setSelectedMetricKey] = useState<MetricKey | null>(null);
+  const [watchedUserIds, setWatchedUserIds] = useState<Set<string>>(new Set());
+  const [showUserPicker, setShowUserPicker] = useState(false);
   const location = useLocation();
 
   const today = useMemo(() => ({ start: startOfDay(new Date()), end: endOfDay(new Date()) }), []);
@@ -107,12 +112,27 @@ export function UserProductivityBanner() {
     }
   }, [expanded, rankingFetched, fetchRanking]);
 
+  const filteredRanking = useMemo(() => {
+    if (watchedUserIds.size === 0) return ranking;
+    return ranking.filter(e => e.isCurrentUser || watchedUserIds.has(e.userId));
+  }, [ranking, watchedUserIds]);
+
   // Don't show for unauthenticated users or on certain pages
   if (!user || loading || HIDDEN_ROUTES.some(r => location.pathname.startsWith(r))) {
     return null;
   }
 
   const firstName = profile?.full_name?.split(' ')[0] || 'Usuário';
+
+  const toggleWatchedUser = (userId: string) => {
+    setWatchedUserIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
 
   const openMetricSheet = (key: MetricKey) => {
     setSelectedMetricKey(key);
@@ -275,24 +295,68 @@ export function UserProductivityBanner() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                   <Medal className="h-3.5 w-3.5" />
                   Ranking do Time
+                  {watchedUserIds.size > 0 && (
+                    <Badge variant="outline" className="text-[9px] h-3.5 px-1 ml-1">
+                      {watchedUserIds.size} selecionado{watchedUserIds.size > 1 ? 's' : ''}
+                    </Badge>
+                  )}
                 </p>
-                {myTeams.length > 1 && (
-                  <Select value={selectedTeamId || ''} onValueChange={selectTeam}>
-                    <SelectTrigger className="h-6 text-[10px] w-auto min-w-[100px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {myTeams.map(t => (
-                        <SelectItem key={t.teamId} value={t.teamId}>
-                          <span className="flex items-center gap-1.5">
-                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.teamColor }} />
-                            {t.teamName}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <div className="flex items-center gap-1">
+                  {ranking.length > 0 && (
+                    <Popover open={showUserPicker} onOpenChange={setShowUserPicker}>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Selecionar usuários">
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2" align="end">
+                        <p className="text-xs font-medium mb-2">Acompanhar usuários:</p>
+                        <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                          {ranking.filter(e => !e.isCurrentUser).map(entry => (
+                            <label
+                              key={entry.userId}
+                              className="flex items-center gap-2 p-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-xs"
+                            >
+                              <Checkbox
+                                checked={watchedUserIds.has(entry.userId)}
+                                onCheckedChange={() => toggleWatchedUser(entry.userId)}
+                              />
+                              <span className="truncate">{entry.userName?.split(' ')[0] || '?'}</span>
+                              <span className="ml-auto text-muted-foreground">{entry.totalPoints} pts</span>
+                            </label>
+                          ))}
+                        </div>
+                        {watchedUserIds.size > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full mt-2 h-6 text-[10px]"
+                            onClick={() => setWatchedUserIds(new Set())}
+                          >
+                            Limpar seleção
+                          </Button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                  {myTeams.length > 1 && (
+                    <Select value={selectedTeamId || ''} onValueChange={selectTeam}>
+                      <SelectTrigger className="h-6 text-[10px] w-auto min-w-[100px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {myTeams.map(t => (
+                          <SelectItem key={t.teamId} value={t.teamId}>
+                            <span className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.teamColor }} />
+                              {t.teamName}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
 
               {rankingLoading ? (
@@ -303,31 +367,36 @@ export function UserProductivityBanner() {
                 </div>
               ) : (
                 <div className="space-y-1 max-h-[140px] overflow-y-auto">
-                  {ranking.map((entry, idx) => (
-                    <div
-                      key={entry.userId}
-                      className={`flex items-center gap-2 p-1.5 rounded-md text-xs ${
-                        entry.isCurrentUser ? 'bg-primary/10 ring-1 ring-primary/20' : 'bg-muted/50'
-                      }`}
-                    >
-                      <span className="w-5 text-center font-bold text-muted-foreground">
-                        {positionIcon(idx + 1)}
-                      </span>
-                      <span className={`flex-1 truncate ${entry.isCurrentUser ? 'font-semibold' : ''}`}>
-                        {entry.isCurrentUser ? 'Você' : (entry.userName?.split(' ')[0] || '?')}
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span title="Leads">{entry.leadsCreated}L</span>
-                        <span title="DMs">{entry.dmsSent}💬</span>
-                        <span title="Passos">{entry.checklistItemsChecked}P</span>
-                        <span title="Etapas">{entry.stageChanges}E</span>
-                        <span title="Ligações">{entry.callsMade}📞</span>
+                  {filteredRanking.map((entry, idx) => {
+                    // Show global position from full ranking
+                    const globalPos = ranking.findIndex(r => r.userId === entry.userId) + 1;
+                    return (
+                      <div
+                        key={entry.userId}
+                        className={`flex items-center gap-2 p-1.5 rounded-md text-xs ${
+                          entry.isCurrentUser ? 'bg-primary/10 ring-1 ring-primary/20' : 
+                          watchedUserIds.has(entry.userId) ? 'bg-accent/50 ring-1 ring-accent/30' : 'bg-muted/50'
+                        }`}
+                      >
+                        <span className="w-5 text-center font-bold text-muted-foreground">
+                          {positionIcon(globalPos)}
+                        </span>
+                        <span className={`flex-1 truncate ${entry.isCurrentUser ? 'font-semibold' : ''}`}>
+                          {entry.isCurrentUser ? 'Você' : (entry.userName?.split(' ')[0] || '?')}
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span title="Leads">{entry.leadsCreated}L</span>
+                          <span title="DMs">{entry.dmsSent}💬</span>
+                          <span title="Passos">{entry.checklistItemsChecked}P</span>
+                          <span title="Etapas">{entry.stageChanges}E</span>
+                          <span title="Ligações">{entry.callsMade}📞</span>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                          {entry.totalPoints} pts
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className="text-[10px] h-4 px-1">
-                        {entry.totalPoints} pts
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
