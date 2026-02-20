@@ -243,10 +243,29 @@ export function WorkflowProgressView({
 
     // Conditional branching: if step has nextStageId and was just checked, move lead
     if (willBeChecked && targetItem?.nextStageId && onStageChange) {
-      const targetStage = board.stages.find(s => s.id === targetItem.nextStageId);
-      if (targetStage) {
-        onStageChange(targetItem.nextStageId);
-        toast.success(`Lead movido para: ${targetStage.name}`);
+      if (targetItem.nextStageId === '__finalize__') {
+        // Find the closed/done stage
+        const closedStage = board.stages.find(s =>
+          ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.id.toLowerCase()) ||
+          ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.name.toLowerCase())
+        );
+        if (closedStage) {
+          onStageChange(closedStage.id);
+          toast.success(`Lead finalizado! Movido para: ${closedStage.name}`);
+        } else {
+          // Use last stage as fallback
+          const lastStage = board.stages[board.stages.length - 1];
+          if (lastStage) {
+            onStageChange(lastStage.id);
+            toast.success(`Lead finalizado! Movido para: ${lastStage.name}`);
+          }
+        }
+      } else {
+        const targetStage = board.stages.find(s => s.id === targetItem.nextStageId);
+        if (targetStage) {
+          onStageChange(targetItem.nextStageId);
+          toast.success(`Lead movido para: ${targetStage.name}`);
+        }
       }
     }
   };
@@ -500,6 +519,13 @@ export function WorkflowProgressView({
                                                   </Badge>
                                                 )}
                                                 {item.nextStageId && (() => {
+                                                  if (item.nextStageId === '__finalize__') {
+                                                    return (
+                                                      <Badge variant="secondary" className="text-[10px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                                        ✅ Finalizar
+                                                      </Badge>
+                                                    );
+                                                  }
                                                   const targetStage = board.stages.find(s => s.id === item.nextStageId);
                                                   return targetStage ? (
                                                     <Badge variant="secondary" className="text-[10px] h-4 gap-1">

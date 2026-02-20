@@ -608,6 +608,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                                 <SelectItem value="__none__">
                                                   <span className="text-muted-foreground">Não mover</span>
                                                 </SelectItem>
+                                                <SelectItem value="__finalize__">
+                                                  <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
+                                                    <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-green-500" />
+                                                    ✅ Finalizar
+                                                  </div>
+                                                </SelectItem>
                                                 {phases.filter((_, pi) => pi !== phaseIdx).map(p => (
                                                   <SelectItem key={p.stageId} value={p.stageId}>
                                                     <div className="flex items-center gap-1.5">
