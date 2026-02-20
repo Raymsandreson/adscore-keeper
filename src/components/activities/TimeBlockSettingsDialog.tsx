@@ -38,7 +38,7 @@ const WEEK_DAYS = [
   { label: 'SEX', idx: 4 },
 ];
 
-const HOURS = Array.from({ length: 15 }, (_, i) => i + 6); // 6h–20h
+const HOURS = Array.from({ length: 24 }, (_, i) => i); // 0h–23h
 const MINUTES = [0, 15, 30, 45];
 
 /** Convert hour+minute to decimal for overlap comparison */
@@ -410,19 +410,14 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                           const newStartDec = toDecimal(h, m);
                           let newEndH = block.endHour;
                           let newEndM = block.endMinute ?? 0;
-                          // If end <= new start, push end to start + 30min
+                          // If end <= new start, push end to start + 15min
                           if (toDecimal(newEndH, newEndM) <= newStartDec) {
-                            // Try to add 30min, then 1h
-                            const candidate30 = toDecimal(h, m + 30);
-                            const candidate1h = toDecimal(h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h, m);
-                            if (m + 30 <= 45 && m + 30 <= 60) {
-                              newEndH = h;
-                              newEndM = m + 30 > 45 ? 0 : [0, 15, 30, 45].find(min => min > m) ?? 0;
-                              if (newEndM === 0) newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
-                            } else {
-                              newEndH = h + 1 <= HOURS[HOURS.length - 1] ? h + 1 : h;
-                              newEndM = m;
-                            }
+                            const totalMin = h * 60 + m + 15;
+                            newEndH = Math.floor(totalMin / 60);
+                            newEndM = totalMin % 60;
+                            // Snap to nearest 15min
+                            newEndM = [0, 15, 30, 45].reduce((prev, curr) => Math.abs(curr - newEndM) < Math.abs(prev - newEndM) ? curr : prev);
+                            if (newEndH > 23) { newEndH = 23; newEndM = 45; }
                           }
                           updateBlock(block.blockId, { startHour: h, startMinute: m, endHour: newEndH, endMinute: newEndM });
                         };
@@ -516,7 +511,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                                   onChange={e => handleStartChange(Number(e.target.value), block.startMinute ?? 0)}
                                   className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                                 >
-                                  {HOURS.slice(0, -1).map(h => (
+                                  {HOURS.map(h => (
                                     <option key={h} value={h}>{String(h).padStart(2, '0')}h</option>
                                   ))}
                                 </select>
