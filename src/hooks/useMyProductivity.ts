@@ -79,7 +79,7 @@ export function useMyProductivity() {
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('leads').select('id, status').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('user_sessions').select('duration_seconds').eq('user_id', userId)
+        supabase.from('user_sessions').select('duration_seconds, started_at, last_activity_at').eq('user_id', userId)
           .gte('started_at', startDate).lte('started_at', endDate),
         supabase.from('user_activity_log').select('action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
@@ -133,7 +133,18 @@ export function useMyProductivity() {
       const checklistChecked = activities.filter(a => a.action_type === 'checklist_item_checked').length;
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
-      const sessionMinutes = sessions.reduce((acc, s) => acc + Math.round((s.duration_seconds || 0) / 60), 0);
+      const sessionMinutes = sessions.reduce((acc, s) => {
+        if (s.duration_seconds) {
+          return acc + Math.round(s.duration_seconds / 60);
+        }
+        // For active (not yet ended) sessions, calculate from started_at to last_activity_at
+        if (s.started_at && s.last_activity_at) {
+          const start = new Date(s.started_at).getTime();
+          const lastAct = new Date(s.last_activity_at).getTime();
+          return acc + Math.round((lastAct - start) / 1000 / 60);
+        }
+        return acc;
+      }, 0);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
