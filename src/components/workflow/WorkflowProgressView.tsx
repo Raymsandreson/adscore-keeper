@@ -238,6 +238,16 @@ export function WorkflowProgressView({
     if (error) {
       toast.error('Erro ao atualizar passo');
       loadData();
+      return;
+    }
+
+    // Conditional branching: if step has nextStageId and was just checked, move lead
+    if (willBeChecked && targetItem?.nextStageId && onStageChange) {
+      const targetStage = board.stages.find(s => s.id === targetItem.nextStageId);
+      if (targetStage) {
+        onStageChange(targetItem.nextStageId);
+        toast.success(`Lead movido para: ${targetStage.name}`);
+      }
     }
   };
 
@@ -489,6 +499,15 @@ export function WorkflowProgressView({
                                                     Próximo
                                                   </Badge>
                                                 )}
+                                                {item.nextStageId && (() => {
+                                                  const targetStage = board.stages.find(s => s.id === item.nextStageId);
+                                                  return targetStage ? (
+                                                    <Badge variant="secondary" className="text-[10px] h-4 gap-1">
+                                                      <ArrowRight className="h-2.5 w-2.5" />
+                                                      {targetStage.name}
+                                                    </Badge>
+                                                  ) : null;
+                                                })()}
                                               </div>
 
                                               {/* Description inline under step title */}
