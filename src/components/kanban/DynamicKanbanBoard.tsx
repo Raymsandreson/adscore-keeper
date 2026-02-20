@@ -439,7 +439,7 @@ export function DynamicKanbanBoard({
                 </div>
 
                 {/* Column Content */}
-                <ScrollArea className="h-[calc(100vh-450px)] min-h-[250px]">
+                <div className="h-[calc(100vh-450px)] min-h-[250px] overflow-y-auto">
                   <div className="p-2 space-y-2">
                     {stageLeads.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -832,7 +832,7 @@ export function DynamicKanbanBoard({
                       })
                     )}
                   </div>
-                </ScrollArea>
+                </div>
               </div>
             );
           })}
