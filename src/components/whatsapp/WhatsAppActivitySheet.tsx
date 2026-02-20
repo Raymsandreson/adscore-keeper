@@ -92,8 +92,7 @@ export function WhatsAppActivitySheet({
       setFormPriority('normal');
       setFormDeadline('');
       setFormNotificationDate('');
-      setFormAssignedTo('');
-      setFormAssignedToName('');
+      // Default assignee set after team members load
       setFormLeadId(defaultLeadId || '');
       setFormLeadName(defaultLeadName || '');
       setFormContactId(defaultContactId || '');
@@ -121,6 +120,13 @@ export function WhatsAppActivitySheet({
   const fetchTeamMembers = async () => {
     const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
     setTeamMembers(data || []);
+    // Default assignee to logged-in user
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const me = (data || []).find((m: TeamMember) => m.user_id === user.id);
+      setFormAssignedTo(user.id);
+      setFormAssignedToName(me?.full_name || '');
+    }
   };
 
   const fetchContacts = async () => {

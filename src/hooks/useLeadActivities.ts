@@ -102,7 +102,7 @@ export function useLeadActivities() {
           activity_type: activity.activity_type || 'tarefa',
           status: 'pendente',
           priority: activity.priority || 'normal',
-          assigned_to: activity.assigned_to || null,
+          assigned_to: activity.assigned_to || user?.id || null,
           assigned_to_name: activity.assigned_to_name || null,
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
