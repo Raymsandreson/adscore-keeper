@@ -414,7 +414,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 {phases.map((phase, phaseIdx) => (
                    <div key={phase.stageId} className="border rounded-lg overflow-hidden">
                      {/* Phase header */}
-                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/40">
+                     <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
                        <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
                        <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
@@ -425,10 +425,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                onChange={e => updatePhaseName(phaseIdx, e.target.value)}
                                onClick={e => e.stopPropagation()}
                                placeholder="Nome da fase..."
-                               className="h-7 text-sm font-semibold text-primary flex-1"
+                               className="h-7 text-sm font-semibold text-foreground flex-1"
                              />
                            ) : (
-                             <span className="font-semibold text-sm text-primary truncate">{phase.stageName}</span>
+                             <span className="font-semibold text-sm text-foreground truncate">{phase.stageName}</span>
                            )}
                          </CollapsibleTrigger>
                        </Collapsible>
@@ -454,7 +454,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                         {phase.objectives.map((obj, objIdx) => (
                            <div key={objIdx} className="border-t first:border-t-0">
                              {/* Objective header */}
-                             <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-primary/30">
+                             <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
                                <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
                                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-left min-w-0">
                                    {obj.isExpanded ? <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />}
@@ -481,7 +481,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
 
                             {/* Objective content */}
                             {obj.isExpanded && (
-                              <div className="ml-4 border-l-2 border-primary/20 px-4 pb-4 pt-2 space-y-3">
+                              <div className="ml-4 border-l-2 border-blue-400/30 px-4 pb-4 pt-2 space-y-3">
                                 {/* Objective description field */}
                                 <div>
                                   <Label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Descrição do objetivo</Label>
@@ -501,10 +501,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                       <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
                                     ) : (
                                       obj.items.map((step, stepIdx) => (
-                                        <div key={step.id} className="border rounded-md bg-muted/20 p-2.5 space-y-2">
+                                        <div key={step.id} className="border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2">
                                           {/* Step header: number + delete */}
                                           <div className="flex items-center gap-2">
-                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center">
+                                            <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center">
                                               {stepIdx + 1}
                                             </span>
                                             <div className="flex-1 min-w-0">
