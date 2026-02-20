@@ -260,6 +260,10 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         const u = getUser(s.user_id);
         if (s.duration_seconds) {
           u.sessionMinutes += Math.round(s.duration_seconds / 60);
+        } else if (s.started_at && s.last_activity_at) {
+          const start = new Date(s.started_at).getTime();
+          const lastAct = new Date(s.last_activity_at).getTime();
+          u.sessionMinutes += Math.round((lastAct - start) / 1000 / 60);
         }
       });
 
