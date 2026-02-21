@@ -35,7 +35,7 @@ function buildShareUrl(entityType: EntityType, entityId: string): string {
   const base = window.location.origin;
   switch (entityType) {
     case 'contact':
-      return `${base}/?openContact=${entityId}`;
+      return `${base}/leads?tab=contacts&openContact=${entityId}`;
     case 'lead':
       return `${base}/leads?id=${entityId}`;
     case 'activity':

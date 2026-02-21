@@ -2277,7 +2277,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             <CheckCircle2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/atividades?id=${activity.id}`); toast.success('Link copiado!'); }} title="Compartilhar">
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/?openActivity=${activity.id}`); toast.success('Link copiado!'); }} title="Compartilhar">
                           <Share2 className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(activity.id); }} title="Excluir">
