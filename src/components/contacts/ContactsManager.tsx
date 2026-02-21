@@ -42,6 +42,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { ShareMenu } from '@/components/ShareMenu';
 import {
   Pagination,
   PaginationContent,
@@ -87,6 +88,7 @@ import {
   Briefcase,
   Calendar,
   Link,
+  MessageSquare,
 } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -2164,6 +2166,26 @@ export const ContactsManager: React.FC = () => {
                           >
                             <ExternalLink className="h-3.5 w-3.5 mr-2" />
                             Abrir em nova aba
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              const url = `${window.location.origin}/leads?tab=contacts&openContact=${contact.id}`;
+                              navigator.clipboard.writeText(url);
+                              toast.success('Link copiado!');
+                            }}
+                          >
+                            <Link2 className="h-3.5 w-3.5 mr-2" />
+                            Copiar link
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            onClick={() => {
+                              const url = `${window.location.origin}/leads?tab=contacts&openContact=${contact.id}`;
+                              const text = `Contato: *${contact.full_name}*\n${url}`;
+                              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                            }}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                            Enviar via WhatsApp
                           </ContextMenuItem>
                         </ContextMenuContent>
                       </ContextMenu>

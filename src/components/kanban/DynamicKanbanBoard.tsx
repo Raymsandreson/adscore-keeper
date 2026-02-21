@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { ShareMenu } from '@/components/ShareMenu';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,7 @@ import {
   MessageSquare,
   Instagram,
   ExternalLink,
+  Link2,
   ArrowRightLeft,
   UserPlus,
   Clock,
@@ -825,6 +827,26 @@ export function DynamicKanbanBoard({
                               >
                                 <ExternalLink className="h-3.5 w-3.5 mr-2" />
                                 Abrir em nova aba
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => {
+                                  const url = `${window.location.origin}/leads?id=${lead.id}`;
+                                  navigator.clipboard.writeText(url);
+                                  toast.success('Link copiado!');
+                                }}
+                              >
+                                <Link2 className="h-3.5 w-3.5 mr-2" />
+                                Copiar link
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => {
+                                  const url = `${window.location.origin}/leads?id=${lead.id}`;
+                                  const text = `Lead: *${lead.lead_name || 'Sem nome'}*\n${url}`;
+                                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                                }}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                                Enviar via WhatsApp
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>
