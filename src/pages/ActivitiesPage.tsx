@@ -25,6 +25,7 @@ import {
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2,
 } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
@@ -2277,9 +2278,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             <CheckCircle2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/?openActivity=${activity.id}`); toast.success('Link copiado!'); }} title="Compartilhar">
-                          <Share2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <span onClick={e => e.stopPropagation()}>
+                          <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={activity.lead_name ? `Lead: ${activity.lead_name}` : undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
+                        </span>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(activity.id); }} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
