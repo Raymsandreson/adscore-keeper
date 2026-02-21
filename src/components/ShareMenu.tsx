@@ -37,7 +37,7 @@ function buildShareUrl(entityType: EntityType, entityId: string): string {
     case 'contact':
       return `${base}/leads?tab=contacts&openContact=${entityId}`;
     case 'lead':
-      return `${base}/leads?id=${entityId}`;
+      return `${base}/leads?openLead=${entityId}`;
     case 'activity':
       return `${base}/?openActivity=${entityId}`;
     case 'workflow':
