@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
@@ -124,6 +125,10 @@ const WorkflowProgressPage = () => {
             <Settings2 className="h-4 w-4 mr-1" />
             Configurar
           </Button>
+
+          {selectedLead && (
+            <ShareMenu entityType="workflow" entityId={selectedLead.id} entityName={selectedLead.lead_name || 'Lead sem nome'} size="sm" variant="outline" />
+          )}
 
           <Button variant="outline" size="sm" onClick={() => setShowLeadPicker(true)}>
             {selectedLead ? (selectedLead.lead_name || 'Lead sem nome') : 'Selecionar Lead'}

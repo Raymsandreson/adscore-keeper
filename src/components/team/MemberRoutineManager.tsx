@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Settings2, User } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { TimeBlockSettingsDialog } from '@/components/activities/TimeBlockSettingsDialog';
@@ -37,10 +38,13 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
           <User className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{memberName}</span>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} className="gap-1.5">
-          <Settings2 className="h-3.5 w-3.5" />
-          Editar Rotina
-        </Button>
+        <div className="flex items-center gap-1">
+          <ShareMenu entityType="routine" entityId={userId} entityName={memberName} size="sm" variant="outline" />
+          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} className="gap-1.5">
+            <Settings2 className="h-3.5 w-3.5" />
+            Editar Rotina
+          </Button>
+        </div>
       </div>
 
       {/* Grade visual da rotina */}

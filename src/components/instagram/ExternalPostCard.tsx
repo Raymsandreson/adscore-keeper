@@ -35,6 +35,7 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ExternalPost } from '@/hooks/useExternalPosts';
@@ -173,6 +174,7 @@ export function ExternalPostCard({
 
           {/* Actions */}
           <div className="flex gap-2 shrink-0">
+            <ShareMenu entityType="post" entityId={post.id} entityName={post.title || post.author_username || 'Postagem'} size="sm" variant="outline" />
             <Button
               variant="outline"
               size="sm"

@@ -69,6 +69,7 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
+import { ShareMenu } from '@/components/ShareMenu';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -582,10 +583,13 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
     <Wrapper open={open} onOpenChange={onOpenChange}>
       <Content className={contentClassName} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
         <Header>
-          <Title className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Editar Lead
-          </Title>
+          <div className="flex items-center justify-between">
+            <Title className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Editar Lead
+            </Title>
+            {lead && <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />}
+          </div>
         </Header>
 
         {/* AI Extraction Button - opens dialog directly */}

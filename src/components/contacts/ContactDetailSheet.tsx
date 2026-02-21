@@ -61,6 +61,7 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Briefcase } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -279,14 +280,17 @@ export function ContactDetailSheet({
               <User className="h-5 w-5" />
               {fullName || contact.full_name}
             </Title>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {saving ? 'Salvando...' : 'Salvar'}
-            </Button>
+            <div className="flex items-center gap-1">
+              <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {saving ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </div>
           </div>
 
           {/* Quick badges */}
