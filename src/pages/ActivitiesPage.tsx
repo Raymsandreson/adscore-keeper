@@ -2315,13 +2315,33 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
-                      <ContextMenuItem
+                       <ContextMenuItem
                         onClick={() => {
                           window.open(`${window.location.origin}/?openActivity=${activity.id}`, '_blank');
                         }}
                       >
                         <ExternalLink className="h-3.5 w-3.5 mr-2" />
                         Abrir em nova aba
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() => {
+                          const url = `${window.location.origin}/?openActivity=${activity.id}`;
+                          navigator.clipboard.writeText(url);
+                          toast.success('Link copiado!');
+                        }}
+                      >
+                        <Share2 className="h-3.5 w-3.5 mr-2" />
+                        Copiar link
+                      </ContextMenuItem>
+                      <ContextMenuItem
+                        onClick={() => {
+                          const url = `${window.location.origin}/?openActivity=${activity.id}`;
+                          const text = `Atividade: *${activity.title}*\n${url}`;
+                          window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                        }}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5 mr-2" />
+                        Enviar via WhatsApp
                       </ContextMenuItem>
                     </ContextMenuContent>
                   </ContextMenu>

@@ -9,6 +9,7 @@ import {
   MapPin, Building2, User, Calendar, FileText, ExternalLink, 
   ChevronDown, ChevronUp, ClipboardPlus
 } from 'lucide-react';
+import { ShareMenu } from '@/components/ShareMenu';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -113,6 +114,7 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} className="h-6 w-6" />
             <Button
               variant="ghost"
               size="sm"
