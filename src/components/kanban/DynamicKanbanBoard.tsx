@@ -509,6 +509,10 @@ export function DynamicKanbanBoard({
                                     </div>
                                     
                                     <div className="flex items-center gap-0.5 flex-shrink-0">
+                                      {/* Share button */}
+                                      <span onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                        <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Sem nome'} size="icon" variant="ghost" className="h-6 w-6" />
+                                      </span>
                                       {/* Detail button - opens lead details */}
                                       <Tooltip>
                                         <TooltipTrigger asChild>
