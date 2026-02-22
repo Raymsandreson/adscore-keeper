@@ -3,8 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ListChecks, ChevronDown } from 'lucide-react';
+import { ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 
@@ -229,57 +228,33 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
         </span>
       </div>
 
-      {/* Current phase collapsible with objectives and steps */}
+      {/* Current phase - always visible checklist items */}
       {currentStageInstances.length > 0 && (
-        <Collapsible
-          open={expandedPhase === stageId}
-          onOpenChange={(open) => setExpandedPhase(open ? stageId : null)}
-        >
-          <CollapsibleTrigger className="flex items-center gap-1 w-full text-left group hover:bg-muted/50 rounded px-1 py-0.5 transition-colors">
-            <ChevronDown className={cn(
-              "h-3 w-3 text-muted-foreground transition-transform",
-              expandedPhase === stageId && "rotate-180"
-            )} />
-            <span className="text-[10px] font-medium truncate flex-1">
-              {currentStageName}
-            </span>
-            <Badge
-              variant={currentStageChecked === currentStageTotal && currentStageTotal > 0 ? "default" : "outline"}
-              className={cn(
-                "text-[9px] h-4 px-1",
-                currentStageChecked === currentStageTotal && currentStageTotal > 0 && "bg-green-600 hover:bg-green-700"
-              )}
-            >
-              {currentStageChecked}/{currentStageTotal}
-            </Badge>
-          </CollapsibleTrigger>
-
-          <CollapsibleContent className="pl-2 space-y-0.5 mt-0.5">
-            {currentStageInstances.map(instance => (
-              <div key={instance.id} className="space-y-0.5">
-                {instance.items.map(item => (
-                  <label
-                    key={item.id}
-                    className="flex items-center gap-1.5 cursor-pointer group/item hover:bg-muted/30 rounded px-1 py-0.5"
-                  >
-                    <Checkbox
-                      checked={item.checked || false}
-                      onCheckedChange={() => handleToggleItem(instance, item.id)}
-                      disabled={instance.is_readonly}
-                      className="h-3 w-3"
-                    />
-                    <span className={cn(
-                      "text-[10px] leading-tight",
-                      item.checked && "line-through text-muted-foreground"
-                    )}>
-                      {item.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
+        <div className="space-y-0.5">
+          {currentStageInstances.map(instance => (
+            <div key={instance.id} className="space-y-0.5">
+              {instance.items.map(item => (
+                <label
+                  key={item.id}
+                  className="flex items-center gap-1.5 cursor-pointer group/item hover:bg-muted/30 rounded px-1 py-0.5"
+                >
+                  <Checkbox
+                    checked={item.checked || false}
+                    onCheckedChange={() => handleToggleItem(instance, item.id)}
+                    disabled={instance.is_readonly}
+                    className="h-3 w-3"
+                  />
+                  <span className={cn(
+                    "text-[10px] leading-tight",
+                    item.checked && "line-through text-muted-foreground"
+                  )}>
+                    {item.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
