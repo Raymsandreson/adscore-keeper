@@ -252,6 +252,9 @@ export const useLeads = (adAccountId?: string) => {
 
       const updatedLead = data as Lead;
 
+      // Optimistic local update - avoids full reload lag
+      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updatedLead } : l));
+
       // Send CAPI events based on status change
       if (updates.status === 'qualified') {
         facebookCAPI.sendQualifiedLeadEvent({
@@ -286,7 +289,6 @@ export const useLeads = (adAccountId?: string) => {
       }
 
       toast.success('Lead atualizado com sucesso');
-      fetchLeads();
       return updatedLead;
     } catch (error) {
       console.error('Error updating lead:', error);
