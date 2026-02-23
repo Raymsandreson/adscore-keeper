@@ -185,7 +185,7 @@ export function RecentProspects() {
                 ))}
               </SelectContent>
             </Select>
-            <Link to="/?tab=automation&subtab=funnel">
+            <Link to="/dashboard?tab=automation&subtab=funnel">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 Ver todos
                 <ChevronRight className="h-4 w-4 ml-1" />

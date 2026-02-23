@@ -88,7 +88,7 @@ export function useOutboundNotifications() {
       window.focus();
       notification.close();
       // Navigate to prospecting funnel
-      window.location.href = '/?tab=automation&subtab=funnel';
+      window.location.href = '/dashboard?tab=automation&subtab=funnel';
     };
 
     // Also show in-app toast
@@ -96,7 +96,7 @@ export function useOutboundNotifications() {
       action: {
         label: 'Ver',
         onClick: () => {
-          window.location.href = '/?tab=automation&subtab=funnel';
+          window.location.href = '/dashboard?tab=automation&subtab=funnel';
         }
       }
     });
