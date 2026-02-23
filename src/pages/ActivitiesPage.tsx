@@ -348,6 +348,11 @@ const ActivitiesPage = () => {
       });
     }
 
+    // If created for another assignee, add them to the filter so the activities are visible
+    if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
+      setFilterAssignee(prev => [...prev, formAssignedTo!]);
+    }
+
     closeSheet();
     fetchActivities(getFilterParams());
   };
