@@ -38,6 +38,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
+import { CustomFieldsConfigPanel } from '@/components/leads/CustomFieldsConfigPanel';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { LeadChecklistPanel } from '@/components/kanban/LeadChecklistPanel';
 import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
@@ -629,7 +630,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-9 h-auto">
+          <TabsList className="grid w-full grid-cols-10 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
               Básico
@@ -665,6 +666,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             <TabsTrigger value="history" className="text-xs py-2">
               <History className="h-3 w-3 mr-1" />
               Histórico
+            </TabsTrigger>
+            <TabsTrigger value="config" className="text-xs py-2">
+              <Settings className="h-3 w-3 mr-1" />
+              Configurações
             </TabsTrigger>
           </TabsList>
 
@@ -1224,32 +1229,16 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               <div className="pt-4 border-t">
                 <LeadLinkedComments leadId={lead.id} instagramUsername={instagramUsername} />
               </div>
-              
-              {/* Custom Fields Section */}
-              {customFields.length > 0 && (
-                <div className="mt-6 pt-4 border-t">
-                  <h4 className="font-medium mb-4 flex items-center gap-2">
-                    <Settings className="h-4 w-4" />
-                    Campos Personalizados
-                  </h4>
-                  {fieldsLoading ? (
-                    <div className="text-sm text-muted-foreground py-4 text-center">
-                      Carregando campos personalizados...
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {customFields.map((field) => (
-                        <CustomFieldInput
-                          key={field.id}
-                          field={field}
-                          value={fieldValues[field.id] || null}
-                          onChange={handleFieldChange}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+            </TabsContent>
+
+            {/* Configurações Tab */}
+            <TabsContent value="config" className="mt-0">
+              <CustomFieldsConfigPanel
+                leadId={lead.id}
+                currentBoardId={lead.board_id || selectedBoardId || null}
+                boards={boards}
+                adAccountId={adAccountId}
+              />
             </TabsContent>
           </div>
         </Tabs>
