@@ -57,7 +57,7 @@ export default function CallsPage() {
   const [filterPeriod, setFilterPeriod] = useState('all');
   const [filterDateFrom, setFilterDateFrom] = useState<Date | undefined>();
   const [filterDateTo, setFilterDateTo] = useState<Date | undefined>();
-  const [instances, setInstances] = useState<{ instance_name: string; owner_phone: string | null }[]>([]);
+  const [instances, setInstances] = useState<{ id: string; instance_name: string; owner_phone: string | null }[]>([]);
   const [members, setMembers] = useState<{ user_id: string; full_name: string | null }[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [editData, setEditData] = useState<Partial<CallRecord>>({});
@@ -114,7 +114,7 @@ export default function CallsPage() {
   useEffect(() => {
     const fetchFilterData = async () => {
       const [instRes, membersRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('instance_name, owner_phone'),
+        supabase.from('whatsapp_instances').select('id, instance_name, owner_phone'),
         supabase.from('profiles').select('user_id, full_name').order('full_name'),
       ]);
       setInstances((instRes.data || []) as any[]);
@@ -167,9 +167,15 @@ export default function CallsPage() {
         const validTypes = typeMap[filterType] || [filterType];
         if (!validTypes.includes(r.call_type)) return false;
       }
-      // Instance filter
+      // Instance filter — match by instance_name, owner_phone, or phone_used
       if (filterInstance !== 'all') {
-        if ((r.phone_used || '') !== filterInstance) return false;
+        const inst = instances.find(i => i.instance_name === filterInstance);
+        const phoneUsed = (r.phone_used || '').replace(/\D/g, '');
+        const ownerPhone = (inst?.owner_phone || '').replace(/\D/g, '');
+        const matchesName = (r.phone_used || '').toLowerCase() === filterInstance.toLowerCase();
+        const matchesPhone = ownerPhone && phoneUsed && ownerPhone.includes(phoneUsed);
+        const matchesPhoneReverse = ownerPhone && phoneUsed && phoneUsed.includes(ownerPhone);
+        if (!matchesName && !matchesPhone && !matchesPhoneReverse) return false;
       }
       // Member filter
       if (filterMember !== 'all') {
@@ -205,7 +211,7 @@ export default function CallsPage() {
       }
       return true;
     });
-  }, [records, search, filterResult, filterType, filterInstance, filterMember, filterRating, filterPeriod, filterDateFrom, filterDateTo]);
+  }, [records, search, filterResult, filterType, filterInstance, filterMember, filterRating, filterPeriod, filterDateFrom, filterDateTo, instances]);
 
   // Stats
   const stats = useMemo(() => {
