@@ -26,7 +26,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
-  const { conversations, loading, instances, sendMessage, markAsRead, linkToLead, linkToContact, refetch } = useWhatsAppMessages(selectedInstanceId);
+  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const { boards } = useKanbanBoards();
@@ -412,15 +412,62 @@ export function WhatsAppInbox() {
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">
-              <div className="text-center space-y-3">
+              <div className="text-center space-y-4 max-w-md">
                 <MessageSquare className="h-16 w-16 mx-auto text-muted-foreground/30" />
-                <p className="text-muted-foreground">Selecione uma conversa</p>
-                {conversations.length === 0 && !loading && (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">Nenhuma mensagem ainda</p>
-                    <Button variant="outline" size="sm" onClick={() => setShowSetup(true)}>
-                      Configurar integração
+                
+                {!hasLoaded ? (
+                  <div className="space-y-4">
+                    <p className="text-muted-foreground font-medium">Conversas sob demanda</p>
+                    <p className="text-xs text-muted-foreground">
+                      As conversas não são carregadas automaticamente para melhor performance.
+                      Clique abaixo para carregar quando precisar.
+                    </p>
+                    <Button onClick={refetch} disabled={loading} className="gap-2">
+                      {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Carregar Conversas
                     </Button>
+
+                    {/* Instance Stats */}
+                    {instanceStats.length > 0 && (
+                      <div className="mt-6 space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Resumo por instância:</p>
+                        <div className="grid gap-2">
+                          {instanceStats.map(stat => (
+                            <div key={stat.instance_name} className="flex items-center justify-between p-3 rounded-lg border bg-card text-left">
+                              <div className="flex items-center gap-2">
+                                <Smartphone className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium">{stat.instance_name}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span title="Conversas">{stat.conversation_count} 💬</span>
+                                <span title="Enviadas">↑{stat.outbound_count}</span>
+                                <span title="Recebidas">↓{stat.inbound_count}</span>
+                                {stat.unread_count > 0 && (
+                                  <Badge variant="destructive" className="text-[10px] h-5">{stat.unread_count} novas</Badge>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {statsLoading && (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent" />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground">Selecione uma conversa</p>
+                    {conversations.length === 0 && !loading && (
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">Nenhuma mensagem encontrada</p>
+                        <Button variant="outline" size="sm" onClick={() => setShowSetup(true)}>
+                          Configurar integração
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
