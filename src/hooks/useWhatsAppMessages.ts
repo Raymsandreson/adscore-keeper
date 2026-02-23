@@ -52,10 +52,25 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
 
   const fetchInstances = async () => {
+    if (!user) return;
+    
+    // Fetch only instances the logged-in user has access to
+    const { data: permissions } = await supabase
+      .from('whatsapp_instance_users')
+      .select('instance_id')
+      .eq('user_id', user.id);
+    
+    if (!permissions || permissions.length === 0) {
+      setInstances([]);
+      return;
+    }
+
+    const allowedIds = permissions.map(p => p.instance_id);
     const { data, error } = await supabase
       .from('whatsapp_instances')
       .select('*')
       .eq('is_active', true)
+      .in('id', allowedIds)
       .order('instance_name');
     
     if (!error && data) {
@@ -207,8 +222,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   // Fetch instances on mount
   useEffect(() => {
-    fetchInstances();
-  }, []);
+    if (user) fetchInstances();
+  }, [user]);
 
   // Fetch messages when instance filter changes
   useEffect(() => {
