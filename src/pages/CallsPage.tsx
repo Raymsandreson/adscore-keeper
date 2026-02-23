@@ -14,12 +14,14 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import {
   Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, PhoneOff, Voicemail,
-  Clock, Star, Tag, Calendar, Search, Loader2, Play, Trash2, Save, Plus, X,
-  TrendingUp, Users, Timer, CheckCircle, XCircle, BarChart3,
+  Clock, Star, Tag, Calendar as CalendarIcon, Search, Loader2, Play, Trash2, Save, Plus, X,
+  TrendingUp, Users, Timer, CheckCircle, XCircle, BarChart3, Filter,
 } from 'lucide-react';
-import { format, formatDistanceToNow, startOfDay, endOfDay, isToday, isThisWeek, isThisMonth, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, startOfDay, endOfDay, isToday, isThisWeek, isThisMonth, parseISO, subDays, subWeeks, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -49,6 +51,14 @@ export default function CallsPage() {
   const [search, setSearch] = useState('');
   const [filterResult, setFilterResult] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [filterInstance, setFilterInstance] = useState('all');
+  const [filterMember, setFilterMember] = useState('all');
+  const [filterRating, setFilterRating] = useState('all');
+  const [filterPeriod, setFilterPeriod] = useState('all');
+  const [filterDateFrom, setFilterDateFrom] = useState<Date | undefined>();
+  const [filterDateTo, setFilterDateTo] = useState<Date | undefined>();
+  const [instances, setInstances] = useState<{ instance_name: string; owner_phone: string | null }[]>([]);
+  const [members, setMembers] = useState<{ user_id: string; full_name: string | null }[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [editData, setEditData] = useState<Partial<CallRecord>>({});
   const [saving, setSaving] = useState(false);
@@ -100,29 +110,37 @@ export default function CallsPage() {
     return () => clearTimeout(t);
   }, [leadSearch, searchLeads]);
 
+  // Fetch instances and members for filters
+  useEffect(() => {
+    const fetchFilterData = async () => {
+      const [instRes, membersRes] = await Promise.all([
+        supabase.from('whatsapp_instances').select('instance_name, owner_phone'),
+        supabase.from('profiles').select('user_id, full_name').order('full_name'),
+      ]);
+      setInstances((instRes.data || []) as any[]);
+      setMembers((membersRes.data || []) as any[]);
+    };
+    fetchFilterData();
+  }, []);
+
   // Fetch contacts for selected lead
   useEffect(() => {
     if (!newCall.lead_id) { setContactResults([]); return; }
     setContactSearching(true);
     const fetchContacts = async () => {
       try {
-        // Get contacts from junction table
         const { data: links } = await supabase
           .from('contact_leads')
           .select('contact_id')
           .eq('lead_id', newCall.lead_id);
         const junctionIds = (links || []).map((l: any) => l.contact_id);
-
-        // Also get legacy contacts
         const { data: legacy } = await supabase
           .from('contacts')
           .select('id')
           .eq('lead_id', newCall.lead_id);
         const legacyIds = (legacy || []).map((c: any) => c.id);
-
         const allIds = [...new Set([...junctionIds, ...legacyIds])];
         if (allIds.length === 0) { setContactResults([]); setContactSearching(false); return; }
-
         const { data: contacts } = await supabase
           .from('contacts')
           .select('id, full_name, phone')
@@ -137,16 +155,45 @@ export default function CallsPage() {
   // Filter records
   const filtered = useMemo(() => {
     return records.filter(r => {
+      // Result filter
       if (filterResult !== 'all') {
         const resultMap: Record<string, string[]> = { answered: ['answered', 'atendeu'], not_answered: ['not_answered', 'não_atendeu'], busy: ['busy', 'ocupado'] };
         const validResults = resultMap[filterResult] || [filterResult];
         if (!validResults.includes(r.call_result)) return false;
       }
+      // Type filter
       if (filterType !== 'all') {
         const typeMap: Record<string, string[]> = { outbound: ['outbound', 'realizada'], inbound: ['inbound', 'recebida'] };
         const validTypes = typeMap[filterType] || [filterType];
         if (!validTypes.includes(r.call_type)) return false;
       }
+      // Instance filter
+      if (filterInstance !== 'all') {
+        if ((r.phone_used || '') !== filterInstance) return false;
+      }
+      // Member filter
+      if (filterMember !== 'all') {
+        if (r.user_id !== filterMember) return false;
+      }
+      // Rating filter
+      if (filterRating !== 'all') {
+        const ratingVal = parseInt(filterRating);
+        if (filterRating === 'none') {
+          if (r.rating !== null && r.rating !== undefined) return false;
+        } else {
+          if ((r.rating || 0) !== ratingVal) return false;
+        }
+      }
+      // Period filter
+      const recordDate = parseISO(r.created_at);
+      if (filterPeriod === 'today' && !isToday(recordDate)) return false;
+      if (filterPeriod === 'week' && !isThisWeek(recordDate, { locale: ptBR })) return false;
+      if (filterPeriod === 'month' && !isThisMonth(recordDate)) return false;
+      if (filterPeriod === 'custom') {
+        if (filterDateFrom && recordDate < startOfDay(filterDateFrom)) return false;
+        if (filterDateTo && recordDate > endOfDay(filterDateTo)) return false;
+      }
+      // Search
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -158,7 +205,7 @@ export default function CallsPage() {
       }
       return true;
     });
-  }, [records, search, filterResult, filterType]);
+  }, [records, search, filterResult, filterType, filterInstance, filterMember, filterRating, filterPeriod, filterDateFrom, filterDateTo]);
 
   // Stats
   const stats = useMemo(() => {
@@ -483,29 +530,132 @@ export default function CallsPage() {
             className="pl-9"
           />
         </div>
+        <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Período" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todo período</SelectItem>
+            <SelectItem value="today">Hoje</SelectItem>
+            <SelectItem value="week">Esta semana</SelectItem>
+            <SelectItem value="month">Este mês</SelectItem>
+            <SelectItem value="custom">Personalizado</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filterResult} onValueChange={setFilterResult}>
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Resultado" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="all">Todos resultados</SelectItem>
             {RESULT_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[120px]">
+          <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Tipo" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="all">Todos tipos</SelectItem>
             {TYPE_OPTIONS.map(o => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {instances.length > 0 && (
+          <Select value={filterInstance} onValueChange={setFilterInstance}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Instância" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas instâncias</SelectItem>
+              {instances.map(inst => (
+                <SelectItem key={inst.instance_name} value={inst.instance_name}>
+                  {inst.instance_name}{inst.owner_phone ? ` (${inst.owner_phone})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {members.length > 1 && (
+          <Select value={filterMember} onValueChange={setFilterMember}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Membro" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos membros</SelectItem>
+              {members.map(m => (
+                <SelectItem key={m.user_id} value={m.user_id}>
+                  {m.full_name || 'Sem nome'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={filterRating} onValueChange={setFilterRating}>
+          <SelectTrigger className="w-[130px]">
+            <SelectValue placeholder="Avaliação" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas notas</SelectItem>
+            <SelectItem value="none">Sem avaliação</SelectItem>
+            {[5, 4, 3, 2, 1].map(r => (
+              <SelectItem key={r} value={String(r)}>{'⭐'.repeat(r)} ({r})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {/* Custom date range */}
+      {filterPeriod === 'custom' && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn("gap-1.5", !filterDateFrom && "text-muted-foreground")}>
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {filterDateFrom ? format(filterDateFrom, "dd/MM/yyyy") : 'Data início'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={filterDateFrom} onSelect={setFilterDateFrom} className="p-3 pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+          <span className="text-xs text-muted-foreground">até</span>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className={cn("gap-1.5", !filterDateTo && "text-muted-foreground")}>
+                <CalendarIcon className="h-3.5 w-3.5" />
+                {filterDateTo ? format(filterDateTo, "dd/MM/yyyy") : 'Data fim'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={filterDateTo} onSelect={setFilterDateTo} className="p-3 pointer-events-auto" />
+            </PopoverContent>
+          </Popover>
+          {(filterDateFrom || filterDateTo) && (
+            <Button variant="ghost" size="sm" onClick={() => { setFilterDateFrom(undefined); setFilterDateTo(undefined); }}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Active filters summary */}
+      {(filterResult !== 'all' || filterType !== 'all' || filterInstance !== 'all' || filterMember !== 'all' || filterRating !== 'all' || filterPeriod !== 'all') && (
+        <div className="flex items-center gap-2">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">{filtered.length} de {records.length} ligações</span>
+          <Button variant="ghost" size="sm" className="text-xs h-6" onClick={() => {
+            setFilterResult('all'); setFilterType('all'); setFilterInstance('all');
+            setFilterMember('all'); setFilterRating('all'); setFilterPeriod('all');
+            setFilterDateFrom(undefined); setFilterDateTo(undefined);
+          }}>
+            Limpar filtros
+          </Button>
+        </div>
+      )}
 
       {/* Tabs: List / Timeline */}
       <Tabs value={tab} onValueChange={setTab}>
