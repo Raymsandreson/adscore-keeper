@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { ChecklistStageLinking } from '@/components/kanban/ChecklistStageLinking';
-import { ChecklistTemplatesManager } from '@/components/kanban/ChecklistTemplatesManager';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
 import { Pencil, Trash2 as Trash2Fields } from 'lucide-react';
@@ -210,7 +208,7 @@ export function KanbanBoardSelector({
   const [formStages, setFormStages] = useState<KanbanStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
-  const [showChecklistManager, setShowChecklistManager] = useState(false);
+  
 
   const resetForm = () => {
     setFormName('');
@@ -623,21 +621,7 @@ export function KanbanBoardSelector({
             </div>
 
             {editingBoard && (
-              <>
-                <div>
-                  <ChecklistStageLinking boardId={editingBoard.id} stages={formStages} />
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="mt-1 h-auto p-0 text-xs"
-                    onClick={() => setShowChecklistManager(true)}
-                  >
-                    Gerenciar templates de checklist
-                  </Button>
-                </div>
-
-                <BoardCustomFieldsSection boardId={editingBoard.id} />
-              </>
+              <BoardCustomFieldsSection boardId={editingBoard.id} />
             )}
           </div>
 
@@ -658,7 +642,7 @@ export function KanbanBoardSelector({
         </DialogContent>
       </Dialog>
 
-      <ChecklistTemplatesManager open={showChecklistManager} onOpenChange={setShowChecklistManager} />
+      
     </>
   );
 }
