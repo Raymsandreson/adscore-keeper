@@ -57,23 +57,10 @@ export default function TeamPage() {
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Shield className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Acesso Restrito</h1>
-          <p className="text-muted-foreground mb-4">
-            Apenas administradores podem acessar esta página
-          </p>
-          <Button onClick={() => navigate('/')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar ao Dashboard
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // All authenticated users can access - admin-only tabs are filtered below
+  const availableTabs = isAdmin
+    ? ['productivity', 'commission', 'evaluations', 'members', 'teams', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
+    : ['productivity', 'members', 'teams'];
 
   return (
     <div className="min-h-screen bg-background">
@@ -92,20 +79,24 @@ export default function TeamPage() {
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-7xl grid-cols-10">
+        <Tabs value={availableTabs.includes(activeTab) ? activeTab : 'productivity'} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className={`grid w-full max-w-7xl ${isAdmin ? 'grid-cols-10' : 'grid-cols-3'}`}>
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
             </TabsTrigger>
-            <TabsTrigger value="commission" className="gap-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="hidden sm:inline">Metas</span>
-            </TabsTrigger>
-            <TabsTrigger value="evaluations" className="gap-2">
-              <Star className="h-4 w-4" />
-              <span className="hidden sm:inline">Avaliações</span>
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="commission" className="gap-2">
+                <DollarSign className="h-4 w-4" />
+                <span className="hidden sm:inline">Metas</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="evaluations" className="gap-2">
+                <Star className="h-4 w-4" />
+                <span className="hidden sm:inline">Avaliações</span>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="members" className="gap-2">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Membros</span>
@@ -114,26 +105,36 @@ export default function TeamPage() {
               <UsersRound className="h-4 w-4" />
               <span className="hidden sm:inline">Times</span>
             </TabsTrigger>
-            <TabsTrigger value="routines" className="gap-2">
-              <CalendarClock className="h-4 w-4" />
-              <span className="hidden sm:inline">Rotinas</span>
-            </TabsTrigger>
-            <TabsTrigger value="whatsapp" className="gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">WhatsApp</span>
-            </TabsTrigger>
-            <TabsTrigger value="permissions" className="gap-2">
-              <CreditCard className="h-4 w-4" />
-              <span className="hidden sm:inline">Cartões</span>
-            </TabsTrigger>
-            <TabsTrigger value="accounts" className="gap-2">
-              <Landmark className="h-4 w-4" />
-              <span className="hidden sm:inline">Contas</span>
-            </TabsTrigger>
-            <TabsTrigger value="modules" className="gap-2">
-              <Lock className="h-4 w-4" />
-              <span className="hidden sm:inline">Acessos</span>
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="routines" className="gap-2">
+                <CalendarClock className="h-4 w-4" />
+                <span className="hidden sm:inline">Rotinas</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="whatsapp" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">WhatsApp</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="permissions" className="gap-2">
+                <CreditCard className="h-4 w-4" />
+                <span className="hidden sm:inline">Cartões</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="accounts" className="gap-2">
+                <Landmark className="h-4 w-4" />
+                <span className="hidden sm:inline">Contas</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="modules" className="gap-2">
+                <Lock className="h-4 w-4" />
+                <span className="hidden sm:inline">Acessos</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="productivity">

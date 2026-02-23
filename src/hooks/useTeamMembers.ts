@@ -28,11 +28,6 @@ export function useTeamMembers() {
   const [loading, setLoading] = useState(true);
 
   const fetchMembers = useCallback(async () => {
-    if (!isAdmin) {
-      setLoading(false);
-      return;
-    }
-
     try {
       // Fetch user roles with profile info
       const { data: roles, error: rolesError } = await supabase
@@ -77,7 +72,7 @@ export function useTeamMembers() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     fetchMembers();
