@@ -9,7 +9,7 @@ import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare,
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 
@@ -48,8 +48,16 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
   const [checklistTemplates, setChecklistTemplates] = useState<{ id: string; name: string }[]>([]);
 
+  // Track lead IDs to avoid unnecessary re-fetches
+  const prevLeadIdsRef = useRef<string>('');
+  
   useEffect(() => {
+    const leadIds = conversations.filter(c => c.lead_id).map(c => c.lead_id as string);
+    const leadIdsKey = leadIds.sort().join(',');
+    const shouldFetchLeadInfo = leadIdsKey !== prevLeadIdsRef.current;
+    
     const fetchData = async () => {
+      // Only fetch call phones once (or when instance changes)
       const { data: callData } = await supabase
         .from('call_records')
         .select('contact_phone')
@@ -58,9 +66,9 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         setPhonesWithCalls(new Set(callData.map((r: any) => r.contact_phone as string)));
       }
 
-      const leadIds = conversations.filter(c => c.lead_id).map(c => c.lead_id as string);
-      
-      // Always reset map when conversations change
+      if (!shouldFetchLeadInfo) return;
+      prevLeadIdsRef.current = leadIdsKey;
+
       if (leadIds.length === 0) {
         setLeadInfoMap(new Map());
         return;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -217,7 +217,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [selectedInstanceId, instances]);
 
-  // Realtime subscription
+  // Debounced realtime subscription
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetch = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchMessages();
+    }, 2000); // Wait 2s after last event before refetching
+  }, [selectedInstanceId, instances]);
+
   useEffect(() => {
     const channel = supabase
       .channel('whatsapp-messages')
@@ -225,15 +233,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'whatsapp_messages' },
         () => {
-          fetchMessages();
+          debouncedFetch();
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [selectedInstanceId, instances]);
+  }, [debouncedFetch]);
 
   return {
     messages,
