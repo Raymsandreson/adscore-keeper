@@ -36,11 +36,13 @@ export function useCallRecords() {
   const [loading, setLoading] = useState(true);
 
   const fetchRecords = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('call_records')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setRecords((data || []) as CallRecord[]);
@@ -49,7 +51,7 @@ export function useCallRecords() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchRecords();

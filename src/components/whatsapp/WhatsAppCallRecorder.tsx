@@ -12,11 +12,12 @@ interface Props {
   contactName: string | null;
   contactId: string | null;
   leadId: string | null;
+  leadName?: string | null;
   instanceId?: string | null;
   instanceName?: string | null;
 }
 
-export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, instanceId, instanceName }: Props) {
+export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, leadName, instanceId, instanceName }: Props) {
   const { user } = useAuthContext();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -40,7 +41,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, in
   const makeCall = useCallback(async (): Promise<string | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
-        body: { phone, contact_name: contactName, contact_id: contactId, lead_id: leadId, instance_id: instanceId || undefined, instance_name: instanceName || undefined },
+        body: { phone, contact_name: contactName, contact_id: contactId, lead_id: leadId, lead_name: leadName || undefined, instance_id: instanceId || undefined, instance_name: instanceName || undefined },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao iniciar chamada');
@@ -57,7 +58,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, in
       a.click();
       return null;
     }
-  }, [phone, contactName, contactId, leadId]);
+  }, [phone, contactName, contactId, leadId, leadName, instanceId, instanceName]);
 
   const startRecording = useCallback(async () => {
     const recordId = await makeCall();
