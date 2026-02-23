@@ -15,8 +15,20 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    // Extract user from JWT
+    let userId: string | null = null
+    const authHeader = req.headers.get('Authorization')
+    if (authHeader?.startsWith('Bearer ')) {
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } }
+      })
+      const { data: claimsData } = await userClient.auth.getClaims(authHeader.replace('Bearer ', ''))
+      userId = claimsData?.claims?.sub as string || null
+    }
+
     const body = await req.json()
-    const { phone, instance_id } = body
+    const { phone, instance_id, contact_name, contact_id, lead_id } = body
 
     if (!phone) {
       return new Response(
@@ -80,8 +92,53 @@ Deno.serve(async (req) => {
 
     console.log('UazAPI call response:', JSON.stringify(responseData))
 
+    // Create call_record automatically
+    let callRecordId: string | null = null
+    if (userId) {
+      const { data: callRecord, error: insertError } = await supabase
+        .from('call_records')
+        .insert({
+          user_id: userId,
+          call_type: 'realizada',
+          call_result: 'em_andamento',
+          contact_phone: phone,
+          contact_name: contact_name || null,
+          contact_id: contact_id || null,
+          lead_id: lead_id || null,
+          phone_used: 'whatsapp',
+          notes: 'Chamada iniciada via UazAPI.',
+          tags: ['whatsapp', 'uazapi'],
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        console.error('Error creating call_record:', insertError)
+      } else {
+        callRecordId = callRecord?.id
+        console.log('Created call_record:', callRecordId)
+      }
+
+      // Also insert into call_events_pending for real-time tracking
+      await supabase.from('call_events_pending').insert({
+        call_id: responseData?.callId || `manual_${Date.now()}`,
+        phone: formattedPhone,
+        event_type: 'offer',
+        from_me: true,
+        contact_name: contact_name || null,
+        instance_name: instance.instance_name,
+      }).then(({ error }) => {
+        if (error) console.error('Error creating call_events_pending:', error)
+      })
+    }
+
     return new Response(
-      JSON.stringify({ success: true, data: responseData, instance_name: instance.instance_name }),
+      JSON.stringify({
+        success: true,
+        data: responseData,
+        instance_name: instance.instance_name,
+        call_record_id: callRecordId,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 

@@ -19,6 +19,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [processing, setProcessing] = useState(false);
+  const [callRecordId, setCallRecordId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -34,14 +35,15 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const makeCall = useCallback(async () => {
+  const makeCall = useCallback(async (): Promise<string | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
-        body: { phone },
+        body: { phone, contact_name: contactName, contact_id: contactId, lead_id: leadId },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao iniciar chamada');
       toast.success('Chamada WhatsApp iniciada!');
+      return data?.call_record_id || null;
     } catch (err) {
       console.error('Error making WhatsApp call:', err);
       toast.error('Erro ao iniciar chamada via WhatsApp');
@@ -51,11 +53,13 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
       const a = document.createElement('a');
       a.href = telUrl;
       a.click();
+      return null;
     }
-  }, [phone]);
+  }, [phone, contactName, contactId, leadId]);
 
   const startRecording = useCallback(async () => {
-    makeCall();
+    const recordId = await makeCall();
+    setCallRecordId(recordId);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -86,24 +90,46 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
       toast.success('Ligação iniciada! Gravação ativa.');
     } catch (err) {
       console.error('Mic access error:', err);
-      toast.info('Ligação aberta. Gravação indisponível (microfone negado).');
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      toast.info('Ligação iniciada. Gravação indisponível (microfone negado).');
     }
-  }, [phone, makeCall]);
+  }, [makeCall]);
 
-  const stopRecording = useCallback((callResult: string = 'atendeu') => {
+  const stopRecording = useCallback(async (callResult: string = 'atendeu') => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setProcessing(true);
+
+    const currentDuration = recordingTime;
     const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') {
+    const hasRecording = recorder && recorder.state !== 'inactive';
+
+    // Update the call_record with result and duration
+    if (callRecordId) {
+      try {
+        await supabase.from('call_records').update({
+          call_result: callResult,
+          duration_seconds: currentDuration,
+        } as any).eq('id', callRecordId);
+      } catch (err) {
+        console.error('Error updating call record:', err);
+      }
+    }
+
+    if (!hasRecording) {
       setIsRecording(false);
       setProcessing(false);
+      setCallRecordId(null);
+      if (callRecordId) toast.success('Ligação registrada!');
       return;
     }
 
-    setProcessing(true);
-    if (timerRef.current) clearInterval(timerRef.current);
-
     const currentUser = user;
-    const currentDuration = recordingTime;
     const currentMime = recorder.mimeType;
+    const currentCallRecordId = callRecordId;
 
     recorder.onstop = async () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
@@ -111,6 +137,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
       if (!currentUser) {
         setIsRecording(false);
         setProcessing(false);
+        setCallRecordId(null);
         return;
       }
 
@@ -131,32 +158,45 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
 
         const audioUrl = urlData.publicUrl;
 
-        const { data: insertData, error: insertError } = await supabase
-          .from('call_records')
-          .insert({
-            user_id: currentUser.id,
-            call_type: 'realizada',
-            call_result: callResult,
-            duration_seconds: currentDuration,
-            contact_phone: phone,
-            contact_name: contactName,
-            contact_id: contactId,
-            lead_id: leadId,
+        if (currentCallRecordId) {
+          // Update existing record with audio
+          await supabase.from('call_records').update({
             audio_url: audioUrl,
             audio_file_name: fileName,
-            phone_used: 'whatsapp',
-            notes: 'Gravação manual via chat WhatsApp.',
-            tags: ['whatsapp', 'gravacao_manual'],
-          })
-          .select('id')
-          .single();
+          } as any).eq('id', currentCallRecordId);
 
-        if (insertError) throw insertError;
+          // Trigger transcription
+          supabase.functions.invoke('analyze-activity-chat', {
+            body: { action: 'transcribe_call', audio_url: audioUrl, call_record_id: currentCallRecordId, phone },
+          }).catch(() => {});
+        } else {
+          // Fallback: create new record if no ID (shouldn't happen normally)
+          const { data: insertData } = await supabase
+            .from('call_records')
+            .insert({
+              user_id: currentUser.id,
+              call_type: 'realizada',
+              call_result: callResult,
+              duration_seconds: currentDuration,
+              contact_phone: phone,
+              contact_name: contactName,
+              contact_id: contactId,
+              lead_id: leadId,
+              audio_url: audioUrl,
+              audio_file_name: fileName,
+              phone_used: 'whatsapp',
+              notes: 'Gravação manual via chat WhatsApp.',
+              tags: ['whatsapp', 'gravacao_manual'],
+            })
+            .select('id')
+            .single();
 
-        // Trigger transcription in background with call_record_id for DB update
-        supabase.functions.invoke('analyze-activity-chat', {
-          body: { action: 'transcribe_call', audio_url: audioUrl, call_record_id: insertData?.id, phone },
-        }).catch(() => {});
+          if (insertData?.id) {
+            supabase.functions.invoke('analyze-activity-chat', {
+              body: { action: 'transcribe_call', audio_url: audioUrl, call_record_id: insertData.id, phone },
+            }).catch(() => {});
+          }
+        }
 
         toast.success('Ligação gravada e salva!');
       } catch (err) {
@@ -166,6 +206,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
 
       setIsRecording(false);
       setProcessing(false);
+      setCallRecordId(null);
     };
 
     try {
@@ -174,8 +215,9 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
       console.error('Error stopping recorder:', err);
       setIsRecording(false);
       setProcessing(false);
+      setCallRecordId(null);
     }
-  }, [user, phone, contactName, contactId, leadId, recordingTime]);
+  }, [user, phone, contactName, contactId, leadId, recordingTime, callRecordId]);
 
   if (processing) {
     return (
