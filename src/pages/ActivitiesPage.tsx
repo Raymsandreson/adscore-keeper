@@ -33,6 +33,7 @@ import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgres
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
@@ -148,6 +149,7 @@ const ActivitiesPage = () => {
   const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
+  const { types: dbActivityTypes } = useActivityTypes();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   // Countdown timer state for time block click
   const [countdownBlock, setCountdownBlock] = useState<TimeBlockConfig | null>(null);
@@ -792,12 +794,26 @@ const ActivitiesPage = () => {
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
     : leads.slice(0, 20);
 
-  // Only show activity types that are in the user's routine
+  // Only show activity types that are in the user's routine (including custom DB types)
   const routineActivityTypes = useMemo(() => {
-    if (timeBlockSettings.length === 0) return ACTIVITY_TYPES; // fallback if no routine configured
+    // Build a merged list of all known activity types (hardcoded + DB custom)
+    const allTypes = [...ACTIVITY_TYPES];
+    for (const dbType of dbActivityTypes) {
+      if (!allTypes.some(t => t.value === dbType.key)) {
+        allTypes.push({
+          value: dbType.key,
+          label: dbType.label,
+          bg: 'bg-muted',
+          border: 'border-border',
+          header: dbType.color || 'bg-gray-500',
+          dot: dbType.color || 'bg-gray-500',
+        });
+      }
+    }
+    if (timeBlockSettings.length === 0) return allTypes; // fallback if no routine configured
     const routineKeys = new Set(timeBlockSettings.map(c => c.activityType));
-    return ACTIVITY_TYPES.filter(t => routineKeys.has(t.value));
-  }, [timeBlockSettings]);
+    return allTypes.filter(t => routineKeys.has(t.value));
+  }, [timeBlockSettings, dbActivityTypes]);
 
   const suggestActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;
