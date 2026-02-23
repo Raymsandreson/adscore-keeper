@@ -140,7 +140,7 @@ export function FloatingNav() {
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
         { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
         { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
-        ...(isAdmin ? [{ id: "team", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" }] : []),
+        { id: "team", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
       ],
     },
   ];
