@@ -441,6 +441,26 @@ async function handleCallEvent(supabase: any, body: any) {
   }
 
   console.log('Call record created:', record.id, 'duration:', durationSeconds, 'seconds');
+
+  // Trigger field extraction via analyze-activity-chat (async, don't wait)
+  if (callResult === 'atendeu' && durationSeconds > 5 && (audioUrl || record.audio_url)) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    fetch(`${supabaseUrl}/functions/v1/analyze-activity-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({
+        action: 'transcribe_call',
+        audio_url: audioUrl || record.audio_url,
+        call_record_id: record.id,
+        phone: finalPhone,
+      }),
+    }).catch(e => console.error('Field extraction trigger error:', e));
+  }
+
   return record;
 }
 

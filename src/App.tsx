@@ -12,6 +12,7 @@ import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
 import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { FloatingNav } from "@/components/FloatingNav";
 import { IncomingCallBanner } from "@/components/IncomingCallBanner";
+import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
 import Index from "./pages/Index";
 import ActivitiesPage from "./pages/ActivitiesPage";
 import LeadsCenter from "./pages/LeadsCenter";
@@ -57,6 +58,7 @@ function AppRoutes() {
       <GlobalDatabaseSearch />
       <UserProductivityBanner />
       <IncomingCallBanner />
+      <CallFieldSuggestionsBanner />
       <FloatingNav />
       <Routes>
         <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
