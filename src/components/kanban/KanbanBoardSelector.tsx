@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { ChecklistStageLinking } from '@/components/kanban/ChecklistStageLinking';
 import { ChecklistTemplatesManager } from '@/components/kanban/ChecklistTemplatesManager';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
+import { Pencil, Trash2 as Trash2Fields } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -54,6 +57,137 @@ const BOARD_ICONS: Record<string, React.ReactNode> = {
 const DEFAULT_COLORS = [
   '#3b82f6', '#8b5cf6', '#22c55e', '#f97316', '#ef4444', '#06b6d4', '#ec4899',
 ];
+
+const fieldTypeLabels: Record<FieldType, string> = {
+  text: 'Texto',
+  number: 'Número',
+  date: 'Data',
+  select: 'Seleção',
+  checkbox: 'Checkbox',
+};
+
+function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
+  const { customFields, loading, addCustomField, updateCustomField, deleteCustomField } = useLeadCustomFields(undefined, boardId);
+  const [showFieldDialog, setShowFieldDialog] = useState(false);
+  const [editingField, setEditingField] = useState<{ id: string; field_name: string; field_type: FieldType; field_options: string[]; is_required: boolean } | null>(null);
+  const [fieldName, setFieldName] = useState('');
+  const [fieldType, setFieldType] = useState<FieldType>('text');
+  const [fieldOptions, setFieldOptions] = useState('');
+  const [isRequired, setIsRequired] = useState(false);
+
+  const resetFieldForm = () => {
+    setFieldName('');
+    setFieldType('text');
+    setFieldOptions('');
+    setIsRequired(false);
+    setEditingField(null);
+  };
+
+  const handleOpenFieldDialog = (field?: typeof editingField & { id: string }) => {
+    if (field) {
+      setEditingField(field);
+      setFieldName(field.field_name);
+      setFieldType(field.field_type);
+      setFieldOptions(field.field_options?.join(', ') || '');
+      setIsRequired(field.is_required);
+    } else {
+      resetFieldForm();
+    }
+    setShowFieldDialog(true);
+  };
+
+  const handleSaveField = async () => {
+    if (!fieldName.trim()) return;
+    const options = fieldType === 'select' ? fieldOptions.split(',').map(o => o.trim()).filter(Boolean) : [];
+    try {
+      if (editingField) {
+        await updateCustomField(editingField.id, { field_name: fieldName, field_type: fieldType, field_options: options, is_required: isRequired });
+      } else {
+        await addCustomField({ board_id: boardId, field_name: fieldName, field_type: fieldType, field_options: options, is_required: isRequired });
+      }
+      setShowFieldDialog(false);
+      resetFieldForm();
+    } catch {}
+  };
+
+  const handleDeleteField = async (id: string) => {
+    if (confirm('Excluir este campo? Os valores preenchidos serão perdidos.')) {
+      await deleteCustomField(id);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-sm font-semibold">📋 Campos Personalizados</Label>
+        <Button variant="outline" size="sm" onClick={() => handleOpenFieldDialog()}>
+          <Plus className="h-3 w-3 mr-1" />
+          Novo
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Carregando...</p>
+      ) : customFields.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhum campo personalizado neste funil</p>
+      ) : (
+        <div className="space-y-1.5 max-h-[140px] overflow-y-auto">
+          {customFields.map((field) => (
+            <div key={field.id} className="flex items-center justify-between p-2 border rounded bg-muted/30 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-medium truncate">{field.field_name}</span>
+                <Badge variant="secondary" className="text-[10px] shrink-0">{fieldTypeLabels[field.field_type]}</Badge>
+                {field.is_required && <Badge variant="outline" className="text-[10px] shrink-0">Obrig.</Badge>}
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleOpenFieldDialog(field)}>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteField(field.id)}>
+                  <Trash2Fields className="h-3 w-3 text-destructive" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Inline field editor */}
+      {showFieldDialog && (
+        <div className="mt-2 p-3 border rounded-lg bg-card space-y-3">
+          <div>
+            <Label className="text-xs">Nome do Campo</Label>
+            <Input value={fieldName} onChange={(e) => setFieldName(e.target.value)} placeholder="Ex: Produto" className="h-8 text-sm" />
+          </div>
+          <div>
+            <Label className="text-xs">Tipo</Label>
+            <select value={fieldType} onChange={(e) => setFieldType(e.target.value as FieldType)} className="w-full h-8 text-sm rounded border bg-background px-2">
+              <option value="text">Texto</option>
+              <option value="number">Número</option>
+              <option value="date">Data</option>
+              <option value="select">Seleção</option>
+              <option value="checkbox">Checkbox</option>
+            </select>
+          </div>
+          {fieldType === 'select' && (
+            <div>
+              <Label className="text-xs">Opções (vírgula)</Label>
+              <Input value={fieldOptions} onChange={(e) => setFieldOptions(e.target.value)} placeholder="Op1, Op2" className="h-8 text-sm" />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Switch checked={isRequired} onCheckedChange={setIsRequired} id="field-req" />
+            <Label htmlFor="field-req" className="text-xs">Obrigatório</Label>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => { setShowFieldDialog(false); resetFieldForm(); }}>Cancelar</Button>
+            <Button size="sm" onClick={handleSaveField} disabled={!fieldName.trim()}>{editingField ? 'Salvar' : 'Criar'}</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function KanbanBoardSelector({
   boards,
@@ -489,17 +623,21 @@ export function KanbanBoardSelector({
             </div>
 
             {editingBoard && (
-              <div>
-                <ChecklistStageLinking boardId={editingBoard.id} stages={formStages} />
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="mt-1 h-auto p-0 text-xs"
-                  onClick={() => setShowChecklistManager(true)}
-                >
-                  Gerenciar templates de checklist
-                </Button>
-              </div>
+              <>
+                <div>
+                  <ChecklistStageLinking boardId={editingBoard.id} stages={formStages} />
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-1 h-auto p-0 text-xs"
+                    onClick={() => setShowChecklistManager(true)}
+                  >
+                    Gerenciar templates de checklist
+                  </Button>
+                </div>
+
+                <BoardCustomFieldsSection boardId={editingBoard.id} />
+              </>
             )}
           </div>
 
