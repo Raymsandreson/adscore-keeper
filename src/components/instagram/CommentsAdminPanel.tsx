@@ -161,6 +161,7 @@ export function CommentsAdminPanel() {
       });
 
       if (error) throw error;
+      if (data && !data.success) throw new Error(data.error || 'Erro ao enviar resposta');
 
       // Update local state
       await supabase
@@ -175,9 +176,9 @@ export function CommentsAdminPanel() {
       setReplyDialogOpen(false);
       setReplyText('');
       fetchComments();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error replying:', error);
-      toast.error('Erro ao enviar resposta');
+      toast.error(error?.message || 'Erro ao enviar resposta');
     } finally {
       setIsReplying(false);
     }
