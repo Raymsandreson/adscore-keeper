@@ -86,7 +86,7 @@ export function useMyProductivity() {
         supabase.from('cat_lead_contacts').select('id, contact_channel').eq('contacted_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('lead_activities').select('id').eq('completed_by', userId)
-          .eq('status', 'concluida')
+          .not('completed_at', 'is', null)
           .gte('completed_at', startDate).lte('completed_at', endDate),
         supabase.from('lead_activities').select('id').eq('assigned_to', userId)
           .eq('status', 'pendente')
