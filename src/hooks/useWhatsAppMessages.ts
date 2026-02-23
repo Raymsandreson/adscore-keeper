@@ -44,18 +44,29 @@ export interface WhatsAppInstance {
   is_active: boolean;
 }
 
+export interface InstanceStats {
+  instance_name: string;
+  conversation_count: number;
+  message_count: number;
+  inbound_count: number;
+  outbound_count: number;
+  unread_count: number;
+}
+
 export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const { user } = useAuthContext();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
+  const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
   const conversationsRef = useRef<WhatsAppConversation[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const fetchInstances = async () => {
     if (!user) return;
     
-    // Fetch only instances the logged-in user has access to
     const { data: permissions } = await supabase
       .from('whatsapp_instance_users')
       .select('instance_id')
@@ -63,6 +74,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     
     if (!permissions || permissions.length === 0) {
       setInstances([]);
+      setStatsLoading(false);
       return;
     }
 
@@ -79,6 +91,62 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   };
 
+  // Lightweight stats fetch — only counts, no full message data
+  const fetchInstanceStats = useCallback(async () => {
+    if (instances.length === 0) {
+      setInstanceStats([]);
+      setStatsLoading(false);
+      return;
+    }
+
+    setStatsLoading(true);
+    try {
+      const instanceNames = instances.map(i => i.instance_name);
+      
+      // Use a single lightweight query with counts per instance
+      const stats: InstanceStats[] = [];
+      
+      for (const inst of instances) {
+        const [totalRes, inboundRes, outboundRes, unreadRes, phonesRes] = await Promise.all([
+          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+            .eq('instance_name', inst.instance_name),
+          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+            .eq('instance_name', inst.instance_name).eq('direction', 'inbound'),
+          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+            .eq('instance_name', inst.instance_name).eq('direction', 'outbound'),
+          supabase.from('whatsapp_messages').select('id', { count: 'exact', head: true })
+            .eq('instance_name', inst.instance_name).eq('direction', 'inbound').is('read_at', null),
+          supabase.from('whatsapp_messages').select('phone', { count: 'exact', head: true })
+            .eq('instance_name', inst.instance_name),
+        ]);
+
+        // Get distinct phone count via a different approach
+        const { data: distinctPhones } = await supabase
+          .from('whatsapp_messages')
+          .select('phone')
+          .eq('instance_name', inst.instance_name)
+          .limit(1000);
+        
+        const uniquePhones = new Set(distinctPhones?.map(p => p.phone) || []);
+
+        stats.push({
+          instance_name: inst.instance_name,
+          conversation_count: uniquePhones.size,
+          message_count: totalRes.count || 0,
+          inbound_count: inboundRes.count || 0,
+          outbound_count: outboundRes.count || 0,
+          unread_count: unreadRes.count || 0,
+        });
+      }
+      
+      setInstanceStats(stats);
+    } catch (error) {
+      console.error('Error fetching instance stats:', error);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [instances]);
+
   const fetchMessages = async () => {
     setLoading(true);
     try {
@@ -88,7 +156,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         .order('created_at', { ascending: false })
         .limit(500);
 
-      // Filter by selected instance
       if (selectedInstanceId && selectedInstanceId !== 'all') {
         const inst = instances.find(i => i.id === selectedInstanceId);
         if (inst) {
@@ -97,13 +164,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
 
       const msgs = (data || []) as WhatsAppMessage[];
       setMessages(msgs);
 
-      // Group by phone to create conversations
       const convMap = new Map<string, WhatsAppConversation>();
       
       for (const msg of msgs) {
@@ -122,34 +187,23 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           });
         } else {
           existing.messages.push(msg);
-          if (!msg.read_at && msg.direction === 'inbound') {
-            existing.unread_count++;
-          }
-          if (!existing.contact_name && msg.contact_name) {
-            existing.contact_name = msg.contact_name;
-          }
-          if (!existing.contact_id && msg.contact_id) {
-            existing.contact_id = msg.contact_id;
-          }
-          if (!existing.lead_id && msg.lead_id) {
-            existing.lead_id = msg.lead_id;
-          }
+          if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
+          if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
+          if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
+          if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
         }
       }
 
       const convList = Array.from(convMap.values())
         .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
       
-      // Only update state if conversations actually changed (avoid flicker)
-      const prevPhones = conversationsRef.current.map(c => c.phone + c.last_message_at + c.unread_count).join('|');
-      const newPhones = convList.map(c => c.phone + c.last_message_at + c.unread_count).join('|');
-      if (prevPhones !== newPhones) {
-        conversationsRef.current = convList;
-        setConversations(convList);
-      }
-      setMessages(msgs);
+      conversationsRef.current = convList;
+      setConversations(convList);
+      setHasLoaded(true);
+      toast.success(`${convList.length} conversas carregadas`);
     } catch (error) {
       console.error('Error fetching WhatsApp messages:', error);
+      toast.error('Erro ao carregar conversas');
     } finally {
       setLoading(false);
     }
@@ -159,18 +213,15 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     try {
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
         body: { 
-          phone, 
-          message, 
-          contact_id: contactId, 
-          lead_id: leadId,
+          phone, message, 
+          contact_id: contactId, lead_id: leadId,
           instance_id: selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined,
         },
       });
-
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
-
       toast.success('Mensagem enviada!');
+      // Only refresh the current conversation, not all
       fetchMessages();
       return true;
     } catch (error: any) {
@@ -185,47 +236,33 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const { error } = await supabase
         .from('whatsapp_messages')
         .update({ read_at: new Date().toISOString() } as any)
-        .eq('phone', phone)
-        .eq('direction', 'inbound')
-        .is('read_at', null);
-
+        .eq('phone', phone).eq('direction', 'inbound').is('read_at', null);
       if (error) throw error;
-      fetchMessages();
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
+      // Update local state without refetching
+      setConversations(prev => prev.map(c => 
+        c.phone === phone ? { ...c, unread_count: 0 } : c
+      ));
+    } catch (error) { console.error('Error marking as read:', error); }
   };
 
   const linkToLead = async (phone: string, leadId: string) => {
     try {
-      const { error } = await supabase
-        .from('whatsapp_messages')
-        .update({ lead_id: leadId } as any)
-        .eq('phone', phone);
-
+      const { error } = await supabase.from('whatsapp_messages')
+        .update({ lead_id: leadId } as any).eq('phone', phone);
       if (error) throw error;
       toast.success('Conversa vinculada ao lead!');
-      fetchMessages();
-    } catch (error) {
-      console.error('Error linking to lead:', error);
-      toast.error('Erro ao vincular ao lead');
-    }
+      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, lead_id: leadId } : c));
+    } catch (error) { console.error(error); toast.error('Erro ao vincular ao lead'); }
   };
 
   const linkToContact = async (phone: string, contactId: string) => {
     try {
-      const { error } = await supabase
-        .from('whatsapp_messages')
-        .update({ contact_id: contactId } as any)
-        .eq('phone', phone);
-
+      const { error } = await supabase.from('whatsapp_messages')
+        .update({ contact_id: contactId } as any).eq('phone', phone);
       if (error) throw error;
       toast.success('Conversa vinculada ao contato!');
-      fetchMessages();
-    } catch (error) {
-      console.error('Error linking to contact:', error);
-      toast.error('Erro ao vincular ao contato');
-    }
+      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, contact_id: contactId } : c));
+    } catch (error) { console.error(error); toast.error('Erro ao vincular ao contato'); }
   };
 
   // Fetch instances on mount
@@ -233,49 +270,26 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (user) fetchInstances();
   }, [user]);
 
-  // Fetch messages when instance filter changes
+  // Fetch lightweight stats when instances load (NOT full messages)
   useEffect(() => {
-    if (instances.length > 0 || !selectedInstanceId) {
-      fetchMessages();
+    if (instances.length > 0) {
+      fetchInstanceStats();
     }
-  }, [selectedInstanceId, instances]);
-
-  // Debounced realtime subscription
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedFetch = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchMessages();
-    }, 2000); // Wait 2s after last event before refetching
-  }, [selectedInstanceId, instances]);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('whatsapp-messages')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_messages' },
-        () => {
-          debouncedFetch();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [debouncedFetch]);
+  }, [instances, fetchInstanceStats]);
 
   return {
     messages,
     conversations,
     loading,
     instances,
+    instanceStats,
+    statsLoading,
+    hasLoaded,
     sendMessage,
     markAsRead,
     linkToLead,
     linkToContact,
     refetch: fetchMessages,
+    refetchStats: fetchInstanceStats,
   };
 }

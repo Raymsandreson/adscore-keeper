@@ -239,7 +239,8 @@ export function useMyProductivity() {
 
       const calcAvg = (arr: { current: number; target: number }[]) => {
         if (arr.length === 0) return 100;
-        return arr.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / arr.length;
+        // Allow >100% — proportional credit for exceeding targets
+        return arr.map(m => (m.current / m.target) * 100).reduce((a, b) => a + b, 0) / arr.length;
       };
 
       const bonusMetrics = [
@@ -299,7 +300,8 @@ export function useMyProductivity() {
 
     const calcAvg = (arr: { current: number; target: number }[]) => {
       if (arr.length === 0) return 100;
-      return arr.map(m => Math.min(100, (m.current / m.target) * 100)).reduce((a, b) => a + b, 0) / arr.length;
+      // Allow >100% — proportional credit for exceeding targets
+      return arr.map(m => (m.current / m.target) * 100).reduce((a, b) => a + b, 0) / arr.length;
     };
 
     // Bonus metrics that only add if they raise the score
