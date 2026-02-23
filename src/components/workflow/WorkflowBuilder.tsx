@@ -101,6 +101,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
+  const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
+  const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -133,50 +135,122 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
   const handleGenerateWithAI = async () => {
     if (!aiPrompt.trim()) return;
     setGenerating(true);
+    setAiChangelog(null);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-workflow', {
-        body: {
-          description: aiPrompt,
-          activityTypes: activityTypes.map(t => t.label),
-        },
-      });
+      if (aiMode === 'edit' && phases.length > 0) {
+        // Edit mode: send current workflow to AI for modification
+        const currentWorkflow = {
+          name: formName,
+          description: formDescription,
+          phases: phases.map(p => ({
+            stageId: p.stageId,
+            stageName: p.stageName,
+            stageColor: p.stageColor,
+            objectives: p.objectives.map(o => ({
+              templateId: o.templateId,
+              name: o.name,
+              description: o.description,
+              is_mandatory: o.is_mandatory,
+              steps: o.items.map(s => ({
+                id: s.id,
+                label: s.label,
+                description: s.description,
+                script: s.script,
+                activityType: s.activityType,
+                nextStageId: s.nextStageId,
+                docChecklist: s.docChecklist,
+              })),
+            })),
+          })),
+        };
 
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+        const { data, error } = await supabase.functions.invoke('edit-workflow', {
+          body: {
+            description: aiPrompt,
+            currentWorkflow,
+            activityTypes: activityTypes.map(t => t.label),
+          },
+        });
 
-      setFormName(data.name || '');
-      setFormDescription(data.description || '');
+        if (error) throw error;
+        if (data.error) throw new Error(data.error);
 
-      const generatedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
-        stageId: phase.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
-        stageName: phase.name,
-        stageColor: phase.color || '#3b82f6',
-        objectives: (phase.objectives || []).map((obj: any) => ({
-          name: obj.name,
-          description: obj.description || '',
-          is_mandatory: obj.is_mandatory || false,
-          items: (obj.steps || []).map((step: any) => ({
-            id: crypto.randomUUID(),
-            label: step.label,
-            description: step.description || undefined,
-            script: step.script || undefined,
-            activityType: step.activityType || undefined,
-            docChecklist: step.docChecklist?.length
-              ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label, type: d.type || 'documentos' }))
-              : undefined,
+        const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
+          stageId: phase.stageId,
+          stageName: phase.stageName,
+          stageColor: phase.stageColor || '#3b82f6',
+          objectives: (phase.objectives || []).map((obj: any) => ({
+            templateId: obj.templateId || undefined,
+            name: obj.name,
+            description: obj.description || '',
+            is_mandatory: obj.is_mandatory || false,
+            items: (obj.steps || []).map((step: any) => ({
+              id: step.id || crypto.randomUUID(),
+              label: step.label,
+              description: step.description || undefined,
+              script: step.script || undefined,
+              activityType: step.activityType || undefined,
+              nextStageId: step.nextStageId || undefined,
+              docChecklist: step.docChecklist?.length
+                ? step.docChecklist.map((d: any) => ({ id: d.id || crypto.randomUUID(), label: d.label, type: d.type || 'documentos', nextStageId: d.nextStageId }))
+                : undefined,
+            })),
+            isExpanded: true,
           })),
           isExpanded: true,
-        })),
-        isExpanded: true,
-      }));
+        }));
 
-      setPhases(generatedPhases);
-      setShowAiDialog(false);
-      setAiPrompt('');
-      toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
+        setPhases(editedPhases);
+        setAiChangelog(data.changelog || []);
+        setShowAiDialog(false);
+        setAiPrompt('');
+        toast.success(`Fluxo editado! ${(data.changelog || []).length} alteração(ões) aplicada(s)`);
+      } else {
+        // Create mode
+        const { data, error } = await supabase.functions.invoke('generate-workflow', {
+          body: {
+            description: aiPrompt,
+            activityTypes: activityTypes.map(t => t.label),
+          },
+        });
+
+        if (error) throw error;
+        if (data.error) throw new Error(data.error);
+
+        setFormName(data.name || '');
+        setFormDescription(data.description || '');
+
+        const generatedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
+          stageId: phase.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          stageName: phase.name,
+          stageColor: phase.color || '#3b82f6',
+          objectives: (phase.objectives || []).map((obj: any) => ({
+            name: obj.name,
+            description: obj.description || '',
+            is_mandatory: obj.is_mandatory || false,
+            items: (obj.steps || []).map((step: any) => ({
+              id: crypto.randomUUID(),
+              label: step.label,
+              description: step.description || undefined,
+              script: step.script || undefined,
+              activityType: step.activityType || undefined,
+              docChecklist: step.docChecklist?.length
+                ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label, type: d.type || 'documentos' }))
+                : undefined,
+            })),
+            isExpanded: true,
+          })),
+          isExpanded: true,
+        }));
+
+        setPhases(generatedPhases);
+        setShowAiDialog(false);
+        setAiPrompt('');
+        toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
+      }
     } catch (error: any) {
-      console.error('Error generating workflow:', error);
-      toast.error(error.message || 'Erro ao gerar fluxo com IA');
+      console.error('Error with AI workflow:', error);
+      toast.error(error.message || 'Erro ao processar com IA');
     } finally {
       setGenerating(false);
     }
@@ -511,7 +585,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Fluxo
               </Button>
-              <Button className="flex-1" variant="default" onClick={() => { resetForm(); setViewMode('edit'); setShowAiDialog(true); }}>
+              <Button className="flex-1" variant="default" onClick={() => { resetForm(); setViewMode('edit'); setAiMode('create'); setShowAiDialog(true); }}>
                 <Sparkles className="h-4 w-4 mr-2" />
                 Gerar com IA
               </Button>
@@ -533,12 +607,44 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                 <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Descreva o propósito..." className="mt-1 min-h-[60px]" />
               </div>
 
-              {/* AI Generate Button */}
-              {!editingBoardId && (
-                <Button variant="outline" className="w-full border-dashed" onClick={() => setShowAiDialog(true)}>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Preencher com IA a partir de uma descrição
-                </Button>
+              {/* AI Generate/Edit Button */}
+              <Button variant="outline" className="w-full border-dashed" onClick={() => {
+                setAiMode(editingBoardId ? 'edit' : 'create');
+                setAiChangelog(null);
+                setShowAiDialog(true);
+              }}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                {editingBoardId ? 'Editar com IA' : 'Preencher com IA a partir de uma descrição'}
+              </Button>
+
+              {/* AI Changelog */}
+              {aiChangelog && aiChangelog.length > 0 && (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Alterações da IA ({aiChangelog.length})
+                      </span>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setAiChangelog(null)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {aiChangelog.map((change, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs">
+                          <Badge variant={change.action === 'added' ? 'default' : change.action === 'removed' ? 'destructive' : 'secondary'} className="text-[9px] px-1.5 py-0 flex-shrink-0 mt-0.5">
+                            {change.action === 'added' ? '+ Novo' : change.action === 'removed' ? '- Removido' : '✎ Editado'}
+                          </Badge>
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground">{change.location}</p>
+                            <p className="text-muted-foreground">{change.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Phases → Objectives → Steps */}
@@ -1061,23 +1167,27 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
       </DialogContent>
     </Dialog>
 
-    {/* AI Generation Dialog */}
+    {/* AI Generation/Edit Dialog */}
     <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            Gerar Fluxo com IA
+            {aiMode === 'edit' ? 'Editar Fluxo com IA' : 'Gerar Fluxo com IA'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists.
+            {aiMode === 'edit'
+              ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado.'
+              : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists.'}
           </p>
           <Textarea
             value={aiPrompt}
             onChange={e => setAiPrompt(e.target.value)}
-            placeholder="Ex: Fluxo para prospecção de clientes de acidente de trabalho, começando pelo contato inicial via WhatsApp, passando por coleta de documentos, análise jurídica e ajuizamento da ação..."
+            placeholder={aiMode === 'edit'
+              ? 'Ex: Adicione um passo de envio de contrato na fase de Fechamento, com checklist de documentos necessários...'
+              : 'Ex: Fluxo para prospecção de clientes de acidente de trabalho, começando pelo contato inicial via WhatsApp...'}
             className="min-h-[120px]"
           />
           <div className="flex gap-2 justify-end">
@@ -1088,12 +1198,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
               {generating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Gerando...
+                  {aiMode === 'edit' ? 'Editando...' : 'Gerando...'}
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Gerar Fluxo
+                  {aiMode === 'edit' ? 'Aplicar Alterações' : 'Gerar Fluxo'}
                 </>
               )}
             </Button>
