@@ -33,8 +33,8 @@ export function useIncomingCallDetector() {
         },
         (payload) => {
           const event = payload.new as IncomingCallEvent;
-          // Only trigger on 'offer' (ringing) events that haven't been dismissed
-          if (event.event_type === 'offer' && !dismissedCallIds.current.has(event.call_id)) {
+          // Trigger on 'offer' (ringing) events for both inbound and outbound calls
+          if ((event.event_type === 'offer' || event.event_type === 'accept') && !dismissedCallIds.current.has(event.call_id)) {
             setActiveCall(event);
             setDismissed(false);
           }
