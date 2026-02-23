@@ -172,16 +172,25 @@ export default function PrivacyPolicyPage() {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [form, setForm] = useState<PolicyData>({
-    companyName: '',
-    cnpj: '',
-    website: '',
-    email: '',
-    phone: '',
-    address: '',
-    appDescription: '',
-    dataCollected: '',
+    companyName: 'WHATSJUD TECNOLOGIA EM SOFTWARE LTDA - ME',
+    cnpj: '48.628.348/0001-54',
+    website: 'https://adscore-keeper.lovable.app',
+    email: 'processual@rprudencioadv.com',
+    phone: '869995590127',
+    address: 'AV ENG LUIZ CARLOS BERRINI, 1681, sala 111 e 112, São Paulo/SP',
+    appDescription: 'O WhatsJUD é uma plataforma de gestão e produtividade voltada para escritórios de advocacia e equipes jurídicas. O sistema integra funcionalidades de CRM (gestão de leads e pipeline de vendas), comunicação via WhatsApp e Instagram (envio e recebimento de mensagens, comentários e DMs), gestão de contatos e relacionamentos, controle financeiro (transações bancárias, cartões de crédito e categorização de despesas), gestão de equipes (produtividade, avaliações e comissões), automação de fluxos de trabalho, análise de métricas de engajamento em redes sociais, gestão de atividades e tarefas, integração com Google Calendar, registro e gravação de chamadas telefônicas, importação e gestão de dados de CAT (Comunicação de Acidente de Trabalho), e geração de relatórios e dashboards analíticos.',
+    dataCollected: `• Dados de identificação: nome completo, CPF/CNPJ, data de nascimento, profissão (código CBO);
+• Dados de contato: e-mail, telefone, celular, endereço completo (CEP, cidade, estado, bairro);
+• Dados de acesso: endereço IP, geolocalização aproximada, tipo de dispositivo, sistema operacional, navegador, sessões de uso;
+• Dados de uso: páginas acessadas, tempo de permanência, cliques, filtros aplicados, buscas realizadas, exportações de dados;
+• Dados de redes sociais: nome de usuário do Instagram, comentários, mensagens diretas, métricas de engajamento, histórico de interações;
+• Dados de comunicação: mensagens enviadas e recebidas via WhatsApp, registros e gravações de chamadas telefônicas, histórico de conversas;
+• Dados financeiros: transações bancárias, transações de cartão de crédito, categorias de despesas, dados de comerciantes (CNPJ, nome, localização);
+• Dados profissionais e jurídicos: informações de leads, dados de acidentes de trabalho (CAT), classificações de casos, histórico de etapas processuais;
+• Dados de equipe: avaliações de produtividade, metas de comissão, registros de atividades, rotinas de trabalho;
+• Dados de integração: tokens de acesso a APIs (Meta/Facebook, Google), webhooks e dados de automação.`,
     dpoName: '',
-    dpoEmail: '',
+    dpoEmail: 'processual@rprudencioadv.com',
   });
 
   const update = (key: keyof PolicyData, value: string) =>
