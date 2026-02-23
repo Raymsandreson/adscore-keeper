@@ -34,12 +34,24 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId }: 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const makeCall = useCallback(() => {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const telUrl = cleanPhone.startsWith('55') ? `tel:+${cleanPhone}` : `tel:+55${cleanPhone}`;
-    const a = document.createElement('a');
-    a.href = telUrl;
-    a.click();
+  const makeCall = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
+        body: { phone },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao iniciar chamada');
+      toast.success('Chamada WhatsApp iniciada!');
+    } catch (err) {
+      console.error('Error making WhatsApp call:', err);
+      toast.error('Erro ao iniciar chamada via WhatsApp');
+      // Fallback to tel: protocol
+      const cleanPhone = phone.replace(/\D/g, '');
+      const telUrl = cleanPhone.startsWith('55') ? `tel:+${cleanPhone}` : `tel:+55${cleanPhone}`;
+      const a = document.createElement('a');
+      a.href = telUrl;
+      a.click();
+    }
   }, [phone]);
 
   const startRecording = useCallback(async () => {

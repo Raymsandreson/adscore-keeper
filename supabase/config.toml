@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.generate-workflow]
 verify_jwt = false
+
+[functions.make-whatsapp-call]
+verify_jwt = false
