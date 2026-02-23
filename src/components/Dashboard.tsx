@@ -363,7 +363,7 @@ const Dashboard = () => {
               </Button>
             </Link>
 
-            <Link to="/?tab=automation&subtab=comments">
+            <Link to="/dashboard?tab=automation&subtab=comments">
               <Button variant="outline" size="sm" className="border-primary/50 hover:bg-primary/10 relative">
                 <MessageCircle className="h-4 w-4 mr-2 text-primary" />
                 Comentários
@@ -378,7 +378,7 @@ const Dashboard = () => {
               </Button>
             </Link>
 
-            <Link to="/?tab=automation&subtab=funnel">
+            <Link to="/dashboard?tab=automation&subtab=funnel">
               <Button variant="outline" size="sm" className="border-orange-500/50 hover:bg-orange-500/10 relative">
                 <Filter className="h-4 w-4 mr-2 text-orange-500" />
                 Funil
@@ -392,7 +392,7 @@ const Dashboard = () => {
               </Button>
             </Link>
 
-            <Link to="/?tab=automation&subtab=automation">
+            <Link to="/dashboard?tab=automation&subtab=automation">
               <Button variant="outline" size="sm" className="border-purple-500/50 hover:bg-purple-500/10">
                 <Bot className="h-4 w-4 mr-2 text-purple-500" />
                 Automação IA
