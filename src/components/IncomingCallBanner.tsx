@@ -5,7 +5,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Phone, PhoneIncoming, PhoneOutgoing, Mic, MicOff, X, Square, Loader2 } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, Mic, Square, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -15,10 +15,12 @@ export function IncomingCallBanner() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [processing, setProcessing] = useState(false);
+  const [autoStarted, setAutoStarted] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const lastAutoStartCallId = useRef<string | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
@@ -47,7 +49,7 @@ export function IncomingCallBanner() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.start(1000); // 1s chunks
+      recorder.start(1000);
       setIsRecording(true);
       setRecordingTime(0);
 
@@ -55,27 +57,43 @@ export function IncomingCallBanner() {
         setRecordingTime(prev => prev + 1);
       }, 1000);
 
-      toast.success('Gravação iniciada!');
+      toast.info('🔴 Gravação automática iniciada para esta chamada.');
     } catch (err) {
       console.error('Mic access error:', err);
-      toast.error('Não foi possível acessar o microfone');
+      // Even without mic, show the banner with timer
+      setIsRecording(true);
+      setRecordingTime(0);
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      toast.warning('Chamada detectada. Microfone indisponível — gravação de áudio não ativa.');
     }
   }, []);
+
+  // AUTO-START recording when a call is detected
+  useEffect(() => {
+    if (activeCall && !isRecording && !processing && !autoStarted && activeCall.call_id !== lastAutoStartCallId.current) {
+      lastAutoStartCallId.current = activeCall.call_id;
+      setAutoStarted(true);
+      startRecording();
+    }
+    // Reset autoStarted when call ends
+    if (!activeCall && autoStarted) {
+      setAutoStarted(false);
+    }
+  }, [activeCall, isRecording, processing, autoStarted, startRecording]);
 
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
-      // Force reset if stuck
       setIsRecording(false);
       setProcessing(false);
       return;
     }
 
-    // Show spinner — keep isRecording=true so banner stays visible
     setProcessing(true);
     if (timerRef.current) clearInterval(timerRef.current);
 
-    // Capture values now (before async)
     const currentUser = user;
     const currentCall = activeCall;
     const currentDuration = recordingTime;
@@ -120,8 +138,8 @@ export function IncomingCallBanner() {
             audio_url: audioUrl,
             audio_file_name: fileName,
             phone_used: 'whatsapp_cloud',
-            notes: 'Gravação local da chamada WhatsApp Cloud.',
-            tags: ['whatsapp', 'cloud_api', 'gravacao_local'],
+            notes: 'Gravação automática da chamada WhatsApp.',
+            tags: ['whatsapp', 'cloud_api', 'gravacao_automatica'],
           });
 
         if (upsertError) throw upsertError;
@@ -157,19 +175,13 @@ export function IncomingCallBanner() {
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-top-5 duration-300">
-      <Card className={cn(
-        "px-4 py-3 shadow-2xl border-2 flex items-center gap-3 min-w-[320px] max-w-[480px]",
-        isRecording ? "border-red-500 bg-red-500/5" : "border-primary bg-primary/5"
-      )}>
+      <Card className="px-4 py-3 shadow-2xl border-2 border-red-500 bg-red-500/5 flex items-center gap-3 min-w-[320px] max-w-[480px]">
         {/* Call icon */}
-        <div className={cn(
-          "rounded-full p-2 animate-pulse",
-          isRecording ? "bg-red-500/20" : "bg-primary/20"
-        )}>
+        <div className="rounded-full p-2 animate-pulse bg-red-500/20">
           {isInbound ? (
-            <PhoneIncoming className={cn("h-5 w-5", isRecording ? "text-red-500" : "text-primary")} />
+            <PhoneIncoming className="h-5 w-5 text-red-500" />
           ) : (
-            <PhoneOutgoing className={cn("h-5 w-5", isRecording ? "text-red-500" : "text-primary")} />
+            <PhoneOutgoing className="h-5 w-5 text-red-500" />
           )}
         </div>
 
@@ -183,14 +195,11 @@ export function IncomingCallBanner() {
               {isInbound ? 'Recebida' : 'Realizada'}
             </Badge>
           </div>
-          {isRecording ? (
-            <div className="flex items-center gap-2 text-xs text-red-500 font-mono">
-              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              Gravando {formatTime(recordingTime)}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Toque para gravar esta chamada</p>
-          )}
+          <div className="flex items-center gap-2 text-xs text-red-500 font-mono">
+            <Mic className="h-3 w-3" />
+            <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            {isRecording ? `Gravando ${formatTime(recordingTime)}` : 'Iniciando gravação...'}
+          </div>
         </div>
 
         {/* Actions */}
@@ -202,17 +211,7 @@ export function IncomingCallBanner() {
               <Square className="h-3.5 w-3.5" />
               Parar
             </Button>
-          ) : (
-            <Button size="sm" onClick={startRecording} className="gap-1.5">
-              <Mic className="h-3.5 w-3.5" />
-              Gravar
-            </Button>
-          )}
-          {!isRecording && !processing && (
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={dismiss}>
-              <X className="h-4 w-4" />
-            </Button>
-          )}
+          ) : null}
         </div>
       </Card>
     </div>
