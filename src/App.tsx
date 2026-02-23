@@ -27,6 +27,7 @@ import ExpenseFormPage from "./pages/ExpenseFormPage";
 import CallsPage from "./pages/CallsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ function AppRoutes() {
         <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
         <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
         <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>
