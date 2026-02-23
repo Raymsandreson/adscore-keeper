@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,29 +9,38 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { SessionProvider } from "@/contexts/SessionContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PageTracker } from "@/components/PageTracker";
-import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
-import { UserProductivityBanner } from "@/components/UserProductivityBanner";
 import { FloatingNav } from "@/components/FloatingNav";
-import { IncomingCallBanner } from "@/components/IncomingCallBanner";
-import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
-import Index from "./pages/Index";
-import ActivitiesPage from "./pages/ActivitiesPage";
-import LeadsCenter from "./pages/LeadsCenter";
 
-import AnalyticsPage from "./pages/AnalyticsPage";
-import LeaderboardPage from "./pages/LeaderboardPage";
-import TeamPage from "./pages/TeamPage";
-import WorkflowPage from "./pages/WorkflowPage";
-import WorkflowProgressPage from "./pages/WorkflowProgressPage";
-import ProfilePage from "./pages/ProfilePage";
-import FinancePage from "./pages/FinancePage";
-import ExpenseFormPage from "./pages/ExpenseFormPage";
-import CallsPage from "./pages/CallsPage";
-import WhatsAppPage from "./pages/WhatsAppPage";
-import NotFound from "./pages/NotFound";
-import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
+// Lazy-loaded global overlays (non-critical)
+const GlobalDatabaseSearch = lazy(() => import("@/components/GlobalDatabaseSearch").then(m => ({ default: m.GlobalDatabaseSearch })));
+const UserProductivityBanner = lazy(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
+const IncomingCallBanner = lazy(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
+const CallFieldSuggestionsBanner = lazy(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
+
+// Lazy-loaded pages
+const Index = lazy(() => import("./pages/Index"));
+const ActivitiesPage = lazy(() => import("./pages/ActivitiesPage"));
+const LeadsCenter = lazy(() => import("./pages/LeadsCenter"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
+const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage"));
+const TeamPage = lazy(() => import("./pages/TeamPage"));
+const WorkflowPage = lazy(() => import("./pages/WorkflowPage"));
+const WorkflowProgressPage = lazy(() => import("./pages/WorkflowProgressPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const FinancePage = lazy(() => import("./pages/FinancePage"));
+const ExpenseFormPage = lazy(() => import("./pages/ExpenseFormPage"));
+const CallsPage = lazy(() => import("./pages/CallsPage"));
+const WhatsAppPage = lazy(() => import("./pages/WhatsAppPage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 
 const queryClient = new QueryClient();
+
+const PageLoading = () => (
+  <div className="flex items-center justify-center h-screen">
+    <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+  </div>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -55,30 +65,34 @@ function AppRoutes() {
   return (
     <>
       <PageTracker />
-      <GlobalDatabaseSearch />
-      <UserProductivityBanner />
-      <IncomingCallBanner />
-      <CallFieldSuggestionsBanner />
+      <Suspense fallback={null}>
+        <GlobalDatabaseSearch />
+        <UserProductivityBanner />
+        <IncomingCallBanner />
+        <CallFieldSuggestionsBanner />
+      </Suspense>
       <FloatingNav />
-      <Routes>
-        <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
-        <Route path="/dashboard" element={<Index />} />
-        <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
-        
-        <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
-        <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
-        <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
-        <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
-        <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
-        <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
-        <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
-        <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
-        <Route path="/privacy" element={<PrivacyPolicyPage />} />
-        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <Suspense fallback={<PageLoading />}>
+        <Routes>
+          <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<Index />} />
+          <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
+          
+          <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
+          <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+          <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
+          <Route path="/workflow" element={<ProtectedRoute><WorkflowPage /></ProtectedRoute>} />
+          <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
+          <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
+          <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
+          <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }
