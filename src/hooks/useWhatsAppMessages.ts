@@ -50,6 +50,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
+  const conversationsRef = useRef<WhatsAppConversation[]>([]);
 
   const fetchInstances = async () => {
     if (!user) return;
@@ -139,7 +140,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const convList = Array.from(convMap.values())
         .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
       
-      setConversations(convList);
+      // Only update state if conversations actually changed (avoid flicker)
+      const prevPhones = conversationsRef.current.map(c => c.phone + c.last_message_at + c.unread_count).join('|');
+      const newPhones = convList.map(c => c.phone + c.last_message_at + c.unread_count).join('|');
+      if (prevPhones !== newPhones) {
+        conversationsRef.current = convList;
+        setConversations(convList);
+      }
+      setMessages(msgs);
     } catch (error) {
       console.error('Error fetching WhatsApp messages:', error);
     } finally {
