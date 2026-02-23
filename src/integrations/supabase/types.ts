@@ -2906,6 +2906,7 @@ export type Database = {
           creative_id: string | null
           creative_name: string | null
           damage_description: string | null
+          expected_birth_date: string | null
           facebook_lead_id: string | null
           first_meeting_at: string | null
           first_visit_at: string | null
@@ -2969,6 +2970,7 @@ export type Database = {
           creative_id?: string | null
           creative_name?: string | null
           damage_description?: string | null
+          expected_birth_date?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
           first_visit_at?: string | null
@@ -3032,6 +3034,7 @@ export type Database = {
           creative_id?: string | null
           creative_name?: string | null
           damage_description?: string | null
+          expected_birth_date?: string | null
           facebook_lead_id?: string | null
           first_meeting_at?: string | null
           first_visit_at?: string | null

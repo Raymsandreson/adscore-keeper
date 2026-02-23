@@ -167,6 +167,7 @@ export function LeadEditDialog({
   const [acolhedor, setAcolhedor] = useState('');
   const [groupLink, setGroupLink] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
+  const [expectedBirthDate, setExpectedBirthDate] = useState('');
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -231,6 +232,7 @@ export function LeadEditDialog({
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
       setClientClassification(lead.client_classification || '');
+      setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
       
       // Accident fields
@@ -550,6 +552,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         news_link: newsLink || null,
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
+        expected_birth_date: expectedBirthDate || null,
       } as Partial<Lead>);
 
       // Save custom field values
@@ -837,6 +840,17 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                     </div>
                   )}
                 </div>
+
+                {clientClassification?.toLowerCase().includes('parto') && (
+                  <div>
+                    <Label>Previsão do Parto</Label>
+                    <Input
+                      type="date"
+                      value={expectedBirthDate}
+                      onChange={(e) => setExpectedBirthDate(e.target.value)}
+                    />
+                  </div>
+                )}
 
                 <div className="col-span-2">
                   <Label>Observações</Label>
