@@ -13,6 +13,8 @@ export interface CallFieldSuggestion {
   suggested_value: string;
   status: string;
   created_at: string;
+  contact_name?: string | null;
+  lead_name?: string | null;
 }
 
 export function useCallFieldSuggestions() {
@@ -22,10 +24,16 @@ export function useCallFieldSuggestions() {
   const fetchPending = useCallback(async () => {
     const { data } = await supabase
       .from('call_field_suggestions')
-      .select('*')
+      .select('*, call_records:call_record_id(contact_name, lead_name)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false }) as any;
-    setSuggestions(data || []);
+    const mapped = (data || []).map((s: any) => ({
+      ...s,
+      contact_name: s.call_records?.contact_name || null,
+      lead_name: s.call_records?.lead_name || null,
+      call_records: undefined,
+    }));
+    setSuggestions(mapped);
   }, []);
 
   useEffect(() => {

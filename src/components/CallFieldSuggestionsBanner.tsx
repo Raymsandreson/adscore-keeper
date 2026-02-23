@@ -3,7 +3,7 @@ import { useCallFieldSuggestions, CallFieldSuggestion } from '@/hooks/useCallFie
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, ChevronDown, ChevronUp, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, X, ChevronDown, ChevronUp, Sparkles, ArrowRight, User, Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,12 @@ export function CallFieldSuggestionsBanner() {
     acc[s.call_record_id].push(s);
     return acc;
   }, {} as Record<string, CallFieldSuggestion[]>);
+
+  // Get contact/lead info from first suggestion of each group
+  const getGroupInfo = (items: CallFieldSuggestion[]) => {
+    const first = items[0];
+    return { contactName: first?.contact_name, leadName: first?.lead_name };
+  };
 
   const handleAccept = async (s: CallFieldSuggestion) => {
     setProcessing(s.id);
@@ -74,51 +80,73 @@ export function CallFieldSuggestionsBanner() {
 
         {expanded && (
           <div className="px-4 pb-3 space-y-2">
-            {Object.entries(grouped).map(([, items]) => (
-              items.map((s) => (
-                <div
-                  key={s.id}
-                  className={cn(
-                    "flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-xs",
-                    processing === s.id && "opacity-50 pointer-events-none"
+            {Object.entries(grouped).map(([callId, items]) => {
+              const { contactName, leadName } = getGroupInfo(items);
+              return (
+                <div key={callId} className="space-y-1.5">
+                  {(contactName || leadName) && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
+                      {contactName && (
+                        <span className="flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          <span className="font-medium text-foreground">{contactName}</span>
+                        </span>
+                      )}
+                      {contactName && leadName && <span>·</span>}
+                      {leadName && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="h-3 w-3" />
+                          <span className="font-medium text-foreground">{leadName}</span>
+                        </span>
+                      )}
+                    </div>
                   )}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant="outline" className="text-[10px]">
-                        {s.entity_type === 'lead' ? 'Lead' : 'Contato'}
-                      </Badge>
-                      <span className="font-medium">{s.field_label}</span>
-                    </div>
-                    <div className="flex items-center gap-1 mt-1 text-muted-foreground">
-                      <span className="truncate">{s.current_value || '(vazio)'}</span>
-                      <ArrowRight className="h-3 w-3 shrink-0" />
-                      <span className="truncate font-medium text-foreground">{s.suggested_value}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20"
-                      onClick={() => handleAccept(s)}
-                      title="Confirmar alteração"
+                  {items.map((s) => (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-xs",
+                        processing === s.id && "opacity-50 pointer-events-none"
+                      )}
                     >
-                      <Check className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                      onClick={() => handleReject(s.id)}
-                      title="Rejeitar"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[10px]">
+                            {s.entity_type === 'lead' ? 'Lead' : 'Contato'}
+                          </Badge>
+                          <span className="font-medium">{s.field_label}</span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-1 text-muted-foreground">
+                          <span className="truncate">{s.current_value || '(vazio)'}</span>
+                          <ArrowRight className="h-3 w-3 shrink-0" />
+                          <span className="truncate font-medium text-foreground">{s.suggested_value}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20"
+                          onClick={() => handleAccept(s)}
+                          title="Confirmar alteração"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                          onClick={() => handleReject(s.id)}
+                          title="Rejeitar"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))
-            ))}
+              );
+            })}
 
             {/* Bulk actions */}
             {suggestions.length > 1 && (
