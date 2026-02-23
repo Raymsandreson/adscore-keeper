@@ -35,6 +35,12 @@ interface RankingEntry {
   week_end?: string;
 }
 
+interface MemberContext {
+  username: string;
+  teams: string[];
+  routine: string[];
+}
+
 interface CorridaMalucaDialogProps {
   rankings: RankingEntry[];
   weekStart?: Date;
@@ -43,6 +49,7 @@ interface CorridaMalucaDialogProps {
     points_per_mention: number;
     points_per_comment: number;
   };
+  memberContexts?: MemberContext[];
 }
 
 interface ChatMessage {
@@ -55,6 +62,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
   weekStart = new Date(),
   weekEnd = new Date(),
   settings = { points_per_mention: 1, points_per_comment: 1 },
+  memberContexts,
 }) => {
   const [open, setOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -83,6 +91,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
           weekStart: format(weekStart, 'dd/MM/yyyy', { locale: ptBR }),
           weekEnd: format(weekEnd, 'dd/MM/yyyy', { locale: ptBR }),
           settings,
+          memberContexts,
         },
       });
 
@@ -118,6 +127,7 @@ export const CorridaMalucaDialog: React.FC<CorridaMalucaDialogProps> = ({
           weekStart: format(weekStart, 'dd/MM/yyyy', { locale: ptBR }),
           weekEnd: format(weekEnd, 'dd/MM/yyyy', { locale: ptBR }),
           settings,
+          memberContexts,
           refineRequest: trimmed,
           currentMessage: message,
         },
