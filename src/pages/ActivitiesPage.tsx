@@ -792,8 +792,9 @@ const ActivitiesPage = () => {
 
   // Only show activity types that are in the user's routine (including custom DB types)
   const routineActivityTypes = useMemo(() => {
-    // Build a merged list of all known activity types (hardcoded + DB custom)
+    // Build a merged list of all known activity types (hardcoded + DB custom + from timeblock configs)
     const allTypes = [...ACTIVITY_TYPES];
+    // Add DB custom types
     for (const dbType of dbActivityTypes) {
       if (!allTypes.some(t => t.value === dbType.key)) {
         allTypes.push({
@@ -803,6 +804,19 @@ const ActivitiesPage = () => {
           border: 'border-border',
           header: dbType.color || 'bg-gray-500',
           dot: dbType.color || 'bg-gray-500',
+        });
+      }
+    }
+    // Also add types directly from timeblock settings to avoid race condition
+    for (const tb of timeBlockSettings) {
+      if (!allTypes.some(t => t.value === tb.activityType)) {
+        allTypes.push({
+          value: tb.activityType,
+          label: tb.label || tb.activityType,
+          bg: 'bg-muted',
+          border: 'border-border',
+          header: tb.color || 'bg-gray-500',
+          dot: tb.color || 'bg-gray-500',
         });
       }
     }
