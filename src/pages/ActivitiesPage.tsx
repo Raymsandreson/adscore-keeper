@@ -111,7 +111,7 @@ const ActivitiesPage = () => {
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
   const [formNextSteps, setFormNextSteps] = useState('');
-  const [formType, setFormType] = useState('tarefa');
+  const [formType, setFormType] = useState('');
   const [formPriority, setFormPriority] = useState('normal');
   const [formLeadId, setFormLeadId] = useState<string>('');
   const [formLeadName, setFormLeadName] = useState('');
@@ -273,7 +273,7 @@ const ActivitiesPage = () => {
     setFormWhatWasDone('');
     setFormCurrentStatus('');
     setFormNextSteps('');
-    setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : 'tarefa');
+    setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : '');
     setFormPriority('normal');
     setFormLeadId('');
     setFormLeadName('');
@@ -303,10 +303,6 @@ const ActivitiesPage = () => {
     }
     if (!formType) {
       toast.error('Selecione o tipo de atividade');
-      return;
-    }
-    if (timeBlockSettings.length > 0 && !timeBlockSettings.some(c => c.activityType === formType)) {
-      toast.error('Selecione um tipo de atividade que esteja na sua rotina');
       return;
     }
 
@@ -821,17 +817,26 @@ const ActivitiesPage = () => {
     try {
       const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
       if (!error && data?.suggested_type) {
-        // Use ACTIVITY_TYPES constant to avoid TDZ issues
-        const allKeys = ACTIVITY_TYPES.map(t => t.value);
-        if (allKeys.includes(data.suggested_type)) {
-          setFormType(data.suggested_type);
-          const label = ACTIVITY_TYPES.find(t => t.value === data.suggested_type)?.label;
-          toast.info(`Tipo sugerido pela IA: ${label}`, { duration: 2000 });
+        // Check against all known types (hardcoded + DB custom)
+        const allTypes = [...ACTIVITY_TYPES];
+        for (const dbType of dbActivityTypes) {
+          if (!allTypes.some(t => t.value === dbType.key)) {
+            allTypes.push({ value: dbType.key, label: dbType.label, bg: '', border: '', header: '', dot: '' });
+          }
+        }
+        const match = allTypes.find(t => t.value === data.suggested_type);
+        if (match) {
+          // Only set if it's in the routine (or no routine configured)
+          const routineKeys = timeBlockSettings.length > 0 ? new Set(timeBlockSettings.map(c => c.activityType)) : null;
+          if (!routineKeys || routineKeys.has(match.value)) {
+            setFormType(match.value);
+            toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
+          }
         }
       }
     } catch { /* silent */ }
     setAiSuggestingType(false);
-  }, []);
+  }, [dbActivityTypes, timeBlockSettings]);
 
   const handleTitleChange = useCallback((value: string) => {
     setFormTitle(value);
@@ -897,8 +902,8 @@ const ActivitiesPage = () => {
               )}
             </SelectContent>
           </Select>
-          {timeBlockSettings.length > 0 && !timeBlockSettings.some(c => c.activityType === formType) && (
-            <p className="text-[10px] text-destructive mt-0.5">Tipo não está na sua rotina</p>
+          {timeBlockSettings.length > 0 && formType && !timeBlockSettings.some(c => c.activityType === formType) && (
+            <p className="text-[10px] text-amber-600 mt-0.5">Tipo fora da rotina (permitido)</p>
           )}
         </div>
       </div>
