@@ -47,6 +47,10 @@ serve(async (req) => {
         });
       }
 
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
       // Fetch audio and transcribe with AI
       const fileData = await fetchFileAsBase64(audio_url);
       if (!fileData) {
@@ -55,12 +59,50 @@ serve(async (req) => {
         });
       }
 
+      // Get lead/contact context for field extraction
+      let leadContext = "";
+      let leadId: string | null = null;
+      let contactId: string | null = null;
+
+      if (call_record_id) {
+        const { data: callRecord } = await supabase
+          .from("call_records")
+          .select("lead_id, contact_id, contact_name, contact_phone")
+          .eq("id", call_record_id)
+          .single();
+
+        if (callRecord?.lead_id) {
+          leadId = callRecord.lead_id;
+          const { data: lead } = await supabase
+            .from("leads")
+            .select("lead_name, city, state, neighborhood, victim_name, victim_age, accident_date, damage_description, contractor_company, main_company, sector, case_type, accident_address, visit_city, visit_state, acolhedor")
+            .eq("id", leadId)
+            .single();
+          if (lead) {
+            leadContext = `\n\nDados atuais do Lead:\n${JSON.stringify(lead, null, 2)}`;
+          }
+        }
+        if (callRecord?.contact_id) {
+          contactId = callRecord.contact_id;
+          const { data: contact } = await supabase
+            .from("contacts")
+            .select("full_name, phone, email, city, state, neighborhood, profession")
+            .eq("id", contactId)
+            .single();
+          if (contact) {
+            leadContext += `\n\nDados atuais do Contato:\n${JSON.stringify(contact, null, 2)}`;
+          }
+        }
+      }
+
       const transcribePrompt = `Você recebeu uma gravação de áudio de uma ligação telefônica de um escritório de advocacia trabalhista.
 
 Faça o seguinte:
 1. Transcreva o áudio completo
 2. Faça um resumo objetivo em bullet points
 3. Identifique os próximos passos mencionados
+4. Identifique informações mencionadas na ligação que possam atualizar campos do lead ou contato (cidade, estado, bairro, nome da vítima, idade, data do acidente, empresa, tipo de caso, profissão, etc.)
+${leadContext}
 
 Responda em português do Brasil.`;
 
@@ -78,33 +120,49 @@ Responda em português do Brasil.`;
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: [
-            { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas." },
+            { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas e extrai informações para atualizar o CRM." },
             { role: "user", content: contentParts },
           ],
           tools: [{
             type: "function",
             function: {
-              name: "save_transcription",
-              description: "Salva a transcrição e resumo da ligação",
+              name: "save_transcription_and_suggestions",
+              description: "Salva a transcrição, resumo e sugestões de atualização de campos",
               parameters: {
                 type: "object",
                 properties: {
                   transcript: { type: "string", description: "Transcrição completa do áudio" },
                   summary: { type: "string", description: "Resumo objetivo em bullet points" },
                   next_steps: { type: "string", description: "Próximos passos identificados" },
+                  field_suggestions: {
+                    type: "array",
+                    description: "Sugestões de atualização de campos do lead ou contato mencionados na ligação. Só inclua se a informação for CLARAMENTE mencionada.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        entity_type: { type: "string", enum: ["lead", "contact"], description: "Se é campo do lead ou do contato" },
+                        field_name: { type: "string", description: "Nome do campo no banco (ex: city, state, victim_name, profession)" },
+                        field_label: { type: "string", description: "Nome amigável do campo em português (ex: Cidade, Estado, Nome da Vítima)" },
+                        suggested_value: { type: "string", description: "Valor sugerido baseado na ligação" },
+                      },
+                      required: ["entity_type", "field_name", "field_label", "suggested_value"],
+                      additionalProperties: false,
+                    },
+                  },
                 },
-                required: ["transcript", "summary", "next_steps"],
+                required: ["transcript", "summary", "next_steps", "field_suggestions"],
                 additionalProperties: false,
               },
             },
           }],
-          tool_choice: { type: "function", function: { name: "save_transcription" } },
+          tool_choice: { type: "function", function: { name: "save_transcription_and_suggestions" } },
         }),
       });
 
       let transcript = "";
       let summary = "";
       let nextSteps = "";
+      let fieldSuggestions: any[] = [];
 
       if (aiResponse.ok) {
         const aiData = await aiResponse.json();
@@ -114,8 +172,8 @@ Responda em português do Brasil.`;
           transcript = parsed.transcript || "";
           summary = parsed.summary || "";
           nextSteps = parsed.next_steps || "";
+          fieldSuggestions = parsed.field_suggestions || [];
         } else {
-          // Fallback: use raw content
           transcript = aiData.choices?.[0]?.message?.content || "";
           summary = transcript;
         }
@@ -123,12 +181,8 @@ Responda em português do Brasil.`;
         console.error("AI transcription error:", aiResponse.status, await aiResponse.text());
       }
 
-      // Update call_record in database if we have call_record_id
+      // Update call_record
       if (call_record_id && (transcript || summary)) {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseKey);
-
         await supabase
           .from("call_records")
           .update({
@@ -139,7 +193,55 @@ Responda em português do Brasil.`;
           .eq("id", call_record_id);
       }
 
-      return new Response(JSON.stringify({ success: true, transcript, summary, next_steps: nextSteps }), {
+      // Save field suggestions for user confirmation
+      if (call_record_id && fieldSuggestions.length > 0 && (leadId || contactId)) {
+        // Get current values for each suggestion
+        let leadData: any = null;
+        let contactData: any = null;
+
+        if (leadId) {
+          const { data } = await supabase.from("leads").select("*").eq("id", leadId).single();
+          leadData = data;
+        }
+        if (contactId) {
+          const { data } = await supabase.from("contacts").select("*").eq("id", contactId).single();
+          contactData = data;
+        }
+
+        const suggestions = fieldSuggestions
+          .filter((s: any) => {
+            const entityId = s.entity_type === "lead" ? leadId : contactId;
+            return entityId != null;
+          })
+          .map((s: any) => {
+            const entityId = s.entity_type === "lead" ? leadId : contactId;
+            const entityData = s.entity_type === "lead" ? leadData : contactData;
+            const currentValue = entityData?.[s.field_name] ?? null;
+            // Skip if value is the same
+            if (currentValue && String(currentValue).toLowerCase() === String(s.suggested_value).toLowerCase()) {
+              return null;
+            }
+            return {
+              call_record_id,
+              entity_type: s.entity_type,
+              entity_id: entityId,
+              field_name: s.field_name,
+              field_label: s.field_label,
+              current_value: currentValue ? String(currentValue) : null,
+              suggested_value: s.suggested_value,
+              status: "pending",
+            };
+          })
+          .filter(Boolean);
+
+        if (suggestions.length > 0) {
+          const { error: sugError } = await supabase.from("call_field_suggestions").insert(suggestions);
+          if (sugError) console.error("Error saving field suggestions:", sugError);
+          else console.log(`Saved ${suggestions.length} field suggestions for review`);
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true, transcript, summary, next_steps: nextSteps, suggestions_count: fieldSuggestions.length }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

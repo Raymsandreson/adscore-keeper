@@ -425,6 +425,59 @@ export type Database = {
         }
         Relationships: []
       }
+      call_field_suggestions: {
+        Row: {
+          call_record_id: string | null
+          created_at: string | null
+          current_value: string | null
+          entity_id: string
+          entity_type: string
+          field_label: string
+          field_name: string
+          id: string
+          reviewed_by: string | null
+          status: string
+          suggested_value: string
+          updated_at: string | null
+        }
+        Insert: {
+          call_record_id?: string | null
+          created_at?: string | null
+          current_value?: string | null
+          entity_id: string
+          entity_type: string
+          field_label: string
+          field_name: string
+          id?: string
+          reviewed_by?: string | null
+          status?: string
+          suggested_value: string
+          updated_at?: string | null
+        }
+        Update: {
+          call_record_id?: string | null
+          created_at?: string | null
+          current_value?: string | null
+          entity_id?: string
+          entity_type?: string
+          field_label?: string
+          field_name?: string
+          id?: string
+          reviewed_by?: string | null
+          status?: string
+          suggested_value?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_field_suggestions_call_record_id_fkey"
+            columns: ["call_record_id"]
+            isOneToOne: false
+            referencedRelation: "call_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_records: {
         Row: {
           activity_id: string | null
