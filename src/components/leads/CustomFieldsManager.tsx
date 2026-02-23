@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useLeadCustomFields, CustomField, FieldType } from '@/hooks/useLeadCustomFields';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface CustomFieldsManagerProps {
   adAccountId?: string;
@@ -23,7 +24,12 @@ const fieldTypeLabels: Record<FieldType, string> = {
 };
 
 export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
-  const { customFields, loading, addCustomField, updateCustomField, deleteCustomField } = useLeadCustomFields(adAccountId);
+  const { boards } = useKanbanBoards();
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
+  
+  const boardFilter = selectedBoardId === 'all' ? undefined : selectedBoardId;
+  const { customFields, loading, addCustomField, updateCustomField, deleteCustomField } = useLeadCustomFields(adAccountId, boardFilter);
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingField, setEditingField] = useState<CustomField | null>(null);
   
@@ -31,12 +37,14 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
   const [fieldType, setFieldType] = useState<FieldType>('text');
   const [fieldOptions, setFieldOptions] = useState('');
   const [isRequired, setIsRequired] = useState(false);
+  const [fieldBoardId, setFieldBoardId] = useState<string>('none');
 
   const resetForm = () => {
     setFieldName('');
     setFieldType('text');
     setFieldOptions('');
     setIsRequired(false);
+    setFieldBoardId(selectedBoardId !== 'all' ? selectedBoardId : 'none');
     setEditingField(null);
   };
 
@@ -47,6 +55,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
       setFieldType(field.field_type);
       setFieldOptions(field.field_options?.join(', ') || '');
       setIsRequired(field.is_required);
+      setFieldBoardId(field.board_id || 'none');
     } else {
       resetForm();
     }
@@ -65,6 +74,8 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
       ? fieldOptions.split(',').map(o => o.trim()).filter(Boolean)
       : [];
 
+    const boardIdValue = fieldBoardId === 'none' ? null : fieldBoardId;
+
     try {
       if (editingField) {
         await updateCustomField(editingField.id, {
@@ -72,10 +83,12 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
           field_type: fieldType,
           field_options: options,
           is_required: isRequired,
+          board_id: boardIdValue,
         });
       } else {
         await addCustomField({
           ad_account_id: adAccountId,
+          board_id: boardIdValue,
           field_name: fieldName,
           field_type: fieldType,
           field_options: options,
@@ -94,13 +107,18 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
     }
   };
 
+  const getBoardName = (boardId: string | null) => {
+    if (!boardId) return null;
+    return boards.find(b => b.id === boardId)?.name;
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-lg">Campos Personalizados</CardTitle>
-            <CardDescription>Crie campos adicionais para seus leads</CardDescription>
+            <CardDescription>Crie campos adicionais para seus leads, opcionalmente vinculados a um funil</CardDescription>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -116,6 +134,22 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                <div>
+                  <Label>Funil (opcional)</Label>
+                  <Select value={fieldBoardId} onValueChange={setFieldBoardId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos os funis" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Todos os funis (global)</SelectItem>
+                      {boards.map(board => (
+                        <SelectItem key={board.id} value={board.id}>
+                          {board.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <Label>Nome do Campo</Label>
                   <Input
@@ -169,6 +203,23 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
             </DialogContent>
           </Dialog>
         </div>
+        
+        {/* Board filter */}
+        <div className="pt-2">
+          <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+            <SelectTrigger className="w-full max-w-xs">
+              <SelectValue placeholder="Filtrar por funil" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os funis</SelectItem>
+              {boards.map(board => (
+                <SelectItem key={board.id} value={board.id}>
+                  {board.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -189,13 +240,23 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <div className="font-medium">{field.field_name}</div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                       <Badge variant="secondary" className="text-xs">
                         {fieldTypeLabels[field.field_type]}
                       </Badge>
                       {field.is_required && (
                         <Badge variant="outline" className="text-xs">
                           Obrigatório
+                        </Badge>
+                      )}
+                      {field.board_id && (
+                        <Badge variant="default" className="text-xs">
+                          {getBoardName(field.board_id) || 'Funil'}
+                        </Badge>
+                      )}
+                      {!field.board_id && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">
+                          Global
                         </Badge>
                       )}
                       {field.field_type === 'select' && field.field_options?.length > 0 && (

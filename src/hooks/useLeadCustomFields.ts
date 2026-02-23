@@ -7,6 +7,7 @@ export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox';
 export interface CustomField {
   id: string;
   ad_account_id: string | null;
+  board_id: string | null;
   field_name: string;
   field_type: FieldType;
   field_options: string[];
@@ -28,7 +29,7 @@ export interface CustomFieldValue {
   updated_at: string;
 }
 
-export function useLeadCustomFields(adAccountId?: string) {
+export function useLeadCustomFields(adAccountId?: string, boardId?: string) {
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +45,10 @@ export function useLeadCustomFields(adAccountId?: string) {
         query = query.eq('ad_account_id', adAccountId);
       }
 
+      if (boardId) {
+        query = query.eq('board_id', boardId);
+      }
+
       const { data, error } = await query;
 
       if (error) throw error;
@@ -53,7 +58,7 @@ export function useLeadCustomFields(adAccountId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [adAccountId]);
+  }, [adAccountId, boardId]);
 
   const addCustomField = async (field: Partial<CustomField>) => {
     try {
@@ -61,6 +66,7 @@ export function useLeadCustomFields(adAccountId?: string) {
         .from('lead_custom_fields')
         .insert({
           ad_account_id: field.ad_account_id || null,
+          board_id: field.board_id || null,
           field_name: field.field_name,
           field_type: field.field_type || 'text',
           field_options: field.field_options || [],

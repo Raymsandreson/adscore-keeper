@@ -2760,6 +2760,7 @@ export type Database = {
       lead_custom_fields: {
         Row: {
           ad_account_id: string | null
+          board_id: string | null
           created_at: string
           display_order: number | null
           field_name: string
@@ -2771,6 +2772,7 @@ export type Database = {
         }
         Insert: {
           ad_account_id?: string | null
+          board_id?: string | null
           created_at?: string
           display_order?: number | null
           field_name: string
@@ -2782,6 +2784,7 @@ export type Database = {
         }
         Update: {
           ad_account_id?: string | null
+          board_id?: string | null
           created_at?: string
           display_order?: number | null
           field_name?: string
@@ -2791,7 +2794,15 @@ export type Database = {
           is_required?: boolean | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_custom_fields_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_followups: {
         Row: {
