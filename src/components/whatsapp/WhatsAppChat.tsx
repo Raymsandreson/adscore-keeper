@@ -187,6 +187,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
             contactName={conversation.contact_name}
             contactId={conversation.contact_id}
             leadId={conversation.lead_id}
+            instanceName={conversation.instance_name}
           />
         </div>
       </div>

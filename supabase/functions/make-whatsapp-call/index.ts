@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { phone, instance_id, contact_name, contact_id, lead_id } = body
+    const { phone, instance_id, instance_name, contact_name, contact_id, lead_id } = body
 
     if (!phone) {
       return new Response(
@@ -41,13 +41,23 @@ Deno.serve(async (req) => {
     const cleanPhone = phone.replace(/\D/g, '')
     const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
 
-    // Get instance
+    // Get instance by id, name, or fallback to first active
     let instance: any = null
     if (instance_id) {
       const { data } = await supabase
         .from('whatsapp_instances')
         .select('*')
         .eq('id', instance_id)
+        .eq('is_active', true)
+        .single()
+      instance = data
+    }
+
+    if (!instance && instance_name) {
+      const { data } = await supabase
+        .from('whatsapp_instances')
+        .select('*')
+        .eq('instance_name', instance_name)
         .eq('is_active', true)
         .single()
       instance = data
