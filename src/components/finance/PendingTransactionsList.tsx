@@ -133,6 +133,7 @@ export function PendingTransactionsList({
   const defaultLeadFormData: AccidentLeadFormData = {
     lead_name: '', lead_phone: '', lead_email: '', source: 'manual', notes: '',
     acolhedor: '', case_type: '', group_link: '',
+    client_classification: '', expected_birth_date: '',
     visit_city: '', visit_state: '', visit_region: '', visit_address: '',
     accident_date: '', damage_description: '', victim_name: '', victim_age: '',
     accident_address: '', contractor_company: '', main_company: '', sector: '',
@@ -178,6 +179,7 @@ export function PendingTransactionsList({
           lead_name: data.lead_name || '', lead_phone: data.lead_phone || '', lead_email: data.lead_email || '',
           source: data.source || 'manual', notes: data.notes || '', acolhedor: data.acolhedor || '',
           case_type: data.case_type || '', group_link: data.group_link || '',
+          client_classification: data.client_classification || '', expected_birth_date: data.expected_birth_date || '',
           visit_city: data.visit_city || '', visit_state: data.visit_state || '', visit_region: data.visit_region || '', visit_address: data.visit_address || '',
           accident_date: data.accident_date || '', damage_description: data.damage_description || '',
           victim_name: data.victim_name || '', victim_age: data.victim_age ? String(data.victim_age) : '',

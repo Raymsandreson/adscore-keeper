@@ -29,6 +29,10 @@ export interface AccidentLeadFormData {
   case_type: string;
   group_link: string;
   
+  // Classification & birth
+  client_classification: string;
+  expected_birth_date: string;
+  
   // Visit location
   visit_city: string;
   visit_state: string;
@@ -59,6 +63,7 @@ interface AccidentLeadFormProps {
   onChange: (data: Partial<AccidentLeadFormData>) => void;
   onOpenExtractor: () => void;
   teamMembers?: { id: string; full_name: string | null; email: string | null }[];
+  classifications?: { id: string; name: string; color: string }[];
 }
 
 const stateToRegion: Record<string, string> = {
@@ -117,7 +122,7 @@ const sources = [
   { value: 'cat_import', label: 'CAT' },
 ];
 
-export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [] }: AccidentLeadFormProps) {
+export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMembers = [], classifications = [] }: AccidentLeadFormProps) {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { loading: geoLoading, fetchLocation } = useGeolocation();
 
@@ -278,6 +283,42 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
                 rows={2}
               />
             </div>
+
+            {classifications.length > 0 && (
+              <div>
+                <Label>Classificação</Label>
+                <Select 
+                  value={formData.client_classification || '__none__'} 
+                  onValueChange={(v) => onChange({ client_classification: v === '__none__' ? '' : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sem classificação</SelectItem>
+                    {classifications.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${c.color}`} />
+                          {c.name.replace(/_/g, ' ')}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {formData.client_classification?.toLowerCase().includes('parto') && (
+              <div>
+                <Label>Previsão do Parto</Label>
+                <Input
+                  type="date"
+                  value={formData.expected_birth_date}
+                  onChange={(e) => onChange({ expected_birth_date: e.target.value })}
+                />
+              </div>
+            )}
           </div>
         </TabsContent>
 

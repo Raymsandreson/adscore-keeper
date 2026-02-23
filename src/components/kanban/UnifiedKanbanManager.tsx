@@ -35,6 +35,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -61,6 +62,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
+  const { classifications } = useContactClassifications();
   const [showAddLeadDialog, setShowAddLeadDialog] = usePageState<boolean>('kanban_addLeadOpen', false);
   const [showImportInstagram, setShowImportInstagram] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -91,6 +93,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     acolhedor: '',
     case_type: '',
     group_link: '',
+    client_classification: '',
+    expected_birth_date: '',
     visit_city: '',
     visit_state: '',
     visit_region: '',
@@ -344,6 +348,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       company_size_justification: newLeadFormData.company_size_justification || null,
       liability_type: newLeadFormData.liability_type || null,
       legal_viability: newLeadFormData.legal_viability || null,
+      client_classification: newLeadFormData.client_classification || null,
+      expected_birth_date: newLeadFormData.expected_birth_date || null,
     } as Partial<Lead>);
 
     // Reset form
@@ -356,6 +362,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
       acolhedor: '',
       case_type: '',
       group_link: '',
+      client_classification: '',
+      expected_birth_date: '',
       visit_city: '',
       visit_state: '',
       visit_region: '',
@@ -607,6 +615,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
             onChange={(data) => setNewLeadFormData(prev => ({ ...prev, ...data }))}
             onOpenExtractor={() => setShowExtractor(true)}
             teamMembers={teamProfiles}
+            classifications={classifications}
           />
 
           <DialogFooter>

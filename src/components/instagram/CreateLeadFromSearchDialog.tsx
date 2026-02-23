@@ -48,6 +48,8 @@ const initialFormData: AccidentLeadFormData = {
   acolhedor: '',
   case_type: '',
   group_link: '',
+  client_classification: '',
+  expected_birth_date: '',
   visit_city: '',
   visit_state: '',
   visit_region: '',
