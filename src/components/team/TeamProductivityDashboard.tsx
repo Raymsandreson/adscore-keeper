@@ -92,18 +92,37 @@ export function TeamProductivityDashboard() {
   const [selectedTeamId, setSelectedTeamId] = useState<string>('all');
   const [teams, setTeams] = useState<{ id: string; name: string; color: string | null }[]>([]);
   const [teamMembers, setTeamMembers] = useState<{ team_id: string; user_id: string; evaluated_metrics: string[] }[]>([]);
+  const [routinesByUser, setRoutinesByUser] = useState<Record<string, { activity_type: string; start_hour: number; start_minute: number; end_hour: number; end_minute: number }[]>>({});
+  const [activityTypeLabels, setActivityTypeLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchTeams = async () => {
-      const [teamsRes, membersRes] = await Promise.all([
+      const [teamsRes, membersRes, routinesRes, typesRes] = await Promise.all([
         supabase.from('teams').select('id, name, color').order('name'),
         supabase.from('team_members').select('team_id, user_id, evaluated_metrics'),
+        supabase.from('user_timeblock_settings').select('user_id, activity_type, start_hour, start_minute, end_hour, end_minute'),
+        supabase.from('activity_types').select('key, label').eq('is_active', true),
       ]);
       setTeams(teamsRes.data || []);
       setTeamMembers((membersRes.data || []).map(m => ({
         ...m,
         evaluated_metrics: (m.evaluated_metrics as string[]) || [],
       })));
+
+      // Group routines by user
+      const grouped: Record<string, typeof routinesRes.data> = {};
+      (routinesRes.data || []).forEach(r => {
+        if (!grouped[r.user_id]) grouped[r.user_id] = [];
+        grouped[r.user_id]!.push(r);
+      });
+      // Sort each user's routines by start time
+      Object.values(grouped).forEach(arr => arr!.sort((a, b) => (a.start_hour * 60 + (a.start_minute || 0)) - (b.start_hour * 60 + (b.start_minute || 0))));
+      setRoutinesByUser(grouped as any);
+
+      // Map activity type keys to labels
+      const labels: Record<string, string> = {};
+      (typesRes.data || []).forEach(t => { labels[t.key] = t.label; });
+      setActivityTypeLabels(labels);
     };
     fetchTeams();
   }, []);
@@ -628,6 +647,23 @@ export function TeamProductivityDashboard() {
                     })}
                     weekStart={dateRange.start}
                     weekEnd={dateRange.end}
+                    memberContexts={rankingData.map(m => {
+                      const userTeams = teamMembers
+                        .filter(tm => tm.user_id === m.userId)
+                        .map(tm => teams.find(t => t.id === tm.team_id)?.name)
+                        .filter(Boolean) as string[];
+                      const userRoutine = (routinesByUser[m.userId] || [])
+                        .map(r => {
+                          const label = activityTypeLabels[r.activity_type] || r.activity_type;
+                          const fmt = (h: number, min: number) => `${String(h).padStart(2,'0')}:${String(min || 0).padStart(2,'0')}`;
+                          return `${fmt(r.start_hour, r.start_minute)}-${fmt(r.end_hour, r.end_minute)} ${label}`;
+                        });
+                      return {
+                        username: m.displayName,
+                        teams: userTeams,
+                        routine: userRoutine,
+                      };
+                    })}
                   />
                 </div>
               </div>

@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { rankings, weekStart, weekEnd, settings, refineRequest, currentMessage } = await req.json();
+    const { rankings, weekStart, weekEnd, settings, refineRequest, currentMessage, memberContexts } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -98,6 +98,22 @@ serve(async (req) => {
       }
     }
 
+    // Build member context (teams, routines)
+    let memberContextSection = "";
+    if (memberContexts && Array.isArray(memberContexts) && memberContexts.length > 0) {
+      const contextLines = memberContexts.map((mc: any) => {
+        const parts = [`@${mc.username}`];
+        if (mc.teams && mc.teams.length > 0) {
+          parts.push(`Time(s): ${mc.teams.join(', ')}`);
+        }
+        if (mc.routine && mc.routine.length > 0) {
+          parts.push(`Rotina: ${mc.routine.join(' → ')}`);
+        }
+        return parts.join(' | ');
+      }).join('\n');
+      memberContextSection = `\nCONTEXTO DOS MEMBROS (time e rotina diária começando às 8h):\n${contextLines}`;
+    }
+
     const systemPrompt = `Você é um narrador esportivo que vai criar uma mensagem EMOCIONANTE e DIVERTIDA para WhatsApp sobre o ranking de produtividade da equipe Abraci.
 
 FORMATO DA NARRAÇÃO:
@@ -124,7 +140,9 @@ REGRAS:
 3. Mencione quem está perto de ultrapassar alguém (gaps pequenos)
 4. Se alguém tem poucos pontos, incentive com humor
 5. A narração deve parecer uma transmissão ao vivo de uma corrida emocionante
-6. Finalize sempre estimulando todos a competirem mais na próxima semana`;
+6. Finalize sempre estimulando todos a competirem mais na próxima semana
+7. LEVE EM CONTA o time de cada pessoa e sua rotina diária - use isso para contextualizar o desempenho (ex: quem faz outbound deveria ter mais leads, quem faz DMs deveria ter mais mensagens)
+8. O expediente começa às 8h - considere isso ao analisar a produtividade`;
 
     const userPrompt = `Crie a narração da Corrida Maluca do Engajamento para o período de ${weekStart} a ${weekEnd}.
 
@@ -137,6 +155,7 @@ ESTATÍSTICAS:
 - Média de pontos: ${avgPoints}
 - Configuração: ${settings.points_per_mention} pts/menção, ${settings.points_per_comment} pts/comentário
 ${extraContext}
+${memberContextSection}
 
 DIFERENÇAS ENTRE POSIÇÕES:
 ${gaps.join('\n')}
