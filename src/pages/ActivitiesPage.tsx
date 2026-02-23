@@ -149,6 +149,8 @@ const ActivitiesPage = () => {
   const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
+  // Assignee's routine: when creating/editing for another user, load their routine
+  const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
   const { types: dbActivityTypes } = useActivityTypes();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   // Countdown timer state for time block click
@@ -689,8 +691,8 @@ const ActivitiesPage = () => {
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
     if (workflowType) {
-      const routineKeys = timeBlockSettings.length > 0
-        ? new Set(timeBlockSettings.map(c => c.activityType))
+      const routineKeys = activeRoutine.length > 0
+        ? new Set(activeRoutine.map(c => c.activityType))
         : null;
       if (!routineKeys || routineKeys.has(workflowType)) {
         setFormType(workflowType);
@@ -790,7 +792,10 @@ const ActivitiesPage = () => {
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(leadSearch.toLowerCase()))
     : leads.slice(0, 20);
 
-  // Only show activity types that are in the user's routine (including custom DB types)
+  // Use the assignee's routine for filtering activity types in the form
+  const activeRoutine = (formAssignedTo && formAssignedTo !== user?.id) ? assigneeTimeBlockSettings : timeBlockSettings;
+
+  // Only show activity types that are in the assignee's routine (including custom DB types)
   const routineActivityTypes = useMemo(() => {
     // Build a merged list of all known activity types (hardcoded + DB custom + from timeblock configs)
     const allTypes = [...ACTIVITY_TYPES];
@@ -807,8 +812,8 @@ const ActivitiesPage = () => {
         });
       }
     }
-    // Also add types directly from timeblock settings to avoid race condition
-    for (const tb of timeBlockSettings) {
+    // Also add types directly from routine settings to avoid race condition
+    for (const tb of activeRoutine) {
       if (!allTypes.some(t => t.value === tb.activityType)) {
         allTypes.push({
           value: tb.activityType,
@@ -820,10 +825,10 @@ const ActivitiesPage = () => {
         });
       }
     }
-    if (timeBlockSettings.length === 0) return allTypes; // fallback if no routine configured
-    const routineKeys = new Set(timeBlockSettings.map(c => c.activityType));
+    if (activeRoutine.length === 0) return allTypes; // fallback if no routine configured
+    const routineKeys = new Set(activeRoutine.map(c => c.activityType));
     return allTypes.filter(t => routineKeys.has(t.value));
-  }, [timeBlockSettings, dbActivityTypes]);
+  }, [activeRoutine, dbActivityTypes]);
 
   const suggestActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;
@@ -841,7 +846,7 @@ const ActivitiesPage = () => {
         const match = allTypes.find(t => t.value === data.suggested_type);
         if (match) {
           // Only set if it's in the routine (or no routine configured)
-          const routineKeys = timeBlockSettings.length > 0 ? new Set(timeBlockSettings.map(c => c.activityType)) : null;
+          const routineKeys = activeRoutine.length > 0 ? new Set(activeRoutine.map(c => c.activityType)) : null;
           if (!routineKeys || routineKeys.has(match.value)) {
             setFormType(match.value);
             toast.info(`Tipo sugerido pela IA: ${match.label}`, { duration: 2000 });
@@ -850,7 +855,7 @@ const ActivitiesPage = () => {
       }
     } catch { /* silent */ }
     setAiSuggestingType(false);
-  }, [dbActivityTypes, timeBlockSettings]);
+  }, [dbActivityTypes, activeRoutine]);
 
   const handleTitleChange = useCallback((value: string) => {
     setFormTitle(value);
@@ -916,7 +921,7 @@ const ActivitiesPage = () => {
               )}
             </SelectContent>
           </Select>
-          {timeBlockSettings.length > 0 && formType && !timeBlockSettings.some(c => c.activityType === formType) && (
+          {activeRoutine.length > 0 && formType && !activeRoutine.some(c => c.activityType === formType) && (
             <p className="text-[10px] text-amber-600 mt-0.5">Tipo fora da rotina (permitido)</p>
           )}
         </div>
