@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { phone, instance_id, instance_name, contact_name, contact_id, lead_id } = body
+    const { phone, instance_id, instance_name, contact_name, contact_id, lead_id, lead_name } = body
 
     if (!phone) {
       return new Response(
@@ -105,6 +105,17 @@ Deno.serve(async (req) => {
     // Create call_record automatically
     let callRecordId: string | null = null
     if (userId) {
+      // Resolve lead_name if lead_id is provided but lead_name is not
+      let resolvedLeadName = lead_name || null
+      if (lead_id && !resolvedLeadName) {
+        const { data: leadData } = await supabase
+          .from('leads')
+          .select('lead_name')
+          .eq('id', lead_id)
+          .single()
+        resolvedLeadName = leadData?.lead_name || null
+      }
+
       const { data: callRecord, error: insertError } = await supabase
         .from('call_records')
         .insert({
@@ -115,8 +126,9 @@ Deno.serve(async (req) => {
           contact_name: contact_name || null,
           contact_id: contact_id || null,
           lead_id: lead_id || null,
-          phone_used: 'whatsapp',
-          notes: 'Chamada iniciada via UazAPI.',
+          lead_name: resolvedLeadName,
+          phone_used: instance.instance_name || 'whatsapp',
+          notes: `Chamada iniciada via UazAPI.${resolvedLeadName ? ` Lead: ${resolvedLeadName}` : ''}`,
           tags: ['whatsapp', 'uazapi'],
         })
         .select('id')
