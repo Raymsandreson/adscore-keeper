@@ -52,6 +52,14 @@ export function useCallFieldSuggestions() {
   }, [fetchPending]);
 
   const acceptSuggestion = async (suggestion: CallFieldSuggestion) => {
+    console.log('[CallFieldSuggestions] Accepting:', {
+      id: suggestion.id,
+      entity_type: suggestion.entity_type,
+      entity_id: suggestion.entity_id,
+      field_name: suggestion.field_name,
+      suggested_value: suggestion.suggested_value,
+    });
+
     // Apply the field update
     const table = suggestion.entity_type === 'lead' ? 'leads' : 'contacts';
     const { error: updateError } = await supabase
@@ -59,13 +67,20 @@ export function useCallFieldSuggestions() {
       .update({ [suggestion.field_name]: suggestion.suggested_value } as any)
       .eq('id', suggestion.entity_id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('[CallFieldSuggestions] Update error on', table, ':', updateError);
+      throw updateError;
+    }
 
     // Mark as accepted
-    await supabase
+    const { error: markError } = await supabase
       .from('call_field_suggestions')
       .update({ status: 'accepted', reviewed_by: user?.id } as any)
       .eq('id', suggestion.id);
+
+    if (markError) {
+      console.error('[CallFieldSuggestions] Mark accepted error:', markError);
+    }
   };
 
   const rejectSuggestion = async (id: string) => {
