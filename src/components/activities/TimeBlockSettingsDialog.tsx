@@ -14,6 +14,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useActivityTypes, ActivityType } from '@/hooks/useActivityTypes';
 import { useUserRole } from '@/hooks/useUserRole';
+import { ActivityProcessGoalsConfig, ProcessGoalEntry } from './ActivityProcessGoalsConfig';
+import { useRoutineProcessGoals } from '@/hooks/useRoutineProcessGoals';
 
 /** One time-slot block (a type can have multiple) */
 export interface TimeBlockConfig {
@@ -84,6 +86,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   configs: TimeBlockConfig[];
   onSave: (configs: TimeBlockConfig[]) => void;
+  targetUserId?: string;
 }
 
 // ------------------------------------------------------------------
@@ -122,12 +125,19 @@ function hasOverlap(
 // Component
 // ------------------------------------------------------------------
 
-export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }: Props) {
+export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, targetUserId }: Props) {
   const { types: globalTypes, loading: typesLoading, addType, deleteType, updateType, reorder } = useActivityTypes();
   const { isAdmin } = useUserRole();
+  const { goals: savedProcessGoals, saveGoals: saveProcessGoals } = useRoutineProcessGoals(targetUserId);
 
   // Working copy — list of all blocks being edited
   const [blocks, setBlocks] = useState<TimeBlockConfig[]>([]);
+  
+  // Process goals per activity type: { [activityType]: ProcessGoalEntry[] }
+  const [processGoals, setProcessGoals] = useState<Record<string, ProcessGoalEntry[]>>({});
+
+  // Boards for funnel selector
+  const [boards, setBoards] = useState<{id: string; name: string}[]>([]);
 
   // Admin: manage global types
   const [showAddType, setShowAddType] = useState(false);
@@ -145,15 +155,36 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
 
-  // Init blocks from configs
+  // Fetch boards
+  useEffect(() => {
+    if (!open) return;
+    supabase.from('kanban_boards').select('id, name').order('display_order').then(({ data }) => {
+      if (data) setBoards(data);
+    });
+  }, [open]);
+
+  // Init blocks and process goals from saved data
   useEffect(() => {
     if (!open) return;
     setBlocks(configs.map(c => ({ ...c, blockId: c.blockId || newBlockId() })));
+    
+    // Convert saved goals into the working map
+    const goalsMap: Record<string, ProcessGoalEntry[]> = {};
+    savedProcessGoals.forEach(g => {
+      if (!goalsMap[g.activity_type]) goalsMap[g.activity_type] = [];
+      goalsMap[g.activity_type].push({
+        metric_key: g.metric_key,
+        target_value: g.target_value,
+        board_id: g.board_id,
+      });
+    });
+    setProcessGoals(goalsMap);
+    
     setShowAI(false);
     setAiDescription('');
     setShowAddType(false);
     setNewLabel('');
-  }, [open, configs]);
+  }, [open, configs, savedProcessGoals]);
 
   // Types that have at least one block
   const activeTypeKeys = new Set(blocks.map(b => b.activityType));
@@ -213,8 +244,21 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     onSave(blocks);
+    
+    // Save process goals
+    const allGoals = Object.entries(processGoals).flatMap(([actType, entries]) =>
+      entries.filter(e => e.target_value > 0).map(e => ({
+        user_id: targetUserId || '',
+        activity_type: actType,
+        metric_key: e.metric_key,
+        target_value: e.target_value,
+        board_id: e.board_id,
+      }))
+    );
+    await saveProcessGoals(allGoals, targetUserId);
+    
     onOpenChange(false);
   };
 
@@ -604,6 +648,14 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave }:
                         <Plus className="h-3 w-3" />
                         Adicionar outro horário para "{type.label}"
                       </Button>
+
+                      {/* Process goals config for this activity type */}
+                      <ActivityProcessGoalsConfig
+                        activityType={type.key}
+                        goals={processGoals[type.key] || []}
+                        boards={boards}
+                        onChange={(newGoals) => setProcessGoals(prev => ({ ...prev, [type.key]: newGoals }))}
+                      />
                     </div>
                   )}
                 </div>
