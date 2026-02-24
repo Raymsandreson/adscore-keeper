@@ -79,8 +79,9 @@ export function useMyProductivity() {
           .gte('changed_at', startDate).lte('changed_at', endDate),
         supabase.from('leads').select('id, status').eq('created_by', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
-        supabase.from('user_sessions').select('duration_seconds, started_at, last_activity_at').eq('user_id', userId)
-          .gte('started_at', startDate).lte('started_at', endDate),
+        supabase.from('user_sessions').select('duration_seconds, started_at, last_activity_at, ended_at').eq('user_id', userId)
+          .lte('started_at', endDate)
+          .or(`ended_at.is.null,ended_at.gte.${startDate}`),
         supabase.from('user_activity_log').select('action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('cat_lead_contacts').select('id, contact_channel').eq('contacted_by', userId)
@@ -134,16 +135,29 @@ export function useMyProductivity() {
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
       const nowMs = Date.now();
-      // Merge overlapping session intervals to avoid double-counting concurrent sessions
+      const dayStartMs = new Date(startDate).getTime();
+      const dayEndMs = new Date(endDate).getTime();
+      const SESSION_INACTIVITY_GRACE_MS = 5 * 60 * 1000;
+
+      // Merge overlapping intervals to avoid double-counting concurrent sessions
       const intervals: { start: number; end: number }[] = [];
       for (const s of sessions) {
         if (!s.started_at) continue;
         const start = new Date(s.started_at).getTime();
-        const end = s.duration_seconds
-          ? start + s.duration_seconds * 1000
-          : (s.last_activity_at ? Math.max(new Date(s.last_activity_at).getTime(), start) : nowMs);
-        intervals.push({ start, end: Math.min(end, nowMs) });
+        const endedAtMs = s.ended_at ? new Date(s.ended_at).getTime() : null;
+        const durationEndMs = typeof s.duration_seconds === 'number' ? start + s.duration_seconds * 1000 : null;
+        const lastActivityMs = s.last_activity_at ? new Date(s.last_activity_at).getTime() : null;
+        const inferredEndMs = lastActivityMs ? lastActivityMs + SESSION_INACTIVITY_GRACE_MS : nowMs;
+
+        const rawEnd = durationEndMs ?? endedAtMs ?? Math.min(inferredEndMs, nowMs);
+        const boundedStart = Math.max(start, dayStartMs);
+        const boundedEnd = Math.min(rawEnd, dayEndMs, nowMs);
+
+        if (boundedEnd > boundedStart) {
+          intervals.push({ start: boundedStart, end: boundedEnd });
+        }
       }
+
       // Sort by start, then merge overlapping
       intervals.sort((a, b) => a.start - b.start);
       const merged: { start: number; end: number }[] = [];
