@@ -32,7 +32,9 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
-    // Mode: transcribe_call — transcribe audio and save AI summary to call_records
+    // ==========================================
+    // Mode: transcribe_call
+    // ==========================================
     if (action === "transcribe_call") {
       const { audio_url, call_record_id, phone } = body;
       if (!audio_url) {
@@ -51,7 +53,6 @@ serve(async (req) => {
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Fetch audio and transcribe with AI
       const fileData = await fetchFileAsBase64(audio_url);
       if (!fileData) {
         return new Response(JSON.stringify({ success: false, error: "Could not fetch audio file" }), {
@@ -59,7 +60,6 @@ serve(async (req) => {
         });
       }
 
-      // Get lead/contact context for field extraction
       let leadContext = "";
       let leadId: string | null = null;
       let contactId: string | null = null;
@@ -184,7 +184,6 @@ Responda em português do Brasil.`;
         console.error("AI transcription error:", aiResponse.status, await aiResponse.text());
       }
 
-      // Update call_record
       if (call_record_id && (transcript || summary)) {
         await supabase
           .from("call_records")
@@ -196,15 +195,12 @@ Responda em português do Brasil.`;
           .eq("id", call_record_id);
       }
 
-      // Save field suggestions for user confirmation
-      // SKIP if call was NOT answered — AI hallucinates data from context when there's no real conversation
       const skipSuggestions = callResult === "nao_atendeu" || callResult === "caixa_postal";
       if (skipSuggestions) {
         console.log(`Skipping field suggestions: call_result=${callResult}`);
       }
 
       if (call_record_id && fieldSuggestions.length > 0 && (leadId || contactId) && !skipSuggestions) {
-        // Get current values for each suggestion
         let leadData: any = null;
         let contactData: any = null;
 
@@ -226,7 +222,6 @@ Responda em português do Brasil.`;
             const entityId = s.entity_type === "lead" ? leadId : contactId;
             const entityData = s.entity_type === "lead" ? leadData : contactData;
             const currentValue = entityData?.[s.field_name] ?? null;
-            // Skip if value is the same
             if (currentValue && String(currentValue).toLowerCase() === String(s.suggested_value).toLowerCase()) {
               return null;
             }
@@ -257,7 +252,236 @@ Responda em português do Brasil.`;
 
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    // Mode: describe_file - auto-analyze a single uploaded file (image, pdf, audio)
+    // ==========================================
+    // Mode: assistant — conversational AI that guides, suggests actions, and fills fields
+    // ==========================================
+    if (mode === "assistant") {
+      const { chat_history, activity_context, lead_context, contact_context, activity_history } = context || {};
+
+      const systemPrompt = `Você é o assistente IA de um CRM jurídico trabalhista (Abraci). Você está conversando com um assessor sobre uma atividade/caso.
+
+CONTEXTO ATUAL:
+${activity_context ? `Atividade: ${JSON.stringify(activity_context)}` : 'Sem atividade vinculada'}
+${lead_context ? `Lead/Caso: ${JSON.stringify(lead_context)}` : 'Sem lead vinculado'}
+${contact_context ? `Contato: ${JSON.stringify(contact_context)}` : 'Sem contato vinculado'}
+${activity_history?.length ? `Histórico de atividades recentes do lead:\n${activity_history.map((a: any) => `- ${a.title} (${a.status}) - ${a.activity_type} - ${a.what_was_done || ''}`).join('\n')}` : ''}
+
+SEU PAPEL:
+1. Guie o assessor sobre como prosseguir com o caso
+2. Responda dúvidas sobre procedimentos jurídicos trabalhistas
+3. Sugira próximos passos baseados no contexto
+4. Quando o assessor fornecer informações sobre o andamento, ofereça organizar nos campos corretos
+
+IMPORTANTE:
+- Seja conciso e objetivo (máximo 3-4 parágrafos)
+- Use linguagem profissional mas acessível
+- Quando identificar informações que podem preencher campos, use a ferramenta disponível
+- Responda em português do Brasil`;
+
+      // Build conversation for AI
+      const aiMessages: any[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      // Add chat history
+      if (chat_history && Array.isArray(chat_history)) {
+        for (const msg of chat_history) {
+          if (msg.role === "ai") {
+            aiMessages.push({ role: "assistant", content: msg.content });
+          } else {
+            // For audio messages, try to include the audio
+            if (msg.type === "audio" && msg.file_url) {
+              const fileData = await fetchFileAsBase64(msg.file_url);
+              if (fileData) {
+                aiMessages.push({
+                  role: "user",
+                  content: [
+                    { type: "text", text: msg.content || "Áudio enviado:" },
+                    { type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } },
+                  ],
+                });
+                continue;
+              }
+            }
+            // For images
+            if (msg.type === "image" && msg.file_url) {
+              const fileData = await fetchFileAsBase64(msg.file_url);
+              if (fileData) {
+                aiMessages.push({
+                  role: "user",
+                  content: [
+                    { type: "text", text: msg.content || "Imagem enviada:" },
+                    { type: "image_url", image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` } },
+                  ],
+                });
+                continue;
+              }
+            }
+            // For PDFs
+            if (msg.type === "pdf" && msg.file_url) {
+              const fileData = await fetchFileAsBase64(msg.file_url);
+              if (fileData) {
+                aiMessages.push({
+                  role: "user",
+                  content: [
+                    { type: "text", text: msg.content || "Documento enviado:" },
+                    { type: "image_url", image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` } },
+                  ],
+                });
+                continue;
+              }
+            }
+            aiMessages.push({ role: "user", content: msg.content || "" });
+          }
+        }
+      }
+
+      const tools = [
+        {
+          type: "function",
+          function: {
+            name: "suggest_field_updates",
+            description: "Sugere atualizações para campos da atividade, lead e/ou contato com base na conversa. Use quando o assessor fornecer informações que devem ser registradas nos campos do sistema.",
+            parameters: {
+              type: "object",
+              properties: {
+                response_text: { type: "string", description: "Texto da resposta conversacional para o assessor" },
+                activity_fields: {
+                  type: "object",
+                  description: "Campos da atividade para atualizar",
+                  properties: {
+                    title: { type: "string" },
+                    what_was_done: { type: "string" },
+                    current_status_notes: { type: "string" },
+                    next_steps: { type: "string" },
+                    notes: { type: "string" },
+                    priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
+                    activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
+                  },
+                  additionalProperties: false,
+                },
+                lead_fields: {
+                  type: "object",
+                  description: "Campos do lead para atualizar. Só inclua se mencionados na conversa.",
+                  properties: {
+                    city: { type: "string" },
+                    state: { type: "string" },
+                    neighborhood: { type: "string" },
+                    victim_name: { type: "string" },
+                    victim_age: { type: "string" },
+                    accident_date: { type: "string" },
+                    damage_description: { type: "string" },
+                    contractor_company: { type: "string" },
+                    main_company: { type: "string" },
+                    sector: { type: "string" },
+                    case_type: { type: "string" },
+                    accident_address: { type: "string" },
+                  },
+                  additionalProperties: false,
+                },
+                contact_fields: {
+                  type: "object",
+                  description: "Campos do contato para atualizar. Só inclua se mencionados na conversa.",
+                  properties: {
+                    phone: { type: "string" },
+                    email: { type: "string" },
+                    city: { type: "string" },
+                    state: { type: "string" },
+                    neighborhood: { type: "string" },
+                    profession: { type: "string" },
+                    cep: { type: "string" },
+                  },
+                  additionalProperties: false,
+                },
+                new_activity: {
+                  type: "object",
+                  description: "Sugere criação de uma nova atividade. Só use quando o assessor mencionar uma tarefa futura clara.",
+                  properties: {
+                    title: { type: "string" },
+                    activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
+                    priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
+                    what_was_done: { type: "string" },
+                    current_status_notes: { type: "string" },
+                    next_steps: { type: "string" },
+                    notes: { type: "string" },
+                    deadline: { type: "string", description: "Data no formato YYYY-MM-DD" },
+                  },
+                  required: ["title"],
+                  additionalProperties: false,
+                },
+              },
+              required: ["response_text"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ];
+
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: aiMessages,
+          tools,
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        const status = aiResponse.status;
+        if (status === 429) {
+          return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        if (status === 402) {
+          return new Response(JSON.stringify({ error: "Payment required" }), {
+            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const t = await aiResponse.text();
+        console.error("AI assistant error:", status, t);
+        return new Response(JSON.stringify({ error: "AI gateway error" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const aiData = await aiResponse.json();
+      const choice = aiData.choices?.[0]?.message;
+
+      // Check if AI used tool calling
+      const toolCall = choice?.tool_calls?.[0];
+      if (toolCall?.function?.name === "suggest_field_updates") {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        return new Response(JSON.stringify({
+          response_text: parsed.response_text || "",
+          activity_fields: parsed.activity_fields || null,
+          lead_fields: parsed.lead_fields || null,
+          contact_fields: parsed.contact_fields || null,
+          new_activity: parsed.new_activity || null,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Plain text response
+      return new Response(JSON.stringify({
+        response_text: choice?.content || "Desculpe, não consegui processar sua mensagem.",
+        activity_fields: null,
+        lead_fields: null,
+        contact_fields: null,
+        new_activity: null,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ==========================================
+    // Mode: describe_file
+    // ==========================================
     if (mode === "describe_file") {
       const { file_url: fUrl, file_type: fType, file_name: fName, audio_duration: fDuration, custom_prompt: customPrompt, max_chars: maxChars } = context || {};
 
@@ -343,7 +567,9 @@ Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
       });
     }
 
+    // ==========================================
     // Mode: suggest_actions
+    // ==========================================
     if (mode === "suggest_actions" && context) {
       const actionsPrompt = `Você é um assistente jurídico de um CRM de advocacia trabalhista. Com base no contexto abaixo, gere exatamente 3 ações práticas e objetivas que o usuário pode tomar agora para dar continuidade ao caso.
 
@@ -427,7 +653,9 @@ Cada ação deve ser uma frase curta (máximo 15 palavras) e começar com um ver
       });
     }
 
-    // Default: analyze chat messages
+    // ==========================================
+    // Default: analyze chat messages (fill activity fields)
+    // ==========================================
     const systemPrompt = `Você é um assistente jurídico que analisa conversas de chat de atividades de um CRM de advocacia trabalhista.
 
 Analise TODAS as mensagens do chat, incluindo o conteúdo de áudios transcritos, imagens analisadas e documentos PDF.
