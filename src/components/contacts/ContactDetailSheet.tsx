@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -45,6 +45,8 @@ import {
   FileText,
   Globe,
   Mic,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
@@ -54,6 +56,7 @@ import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
 import { useProfileNames } from '@/hooks/useProfileNames';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { MultiClassificationSelect } from './MultiClassificationSelect';
 import { ContactInteractionHistory } from './ContactInteractionHistory';
 import { supabase } from '@/integrations/supabase/client';
@@ -64,6 +67,7 @@ import { Briefcase } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import { Sparkles } from 'lucide-react';
+import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -136,6 +140,15 @@ export function ContactDetailSheet({
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
+  const { boards: kanbanBoards } = useKanbanBoards();
+
+  // State for auto lead creation when classified as client
+  const [showClientLeadDialog, setShowClientLeadDialog] = useState(false);
+  const [clientLeadBoardId, setClientLeadBoardId] = useState('');
+  const [clientLeadOutcome, setClientLeadOutcome] = useState<'closed' | 'refused'>('closed');
+  const [clientLeadDate, setClientLeadDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [creatingClientLead, setCreatingClientLead] = useState(false);
+  const previousClassificationsRef = useRef<string[]>([]);
 
   // Load contact data
   useEffect(() => {
@@ -150,7 +163,9 @@ export function ContactDetailSheet({
       setStreet(contact.street || '');
       setCep(contact.cep || '');
       setNotes(contact.notes || '');
-      setClassifications(contact.classifications || []);
+      const contactClassifications = contact.classifications || [];
+      setClassifications(contactClassifications);
+      previousClassificationsRef.current = contactClassifications;
       setFollowerStatus(contact.follower_status || 'none');
       setProfession((contact as any).profession || '');
       setProfessionCboCode((contact as any).profession_cbo_code || '');
@@ -239,6 +254,96 @@ export function ContactDetailSheet({
     }
   };
 
+  // Handle classification change - detect when "client" is added
+  const handleClassificationsChange = (newClassifications: string[]) => {
+    const wasClient = previousClassificationsRef.current.includes('client');
+    const isNowClient = newClassifications.includes('client');
+    
+    setClassifications(newClassifications);
+    previousClassificationsRef.current = newClassifications;
+    
+    // If "client" was just added, open lead creation dialog
+    if (!wasClient && isNowClient && contact) {
+      // Check if contact already has leads
+      if (contactLeads.length === 0) {
+        const defaultBoard = kanbanBoards.find(b => b.is_default) || kanbanBoards[0];
+        if (defaultBoard) {
+          setClientLeadBoardId(defaultBoard.id);
+        }
+        setClientLeadOutcome('closed');
+        setClientLeadDate(format(new Date(), 'yyyy-MM-dd'));
+        setShowClientLeadDialog(true);
+      }
+    }
+  };
+
+  // Create lead for client contact directly in closed/refused stage
+  const handleCreateClientLead = async () => {
+    if (!contact || !clientLeadBoardId) return;
+    
+    setCreatingClientLead(true);
+    try {
+      const board = kanbanBoards.find(b => b.id === clientLeadBoardId);
+      if (!board) throw new Error('Funil não encontrado');
+      
+      // Find the closed or refused stage
+      const closedStageId = findClosedStageId(board.stages);
+      const refusedStageId = findRefusedStageId(board.stages);
+      
+      const targetStageId = clientLeadOutcome === 'closed' ? closedStageId : refusedStageId;
+      if (!targetStageId) {
+        toast.error(`Estágio "${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}" não encontrado neste funil`);
+        return;
+      }
+
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+
+      const { data: leadResult, error: leadError } = await supabase
+        .from('leads')
+        .insert({
+          lead_name: contact.full_name,
+          lead_phone: contact.phone,
+          lead_email: contact.email,
+          instagram_username: contact.instagram_username,
+          source: 'contact_client',
+          status: targetStageId,
+          board_id: clientLeadBoardId,
+          client_classification: clientLeadOutcome === 'closed' ? 'client' : null,
+          became_client_date: clientLeadOutcome === 'closed' ? clientLeadDate : null,
+          classification_date: clientLeadOutcome === 'refused' ? clientLeadDate : null,
+          city: contact.city,
+          state: contact.state,
+          notes: contact.notes,
+          created_by: currentUser?.id || null,
+        })
+        .select()
+        .single();
+
+      if (leadError) throw leadError;
+
+      // Create link in contact_leads junction table
+      await supabase.from('contact_leads').insert({
+        contact_id: contact.id,
+        lead_id: leadResult.id,
+      });
+
+      // Update contact with lead reference
+      await supabase.from('contacts').update({
+        lead_id: leadResult.id,
+        converted_to_lead_at: new Date().toISOString(),
+      }).eq('id', contact.id);
+
+      toast.success(`Lead criado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
+      setShowClientLeadDialog(false);
+      onContactUpdated?.();
+    } catch (error) {
+      console.error('Error creating client lead:', error);
+      toast.error('Erro ao criar lead');
+    } finally {
+      setCreatingClientLead(false);
+    }
+  };
+
   const getClassificationLabel = (name: string) => {
     const labels: Record<string, string> = {
       client: 'Cliente',
@@ -274,6 +379,7 @@ export function ContactDetailSheet({
     : 'w-full sm:max-w-lg overflow-hidden flex flex-col';
 
   return (
+    <>
     <Wrapper open={open} onOpenChange={onOpenChange}>
       <Content className={contentClassName}>
          <Header className="pb-4">
@@ -503,7 +609,7 @@ export function ContactDetailSheet({
                     </Label>
                     <MultiClassificationSelect
                       values={classifications}
-                      onChange={setClassifications}
+                      onChange={handleClassificationsChange}
                       classifications={availableClassifications.map(c => ({
                         name: c.name,
                         color: c.color,
@@ -865,5 +971,83 @@ export function ContactDetailSheet({
         </Tabs>
       </Content>
     </Wrapper>
+
+    {/* Client Lead Creation Dialog */}
+    <Dialog open={showClientLeadDialog} onOpenChange={setShowClientLeadDialog}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" />
+            Cadastrar Lead do Cliente
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Como <strong>{contact?.full_name}</strong> foi classificado como <Badge className="bg-green-500 text-white text-xs mx-1">Cliente</Badge>, cadastre o lead associado:
+          </p>
+
+          <div>
+            <Label>Funil</Label>
+            <Select value={clientLeadBoardId} onValueChange={setClientLeadBoardId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o funil" />
+              </SelectTrigger>
+              <SelectContent>
+                {kanbanBoards.map((board) => (
+                  <SelectItem key={board.id} value={board.id}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                      {board.name}
+                      {board.is_default && <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Resultado</Label>
+            <Select value={clientLeadOutcome} onValueChange={(v) => setClientLeadOutcome(v as 'closed' | 'refused')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="closed">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    Fechado (ganho)
+                  </div>
+                </SelectItem>
+                <SelectItem value="refused">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    Recusado (perdido)
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>{clientLeadOutcome === 'closed' ? 'Data de Fechamento' : 'Data da Recusa'}</Label>
+            <Input
+              type="date"
+              value={clientLeadDate}
+              onChange={(e) => setClientLeadDate(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={() => setShowClientLeadDialog(false)}>
+            Pular
+          </Button>
+          <Button onClick={handleCreateClientLead} disabled={!clientLeadBoardId || creatingClientLead}>
+            {creatingClientLead ? 'Criando...' : 'Criar Lead'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
