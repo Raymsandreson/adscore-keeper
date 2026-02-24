@@ -76,14 +76,18 @@ export function EntityAIChat({
       .then(({ data }) => setUserName(data?.full_name || user.email || 'Usuário'));
   }, [user]);
 
+  // Determine the conversation key: prefer leadId, fallback to activityId
+  const conversationKey = leadId || activityId;
+  const conversationField = leadId ? 'lead_id' : 'activity_id';
+
   const fetchMessages = useCallback(async () => {
-    if (!leadId) return;
+    if (!conversationKey) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('activity_chat_messages')
         .select('*')
-        .eq('lead_id', leadId)
+        .eq(conversationField, conversationKey)
         .order('created_at', { ascending: true });
       if (error) throw error;
       setMessages((data || []) as ChatMessage[]);
@@ -92,7 +96,7 @@ export function EntityAIChat({
     } finally {
       setLoading(false);
     }
-  }, [leadId]);
+  }, [conversationKey, conversationField]);
 
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
 
@@ -104,16 +108,16 @@ export function EntityAIChat({
 
   // Realtime subscription
   useEffect(() => {
-    if (!leadId) return;
+    if (!conversationKey) return;
     const channel = supabase
-      .channel(`entity_chat_${leadId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_chat_messages', filter: `lead_id=eq.${leadId}` }, () => fetchMessages())
+      .channel(`entity_chat_${conversationKey}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_chat_messages', filter: `${conversationField}=eq.${conversationKey}` }, () => fetchMessages())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [leadId, fetchMessages]);
+  }, [conversationKey, conversationField, fetchMessages]);
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
-    if (!leadId) return;
+    if (!conversationKey) return;
     setSending(true);
     try {
       await supabase.from('activity_chat_messages').insert({
@@ -147,7 +151,7 @@ export function EntityAIChat({
   };
 
   const triggerAIAssistant = async (lastUserMessage?: string) => {
-    if (!leadId) return;
+    if (!conversationKey) return;
     setAiResponding(true);
     try {
       const chatHistory = messages
@@ -168,8 +172,18 @@ export function EntityAIChat({
       let activityData = null;
       let activityHistory: any[] = [];
 
-      const { data: ld } = await supabase.from('leads').select('*').eq('id', leadId).single();
-      leadData = ld;
+      if (leadId) {
+        const { data: ld } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        leadData = ld;
+
+        const { data: histData } = await supabase
+          .from('lead_activities')
+          .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, deadline')
+          .eq('lead_id', leadId)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        activityHistory = histData || [];
+      }
 
       if (contactId) {
         const { data: cd } = await supabase.from('contacts').select('*').eq('id', contactId).single();
@@ -180,18 +194,14 @@ export function EntityAIChat({
         const { data: ad } = await supabase.from('lead_activities').select('*').eq('id', activityId).single();
         activityData = ad;
         if (ad?.contact_id && !contactData) {
-          const { data: cd } = await supabase.from('contacts').select('*').eq('id', ad.contact_id).single();
+          const { data: cd } = await supabase.from('contacts').select('*').eq('id', (ad as any).contact_id).single();
           contactData = cd;
         }
+        // If no lead but has activity, fetch sibling activities
+        if (!leadId && activityHistory.length === 0) {
+          activityHistory = [activityData].filter(Boolean);
+        }
       }
-
-      const { data: histData } = await supabase
-        .from('lead_activities')
-        .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, deadline')
-        .eq('lead_id', leadId)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      activityHistory = histData || [];
 
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
         body: {
@@ -211,7 +221,7 @@ export function EntityAIChat({
 
       await supabase.from('activity_chat_messages').insert({
         activity_id: activityId || null,
-        lead_id: leadId,
+        lead_id: leadId || null,
         message_type: 'ai_suggestion',
         content: data.response_text,
         ai_suggestion: data.activity_fields || data.lead_fields || data.contact_fields || data.new_activity
@@ -243,7 +253,7 @@ export function EntityAIChat({
     if (!file) return;
     setSending(true);
     try {
-      const filePath = `${leadId}/${Date.now()}_${file.name}`;
+      const filePath = `${conversationKey}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage.from('activity-chat').upload(filePath, file);
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
@@ -282,7 +292,7 @@ export function EntityAIChat({
         setSending(true);
         try {
           const ext = recordedMime.includes('mp4') ? 'mp4' : 'webm';
-          const filePath = `${leadId}/${Date.now()}_audio.${ext}`;
+          const filePath = `${conversationKey}/${Date.now()}_audio.${ext}`;
           const { error: uploadError } = await supabase.storage.from('activity-chat').upload(filePath, audioBlob);
           if (uploadError) throw uploadError;
           const { data: { publicUrl } } = supabase.storage.from('activity-chat').getPublicUrl(filePath);
@@ -497,10 +507,10 @@ export function EntityAIChat({
     );
   };
 
-  if (!leadId) {
+  if (!conversationKey) {
     return (
       <div className={cn("flex items-center justify-center h-full text-sm text-muted-foreground", className)}>
-        Vincule um lead para usar o Chat IA
+        Vincule um lead ou salve a atividade para usar o Chat IA
       </div>
     );
   }
@@ -511,7 +521,9 @@ export function EntityAIChat({
       <div className="flex items-center gap-2 px-3 py-2 border-b shrink-0">
         <Sparkles className="h-4 w-4 text-primary" />
         <span className="text-xs font-medium">Chat IA</span>
-        <span className="text-[10px] text-muted-foreground">• Histórico compartilhado do lead</span>
+        <span className="text-[10px] text-muted-foreground">
+          {leadId ? '• Histórico compartilhado do lead' : '• Histórico da atividade'}
+        </span>
         {aiResponding && <Loader2 className="h-3 w-3 animate-spin text-primary ml-auto" />}
       </div>
 

@@ -156,6 +156,16 @@ export function useLeadActivities() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // If linking a lead, migrate orphan chat messages from activity_id to lead_id
+      if (updates.lead_id) {
+        await supabase
+          .from('activity_chat_messages')
+          .update({ lead_id: updates.lead_id } as any)
+          .eq('activity_id', id)
+          .is('lead_id', null);
+      }
+
       toast.success('Atividade atualizada!');
     } catch (error) {
       console.error('Error updating activity:', error);
