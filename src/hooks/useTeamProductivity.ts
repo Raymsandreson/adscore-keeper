@@ -138,7 +138,8 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .gte('created_at', startDate).lte('created_at', endDate),
         // Sessions
         supabase.from('user_sessions').select('*')
-          .gte('started_at', startDate).lte('started_at', endDate)
+          .lte('started_at', endDate)
+          .or(`ended_at.is.null,ended_at.gte.${startDate}`)
           .order('started_at', { ascending: false }),
         // Activity log for page visits and other actions
         supabase.from('user_activity_log').select('*')
@@ -255,16 +256,46 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Sessions - use duration_seconds (now correctly calculated from last_activity_at)
+      // Sessions - merge intervals per user (with inactivity grace) to avoid under/overcount
+      const nowMs = Date.now();
+      const rangeStartMs = new Date(startDate).getTime();
+      const rangeEndMs = new Date(endDate).getTime();
+      const SESSION_INACTIVITY_GRACE_MS = 5 * 60 * 1000;
+      const sessionIntervalsByUser = new Map<string, { start: number; end: number }[]>();
+
       sessionsData.forEach(s => {
-        const u = getUser(s.user_id);
-        if (s.duration_seconds) {
-          u.sessionMinutes += Math.round(s.duration_seconds / 60);
-        } else if (s.started_at && s.last_activity_at) {
-          const start = new Date(s.started_at).getTime();
-          const lastAct = new Date(s.last_activity_at).getTime();
-          u.sessionMinutes += Math.round((lastAct - start) / 1000 / 60);
-        }
+        if (!s.started_at) return;
+        const start = new Date(s.started_at).getTime();
+        const endedAtMs = s.ended_at ? new Date(s.ended_at).getTime() : null;
+        const durationEndMs = typeof s.duration_seconds === 'number' ? start + s.duration_seconds * 1000 : null;
+        const lastActivityMs = s.last_activity_at ? new Date(s.last_activity_at).getTime() : null;
+        const inferredEndMs = lastActivityMs ? lastActivityMs + SESSION_INACTIVITY_GRACE_MS : nowMs;
+
+        const rawEnd = durationEndMs ?? endedAtMs ?? Math.min(inferredEndMs, nowMs);
+        const boundedStart = Math.max(start, rangeStartMs);
+        const boundedEnd = Math.min(rawEnd, rangeEndMs, nowMs);
+        if (boundedEnd <= boundedStart) return;
+
+        const list = sessionIntervalsByUser.get(s.user_id) || [];
+        list.push({ start: boundedStart, end: boundedEnd });
+        sessionIntervalsByUser.set(s.user_id, list);
+      });
+
+      sessionIntervalsByUser.forEach((intervals, userId) => {
+        intervals.sort((a, b) => a.start - b.start);
+        const merged: { start: number; end: number }[] = [];
+
+        intervals.forEach(iv => {
+          const last = merged[merged.length - 1];
+          if (last && iv.start <= last.end) {
+            last.end = Math.max(last.end, iv.end);
+          } else {
+            merged.push({ ...iv });
+          }
+        });
+
+        const totalMinutes = merged.reduce((acc, m) => acc + Math.round((m.end - m.start) / 1000 / 60), 0);
+        getUser(userId).sessionMinutes = totalMinutes;
       });
 
       // Activity log for page visits (tracked but not counted in totalActions)
