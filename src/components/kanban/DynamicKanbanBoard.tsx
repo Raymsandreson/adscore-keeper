@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -90,6 +91,9 @@ export function DynamicKanbanBoard({
   });
   const [conversionValue, setConversionValue] = useState('');
   const [contactsManagerLead, setContactsManagerLead] = useState<Lead | null>(null);
+  const [activityDialog, setActivityDialog] = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null });
+  const [activityTitle, setActivityTitle] = useState('Dar andamento');
+  const [activityDescription, setActivityDescription] = useState('');
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
   const [leadContacts, setLeadContacts] = useState<Record<string, { id: string; full_name: string; phone?: string | null; instagram_username?: string | null; profession?: string | null; profession_cbo_code?: string | null }[]>>({});
   const [stageFilters, setStageFilters] = useState<Record<string, string>>({});
@@ -310,13 +314,15 @@ export function DynamicKanbanBoard({
     }
   };
 
-  const handleCreateActivity = async (lead: Lead) => {
+  const handleCreateActivity = async () => {
+    const lead = activityDialog.lead;
+    if (!lead) return;
     try {
       const { error } = await supabase.from('lead_activities').insert({
         lead_id: lead.id,
         lead_name: lead.lead_name,
-        title: 'Dar andamento',
-        description: 'Atividade criada manualmente para acompanhamento do lead.',
+        title: activityTitle.trim() || 'Dar andamento',
+        description: activityDescription.trim() || null,
         activity_type: 'tarefa',
         status: 'pendente',
         priority: 'normal',
@@ -324,6 +330,9 @@ export function DynamicKanbanBoard({
       });
       if (error) throw error;
       toast.success('Atividade criada com sucesso!');
+      setActivityDialog({ open: false, lead: null });
+      setActivityTitle('Dar andamento');
+      setActivityDescription('');
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar atividade');
@@ -718,7 +727,7 @@ export function DynamicKanbanBoard({
                                         
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
-                                          onClick={() => handleCreateActivity(lead)}
+                                          onClick={() => setActivityDialog({ open: true, lead })}
                                         >
                                           <ClipboardPlus className="h-3 w-3 mr-2" />
                                           Nova Atividade
@@ -927,6 +936,46 @@ export function DynamicKanbanBoard({
           open={!!contactsManagerLead}
           onOpenChange={(open) => !open && setContactsManagerLead(null)}
         />
+        {/* Activity Creation Dialog */}
+        <Dialog open={activityDialog.open} onOpenChange={(open) => { if (!open) { setActivityDialog({ open: false, lead: null }); setActivityTitle('Dar andamento'); setActivityDescription(''); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nova Atividade</DialogTitle>
+              <DialogDescription>
+                {activityDialog.lead?.lead_name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="activityTitle">Título</Label>
+                <Input
+                  id="activityTitle"
+                  value={activityTitle}
+                  onChange={(e) => setActivityTitle(e.target.value)}
+                  placeholder="Título da atividade"
+                />
+              </div>
+              <div>
+                <Label htmlFor="activityDesc">Descrição</Label>
+                <Textarea
+                  id="activityDesc"
+                  value={activityDescription}
+                  onChange={(e) => setActivityDescription(e.target.value)}
+                  placeholder="Descreva o que precisa ser feito..."
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setActivityDialog({ open: false, lead: null }); setActivityTitle('Dar andamento'); setActivityDescription(''); }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleCreateActivity}>
+                Criar Atividade
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     </TooltipProvider>
   );
