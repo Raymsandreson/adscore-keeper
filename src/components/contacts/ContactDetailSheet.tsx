@@ -68,6 +68,8 @@ import { ShareMenu } from '@/components/ShareMenu';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import { Sparkles } from 'lucide-react';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
+import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import type { Lead } from '@/hooks/useLeads';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -153,6 +155,10 @@ export function ContactDetailSheet({
   const [existingLeads, setExistingLeads] = useState<any[]>([]);
   const [selectedExistingLeadId, setSelectedExistingLeadId] = useState('');
   const previousClassificationsRef = useRef<string[]>([]);
+  
+  // State for full LeadEditDialog when creating new lead
+  const [showLeadEditDialog, setShowLeadEditDialog] = useState(false);
+  const [newCreatedLead, setNewCreatedLead] = useState<Lead | null>(null);
 
   // Load contact data
   useEffect(() => {
@@ -352,7 +358,7 @@ export function ContactDetailSheet({
 
         toast.success(`Lead vinculado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
       } else {
-        // Create new lead
+        // Create new lead — open full LeadEditDialog
         if (!clientLeadBoardId) {
           toast.error('Selecione um funil');
           setCreatingClientLead(false);
@@ -405,11 +411,17 @@ export function ContactDetailSheet({
           converted_to_lead_at: new Date().toISOString(),
         }).eq('id', contact.id);
 
-        toast.success(`Lead criado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
+        // Close this dialog and open full LeadEditDialog
+        setShowClientLeadDialog(false);
+        setNewCreatedLead(leadResult as Lead);
+        setShowLeadEditDialog(true);
+        toast.success('Lead criado! Complete os dados no formulário.');
       }
 
-      setShowClientLeadDialog(false);
-      onContactUpdated?.();
+      if (clientLeadMode === 'link') {
+        setShowClientLeadDialog(false);
+        onContactUpdated?.();
+      }
     } catch (error) {
       console.error('Error creating/linking client lead:', error);
       toast.error('Erro ao processar lead');
@@ -1200,6 +1212,25 @@ export function ContactDetailSheet({
         </DialogContent>
       </Dialog>
     )}
+
+    {/* Full LeadEditDialog for new lead creation */}
+    <LeadEditDialog
+      open={showLeadEditDialog}
+      onOpenChange={(open) => {
+        if (!open) {
+          setShowLeadEditDialog(false);
+          setNewCreatedLead(null);
+          onContactUpdated?.();
+        }
+      }}
+      lead={newCreatedLead}
+      onSave={async (leadId, updates) => {
+        const { error } = await supabase.from('leads').update(updates as any).eq('id', leadId);
+        if (error) throw error;
+      }}
+      boards={kanbanBoards}
+      mode="dialog"
+    />
     </>
   );
 }
