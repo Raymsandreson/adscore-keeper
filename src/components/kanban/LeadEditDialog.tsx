@@ -74,6 +74,7 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
+import { LeadProcessesTab } from '@/components/leads/LeadProcessesTab';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -174,6 +175,7 @@ export function LeadEditDialog({
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
+  const [caseNumber, setCaseNumber] = useState('');
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -241,6 +243,7 @@ export function LeadEditDialog({
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
       // Outcome
+      setCaseNumber(leadAny.case_number || '');
       if (leadAny.became_client_date) {
         setLeadOutcome('closed');
         setLeadOutcomeDate(leadAny.became_client_date || '');
@@ -572,6 +575,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         expected_birth_date: expectedBirthDate || null,
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        case_number: caseNumber || null,
       } as Partial<Lead>);
 
       // Save custom field values
@@ -685,6 +689,12 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               <History className="h-3 w-3 mr-1" />
               Histórico
             </TabsTrigger>
+            {leadOutcome === 'closed' && (
+              <TabsTrigger value="processos" className="text-xs py-2">
+                <Scale className="h-3 w-3 mr-1" />
+                Processos
+              </TabsTrigger>
+            )}
             <TabsTrigger value="config" className="text-xs py-2">
               <Settings className="h-3 w-3 mr-1" />
               Config
@@ -927,6 +937,17 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                         type="date"
                         value={leadOutcomeDate}
                         onChange={(e) => setLeadOutcomeDate(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                  {leadOutcome === 'closed' && (
+                    <div>
+                      <Label className="text-xs">Nº do Caso</Label>
+                      <Input
+                        value={caseNumber}
+                        onChange={(e) => setCaseNumber(e.target.value)}
+                        placeholder="Número do caso..."
                         className="mt-1"
                       />
                     </div>
@@ -1296,6 +1317,13 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 />
               )}
             </TabsContent>
+
+            {/* Processos Tab */}
+            {leadOutcome === 'closed' && (
+              <TabsContent value="processos" className="mt-0">
+                <LeadProcessesTab leadId={lead.id} boards={boards} />
+              </TabsContent>
+            )}
 
             {/* History Tab */}
             <TabsContent value="history" className="mt-0 space-y-6">
