@@ -147,11 +147,12 @@ export function FloatingWhatsAppCall() {
         .from('contacts')
         .select('id, full_name, phone, email')
         .not('phone', 'is', null)
-        .neq('phone', '')
         .order('full_name', { ascending: true })
         .limit(500);
 
-      if (data) setContacts(data as DBContact[]);
+      // Filter out empty/whitespace-only phones client-side
+      const withPhone = (data || []).filter(c => c.phone && c.phone.trim().length > 0);
+      setContacts(withPhone as DBContact[]);
     } catch (err) {
       console.error('Error fetching contacts:', err);
     } finally {
@@ -297,7 +298,7 @@ export function FloatingWhatsAppCall() {
               </div>
 
               {/* Contact List */}
-              <ScrollArea className="max-h-[calc(70vh-7rem)]">
+              <ScrollArea className="h-[calc(70vh-7rem)]">
                 {contactsLoading ? (
                   <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -318,14 +319,8 @@ export function FloatingWhatsAppCall() {
                         {groupedContacts[letter].map(contact => (
                           <button
                             key={contact.id}
-                            onClick={() => {
-                              if (contact.phone) {
-                                handleMakeCall(contact.phone, contact.full_name);
-                              } else {
-                                toast.error('Contato sem telefone cadastrado');
-                              }
-                            }}
-                            disabled={calling || !contact.phone}
+                            onClick={() => handleMakeCall(contact.phone!, contact.full_name)}
+                            disabled={calling}
                             className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-accent transition-colors text-left group"
                           >
                             <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -335,15 +330,9 @@ export function FloatingWhatsAppCall() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{contact.full_name}</p>
-                              {contact.phone ? (
-                                <p className="text-[11px] text-muted-foreground">{contact.phone}</p>
-                              ) : (
-                                <p className="text-[11px] text-destructive">Sem telefone</p>
-                              )}
+                              <p className="text-[11px] text-muted-foreground">{contact.phone}</p>
                             </div>
-                            {contact.phone && (
-                              <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                            )}
+                            <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                           </button>
                         ))}
                       </div>
