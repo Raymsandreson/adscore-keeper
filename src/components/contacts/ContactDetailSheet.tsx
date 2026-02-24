@@ -1046,7 +1046,6 @@ export function ContactDetailSheet({
                               if (error) throw error;
                               toast.success('Lead excluído');
                               refetchLeads();
-                              onContactUpdated?.();
                             } catch (err) {
                               console.error(err);
                               toast.error('Erro ao excluir lead');
