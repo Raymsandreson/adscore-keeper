@@ -77,10 +77,6 @@ export function IncomingCallBanner() {
       setAutoStarted(true);
       startRecording();
     }
-    // Reset autoStarted when call ends
-    if (!activeCall && autoStarted) {
-      setAutoStarted(false);
-    }
   }, [activeCall, isRecording, processing, autoStarted, startRecording]);
 
   const stopRecording = useCallback(() => {
@@ -167,6 +163,16 @@ export function IncomingCallBanner() {
       setProcessing(false);
     }
   }, [user, activeCall, recordingTime, dismiss]);
+
+  // Auto-STOP recording when call ends (desligou)
+  useEffect(() => {
+    if (!activeCall && autoStarted) {
+      setAutoStarted(false);
+      if (isRecording && !processing) {
+        stopRecording();
+      }
+    }
+  }, [activeCall, autoStarted, isRecording, processing, stopRecording]);
 
   if (!activeCall && !isRecording) return null;
 
