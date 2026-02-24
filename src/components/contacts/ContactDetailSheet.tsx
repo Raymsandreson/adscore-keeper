@@ -47,6 +47,7 @@ import {
   Mic,
   CheckCircle,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
@@ -138,7 +139,7 @@ export function ContactDetailSheet({
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
   const { relationships, loading: loadingRelationships } = useContactRelationships(contact?.id);
-  const { leads: contactLeads, loading: loadingLeads } = useContactLeads(contact?.id);
+  const { leads: contactLeads, loading: loadingLeads, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
@@ -1019,16 +1020,43 @@ export function ContactDetailSheet({
                           </Badge>
                         </div>
                       </div>
-                      {contactLead.lead?.lead_phone && (
+                      <div className="flex items-center gap-1">
+                        {contactLead.lead?.lead_phone && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
+                          >
+                            <MessageSquare className="h-4 w-4 text-green-600" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!confirm('Deseja excluir este lead? Esta ação não pode ser desfeita.')) return;
+                            try {
+                              // Remove link first
+                              await unlinkLead(contactLead.lead_id);
+                              // Delete the lead itself
+                              const { error } = await supabase.from('leads').delete().eq('id', contactLead.lead_id);
+                              if (error) throw error;
+                              toast.success('Lead excluído');
+                              refetchLeads();
+                              onContactUpdated?.();
+                            } catch (err) {
+                              console.error(err);
+                              toast.error('Erro ao excluir lead');
+                            }
+                          }}
+                          title="Excluir lead"
                         >
-                          <MessageSquare className="h-4 w-4 text-green-600" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
-                      )}
+                      </div>
                     </div>
                   ))}
                 </div>
