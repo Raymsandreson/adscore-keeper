@@ -1559,6 +1559,7 @@ export type Database = {
           comment_id: string | null
           created_at: string
           dm_message: string
+          dm_response: string | null
           id: string
           instagram_username: string
           original_suggestion: string | null
@@ -1571,6 +1572,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           dm_message: string
+          dm_response?: string | null
           id?: string
           instagram_username: string
           original_suggestion?: string | null
@@ -1583,6 +1585,7 @@ export type Database = {
           comment_id?: string | null
           created_at?: string
           dm_message?: string
+          dm_response?: string | null
           id?: string
           instagram_username?: string
           original_suggestion?: string | null

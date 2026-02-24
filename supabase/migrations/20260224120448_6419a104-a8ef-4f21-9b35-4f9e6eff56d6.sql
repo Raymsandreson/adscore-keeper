@@ -1,0 +1,1 @@
+ALTER TABLE public.dm_history ADD COLUMN IF NOT EXISTS dm_response TEXT DEFAULT NULL;
