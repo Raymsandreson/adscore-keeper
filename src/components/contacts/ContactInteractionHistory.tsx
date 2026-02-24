@@ -42,6 +42,7 @@ interface DmEntry {
   was_edited: boolean | null;
   action_type: string;
   created_at: string;
+  dm_response: string | null;
 }
 
 interface ContactInteractionHistoryProps {
@@ -91,7 +92,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
       // Fetch DM history
       const { data: dmData, error: dmError } = await supabase
         .from('dm_history')
-        .select('id, dm_message, original_suggestion, was_edited, action_type, created_at')
+        .select('id, dm_message, original_suggestion, was_edited, action_type, created_at, dm_response')
         .or(`instagram_username.ilike.${normalizedUsername},instagram_username.ilike.@${normalizedUsername}`)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -428,6 +429,30 @@ function DmCard({
   getActionLabel: (type: string) => string;
   onDelete: (id: string) => void;
 }) {
+  const [showResponseInput, setShowResponseInput] = useState(false);
+  const [responseText, setResponseText] = useState(dm.dm_response || '');
+  const [savingResponse, setSavingResponse] = useState(false);
+
+  const handleSaveResponse = async () => {
+    if (!responseText.trim()) return;
+    setSavingResponse(true);
+    try {
+      const { error } = await supabase
+        .from('dm_history')
+        .update({ dm_response: responseText.trim() } as any)
+        .eq('id', dm.id);
+      if (error) throw error;
+      dm.dm_response = responseText.trim();
+      setShowResponseInput(false);
+      toast.success('Resposta registrada!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao salvar resposta');
+    } finally {
+      setSavingResponse(false);
+    }
+  };
+
   return (
     <div className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors group">
       <div className="flex items-start gap-2">
@@ -458,6 +483,39 @@ function DmCard({
             <div className="mt-2 p-2 rounded bg-muted/50 text-xs">
               <span className="text-muted-foreground">Sugestão original:</span>
               <p className="line-clamp-2 mt-1">{dm.original_suggestion}</p>
+            </div>
+          )}
+          {/* DM Response */}
+          {dm.dm_response && !showResponseInput && (
+            <div className="mt-2 p-2 rounded bg-muted/50 text-xs border-l-2 border-primary">
+              <span className="text-muted-foreground font-medium">Resposta do contato:</span>
+              <p className="mt-1">{dm.dm_response}</p>
+              <Button variant="ghost" size="sm" className="h-5 text-xs mt-1 px-1" onClick={() => setShowResponseInput(true)}>
+                Editar
+              </Button>
+            </div>
+          )}
+          {!dm.dm_response && !showResponseInput && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs mt-1 gap-1 text-muted-foreground" onClick={() => setShowResponseInput(true)}>
+              <Reply className="h-3 w-3" /> Registrar resposta
+            </Button>
+          )}
+          {showResponseInput && (
+            <div className="mt-2 space-y-1.5">
+              <Textarea
+                placeholder="O que o contato respondeu..."
+                value={responseText}
+                onChange={e => setResponseText(e.target.value)}
+                className="text-xs min-h-[50px]"
+              />
+              <div className="flex gap-1">
+                <Button size="sm" className="h-6 text-xs" onClick={handleSaveResponse} disabled={!responseText.trim() || savingResponse}>
+                  {savingResponse ? 'Salvando...' : 'Salvar'}
+                </Button>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => { setShowResponseInput(false); setResponseText(dm.dm_response || ''); }}>
+                  Cancelar
+                </Button>
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
