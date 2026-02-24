@@ -63,13 +63,16 @@ serve(async (req) => {
       let leadContext = "";
       let leadId: string | null = null;
       let contactId: string | null = null;
+      let callResult: string | null = null;
 
       if (call_record_id) {
         const { data: callRecord } = await supabase
           .from("call_records")
-          .select("lead_id, contact_id, contact_name, contact_phone")
+          .select("lead_id, contact_id, contact_name, contact_phone, call_result")
           .eq("id", call_record_id)
           .single();
+
+        callResult = callRecord?.call_result || null;
 
         if (callRecord?.lead_id) {
           leadId = callRecord.lead_id;
@@ -194,7 +197,13 @@ Responda em português do Brasil.`;
       }
 
       // Save field suggestions for user confirmation
-      if (call_record_id && fieldSuggestions.length > 0 && (leadId || contactId)) {
+      // SKIP if call was NOT answered — AI hallucinates data from context when there's no real conversation
+      const skipSuggestions = callResult === "nao_atendeu" || callResult === "caixa_postal";
+      if (skipSuggestions) {
+        console.log(`Skipping field suggestions: call_result=${callResult}`);
+      }
+
+      if (call_record_id && fieldSuggestions.length > 0 && (leadId || contactId) && !skipSuggestions) {
         // Get current values for each suggestion
         let leadData: any = null;
         let contactData: any = null;

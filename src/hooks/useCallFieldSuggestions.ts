@@ -15,6 +15,9 @@ export interface CallFieldSuggestion {
   created_at: string;
   contact_name?: string | null;
   lead_name?: string | null;
+  caller_name?: string | null;
+  lead_id?: string | null;
+  next_step?: string | null;
 }
 
 export function useCallFieldSuggestions() {
@@ -24,13 +27,31 @@ export function useCallFieldSuggestions() {
   const fetchPending = useCallback(async () => {
     const { data } = await supabase
       .from('call_field_suggestions')
-      .select('*, call_records:call_record_id(contact_name, lead_name)')
+      .select('*, call_records:call_record_id(contact_name, lead_name, lead_id, next_step, user_id)')
       .eq('status', 'pending')
       .order('created_at', { ascending: false }) as any;
+
+    // Fetch caller profile names
+    const userIds = [...new Set((data || []).map((s: any) => s.call_records?.user_id).filter(Boolean))] as string[];
+    let profileMap: Record<string, string> = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', userIds);
+      profileMap = (profiles || []).reduce((acc: any, p: any) => {
+        acc[p.user_id] = p.full_name;
+        return acc;
+      }, {});
+    }
+
     const mapped = (data || []).map((s: any) => ({
       ...s,
       contact_name: s.call_records?.contact_name || null,
       lead_name: s.call_records?.lead_name || null,
+      lead_id: s.call_records?.lead_id || null,
+      next_step: s.call_records?.next_step || null,
+      caller_name: profileMap[s.call_records?.user_id] || null,
       call_records: undefined,
     }));
     setSuggestions(mapped);
