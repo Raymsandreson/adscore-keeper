@@ -2378,14 +2378,24 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                     </ContextMenuTrigger>
                     <ContextMenuContent>
-                       <ContextMenuItem
+                      <ContextMenuItem
                         onClick={() => {
                           window.open(`${window.location.origin}/?openActivity=${activity.id}`, '_blank');
                         }}
                       >
                         <ExternalLink className="h-3.5 w-3.5 mr-2" />
-                        Abrir em nova aba
+                        Abrir atividade em nova aba
                       </ContextMenuItem>
+                      {activity.lead_id && (
+                        <ContextMenuItem
+                          onClick={() => {
+                            window.open(`${window.location.origin}/leads?openLead=${activity.lead_id}`, '_blank');
+                          }}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                          Abrir lead em nova aba
+                        </ContextMenuItem>
+                      )}
                       <ContextMenuItem
                         onClick={() => {
                           const url = `${window.location.origin}/?openActivity=${activity.id}`;
