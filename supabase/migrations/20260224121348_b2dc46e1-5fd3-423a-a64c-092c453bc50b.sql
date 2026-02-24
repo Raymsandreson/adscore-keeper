@@ -1,0 +1,2 @@
+ALTER TABLE public.dm_history DROP CONSTRAINT dm_history_action_type_check;
+ALTER TABLE public.dm_history ADD CONSTRAINT dm_history_action_type_check CHECK (action_type = ANY (ARRAY['copied', 'copied_and_opened', 'opened_only', 'received']));
