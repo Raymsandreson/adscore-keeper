@@ -27,6 +27,7 @@ export const ACTION_METRICS: MetricOption[] = [
   { value: 'contacts_created', label: 'Contatos criados', category: 'action' },
   { value: 'activities_on_time', label: 'Atividades feitas', category: 'action' },
   { value: 'leads_created', label: 'Leads criados', category: 'action' },
+  { value: 'follow_requests', label: 'Solicitações p/ seguir', category: 'action' },
 ];
 
 export const PROGRESS_METRICS: MetricOption[] = [
