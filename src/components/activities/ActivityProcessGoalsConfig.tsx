@@ -60,14 +60,21 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
   const totalGoals = goals.length;
 
   return (
-    <div className="border-t border-dashed border-muted-foreground/20 pt-2 mt-2">
+    <div className="mt-3 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-2.5">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
+        className="flex items-center gap-2 text-[11px] font-bold text-primary uppercase tracking-wide hover:text-primary/80 transition-colors w-full"
       >
-        <Target className="h-3 w-3" />
-        Metas ({totalGoals})
-        {expanded ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
+        <Target className="h-3.5 w-3.5" />
+        <span className="bg-primary/10 px-2 py-0.5 rounded-full">
+          🎯 Metas ({totalGoals})
+        </span>
+        {totalGoals === 0 && (
+          <span className="text-[10px] font-normal normal-case text-muted-foreground ml-1">
+            — clique para definir
+          </span>
+        )}
+        {expanded ? <ChevronUp className="h-3.5 w-3.5 ml-auto" /> : <ChevronDown className="h-3.5 w-3.5 ml-auto" />}
       </button>
 
       {expanded && (
