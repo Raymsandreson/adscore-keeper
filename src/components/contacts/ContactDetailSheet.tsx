@@ -974,7 +974,7 @@ export function ContactDetailSheet({
 
     {/* Client Lead Creation Dialog */}
     <Dialog open={showClientLeadDialog} onOpenChange={setShowClientLeadDialog}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md z-[200]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Link2 className="h-5 w-5" />
