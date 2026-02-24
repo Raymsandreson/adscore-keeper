@@ -46,6 +46,7 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
+  ClipboardPlus,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -306,6 +307,26 @@ export function DynamicKanbanBoard({
   const handleDeleteClick = (id: string) => {
     if (confirm('Tem certeza que deseja remover este lead?')) {
       onDeleteLead(id);
+    }
+  };
+
+  const handleCreateActivity = async (lead: Lead) => {
+    try {
+      const { error } = await supabase.from('lead_activities').insert({
+        lead_id: lead.id,
+        lead_name: lead.lead_name,
+        title: 'Dar andamento',
+        description: 'Atividade criada manualmente para acompanhamento do lead.',
+        activity_type: 'tarefa',
+        status: 'pendente',
+        priority: 'normal',
+        deadline: new Date().toISOString().split('T')[0],
+      });
+      if (error) throw error;
+      toast.success('Atividade criada com sucesso!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao criar atividade');
     }
   };
 
@@ -695,6 +716,13 @@ export function DynamicKanbanBoard({
                                           );
                                         })()}
                                         
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          onClick={() => handleCreateActivity(lead)}
+                                        >
+                                          <ClipboardPlus className="h-3 w-3 mr-2" />
+                                          Nova Atividade
+                                        </DropdownMenuItem>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem
                                           className="text-destructive"
