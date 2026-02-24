@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,15 +12,15 @@ import { PageTracker } from "@/components/PageTracker";
 import { FloatingNav } from "@/components/FloatingNav";
 
 // Helper: retry dynamic import once on failure (stale chunk after deploy)
-function lazyRetry<T extends React.ComponentType<any>>(
+function lazyRetry<T extends ComponentType<any>>(
   factory: () => Promise<{ default: T }>
 ) {
   return lazy(() =>
     factory().catch(() => {
       // Force reload once to get fresh chunks
-      const key = 'chunk_reload';
+      const key = "chunk_reload";
       if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, '1');
+        sessionStorage.setItem(key, "1");
         window.location.reload();
       }
       return factory();
@@ -29,11 +29,11 @@ function lazyRetry<T extends React.ComponentType<any>>(
 }
 
 // Lazy-loaded global overlays (non-critical)
-const GlobalDatabaseSearch = lazy(() => import("@/components/GlobalDatabaseSearch").then(m => ({ default: m.GlobalDatabaseSearch })));
-const UserProductivityBanner = lazy(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
-const IncomingCallBanner = lazy(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
-const CallFieldSuggestionsBanner = lazy(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
-const FloatingWhatsAppCall = lazy(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
+const GlobalDatabaseSearch = lazyRetry(() => import("@/components/GlobalDatabaseSearch").then(m => ({ default: m.GlobalDatabaseSearch })));
+const UserProductivityBanner = lazyRetry(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
+const IncomingCallBanner = lazyRetry(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
+const CallFieldSuggestionsBanner = lazyRetry(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
+const FloatingWhatsAppCall = lazyRetry(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
 
 // Lazy-loaded pages (with retry for stale chunks)
 const Index = lazyRetry(() => import("./pages/Index"));
