@@ -445,16 +445,19 @@ function DmCard({
     try {
       const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
       // Save response on original DM
-      await supabase
+      const { error: updateError } = await supabase
         .from('dm_history')
         .update({ dm_response: responseText.trim() } as any)
         .eq('id', dm.id);
+      if (updateError) {
+        console.error('Update error:', updateError);
+      }
       // Create a new DM entry as "received" so it counts in the DM total
       const { error } = await supabase.from('dm_history').insert({
         instagram_username: normalizedUsername,
         dm_message: responseText.trim(),
         action_type: 'received',
-      });
+      } as any);
       if (error) throw error;
       toast.success('Resposta registrada como DM recebida!');
       setShowResponseInput(false);
