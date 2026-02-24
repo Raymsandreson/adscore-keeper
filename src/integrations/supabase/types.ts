@@ -4512,6 +4512,15 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      notify_workflow_change: {
+        Args: {
+          p_board_id: string
+          p_board_name: string
+          p_change_description?: string
+          p_changed_by: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "member"

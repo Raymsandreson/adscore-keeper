@@ -521,6 +521,19 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
         }
       }
 
+      // Notify users working with this workflow about the change
+      if (editingBoardId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.rpc('notify_workflow_change', {
+            p_board_id: boardId,
+            p_board_name: formName.trim(),
+            p_changed_by: user.id,
+            p_change_description: `O fluxo de trabalho "${formName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
+          });
+        }
+      }
+
       toast.success(editingBoardId ? 'Fluxo atualizado!' : 'Fluxo criado!');
       resetForm();
       fetchBoards();
