@@ -134,18 +134,28 @@ export function useMyProductivity() {
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
       const nowMs = Date.now();
-      const sessionMinutes = sessions.reduce((acc, s) => {
-        if (s.duration_seconds) {
-          return acc + Math.round(s.duration_seconds / 60);
+      // Merge overlapping session intervals to avoid double-counting concurrent sessions
+      const intervals: { start: number; end: number }[] = [];
+      for (const s of sessions) {
+        if (!s.started_at) continue;
+        const start = new Date(s.started_at).getTime();
+        const end = s.duration_seconds
+          ? start + s.duration_seconds * 1000
+          : (s.last_activity_at ? Math.max(new Date(s.last_activity_at).getTime(), start) : nowMs);
+        intervals.push({ start, end: Math.min(end, nowMs) });
+      }
+      // Sort by start, then merge overlapping
+      intervals.sort((a, b) => a.start - b.start);
+      const merged: { start: number; end: number }[] = [];
+      for (const iv of intervals) {
+        const last = merged[merged.length - 1];
+        if (last && iv.start <= last.end) {
+          last.end = Math.max(last.end, iv.end);
+        } else {
+          merged.push({ ...iv });
         }
-        // For active (not yet ended) sessions, calculate from started_at to NOW
-        // (last_activity_at only updates every 2min via heartbeat, so use current time for accuracy)
-        if (s.started_at) {
-          const start = new Date(s.started_at).getTime();
-          return acc + Math.round((nowMs - start) / 1000 / 60);
-        }
-        return acc;
-      }, 0);
+      }
+      const sessionMinutes = merged.reduce((acc, m) => acc + Math.round((m.end - m.start) / 1000 / 60), 0);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
