@@ -17,6 +17,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
@@ -89,8 +90,7 @@ export function ExpenseFormLinkGenerator({ knownCards, transactions = [] }: Expe
 
       if (error) throw error;
 
-      // Always use the published app URL for external sharing
-      const link = `https://adscore-keeper.lovable.app/expense-form/${data.token}`;
+      const link = buildExpenseFormUrl(data.token);
       setGeneratedLink(link);
     } catch (err: any) {
       toast.error('Erro ao gerar link: ' + err.message);

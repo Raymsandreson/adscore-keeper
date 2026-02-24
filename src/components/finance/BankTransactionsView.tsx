@@ -29,6 +29,7 @@ import { exportBankTransactions } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useGeolocation } from '@/hooks/useGeolocation';
@@ -393,7 +394,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
         .select('token')
         .single();
       if (error) throw error;
-      const link = `${window.location.origin}/expense-form/${data.token}`;
+      const link = buildExpenseFormUrl(data.token);
       await navigator.clipboard.writeText(link);
       toast.success('Link do formulário copiado!');
       setSelectedIds(new Set());
