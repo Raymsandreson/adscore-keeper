@@ -194,6 +194,11 @@ export function IncomingCallBanner() {
             <Badge variant="outline" className="text-[10px] shrink-0">
               {isInbound ? 'Recebida' : 'Realizada'}
             </Badge>
+            {activeCall?.instance_name && (
+              <Badge variant="secondary" className="text-[10px] shrink-0">
+                📱 {activeCall.instance_name}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-red-500 font-mono">
             <Mic className="h-3 w-3" />
