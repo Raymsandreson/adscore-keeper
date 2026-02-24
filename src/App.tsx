@@ -16,6 +16,7 @@ const GlobalDatabaseSearch = lazy(() => import("@/components/GlobalDatabaseSearc
 const UserProductivityBanner = lazy(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
 const IncomingCallBanner = lazy(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
 const CallFieldSuggestionsBanner = lazy(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
+const FloatingWhatsAppCall = lazy(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
 
 // Lazy-loaded pages
 const Index = lazy(() => import("./pages/Index"));
@@ -70,6 +71,7 @@ function AppRoutes() {
         <UserProductivityBanner />
         <IncomingCallBanner />
         <CallFieldSuggestionsBanner />
+        <FloatingWhatsAppCall />
       </Suspense>
       <FloatingNav />
       <Suspense fallback={<PageLoading />}>
