@@ -192,6 +192,21 @@ export function FloatingWhatsAppCall() {
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao ligar');
+      
+      // Ensure call_events_pending exists for auto-recording trigger
+      const cleanPhone = phone.replace(/\D/g, '');
+      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+      await supabase.from('call_events_pending').insert({
+        call_id: data?.data?.callId || `client_${Date.now()}`,
+        phone: formattedPhone,
+        event_type: 'offer',
+        from_me: true,
+        contact_name: contactName || null,
+        instance_name: selectedInstance.instance_name,
+      }).then(({ error: evtErr }) => {
+        if (evtErr) console.log('call_events_pending already exists or error:', evtErr.message);
+      });
+      
       toast.success(`Ligação iniciada para ${contactName || phone}`);
       setOpen(false);
     } catch (err: any) {
