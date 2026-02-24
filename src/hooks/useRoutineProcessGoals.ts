@@ -11,17 +11,45 @@ export interface RoutineProcessGoal {
   board_id: string | null;
 }
 
-export const PROCESS_METRIC_OPTIONS = [
-  { value: 'leads_created', label: 'Leads criados' },
-  { value: 'replies', label: 'Respostas de comentários' },
-  { value: 'dms_sent', label: 'DMs enviadas' },
-  { value: 'time_online', label: 'Tempo online (min)' },
-  { value: 'contacts_created', label: 'Contatos criados' },
-  { value: 'calls', label: 'Ligações' },
-  { value: 'activities_on_time', label: 'Atividades não atrasadas' },
-  { value: 'stages', label: 'Etapas' },
-  { value: 'objectives', label: 'Objetivos' },
-  { value: 'steps', label: 'Passos' },
+export type GoalCategory = 'action' | 'progress' | 'result';
+
+export interface MetricOption {
+  value: string;
+  label: string;
+  category: GoalCategory;
+}
+
+export const ACTION_METRICS: MetricOption[] = [
+  { value: 'calls', label: 'Ligações', category: 'action' },
+  { value: 'dms_sent', label: 'DMs enviadas', category: 'action' },
+  { value: 'replies', label: 'Respostas de comentários', category: 'action' },
+  { value: 'time_online', label: 'Tempo online (min)', category: 'action' },
+  { value: 'contacts_created', label: 'Contatos criados', category: 'action' },
+  { value: 'activities_on_time', label: 'Atividades feitas', category: 'action' },
+  { value: 'leads_created', label: 'Leads criados', category: 'action' },
+];
+
+export const PROGRESS_METRICS: MetricOption[] = [
+  { value: 'steps', label: 'Passos dados', category: 'progress' },
+  { value: 'objectives', label: 'Objetivos alcançados', category: 'progress' },
+  { value: 'stages', label: 'Etapas concluídas', category: 'progress' },
+];
+
+export const RESULT_METRICS: MetricOption[] = [
+  { value: 'deals_closed', label: 'Leads fechados', category: 'result' },
+  { value: 'deals_refused', label: 'Leads recusados', category: 'result' },
+];
+
+export const GOAL_CATEGORIES = [
+  { key: 'action' as GoalCategory, label: 'Metas de Ação', icon: '⚡', metrics: ACTION_METRICS },
+  { key: 'progress' as GoalCategory, label: 'Metas de Progresso', icon: '📈', metrics: PROGRESS_METRICS },
+  { key: 'result' as GoalCategory, label: 'Metas de Resultado', icon: '🏆', metrics: RESULT_METRICS },
+];
+
+export const PROCESS_METRIC_OPTIONS: MetricOption[] = [
+  ...ACTION_METRICS,
+  ...PROGRESS_METRICS,
+  ...RESULT_METRICS,
 ];
 
 export function useRoutineProcessGoals(targetUserId?: string) {
