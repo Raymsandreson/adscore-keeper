@@ -37,6 +37,7 @@ import {
   Edit2,
   Check,
   Landmark,
+  CheckCircle2,
   Share2,
   Loader2
 } from "lucide-react";
@@ -68,6 +69,7 @@ import { ExpenseFormLinkGenerator } from "@/components/finance/ExpenseFormLinkGe
 import { BankTransactionsView } from "@/components/finance/BankTransactionsView";
 import { InvestmentsView } from "@/components/finance/InvestmentsView";
 import { LoansView } from "@/components/finance/LoansView";
+import { CategorizedTransactionsView } from "@/components/finance/CategorizedTransactionsView";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -531,6 +533,15 @@ export default function FinancePage() {
   const pendingCount = useMemo(() => {
     return filteredTransactions.filter(t => !getLocalCategoryForTransaction(t)).length;
   }, [filteredTransactions, getLocalCategoryForTransaction]);
+
+  const categorizedCount = useMemo(() => {
+    return filteredTransactions.filter(t => {
+      const override = getTransactionOverride(t.id);
+      if (!override) return false;
+      if (override.link_acknowledged) return true;
+      return !!(override.lead_id || override.contact_id);
+    }).length;
+  }, [filteredTransactions, getTransactionOverride, overrides]);
 
   // Group transactions by day for table view
   const transactionsByDay = useMemo(() => {
@@ -1197,13 +1208,22 @@ export default function FinancePage() {
 
             {/* Tabs for different views */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-6 h-10">
+              <TabsList className="grid w-full grid-cols-7 h-10">
                 <TabsTrigger value="workflow" className="flex items-center gap-2 text-xs sm:text-sm">
                   <AlertCircle className="h-4 w-4" />
                   <span className="hidden sm:inline">Pendentes</span>
                   {pendingCount > 0 && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                       {pendingCount}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="categorized" className="flex items-center gap-2 text-xs sm:text-sm">
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Categorizados</span>
+                  {categorizedCount > 0 && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      {categorizedCount}
                     </Badge>
                   )}
                 </TabsTrigger>
@@ -1234,6 +1254,10 @@ export default function FinancePage() {
                   transactions={filteredTransactions} 
                   onComplete={() => setActiveTab('logistics')}
                 />
+              </TabsContent>
+
+              <TabsContent value="categorized" className="mt-4">
+                <CategorizedTransactionsView transactions={filteredTransactions} />
               </TabsContent>
 
               <TabsContent value="logistics" className="mt-4">
