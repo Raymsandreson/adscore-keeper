@@ -113,3 +113,6 @@ verify_jwt = false
 
 [functions.make-whatsapp-call]
 verify_jwt = false
+
+[functions.parse-activity-dictation]
+verify_jwt = false

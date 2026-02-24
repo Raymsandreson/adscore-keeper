@@ -8,8 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, X, Plus, Loader2 } from 'lucide-react';
-import { VoiceInputButton } from '@/components/ui/voice-input-button';
+import { Search, X, Plus, Loader2, Mic, MicOff, Sparkles, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 const ACTIVITY_TYPES = [
@@ -76,6 +75,13 @@ export function WhatsAppActivitySheet({
   const [formNotes, setFormNotes] = useState('');
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
 
+  // AI dictation state
+  const [aiMode, setAiMode] = useState(false);
+  const [dictationText, setDictationText] = useState('');
+  const [listening, setListening] = useState(false);
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   // Data
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -83,44 +89,121 @@ export function WhatsAppActivitySheet({
   const [leadSearch, setLeadSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [saving, setSaving] = useState(false);
-  const [aiSuggestingType, setAiSuggestingType] = useState(false);
-  const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const suggestActivityType = useCallback(async (title: string) => {
-    if (!title || title.trim().length < 5) return;
-    setAiSuggestingType(true);
+  const toggleListening = useCallback(() => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error('Seu navegador não suporta reconhecimento de voz');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((r: any) => r[0].transcript)
+        .join(' ');
+      setDictationText(prev => prev ? `${prev} ${transcript}` : transcript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech error', event.error);
+      if (event.error !== 'aborted') toast.error('Erro no reconhecimento de voz');
+      setListening(false);
+    };
+
+    recognition.onend = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+    toast.info('🎙️ Ouvindo... dite as informações da atividade', { duration: 2500 });
+  }, [listening]);
+
+  const processWithAI = async () => {
+    if (!dictationText.trim()) {
+      toast.error('Dite ou escreva as informações primeiro');
+      return;
+    }
+
+    setAiProcessing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-activity-type', { body: { title } });
-      if (!error && data?.suggested_type) {
-        const validKeys = ACTIVITY_TYPES.map(t => t.value);
-        if (validKeys.includes(data.suggested_type)) {
-          setFormType(data.suggested_type);
-          const label = ACTIVITY_TYPES.find(t => t.value === data.suggested_type)?.label;
-          toast.info(`Tipo sugerido pela IA: ${label}`, { duration: 2000 });
+      const { data, error } = await supabase.functions.invoke('parse-activity-dictation', {
+        body: { text: dictationText },
+      });
+
+      if (error) throw error;
+
+      const fields = data?.fields;
+      if (!fields) throw new Error('Sem resposta da IA');
+
+      // Fill form fields
+      if (fields.title) setFormTitle(fields.title);
+      if (fields.activity_type) {
+        const valid = ACTIVITY_TYPES.find(t => t.value === fields.activity_type);
+        if (valid) setFormType(valid.value);
+      }
+      if (fields.priority) setFormPriority(fields.priority);
+      if (fields.deadline) setFormDeadline(fields.deadline);
+      if (fields.what_was_done) setFormWhatWasDone(fields.what_was_done);
+      if (fields.current_status) setFormCurrentStatus(fields.current_status);
+      if (fields.next_steps) setFormNextSteps(fields.next_steps);
+      if (fields.notes) setFormNotes(fields.notes);
+
+      // Try to match lead by name
+      if (fields.lead_name && !formLeadId) {
+        const match = leads.find(l =>
+          l.lead_name?.toLowerCase().includes(fields.lead_name.toLowerCase())
+        );
+        if (match) {
+          setFormLeadId(match.id);
+          setFormLeadName(match.lead_name || '');
+        } else {
+          setFormLeadName(fields.lead_name);
         }
       }
-    } catch { /* silent */ }
-    setAiSuggestingType(false);
-  }, []);
 
-  const handleTitleChange = (value: string) => {
-    setFormTitle(value);
-    if (aiSuggestTimer.current) clearTimeout(aiSuggestTimer.current);
-    if (value.trim().length >= 5) {
-      aiSuggestTimer.current = setTimeout(() => suggestActivityType(value), 800);
+      // Try to match contact by name
+      if (fields.contact_name && !formContactId) {
+        const match = contacts.find(c =>
+          c.full_name?.toLowerCase().includes(fields.contact_name.toLowerCase())
+        );
+        if (match) {
+          setFormContactId(match.id);
+          setFormContactName(match.full_name);
+        } else {
+          setFormContactName(fields.contact_name);
+        }
+      }
+
+      toast.success('✨ Campos preenchidos pela IA!');
+      setAiMode(false);
+      setDictationText('');
+    } catch (e: any) {
+      console.error('AI parse error:', e);
+      toast.error('Erro ao processar com IA: ' + (e.message || 'tente novamente'));
+    } finally {
+      setAiProcessing(false);
     }
   };
 
   useEffect(() => {
     if (open) {
-      // Reset and set defaults
       setFormTitle('');
       setFormType('tarefa');
       setFormStatus('pendente');
       setFormPriority('normal');
       setFormDeadline('');
       setFormNotificationDate('');
-      // Default assignee set after team members load
       setFormLeadId(defaultLeadId || '');
       setFormLeadName(defaultLeadName || '');
       setFormContactId(defaultContactId || '');
@@ -132,8 +215,10 @@ export function WhatsAppActivitySheet({
       setFormRepeatWeekDays([]);
       setLeadSearch('');
       setContactSearch('');
+      setAiMode(false);
+      setDictationText('');
+      setListening(false);
 
-      // Fetch data
       fetchLeads();
       fetchTeamMembers();
       fetchContacts();
@@ -148,7 +233,6 @@ export function WhatsAppActivitySheet({
   const fetchTeamMembers = async () => {
     const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
     setTeamMembers(data || []);
-    // Default assignee to logged-in user
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const me = (data || []).find((m: TeamMember) => m.user_id === user.id);
@@ -225,22 +309,73 @@ export function WhatsAppActivitySheet({
         <SheetHeader className="px-4 py-3 border-b shrink-0">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-base">Nova Atividade</SheetTitle>
+            <Button
+              variant={aiMode ? 'default' : 'outline'}
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setAiMode(!aiMode)}
+            >
+              <Sparkles className="h-4 w-4" />
+              Preencher com IA
+            </Button>
           </div>
-          {!formLeadId && (
-            <p className="text-xs text-muted-foreground">
-              Vincule um lead existente no formulário ou crie um novo.
-            </p>
-          )}
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* AI Dictation Panel */}
+          {aiMode && (
+            <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                <Sparkles className="h-4 w-4" />
+                Dite ou escreva as informações da atividade
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Fale tudo sobre a atividade: assunto, cliente, o que foi feito, próximo passo, prazo...
+                A IA vai organizar nos campos corretos. Você pode gravar vários áudios.
+              </p>
+
+              <Textarea
+                value={dictationText}
+                onChange={e => setDictationText(e.target.value)}
+                placeholder="Ex: Preciso acompanhar o protocolo do INSS do cliente João Silva, prazo urgente para sexta-feira, já foi feito o agendamento da perícia..."
+                rows={4}
+                className="text-sm"
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={listening ? 'destructive' : 'outline'}
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={toggleListening}
+                >
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  {listening ? 'Parar' : 'Gravar áudio'}
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5 ml-auto"
+                  onClick={processWithAI}
+                  disabled={aiProcessing || !dictationText.trim()}
+                >
+                  {aiProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {aiProcessing ? 'Processando...' : 'Preencher campos'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Assunto */}
           <div>
             <Label>Assunto da atividade *</Label>
-            <div className="flex gap-2">
-              <Input className="flex-1" value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
-              <VoiceInputButton onResult={t => handleTitleChange(formTitle ? `${formTitle} ${t}` : t)} />
-            </div>
+            <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
           </div>
 
           {/* Assessor + Tipo */}
@@ -257,7 +392,7 @@ export function WhatsAppActivitySheet({
               </Select>
             </div>
             <div>
-              <Label>Tipo de atividade * {aiSuggestingType && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</Label>
+              <Label>Tipo de atividade *</Label>
               <Select value={formType} onValueChange={setFormType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -395,37 +530,25 @@ export function WhatsAppActivitySheet({
           {/* O que foi feito */}
           <div>
             <Label>O que foi feito?</Label>
-            <div className="flex gap-2 items-start">
-              <Textarea className="flex-1" value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
-              <VoiceInputButton onResult={t => setFormWhatWasDone(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
-            </div>
+            <Textarea value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
           </div>
 
           {/* Como está */}
           <div>
             <Label>Como está?</Label>
-            <div className="flex gap-2 items-start">
-              <Textarea className="flex-1" value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
-              <VoiceInputButton onResult={t => setFormCurrentStatus(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
-            </div>
+            <Textarea value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
           </div>
 
           {/* Próximo passo */}
           <div>
             <Label>Próximo passo</Label>
-            <div className="flex gap-2 items-start">
-              <Textarea className="flex-1" value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
-              <VoiceInputButton onResult={t => setFormNextSteps(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
-            </div>
+            <Textarea value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
           </div>
 
           {/* Observações */}
           <div>
             <Label>Observações</Label>
-            <div className="flex gap-2 items-start">
-              <Textarea className="flex-1" value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
-              <VoiceInputButton onResult={t => setFormNotes(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
-            </div>
+            <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
           </div>
         </div>
 
