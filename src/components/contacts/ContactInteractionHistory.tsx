@@ -203,6 +203,8 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
         return 'Aberto';
       case 'sent':
         return 'Enviado';
+      case 'received':
+        return 'Recebida';
       default:
         return type;
     }
@@ -337,7 +339,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
               .map((item) => (
                 item.type === 'comment' 
                   ? <CommentCard key={`comment-${item.data.id}`} comment={item.data as Comment} getConfig={getCommentTypeConfig} onDelete={handleDeleteComment} />
-                  : <DmCard key={`dm-${item.data.id}`} dm={item.data as DmEntry} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} />
+                  : <DmCard key={`dm-${item.data.id}`} dm={item.data as DmEntry} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} instagramUsername={instagramUsername!} onRefresh={fetchInteractionHistory} />
               ))}
           </div>
         </TabsContent>
@@ -353,7 +355,7 @@ export function ContactInteractionHistory({ instagramUsername }: ContactInteract
         <TabsContent value="dms" className="mt-3">
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
             {dmHistory.map((dm) => (
-              <DmCard key={dm.id} dm={dm} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} />
+              <DmCard key={dm.id} dm={dm} getActionLabel={getActionTypeLabel} onDelete={handleDeleteDm} instagramUsername={instagramUsername!} onRefresh={fetchInteractionHistory} />
             ))}
           </div>
         </TabsContent>
@@ -423,11 +425,15 @@ function CommentCard({
 function DmCard({ 
   dm, 
   getActionLabel,
-  onDelete
+  onDelete,
+  instagramUsername,
+  onRefresh,
 }: { 
   dm: DmEntry; 
   getActionLabel: (type: string) => string;
   onDelete: (id: string) => void;
+  instagramUsername: string;
+  onRefresh: () => void;
 }) {
   const [showResponseInput, setShowResponseInput] = useState(false);
   const [responseText, setResponseText] = useState(dm.dm_response || '');
@@ -437,14 +443,22 @@ function DmCard({
     if (!responseText.trim()) return;
     setSavingResponse(true);
     try {
-      const { error } = await supabase
+      const normalizedUsername = instagramUsername.replace('@', '').toLowerCase();
+      // Save response on original DM
+      await supabase
         .from('dm_history')
         .update({ dm_response: responseText.trim() } as any)
         .eq('id', dm.id);
+      // Create a new DM entry as "received" so it counts in the DM total
+      const { error } = await supabase.from('dm_history').insert({
+        instagram_username: normalizedUsername,
+        dm_message: responseText.trim(),
+        action_type: 'received',
+      });
       if (error) throw error;
-      dm.dm_response = responseText.trim();
+      toast.success('Resposta registrada como DM recebida!');
       setShowResponseInput(false);
-      toast.success('Resposta registrada!');
+      onRefresh();
     } catch (e) {
       console.error(e);
       toast.error('Erro ao salvar resposta');
