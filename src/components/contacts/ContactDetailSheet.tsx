@@ -1046,155 +1046,160 @@ export function ContactDetailSheet({
       </Content>
     </Wrapper>
 
-    {/* Client Lead Creation Dialog */}
-    <Dialog open={showClientLeadDialog} onOpenChange={setShowClientLeadDialog}>
-      <DialogContent className="sm:max-w-md z-[200]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
-            Cadastrar Lead do Cliente
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <p className="text-sm text-muted-foreground">
-            Como <strong>{contact?.full_name}</strong> foi classificado como <Badge className="bg-green-500 text-white text-xs mx-1">Cliente</Badge>, vincule ou crie o lead:
-          </p>
+    {showClientLeadDialog && (
+      <Dialog open={showClientLeadDialog} onOpenChange={setShowClientLeadDialog} modal>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" style={{ zIndex: 9999 }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" />
+              Cadastrar Lead do Cliente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Como <strong>{contact?.full_name}</strong> foi classificado como <Badge className="bg-green-500 text-white text-xs mx-1">Cliente</Badge>, vincule ou crie o lead:
+            </p>
 
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            <Button
-              variant={clientLeadMode === 'create' ? 'default' : 'outline'}
-              size="sm"
-              className="flex-1"
-              onClick={() => setClientLeadMode('create')}
-            >
-              Criar novo lead
-            </Button>
-            <Button
-              variant={clientLeadMode === 'link' ? 'default' : 'outline'}
-              size="sm"
-              className="flex-1"
-              onClick={() => setClientLeadMode('link')}
-            >
-              Vincular existente
-            </Button>
-          </div>
-
-          {clientLeadMode === 'link' ? (
-            <div className="space-y-3">
-              <div>
-                <Label>Buscar lead</Label>
-                <Input
-                  placeholder="Nome do lead..."
-                  value={existingLeadSearch}
-                  onChange={(e) => setExistingLeadSearch(e.target.value)}
-                />
-              </div>
-              <ScrollArea className="h-40 border rounded-md">
-                <div className="p-1 space-y-1">
-                  {existingLeads.map((lead) => {
-                    const board = kanbanBoards.find(b => b.id === lead.board_id);
-                    return (
-                      <button
-                        key={lead.id}
-                        onClick={() => setSelectedExistingLeadId(lead.id)}
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                          selectedExistingLeadId === lead.id
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-muted'
-                        }`}
-                      >
-                        <div className="font-medium truncate">{lead.lead_name || 'Sem nome'}</div>
-                        <div className="text-xs opacity-70 flex items-center gap-1">
-                          {board && (
-                            <>
-                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
-                              {board.name}
-                              <span className="mx-1">·</span>
-                            </>
-                          )}
-                          {format(new Date(lead.created_at), 'dd/MM/yyyy')}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {existingLeads.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
-                  )}
-                </div>
-              </ScrollArea>
+            {/* Mode toggle */}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={clientLeadMode === 'create' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setClientLeadMode('create'); }}
+              >
+                Criar novo lead
+              </Button>
+              <Button
+                type="button"
+                variant={clientLeadMode === 'link' ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setClientLeadMode('link'); }}
+              >
+                Vincular existente
+              </Button>
             </div>
-          ) : (
+
+            {clientLeadMode === 'link' ? (
+              <div className="space-y-3">
+                <div>
+                  <Label>Buscar lead</Label>
+                  <Input
+                    placeholder="Nome do lead..."
+                    value={existingLeadSearch}
+                    onChange={(e) => setExistingLeadSearch(e.target.value)}
+                  />
+                </div>
+                <ScrollArea className="h-40 border rounded-md">
+                  <div className="p-1 space-y-1">
+                    {existingLeads.map((lead) => {
+                      const board = kanbanBoards.find(b => b.id === lead.board_id);
+                      return (
+                        <button
+                          type="button"
+                          key={lead.id}
+                          onClick={() => setSelectedExistingLeadId(lead.id)}
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                            selectedExistingLeadId === lead.id
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-muted'
+                          }`}
+                        >
+                          <div className="font-medium truncate">{lead.lead_name || 'Sem nome'}</div>
+                          <div className="text-xs opacity-70 flex items-center gap-1">
+                            {board && (
+                              <>
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                                {board.name}
+                                <span className="mx-1">·</span>
+                              </>
+                            )}
+                            {format(new Date(lead.created_at), 'dd/MM/yyyy')}
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {existingLeads.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            ) : (
+              <div>
+                <Label>Funil</Label>
+                <Select value={clientLeadBoardId} onValueChange={setClientLeadBoardId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o funil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kanbanBoards.map((board) => (
+                      <SelectItem key={board.id} value={board.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                          {board.name}
+                          {board.is_default && <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div>
-              <Label>Funil</Label>
-              <Select value={clientLeadBoardId} onValueChange={setClientLeadBoardId}>
+              <Label>Resultado</Label>
+              <Select value={clientLeadOutcome} onValueChange={(v) => setClientLeadOutcome(v as 'closed' | 'refused')}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione o funil" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {kanbanBoards.map((board) => (
-                    <SelectItem key={board.id} value={board.id}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
-                        {board.name}
-                        {board.is_default && <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="closed">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      Fechado (ganho)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="refused">
+                    <div className="flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-red-500" />
+                      Recusado (perdido)
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          )}
 
-          <div>
-            <Label>Resultado</Label>
-            <Select value={clientLeadOutcome} onValueChange={(v) => setClientLeadOutcome(v as 'closed' | 'refused')}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="closed">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    Fechado (ganho)
-                  </div>
-                </SelectItem>
-                <SelectItem value="refused">
-                  <div className="flex items-center gap-2">
-                    <XCircle className="h-4 w-4 text-red-500" />
-                    Recusado (perdido)
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <div>
+              <Label>{clientLeadOutcome === 'closed' ? 'Data de Fechamento' : 'Data da Recusa'}</Label>
+              <Input
+                type="date"
+                value={clientLeadDate}
+                onChange={(e) => setClientLeadDate(e.target.value)}
+              />
+            </div>
           </div>
-
-          <div>
-            <Label>{clientLeadOutcome === 'closed' ? 'Data de Fechamento' : 'Data da Recusa'}</Label>
-            <Input
-              type="date"
-              value={clientLeadDate}
-              onChange={(e) => setClientLeadDate(e.target.value)}
-            />
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={() => setShowClientLeadDialog(false)}>
+              Pular
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateClientLead}
+              disabled={
+                creatingClientLead ||
+                (clientLeadMode === 'create' && !clientLeadBoardId) ||
+                (clientLeadMode === 'link' && !selectedExistingLeadId)
+              }
+            >
+              {creatingClientLead ? 'Processando...' : clientLeadMode === 'create' ? 'Criar Lead' : 'Vincular Lead'}
+            </Button>
           </div>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={() => setShowClientLeadDialog(false)}>
-            Pular
-          </Button>
-          <Button
-            onClick={handleCreateClientLead}
-            disabled={
-              creatingClientLead ||
-              (clientLeadMode === 'create' && !clientLeadBoardId) ||
-              (clientLeadMode === 'link' && !selectedExistingLeadId)
-            }
-          >
-            {creatingClientLead ? 'Processando...' : clientLeadMode === 'create' ? 'Criar Lead' : 'Vincular Lead'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    )}
     </>
   );
 }
