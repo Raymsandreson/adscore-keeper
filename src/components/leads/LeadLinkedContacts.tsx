@@ -7,8 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+interface ContactCallStats {
+  totalCalls: number;
+  lastAnsweredDuration: number | null;
+}
 
 const RELATIONSHIP_OPTIONS = [
   'Vítima',
@@ -48,6 +53,7 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [callStats, setCallStats] = useState<Record<string, ContactCallStats>>({});
 
   // Search & link existing contact
   const [showSearch, setShowSearch] = useState(false);
@@ -92,6 +98,41 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
   useEffect(() => {
     if (leadId) fetchContacts();
   }, [leadId, fetchContacts]);
+
+  // Fetch call stats for all linked contacts
+  const fetchCallStats = useCallback(async (contactIds: string[]) => {
+    if (contactIds.length === 0) {
+      setCallStats({});
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('call_records')
+        .select('contact_id, call_result, duration_seconds, created_at')
+        .in('contact_id', contactIds)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const stats: Record<string, ContactCallStats> = {};
+      for (const cid of contactIds) {
+        const contactCalls = (data || []).filter(r => r.contact_id === cid);
+        const answeredCall = contactCalls.find(r => r.call_result === 'answered' && r.duration_seconds && r.duration_seconds > 0);
+        stats[cid] = {
+          totalCalls: contactCalls.length,
+          lastAnsweredDuration: answeredCall?.duration_seconds ?? null,
+        };
+      }
+      setCallStats(stats);
+    } catch (err) {
+      console.error('Error fetching call stats:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const contactIds = contacts.map(c => c.contact_id);
+    if (contactIds.length > 0) fetchCallStats(contactIds);
+  }, [contacts, fetchCallStats]);
 
   // Search contacts
   useEffect(() => {
@@ -224,6 +265,12 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
     
     setSelectedContact(data || contact);
     setSheetOpen(true);
+  };
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}min ${s}s` : `${s}s`;
   };
 
   if (loading) {
@@ -388,6 +435,21 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
                           </span>
                         )}
                       </div>
+                      {/* Call stats */}
+                      {callStats[cl.contact.id] && callStats[cl.contact.id].totalCalls > 0 && (
+                        <div className="flex items-center gap-2 text-xs mt-0.5">
+                          <span className="flex items-center gap-0.5 text-muted-foreground">
+                            <PhoneCall className="h-3 w-3" />
+                            {callStats[cl.contact.id].totalCalls} chamada{callStats[cl.contact.id].totalCalls !== 1 ? 's' : ''}
+                          </span>
+                          {callStats[cl.contact.id].lastAnsweredDuration !== null && (
+                            <span className="flex items-center gap-0.5 text-green-600">
+                              <Clock className="h-3 w-3" />
+                              Última atendida: {formatDuration(callStats[cl.contact.id].lastAnsweredDuration!)}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   </button>
