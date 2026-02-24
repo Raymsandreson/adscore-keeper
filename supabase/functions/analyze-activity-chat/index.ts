@@ -6,14 +6,29 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB limit to prevent WORKER_LIMIT
+
 async function fetchFileAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
     const resp = await fetch(url);
     if (!resp.ok) return null;
+    const contentLength = resp.headers.get("content-length");
+    if (contentLength && parseInt(contentLength) > MAX_FILE_SIZE) {
+      console.warn(`File too large (${contentLength} bytes), skipping: ${url}`);
+      return null;
+    }
     const buffer = await resp.arrayBuffer();
+    if (buffer.byteLength > MAX_FILE_SIZE) {
+      console.warn(`File too large after download (${buffer.byteLength} bytes), skipping`);
+      return null;
+    }
     const bytes = new Uint8Array(buffer);
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      binary += String.fromCharCode(...chunk);
+    }
     const base64 = btoa(binary);
     const mimeType = resp.headers.get("content-type") || "application/octet-stream";
     return { base64, mimeType };
@@ -283,57 +298,56 @@ IMPORTANTE:
         { role: "system", content: systemPrompt },
       ];
 
-      // Add chat history
+      // Add chat history (limit media to last 3 to save memory)
       if (chat_history && Array.isArray(chat_history)) {
-        for (const msg of chat_history) {
+        let mediaCount = 0;
+        const MAX_MEDIA = 3;
+        // Process in reverse to prioritize recent media, then re-reverse
+        const reversedHistory = [...chat_history].reverse();
+        const processedReverse: any[] = [];
+        
+        for (const msg of reversedHistory) {
           if (msg.role === "ai") {
-            aiMessages.push({ role: "assistant", content: msg.content });
-          } else {
-            // For audio messages, try to include the audio
-            if (msg.type === "audio" && msg.file_url) {
-              const fileData = await fetchFileAsBase64(msg.file_url);
-              if (fileData) {
-                aiMessages.push({
+            processedReverse.push({ role: "assistant", content: msg.content });
+            continue;
+          }
+          
+          const hasMedia = (msg.type === "audio" || msg.type === "image" || msg.type === "pdf") && msg.file_url;
+          
+          if (hasMedia && mediaCount < MAX_MEDIA) {
+            const fileData = await fetchFileAsBase64(msg.file_url);
+            if (fileData) {
+              mediaCount++;
+              if (msg.type === "audio") {
+                processedReverse.push({
                   role: "user",
                   content: [
                     { type: "text", text: msg.content || "Áudio enviado:" },
                     { type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } },
                   ],
                 });
-                continue;
-              }
-            }
-            // For images
-            if (msg.type === "image" && msg.file_url) {
-              const fileData = await fetchFileAsBase64(msg.file_url);
-              if (fileData) {
-                aiMessages.push({
+              } else {
+                processedReverse.push({
                   role: "user",
                   content: [
-                    { type: "text", text: msg.content || "Imagem enviada:" },
+                    { type: "text", text: msg.content || `${msg.type === "image" ? "Imagem" : "Documento"} enviado:` },
                     { type: "image_url", image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` } },
                   ],
                 });
-                continue;
               }
+              continue;
             }
-            // For PDFs
-            if (msg.type === "pdf" && msg.file_url) {
-              const fileData = await fetchFileAsBase64(msg.file_url);
-              if (fileData) {
-                aiMessages.push({
-                  role: "user",
-                  content: [
-                    { type: "text", text: msg.content || "Documento enviado:" },
-                    { type: "image_url", image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` } },
-                  ],
-                });
-                continue;
-              }
-            }
-            aiMessages.push({ role: "user", content: msg.content || "" });
+          } else if (hasMedia) {
+            // Skip media beyond limit, just add text reference
+            processedReverse.push({ role: "user", content: msg.content || `[${msg.type} enviado: ${msg.file_name || 'arquivo'}]` });
+            continue;
           }
+          
+          processedReverse.push({ role: "user", content: msg.content || "" });
         }
+        
+        // Re-reverse to restore original order
+        aiMessages.push(...processedReverse.reverse());
       }
 
       const tools = [
@@ -672,6 +686,8 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
 
     const contentParts: any[] = [];
     let textSummary = "Analise estas mensagens de chat e extraia as informações:\n\n";
+    let mediaCount = 0;
+    const MAX_MEDIA_DEFAULT = 3;
     
     for (const m of messages) {
       const senderLabel = m.sender_name || 'Usuário';
@@ -680,33 +696,20 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
         textSummary += `[${senderLabel}]: ${m.content || ''}\n`;
       } else if (m.message_type === 'ai_suggestion') {
         continue;
-      } else if (m.message_type === 'image' && m.file_url) {
-        textSummary += `[${senderLabel}] enviou uma imagem (${m.file_name || 'imagem'}). Analise o conteúdo da imagem abaixo:\n`;
+      } else if (m.file_url && mediaCount < MAX_MEDIA_DEFAULT) {
         const fileData = await fetchFileAsBase64(m.file_url);
         if (fileData) {
-          contentParts.push({
-            type: "image_url",
-            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
-          });
+          mediaCount++;
+          if (m.message_type === 'audio') {
+            textSummary += `[${senderLabel}] enviou um áudio (${m.audio_duration || '?'}s):\n`;
+            contentParts.push({ type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } });
+          } else {
+            textSummary += `[${senderLabel}] enviou ${m.message_type === 'image' ? 'uma imagem' : 'um documento'} (${m.file_name || 'arquivo'}):\n`;
+            contentParts.push({ type: "image_url", image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` } });
+          }
         }
-      } else if (m.message_type === 'audio' && m.file_url) {
-        textSummary += `[${senderLabel}] enviou um áudio (${m.audio_duration || '?'}s). Transcreva e analise o áudio abaixo:\n`;
-        const fileData = await fetchFileAsBase64(m.file_url);
-        if (fileData) {
-          contentParts.push({
-            type: "input_audio",
-            input_audio: { data: fileData.base64, format: "wav" }
-          });
-        }
-      } else if (m.message_type === 'pdf' && m.file_url) {
-        textSummary += `[${senderLabel}] enviou um documento PDF (${m.file_name || 'documento'}). Analise o conteúdo do documento abaixo:\n`;
-        const fileData = await fetchFileAsBase64(m.file_url);
-        if (fileData) {
-          contentParts.push({
-            type: "image_url",
-            image_url: { url: `data:${fileData.mimeType};base64,${fileData.base64}` }
-          });
-        }
+      } else if (m.file_url) {
+        textSummary += `[${senderLabel}] enviou ${m.message_type} (${m.file_name || 'arquivo'}) [não processado por limite]\n`;
       }
     }
 
