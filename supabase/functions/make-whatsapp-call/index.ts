@@ -97,7 +97,11 @@ Deno.serve(async (req) => {
     const responseData = await uazResponse.json().catch(() => ({}))
 
     if (!uazResponse.ok) {
-      throw new Error(`UazAPI error: ${uazResponse.status} - ${JSON.stringify(responseData)}`)
+      console.error(`UazAPI error for instance ${instance.instance_name}: ${uazResponse.status}`, responseData)
+      return new Response(
+        JSON.stringify({ success: false, error: `Erro na UazAPI (${uazResponse.status}): ${responseData?.message || 'Token inválido ou instância desconectada. Verifique o token da instância.'}` }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     console.log('UazAPI call response:', JSON.stringify(responseData))
