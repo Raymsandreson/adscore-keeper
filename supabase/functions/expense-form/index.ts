@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -27,22 +27,19 @@ serve(async (req) => {
         .maybeSingle();
 
       if (tokenError || !tokenData) {
-        return new Response(JSON.stringify({ error: "Link inválido ou não encontrado" }), {
-          status: 404,
+        return new Response(JSON.stringify({ success: false, error: "Link inválido ou não encontrado" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (tokenData.submitted_at) {
-        return new Response(JSON.stringify({ error: "Este formulário já foi preenchido", already_submitted: true }), {
-          status: 400,
+        return new Response(JSON.stringify({ success: false, error: "Este formulário já foi preenchido", already_submitted: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (new Date(tokenData.expires_at) < new Date()) {
-        return new Response(JSON.stringify({ error: "Este link expirou" }), {
-          status: 400,
+        return new Response(JSON.stringify({ success: false, error: "Este link expirou" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -134,22 +131,19 @@ serve(async (req) => {
         .maybeSingle();
 
       if (tokenError || !tokenData) {
-        return new Response(JSON.stringify({ error: "Link inválido" }), {
-          status: 404,
+        return new Response(JSON.stringify({ success: false, error: "Link inválido" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (tokenData.submitted_at) {
-        return new Response(JSON.stringify({ error: "Já preenchido" }), {
-          status: 400,
+        return new Response(JSON.stringify({ success: false, error: "Já preenchido" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (!responses || !Array.isArray(responses) || responses.length === 0) {
-        return new Response(JSON.stringify({ error: "Nenhuma resposta enviada" }), {
-          status: 400,
+        return new Response(JSON.stringify({ success: false, error: "Nenhuma resposta enviada" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -217,14 +211,12 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: "Ação inválida" }), {
-      status: 400,
+    return new Response(JSON.stringify({ success: false, error: "Ação inválida" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
