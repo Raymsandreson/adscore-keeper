@@ -148,6 +148,10 @@ export function ContactDetailSheet({
   const [clientLeadOutcome, setClientLeadOutcome] = useState<'closed' | 'refused'>('closed');
   const [clientLeadDate, setClientLeadDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [creatingClientLead, setCreatingClientLead] = useState(false);
+  const [clientLeadMode, setClientLeadMode] = useState<'create' | 'link'>('create');
+  const [existingLeadSearch, setExistingLeadSearch] = useState('');
+  const [existingLeads, setExistingLeads] = useState<any[]>([]);
+  const [selectedExistingLeadId, setSelectedExistingLeadId] = useState('');
   const previousClassificationsRef = useRef<string[]>([]);
 
   // Load contact data
@@ -264,81 +268,151 @@ export function ContactDetailSheet({
     
     // If "client" was just added, open lead creation dialog
     if (!wasClient && isNowClient && contact) {
-      // Check if contact already has leads
-      if (contactLeads.length === 0) {
-        const defaultBoard = kanbanBoards.find(b => b.is_default) || kanbanBoards[0];
-        if (defaultBoard) {
-          setClientLeadBoardId(defaultBoard.id);
-        }
-        setClientLeadOutcome('closed');
-        setClientLeadDate(format(new Date(), 'yyyy-MM-dd'));
-        setShowClientLeadDialog(true);
+      const defaultBoard = kanbanBoards.find(b => b.is_default) || kanbanBoards[0];
+      if (defaultBoard) {
+        setClientLeadBoardId(defaultBoard.id);
       }
+      setClientLeadOutcome('closed');
+      setClientLeadDate(format(new Date(), 'yyyy-MM-dd'));
+      setClientLeadMode(contactLeads.length > 0 ? 'link' : 'create');
+      setSelectedExistingLeadId('');
+      setExistingLeadSearch('');
+      setShowClientLeadDialog(true);
     }
   };
 
-  // Create lead for client contact directly in closed/refused stage
+  // Search existing leads
+  useEffect(() => {
+    const searchLeads = async () => {
+      if (clientLeadMode !== 'link') return;
+      try {
+        let query = supabase.from('leads').select('id, lead_name, board_id, status, created_at').order('created_at', { ascending: false }).limit(20);
+        if (existingLeadSearch.trim()) {
+          query = query.ilike('lead_name', `%${existingLeadSearch.trim()}%`);
+        }
+        const { data } = await query;
+        setExistingLeads(data || []);
+      } catch (e) {
+        console.error('Error searching leads:', e);
+      }
+    };
+    searchLeads();
+  }, [clientLeadMode, existingLeadSearch]);
+
+  // Create or link lead for client contact
   const handleCreateClientLead = async () => {
-    if (!contact || !clientLeadBoardId) return;
+    if (!contact) return;
     
     setCreatingClientLead(true);
     try {
-      const board = kanbanBoards.find(b => b.id === clientLeadBoardId);
-      if (!board) throw new Error('Funil não encontrado');
-      
-      // Find the closed or refused stage
-      const closedStageId = findClosedStageId(board.stages);
-      const refusedStageId = findRefusedStageId(board.stages);
-      
-      const targetStageId = clientLeadOutcome === 'closed' ? closedStageId : refusedStageId;
-      if (!targetStageId) {
-        toast.error(`Estágio "${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}" não encontrado neste funil`);
-        return;
-      }
-
       const { data: { user: currentUser } } = await supabase.auth.getUser();
 
-      const { data: leadResult, error: leadError } = await supabase
-        .from('leads')
-        .insert({
-          lead_name: contact.full_name,
-          lead_phone: contact.phone,
-          lead_email: contact.email,
-          instagram_username: contact.instagram_username,
-          source: 'contact_client',
-          status: targetStageId,
-          board_id: clientLeadBoardId,
+      if (clientLeadMode === 'link') {
+        // Link existing lead
+        if (!selectedExistingLeadId) {
+          toast.error('Selecione um lead existente');
+          setCreatingClientLead(false);
+          return;
+        }
+
+        // Update existing lead with client outcome
+        const updates: Record<string, any> = {
           client_classification: clientLeadOutcome === 'closed' ? 'client' : null,
-          became_client_date: clientLeadOutcome === 'closed' ? clientLeadDate : null,
-          classification_date: clientLeadOutcome === 'refused' ? clientLeadDate : null,
-          city: contact.city,
-          state: contact.state,
-          notes: contact.notes,
-          created_by: currentUser?.id || null,
-        })
-        .select()
-        .single();
+          updated_by: currentUser?.id || null,
+        };
+        if (clientLeadOutcome === 'closed') {
+          updates.became_client_date = clientLeadDate;
+        } else {
+          updates.classification_date = clientLeadDate;
+        }
 
-      if (leadError) throw leadError;
+        // Find & set the terminal stage if board is known
+        const existingLead = existingLeads.find(l => l.id === selectedExistingLeadId);
+        if (existingLead?.board_id) {
+          const board = kanbanBoards.find(b => b.id === existingLead.board_id);
+          if (board) {
+            const stageId = clientLeadOutcome === 'closed' ? findClosedStageId(board.stages) : findRefusedStageId(board.stages);
+            if (stageId) updates.status = stageId;
+          }
+        }
 
-      // Create link in contact_leads junction table
-      await supabase.from('contact_leads').insert({
-        contact_id: contact.id,
-        lead_id: leadResult.id,
-      });
+        await supabase.from('leads').update(updates).eq('id', selectedExistingLeadId);
 
-      // Update contact with lead reference
-      await supabase.from('contacts').update({
-        lead_id: leadResult.id,
-        converted_to_lead_at: new Date().toISOString(),
-      }).eq('id', contact.id);
+        // Create link if not already linked
+        const { data: existingLink } = await supabase.from('contact_leads')
+          .select('id').eq('contact_id', contact.id).eq('lead_id', selectedExistingLeadId).maybeSingle();
+        if (!existingLink) {
+          await supabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: selectedExistingLeadId });
+        }
 
-      toast.success(`Lead criado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
+        await supabase.from('contacts').update({
+          lead_id: selectedExistingLeadId,
+          converted_to_lead_at: new Date().toISOString(),
+        }).eq('id', contact.id);
+
+        toast.success(`Lead vinculado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
+      } else {
+        // Create new lead
+        if (!clientLeadBoardId) {
+          toast.error('Selecione um funil');
+          setCreatingClientLead(false);
+          return;
+        }
+
+        const board = kanbanBoards.find(b => b.id === clientLeadBoardId);
+        if (!board) throw new Error('Funil não encontrado');
+        
+        const closedStageId = findClosedStageId(board.stages);
+        const refusedStageId = findRefusedStageId(board.stages);
+        
+        const targetStageId = clientLeadOutcome === 'closed' ? closedStageId : refusedStageId;
+        if (!targetStageId) {
+          toast.error(`Estágio "${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}" não encontrado neste funil`);
+          setCreatingClientLead(false);
+          return;
+        }
+
+        const { data: leadResult, error: leadError } = await supabase
+          .from('leads')
+          .insert({
+            lead_name: contact.full_name,
+            lead_phone: contact.phone,
+            lead_email: contact.email,
+            instagram_username: contact.instagram_username,
+            source: 'contact_client',
+            status: targetStageId,
+            board_id: clientLeadBoardId,
+            client_classification: clientLeadOutcome === 'closed' ? 'client' : null,
+            became_client_date: clientLeadOutcome === 'closed' ? clientLeadDate : null,
+            classification_date: clientLeadOutcome === 'refused' ? clientLeadDate : null,
+            city: contact.city,
+            state: contact.state,
+            notes: contact.notes,
+            created_by: currentUser?.id || null,
+          })
+          .select()
+          .single();
+
+        if (leadError) throw leadError;
+
+        await supabase.from('contact_leads').insert({
+          contact_id: contact.id,
+          lead_id: leadResult.id,
+        });
+
+        await supabase.from('contacts').update({
+          lead_id: leadResult.id,
+          converted_to_lead_at: new Date().toISOString(),
+        }).eq('id', contact.id);
+
+        toast.success(`Lead criado como ${clientLeadOutcome === 'closed' ? 'Fechado' : 'Recusado'}`);
+      }
+
       setShowClientLeadDialog(false);
       onContactUpdated?.();
     } catch (error) {
-      console.error('Error creating client lead:', error);
-      toast.error('Erro ao criar lead');
+      console.error('Error creating/linking client lead:', error);
+      toast.error('Erro ao processar lead');
     } finally {
       setCreatingClientLead(false);
     }
@@ -983,28 +1057,94 @@ export function ContactDetailSheet({
         </DialogHeader>
         <div className="space-y-4 py-2">
           <p className="text-sm text-muted-foreground">
-            Como <strong>{contact?.full_name}</strong> foi classificado como <Badge className="bg-green-500 text-white text-xs mx-1">Cliente</Badge>, cadastre o lead associado:
+            Como <strong>{contact?.full_name}</strong> foi classificado como <Badge className="bg-green-500 text-white text-xs mx-1">Cliente</Badge>, vincule ou crie o lead:
           </p>
 
-          <div>
-            <Label>Funil</Label>
-            <Select value={clientLeadBoardId} onValueChange={setClientLeadBoardId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o funil" />
-              </SelectTrigger>
-              <SelectContent>
-                {kanbanBoards.map((board) => (
-                  <SelectItem key={board.id} value={board.id}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
-                      {board.name}
-                      {board.is_default && <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <Button
+              variant={clientLeadMode === 'create' ? 'default' : 'outline'}
+              size="sm"
+              className="flex-1"
+              onClick={() => setClientLeadMode('create')}
+            >
+              Criar novo lead
+            </Button>
+            <Button
+              variant={clientLeadMode === 'link' ? 'default' : 'outline'}
+              size="sm"
+              className="flex-1"
+              onClick={() => setClientLeadMode('link')}
+            >
+              Vincular existente
+            </Button>
           </div>
+
+          {clientLeadMode === 'link' ? (
+            <div className="space-y-3">
+              <div>
+                <Label>Buscar lead</Label>
+                <Input
+                  placeholder="Nome do lead..."
+                  value={existingLeadSearch}
+                  onChange={(e) => setExistingLeadSearch(e.target.value)}
+                />
+              </div>
+              <ScrollArea className="h-40 border rounded-md">
+                <div className="p-1 space-y-1">
+                  {existingLeads.map((lead) => {
+                    const board = kanbanBoards.find(b => b.id === lead.board_id);
+                    return (
+                      <button
+                        key={lead.id}
+                        onClick={() => setSelectedExistingLeadId(lead.id)}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          selectedExistingLeadId === lead.id
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-muted'
+                        }`}
+                      >
+                        <div className="font-medium truncate">{lead.lead_name || 'Sem nome'}</div>
+                        <div className="text-xs opacity-70 flex items-center gap-1">
+                          {board && (
+                            <>
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                              {board.name}
+                              <span className="mx-1">·</span>
+                            </>
+                          )}
+                          {format(new Date(lead.created_at), 'dd/MM/yyyy')}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {existingLeads.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum lead encontrado</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          ) : (
+            <div>
+              <Label>Funil</Label>
+              <Select value={clientLeadBoardId} onValueChange={setClientLeadBoardId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o funil" />
+                </SelectTrigger>
+                <SelectContent>
+                  {kanbanBoards.map((board) => (
+                    <SelectItem key={board.id} value={board.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: board.color || '#3b82f6' }} />
+                        {board.name}
+                        {board.is_default && <Badge variant="secondary" className="text-xs ml-1">Padrão</Badge>}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div>
             <Label>Resultado</Label>
@@ -1042,8 +1182,15 @@ export function ContactDetailSheet({
           <Button variant="outline" onClick={() => setShowClientLeadDialog(false)}>
             Pular
           </Button>
-          <Button onClick={handleCreateClientLead} disabled={!clientLeadBoardId || creatingClientLead}>
-            {creatingClientLead ? 'Criando...' : 'Criar Lead'}
+          <Button
+            onClick={handleCreateClientLead}
+            disabled={
+              creatingClientLead ||
+              (clientLeadMode === 'create' && !clientLeadBoardId) ||
+              (clientLeadMode === 'link' && !selectedExistingLeadId)
+            }
+          >
+            {creatingClientLead ? 'Processando...' : clientLeadMode === 'create' ? 'Criar Lead' : 'Vincular Lead'}
           </Button>
         </div>
       </DialogContent>
