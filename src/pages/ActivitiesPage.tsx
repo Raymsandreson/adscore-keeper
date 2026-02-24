@@ -800,11 +800,10 @@ const ActivitiesPage = () => {
   // Use the assignee's routine for filtering activity types in the form
   const activeRoutine = (formAssignedTo && formAssignedTo !== user?.id) ? assigneeTimeBlockSettings : timeBlockSettings;
 
-  // Only show activity types that are in the assignee's routine (including custom DB types)
-  const routineActivityTypes = useMemo(() => {
-    // Build a merged list of all known activity types (hardcoded + DB custom + from timeblock configs)
+  // Build a merged list of all known activity types (default + custom from DB + routine + existing activities)
+  const allKnownActivityTypes = useMemo(() => {
     const allTypes = [...ACTIVITY_TYPES];
-    // Add DB custom types
+
     for (const dbType of dbActivityTypes) {
       if (!allTypes.some(t => t.value === dbType.key)) {
         allTypes.push({
@@ -817,8 +816,9 @@ const ActivitiesPage = () => {
         });
       }
     }
-    // Also add types directly from routine settings to avoid race condition
-    for (const tb of activeRoutine) {
+
+    const routineSources = [...timeBlockSettings, ...assigneeTimeBlockSettings, ...activeRoutine];
+    for (const tb of routineSources) {
       if (!allTypes.some(t => t.value === tb.activityType)) {
         allTypes.push({
           value: tb.activityType,
@@ -830,10 +830,29 @@ const ActivitiesPage = () => {
         });
       }
     }
-    if (activeRoutine.length === 0) return allTypes; // fallback if no routine configured
+
+    for (const activity of activities) {
+      if (!allTypes.some(t => t.value === activity.activity_type)) {
+        allTypes.push({
+          value: activity.activity_type,
+          label: activity.activity_type,
+          bg: 'bg-muted',
+          border: 'border-border',
+          header: 'bg-gray-500',
+          dot: 'bg-gray-500',
+        });
+      }
+    }
+
+    return allTypes;
+  }, [dbActivityTypes, timeBlockSettings, assigneeTimeBlockSettings, activeRoutine, activities]);
+
+  // Only show activity types that are in the assignee's routine for form selection
+  const routineActivityTypes = useMemo(() => {
+    if (activeRoutine.length === 0) return allKnownActivityTypes;
     const routineKeys = new Set(activeRoutine.map(c => c.activityType));
-    return allTypes.filter(t => routineKeys.has(t.value));
-  }, [activeRoutine, dbActivityTypes]);
+    return allKnownActivityTypes.filter(t => routineKeys.has(t.value));
+  }, [activeRoutine, allKnownActivityTypes]);
 
   const suggestActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;
@@ -2267,7 +2286,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
                             {member.full_name?.split(' ')[0] || 'Sem nome'}
                           </span>
-                          {ACTIVITY_TYPES.map(t => {
+                          {allKnownActivityTypes.map(t => {
                             const typeActs = memberActivities.filter(a => a.activity_type === t.value);
                             const openCount = typeActs.filter(a => a.status !== 'concluida').length;
                             const doneCount = typeActs.filter(a => a.status === 'concluida').length;
