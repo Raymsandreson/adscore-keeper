@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, X, Plus, Loader2 } from 'lucide-react';
+import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { toast } from 'sonner';
 
 const ACTIVITY_TYPES = [
@@ -236,7 +237,10 @@ export function WhatsAppActivitySheet({
           {/* Assunto */}
           <div>
             <Label>Assunto da atividade *</Label>
-            <Input value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
+            <div className="flex gap-2">
+              <Input className="flex-1" value={formTitle} onChange={e => handleTitleChange(e.target.value)} placeholder="Ex: ACOMPANHAR PROTOCOLO" />
+              <VoiceInputButton onResult={t => handleTitleChange(formTitle ? `${formTitle} ${t}` : t)} />
+            </div>
           </div>
 
           {/* Assessor + Tipo */}
@@ -391,25 +395,37 @@ export function WhatsAppActivitySheet({
           {/* O que foi feito */}
           <div>
             <Label>O que foi feito?</Label>
-            <Textarea value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
+            <div className="flex gap-2 items-start">
+              <Textarea className="flex-1" value={formWhatWasDone} onChange={e => setFormWhatWasDone(e.target.value)} placeholder="Descreva o que foi realizado..." rows={2} />
+              <VoiceInputButton onResult={t => setFormWhatWasDone(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
+            </div>
           </div>
 
           {/* Como está */}
           <div>
             <Label>Como está?</Label>
-            <Textarea value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
+            <div className="flex gap-2 items-start">
+              <Textarea className="flex-1" value={formCurrentStatus} onChange={e => setFormCurrentStatus(e.target.value)} placeholder="Situação atual do caso..." rows={2} />
+              <VoiceInputButton onResult={t => setFormCurrentStatus(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
+            </div>
           </div>
 
           {/* Próximo passo */}
           <div>
             <Label>Próximo passo</Label>
-            <Textarea value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
+            <div className="flex gap-2 items-start">
+              <Textarea className="flex-1" value={formNextSteps} onChange={e => setFormNextSteps(e.target.value)} placeholder="Qual será o próximo passo..." rows={2} />
+              <VoiceInputButton onResult={t => setFormNextSteps(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
+            </div>
           </div>
 
           {/* Observações */}
           <div>
             <Label>Observações</Label>
-            <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
+            <div className="flex gap-2 items-start">
+              <Textarea className="flex-1" value={formNotes} onChange={e => setFormNotes(e.target.value)} placeholder="Notas adicionais..." rows={2} />
+              <VoiceInputButton onResult={t => setFormNotes(prev => prev ? `${prev} ${t}` : t)} className="mt-1" />
+            </div>
           </div>
         </div>
 
