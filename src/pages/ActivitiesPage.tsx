@@ -2671,6 +2671,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         onOpenChange={setTimeBlockSettingsOpen}
         configs={timeBlockSettings}
         onSave={saveTimeBlockConfigs}
+        targetUserId={user?.id}
       />
 
       {/* Countdown Timer Overlay */}

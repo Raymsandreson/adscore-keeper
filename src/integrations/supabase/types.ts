@@ -3631,6 +3631,47 @@ export type Database = {
           },
         ]
       }
+      routine_process_goals: {
+        Row: {
+          activity_type: string
+          board_id: string | null
+          created_at: string
+          id: string
+          metric_key: string
+          target_value: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          board_id?: string | null
+          created_at?: string
+          id?: string
+          metric_key: string
+          target_value?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          board_id?: string | null
+          created_at?: string
+          id?: string
+          metric_key?: string
+          target_value?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routine_process_goals_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_invitations: {
         Row: {
           accepted_at: string | null

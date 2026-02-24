@@ -102,6 +102,7 @@ function MemberRoutineView({ userId, memberName }: { userId: string; memberName:
         onOpenChange={setEditOpen}
         configs={configs}
         onSave={handleSave}
+        targetUserId={userId}
       />
     </div>
   );
