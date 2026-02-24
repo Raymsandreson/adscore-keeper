@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -360,7 +361,7 @@ export function PendingTransactionsList({
 
       if (error) throw error;
 
-      const link = `${window.location.origin}/expense-form/${data.token}`;
+      const link = buildExpenseFormUrl(data.token);
       
       await navigator.clipboard.writeText(link);
       toast.success('Link do formulário copiado!');
