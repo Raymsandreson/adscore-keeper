@@ -11,6 +11,23 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PageTracker } from "@/components/PageTracker";
 import { FloatingNav } from "@/components/FloatingNav";
 
+// Helper: retry dynamic import once on failure (stale chunk after deploy)
+function lazyRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(() =>
+    factory().catch(() => {
+      // Force reload once to get fresh chunks
+      const key = 'chunk_reload';
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        window.location.reload();
+      }
+      return factory();
+    })
+  );
+}
+
 // Lazy-loaded global overlays (non-critical)
 const GlobalDatabaseSearch = lazy(() => import("@/components/GlobalDatabaseSearch").then(m => ({ default: m.GlobalDatabaseSearch })));
 const UserProductivityBanner = lazy(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
@@ -18,22 +35,22 @@ const IncomingCallBanner = lazy(() => import("@/components/IncomingCallBanner").
 const CallFieldSuggestionsBanner = lazy(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
 const FloatingWhatsAppCall = lazy(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
 
-// Lazy-loaded pages
-const Index = lazy(() => import("./pages/Index"));
-const ActivitiesPage = lazy(() => import("./pages/ActivitiesPage"));
-const LeadsCenter = lazy(() => import("./pages/LeadsCenter"));
-const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage"));
-const LeaderboardPage = lazy(() => import("./pages/LeaderboardPage"));
-const TeamPage = lazy(() => import("./pages/TeamPage"));
-const WorkflowPage = lazy(() => import("./pages/WorkflowPage"));
-const WorkflowProgressPage = lazy(() => import("./pages/WorkflowProgressPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const FinancePage = lazy(() => import("./pages/FinancePage"));
-const ExpenseFormPage = lazy(() => import("./pages/ExpenseFormPage"));
-const CallsPage = lazy(() => import("./pages/CallsPage"));
-const WhatsAppPage = lazy(() => import("./pages/WhatsAppPage"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
+// Lazy-loaded pages (with retry for stale chunks)
+const Index = lazyRetry(() => import("./pages/Index"));
+const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"));
+const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"));
+const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"));
+const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"));
+const TeamPage = lazyRetry(() => import("./pages/TeamPage"));
+const WorkflowPage = lazyRetry(() => import("./pages/WorkflowPage"));
+const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"));
+const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"));
+const FinancePage = lazyRetry(() => import("./pages/FinancePage"));
+const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"));
+const CallsPage = lazyRetry(() => import("./pages/CallsPage"));
+const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"));
+const NotFound = lazyRetry(() => import("./pages/NotFound"));
+const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"));
 
 const queryClient = new QueryClient();
 
