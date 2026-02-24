@@ -2898,6 +2898,68 @@ export type Database = {
           },
         ]
       }
+      lead_processes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          finished_at: string | null
+          id: string
+          lead_id: string
+          notes: string | null
+          process_number: string | null
+          process_type: string
+          started_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          workflow_id: string | null
+          workflow_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          finished_at?: string | null
+          id?: string
+          lead_id: string
+          notes?: string | null
+          process_number?: string | null
+          process_type?: string
+          started_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          workflow_id?: string | null
+          workflow_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          finished_at?: string | null
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          process_number?: string | null
+          process_type?: string
+          started_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          workflow_id?: string | null
+          workflow_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_processes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_stage_history: {
         Row: {
           changed_at: string
@@ -2949,6 +3011,7 @@ export type Database = {
           board_id: string | null
           campaign_id: string | null
           campaign_name: string | null
+          case_number: string | null
           case_type: string | null
           city: string | null
           classification_date: string | null
@@ -3013,6 +3076,7 @@ export type Database = {
           board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          case_number?: string | null
           case_type?: string | null
           city?: string | null
           classification_date?: string | null
@@ -3077,6 +3141,7 @@ export type Database = {
           board_id?: string | null
           campaign_id?: string | null
           campaign_name?: string | null
+          case_number?: string | null
           case_type?: string | null
           city?: string | null
           classification_date?: string | null
