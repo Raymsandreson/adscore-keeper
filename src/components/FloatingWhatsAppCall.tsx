@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, ChevronLeft, Loader2 } from 'lucide-react';
+import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -58,11 +58,10 @@ export function FloatingWhatsAppCall() {
   const [calling, setCalling] = useState(false);
 
   // Contacts panel state
-  const [showContacts, setShowContacts] = useState(false);
   const [contacts, setContacts] = useState<DBContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
-
+  const [contactsFetched, setContactsFetched] = useState(false);
   // Fetch user's instances
   const fetchInstances = useCallback(async () => {
     if (!user) return;
@@ -170,10 +169,11 @@ export function FloatingWhatsAppCall() {
   }, [open, selectedInstance, fetchRecentConversations, fetchRecentCalls]);
 
   useEffect(() => {
-    if (showContacts && contacts.length === 0) {
+    if (open && selectedInstance && !contactsFetched) {
       fetchContacts();
+      setContactsFetched(true);
     }
-  }, [showContacts, contacts.length, fetchContacts]);
+  }, [open, selectedInstance, contactsFetched, fetchContacts]);
 
   const handleMakeCall = async (phone: string, contactName?: string | null) => {
     if (!selectedInstance || !phone || calling) return;
@@ -191,7 +191,6 @@ export function FloatingWhatsAppCall() {
       if (!data?.success) throw new Error(data?.error || 'Erro ao ligar');
       toast.success(`Ligação iniciada para ${contactName || phone}`);
       setOpen(false);
-      setShowContacts(false);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Erro ao iniciar chamada');
@@ -251,7 +250,6 @@ export function FloatingWhatsAppCall() {
         onClick={() => {
           if (open) {
             setOpen(false);
-            setShowContacts(false);
           } else {
             setOpen(true);
             if (instances.length === 0) fetchInstances();
@@ -270,14 +268,11 @@ export function FloatingWhatsAppCall() {
       {/* Panels Container */}
       {open && (
         <div className="fixed bottom-[7.5rem] right-6 z-[60] flex gap-2 animate-in slide-in-from-bottom-5 fade-in duration-200">
-          {/* Contacts Side Panel */}
-          {showContacts && selectedInstance && (
+          {/* Contacts Side Panel - always visible when instance selected */}
+          {selectedInstance && (
             <div className="w-72 max-h-[70vh] rounded-2xl border-2 shadow-2xl bg-card overflow-hidden animate-in slide-in-from-right-5 duration-200">
               {/* Contacts Header */}
               <div className="bg-muted/60 px-4 py-3 flex items-center gap-2 border-b">
-                <button onClick={() => setShowContacts(false)} className="hover:bg-accent rounded p-0.5">
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
                 <Users className="h-4 w-4 text-muted-foreground" />
                 <span className="font-semibold text-sm">Contatos</span>
                 <Badge variant="secondary" className="ml-auto text-[10px]">
@@ -428,18 +423,7 @@ export function FloatingWhatsAppCall() {
                   </div>
                 </div>
 
-                {/* Contacts button */}
-                <div className="px-4 pb-2">
-                  <Button
-                    variant={showContacts ? "default" : "outline"}
-                    size="sm"
-                    className="w-full text-xs gap-2 h-8"
-                    onClick={() => setShowContacts(!showContacts)}
-                  >
-                    <Users className="h-3.5 w-3.5" />
-                    {showContacts ? 'Fechar Contatos' : 'Abrir Contatos'}
-                  </Button>
-                </div>
+
 
                 <ScrollArea className="max-h-[45vh]">
                   {/* Recent Conversations */}
