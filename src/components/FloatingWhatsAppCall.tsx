@@ -146,6 +146,8 @@ export function FloatingWhatsAppCall() {
       const { data } = await supabase
         .from('contacts')
         .select('id, full_name, phone, email')
+        .not('phone', 'is', null)
+        .neq('phone', '')
         .order('full_name', { ascending: true })
         .limit(500);
 
