@@ -133,15 +133,16 @@ export function useMyProductivity() {
       const checklistChecked = activities.filter(a => a.action_type === 'checklist_item_checked').length;
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
       const checklistItemsChecked = checklistChecked - checklistUnchecked;
+      const nowMs = Date.now();
       const sessionMinutes = sessions.reduce((acc, s) => {
         if (s.duration_seconds) {
           return acc + Math.round(s.duration_seconds / 60);
         }
-        // For active (not yet ended) sessions, calculate from started_at to last_activity_at
-        if (s.started_at && s.last_activity_at) {
+        // For active (not yet ended) sessions, calculate from started_at to NOW
+        // (last_activity_at only updates every 2min via heartbeat, so use current time for accuracy)
+        if (s.started_at) {
           const start = new Date(s.started_at).getTime();
-          const lastAct = new Date(s.last_activity_at).getTime();
-          return acc + Math.round((lastAct - start) / 1000 / 60);
+          return acc + Math.round((nowMs - start) / 1000 / 60);
         }
         return acc;
       }, 0);
