@@ -2252,21 +2252,38 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                 </div>
 
-                {/* Stats by type - horizontal compact */}
-                <div className="px-3 pb-2 flex gap-2 overflow-x-auto scrollbar-none">
-                  {ACTIVITY_TYPES.map(t => {
-                    const typeActivities = activities.filter(a => a.activity_type === t.value);
-                    const openCount = typeActivities.filter(a => a.status !== 'concluida').length;
-                    const doneCount = typeActivities.filter(a => a.status === 'concluida').length;
-                    if (openCount === 0 && doneCount === 0) return null;
-                    return (
-                      <div key={t.value} className="flex items-center gap-1.5 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
-                        <span className="font-medium text-muted-foreground">{t.label}</span>
-                        <span className="text-destructive font-bold">{openCount}</span>
-                        <span className="text-green-600 font-bold">{doneCount}</span>
-                      </div>
-                    );
-                  })}
+                {/* Stats by type - per user breakdown */}
+                <div className="px-3 pb-2 space-y-1 overflow-x-auto scrollbar-none">
+                  {(() => {
+                    const selectedMembers = filterAssignee.length > 0
+                      ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
+                      : teamMembers.filter(m => activities.some(a => a.assigned_to === m.user_id));
+                    
+                    return selectedMembers.map(member => {
+                      const memberActivities = activities.filter(a => a.assigned_to === member.user_id);
+                      if (memberActivities.length === 0) return null;
+                      return (
+                        <div key={member.user_id} className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
+                            {member.full_name?.split(' ')[0] || 'Sem nome'}
+                          </span>
+                          {ACTIVITY_TYPES.map(t => {
+                            const typeActs = memberActivities.filter(a => a.activity_type === t.value);
+                            const openCount = typeActs.filter(a => a.status !== 'concluida').length;
+                            const doneCount = typeActs.filter(a => a.status === 'concluida').length;
+                            if (openCount === 0 && doneCount === 0) return null;
+                            return (
+                              <div key={t.value} className="flex items-center gap-1 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
+                                <span className="font-medium text-muted-foreground">{t.label}</span>
+                                <span className="text-destructive font-bold">{openCount}</span>
+                                <span className="text-green-600 font-bold">{doneCount}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </>
             )}
