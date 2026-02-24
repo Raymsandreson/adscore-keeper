@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
 import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
+import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import {
   Dialog,
   DialogContent,
@@ -630,7 +631,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-10 h-auto">
+          <TabsList className="grid w-full grid-cols-11 h-auto">
             <TabsTrigger value="basic" className="text-xs py-2">
               <User className="h-3 w-3 mr-1" />
               Básico
@@ -669,7 +670,11 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsTrigger>
             <TabsTrigger value="config" className="text-xs py-2">
               <Settings className="h-3 w-3 mr-1" />
-              Configurações
+              Config
+            </TabsTrigger>
+            <TabsTrigger value="ai_chat" className="text-xs py-2">
+              <Sparkles className="h-3 w-3 mr-1" />
+              Chat IA
             </TabsTrigger>
           </TabsList>
 
@@ -1238,6 +1243,26 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 currentBoardId={lead.board_id || selectedBoardId || null}
                 boards={boards}
                 adAccountId={adAccountId}
+              />
+            </TabsContent>
+
+            {/* Chat IA Tab */}
+            <TabsContent value="ai_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
+              <EntityAIChat
+                leadId={lead.id}
+                entityType="lead"
+                onApplyLeadFields={(fields) => {
+                  if (fields.victim_name) setVictimName(fields.victim_name);
+                  if (fields.main_company) setMainCompany(fields.main_company);
+                  if (fields.contractor_company) setContractorCompany(fields.contractor_company);
+                  if (fields.case_type) setCaseType(fields.case_type);
+                  if (fields.damage_description) setDamageDescription(fields.damage_description);
+                  if (fields.visit_city) setVisitCity(fields.visit_city);
+                  if (fields.visit_state) setVisitState(fields.visit_state);
+                  if (fields.sector) setSector(fields.sector);
+                  if (fields.liability_type) setLiabilityType(fields.liability_type);
+                  if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
+                }}
               />
             </TabsContent>
           </div>

@@ -62,6 +62,8 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Briefcase } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
+import { EntityAIChat } from '@/components/activities/EntityAIChat';
+import { Sparkles } from 'lucide-react';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -311,7 +313,7 @@ export function ContactDetailSheet({
         </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="info" className="text-xs">
               <User className="h-3 w-3 mr-1" />
               Info
@@ -331,6 +333,10 @@ export function ContactDetailSheet({
             <TabsTrigger value="leads" className="text-xs">
               <Link2 className="h-3 w-3 mr-1" />
               Leads
+            </TabsTrigger>
+            <TabsTrigger value="ai_chat" className="text-xs">
+              <Sparkles className="h-3 w-3 mr-1" />
+              Chat IA
             </TabsTrigger>
           </TabsList>
 
@@ -836,6 +842,24 @@ export function ContactDetailSheet({
                   </p>
                 </div>
               )}
+            </TabsContent>
+
+            {/* Chat IA Tab */}
+            <TabsContent value="ai_chat" className="mt-0" style={{ height: '400px' }}>
+              <EntityAIChat
+                leadId={contactLeads?.[0]?.lead?.id || null}
+                contactId={contact.id}
+                entityType="contact"
+                onApplyContactFields={(fields) => {
+                  if (fields.full_name) setFullName(fields.full_name);
+                  if (fields.phone) setPhone(fields.phone);
+                  if (fields.email) setEmail(fields.email);
+                  if (fields.city) setCity(fields.city);
+                  if (fields.state) setState(fields.state);
+                  if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
+                  if (fields.profession) setProfession(fields.profession);
+                }}
+              />
             </TabsContent>
           </ScrollArea>
         </Tabs>
