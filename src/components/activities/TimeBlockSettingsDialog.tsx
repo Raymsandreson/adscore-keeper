@@ -138,9 +138,6 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
 
   // Boards for funnel selector (with stages)
   const [boards, setBoards] = useState<{id: string; name: string; stages?: {id: string; name: string}[]}[]>([]);
-  // Checklist data for progress goals
-  const [checklistTemplates, setChecklistTemplates] = useState<{id: string; name: string; items: {id: string; label: string}[]}[]>([]);
-  const [checklistStageLinks, setChecklistStageLinks] = useState<{checklist_template_id: string; board_id: string; stage_id: string}[]>([]);
 
   // Admin: manage global types
   const [showAddType, setShowAddType] = useState(false);
@@ -158,10 +155,9 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dropTargetIdx, setDropTargetIdx] = useState<number | null>(null);
 
-  // Fetch boards with stages + checklists
+  // Fetch boards with stages
   useEffect(() => {
     if (!open) return;
-    // Fetch boards with stages
     supabase.from('kanban_boards').select('id, name, stages').order('display_order').then(({ data }) => {
       if (data) {
         setBoards(data.map((b: any) => ({
@@ -170,20 +166,6 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
           stages: (Array.isArray(b.stages) ? b.stages : []).map((s: any) => ({ id: s.id, name: s.name })),
         })));
       }
-    });
-    // Fetch checklist templates
-    supabase.from('checklist_templates').select('id, name, items').order('name').then(({ data }) => {
-      if (data) {
-        setChecklistTemplates(data.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          items: (Array.isArray(t.items) ? t.items : []).map((i: any) => ({ id: i.id, label: i.label })),
-        })));
-      }
-    });
-    // Fetch stage links
-    supabase.from('checklist_stage_links').select('checklist_template_id, board_id, stage_id').then(({ data }) => {
-      if (data) setChecklistStageLinks(data);
     });
   }, [open]);
 
@@ -678,8 +660,6 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                         activityType={type.key}
                         goals={processGoals[type.key] || []}
                         boards={boards}
-                        checklistTemplates={checklistTemplates}
-                        checklistStageLinks={checklistStageLinks}
                         onChange={(newGoals) => setProcessGoals(prev => ({ ...prev, [type.key]: newGoals }))}
                       />
                     </div>

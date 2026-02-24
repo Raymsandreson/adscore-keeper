@@ -31,9 +31,7 @@ export const ACTION_METRICS: MetricOption[] = [
 ];
 
 export const PROGRESS_METRICS: MetricOption[] = [
-  { value: 'stages', label: 'Leads movidos p/ etapa', category: 'progress' },
-  { value: 'objectives', label: 'Objetivos alcançados', category: 'progress' },
-  { value: 'steps', label: 'Passos dados (auto)', category: 'progress' },
+  { value: 'stages', label: 'Etapas concluídas', category: 'progress' },
 ];
 
 export const RESULT_METRICS: MetricOption[] = [
