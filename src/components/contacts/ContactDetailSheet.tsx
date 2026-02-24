@@ -454,7 +454,7 @@ export function ContactDetailSheet({
 
   return (
     <>
-    <Wrapper open={open} onOpenChange={onOpenChange}>
+    <Wrapper open={open && !showClientLeadDialog} onOpenChange={onOpenChange}>
       <Content className={contentClassName}>
          <Header className="pb-4">
           <div className="flex items-center justify-between">
@@ -1047,7 +1047,7 @@ export function ContactDetailSheet({
     </Wrapper>
 
     {showClientLeadDialog && (
-      <Dialog open={showClientLeadDialog} onOpenChange={setShowClientLeadDialog} modal>
+      <Dialog open={showClientLeadDialog} onOpenChange={(v) => { if (!v) setShowClientLeadDialog(false); }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" style={{ zIndex: 9999 }}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
