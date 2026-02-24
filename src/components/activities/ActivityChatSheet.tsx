@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
   Info, User, Briefcase, MapPin, Calendar, ArrowRight, PhoneCall, FileSearch, CalendarCheck, Mail, CheckCircle, Search,
-  RefreshCw, Settings2, Trash2, Ban,
+  RefreshCw, Settings2, Trash2, Ban, Plus, MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -43,6 +43,23 @@ interface AISuggestion {
   notes: string;
 }
 
+interface AIAssistantResponse {
+  response_text: string;
+  activity_fields: Record<string, string> | null;
+  lead_fields: Record<string, string> | null;
+  contact_fields: Record<string, string> | null;
+  new_activity: {
+    title: string;
+    activity_type?: string;
+    priority?: string;
+    what_was_done?: string;
+    current_status_notes?: string;
+    next_steps?: string;
+    notes?: string;
+    deadline?: string;
+  } | null;
+}
+
 interface ActivityChatSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -50,9 +67,12 @@ interface ActivityChatSheetProps {
   leadId: string | null;
   activityTitle?: string;
   onApplySuggestion: (suggestion: AISuggestion) => void;
+  onApplyLeadFields?: (fields: Record<string, string>) => void;
+  onApplyContactFields?: (fields: Record<string, string>) => void;
+  onCreateActivity?: (activity: any) => void;
 }
 
-export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion }: ActivityChatSheetProps) {
+export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion, onApplyLeadFields, onApplyContactFields, onCreateActivity }: ActivityChatSheetProps) {
   const { user } = useAuthContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -78,6 +98,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [regenPrompt, setRegenPrompt] = useState('');
   const [regenMaxChars, setRegenMaxChars] = useState(600);
   const [regenerating, setRegenerating] = useState(false);
+  const [aiAssistantMode, setAiAssistantMode] = useState(false);
+  const [aiResponding, setAiResponding] = useState(false);
+  const [pendingAiActions, setPendingAiActions] = useState<AIAssistantResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -309,10 +332,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   // Detect call intent patterns
   const CALL_INTENT_PATTERNS = /\b(vou ligar|vou fazer uma liga|iniciar liga|fazendo uma liga|começ(ar|ando) a liga|vou telefonar|ligando agora|vou discar)\b/i;
 
-  const handleSendText = () => {
+  const handleSendText = async () => {
     if (!inputText.trim()) return;
     const text = inputText.trim();
-    sendMessage('text', text);
+    setInputText('');
+    await sendMessage('text', text);
 
     // Auto-start call recording if user mentions making a call
     if (CALL_INTENT_PATTERNS.test(text) && !callRecording && !recording) {
@@ -320,6 +344,85 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         toast('Iniciando gravação da chamada automaticamente...', { icon: '📞' });
         startCallRecording();
       }, 800);
+    }
+
+    // If AI assistant mode is on, get AI response
+    if (aiAssistantMode) {
+      await triggerAIAssistant(text);
+    }
+  };
+
+  const triggerAIAssistant = async (lastUserMessage?: string) => {
+    setAiResponding(true);
+    try {
+      // Build chat history from messages
+      const chatHistory = messages
+        .filter(m => !m.deleted_at)
+        .map(m => ({
+          role: m.sender_name === 'IA Abraci' ? 'ai' : 'user',
+          content: m.content || '',
+          type: m.message_type,
+          file_url: m.file_url,
+        }));
+
+      // Add the last user message if not yet in messages state
+      if (lastUserMessage) {
+        chatHistory.push({ role: 'user', content: lastUserMessage, type: 'text', file_url: null });
+      }
+
+      // Fetch activity history for context
+      let activityHistory: any[] = [];
+      if (contextData.lead?.id) {
+        const { data: histData } = await supabase
+          .from('lead_activities')
+          .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, deadline')
+          .eq('lead_id', contextData.lead.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        activityHistory = histData || [];
+      }
+
+      const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
+        body: {
+          mode: 'assistant',
+          context: {
+            chat_history: chatHistory,
+            activity_context: contextData.activity,
+            lead_context: contextData.lead,
+            contact_context: contextData.contact,
+            activity_history: activityHistory,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      const response = data as AIAssistantResponse;
+
+      // Save AI response as chat message
+      await supabase.from('activity_chat_messages').insert({
+        activity_id: activityId,
+        lead_id: leadId,
+        message_type: 'ai_suggestion',
+        content: response.response_text,
+        ai_suggestion: response.activity_fields || response.lead_fields || response.contact_fields || response.new_activity
+          ? { activity_fields: response.activity_fields, lead_fields: response.lead_fields, contact_fields: response.contact_fields, new_activity: response.new_activity }
+          : null,
+        sender_id: null,
+        sender_name: 'IA Abraci',
+      } as any);
+
+      await fetchMessages();
+
+      // Store pending actions if any
+      if (response.activity_fields || response.lead_fields || response.contact_fields || response.new_activity) {
+        setPendingAiActions(response);
+      }
+    } catch (e: any) {
+      console.error('AI assistant error:', e);
+      toast.error('Erro ao obter resposta da IA');
+    } finally {
+      setAiResponding(false);
     }
   };
 
@@ -689,14 +792,152 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
 
     if (isAI) {
-      const suggestion = msg.ai_suggestion as AISuggestion | null;
-      const isFileDescription = !suggestion && msg.content;
+      const rawSuggestion = msg.ai_suggestion as any;
+      // Detect new assistant format (has activity_fields/lead_fields/contact_fields/new_activity)
+      const isAssistantResponse = rawSuggestion && ('activity_fields' in rawSuggestion || 'lead_fields' in rawSuggestion || 'contact_fields' in rawSuggestion || 'new_activity' in rawSuggestion);
+      // Old format: direct AISuggestion with what_was_done etc
+      const isOldSuggestion = rawSuggestion && !isAssistantResponse && ('what_was_done' in rawSuggestion || 'current_status_notes' in rawSuggestion);
+      const isFileDescription = !rawSuggestion && msg.content;
 
       // Find the source file message (the message right before this AI message)
       const msgIndex = messages.findIndex(m => m.id === msg.id);
       const sourceMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
       const canRegenerate = sourceMsg && ['audio', 'image', 'pdf'].includes(sourceMsg.message_type) && sourceMsg.file_url;
 
+      // Assistant conversational response
+      if (isAssistantResponse || (!isOldSuggestion && !isFileDescription && msg.content)) {
+        return (
+          <div key={msg.id} className="flex justify-start mb-2">
+            <div className="max-w-[85%] space-y-2">
+              {/* AI text response */}
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-medium text-primary mb-1">
+                  <Sparkles className="h-3 w-3" /> IA Abraci
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                </div>
+              </div>
+
+              {/* Action cards */}
+              {isAssistantResponse && (
+                <div className="space-y-1.5 pl-1">
+                  {rawSuggestion.activity_fields && Object.keys(rawSuggestion.activity_fields).length > 0 && (
+                    <button
+                      className="w-full flex items-center gap-2 p-2 rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors text-left"
+                      onClick={() => {
+                        const fields = rawSuggestion.activity_fields;
+                        onApplySuggestion({
+                          what_was_done: fields.what_was_done || '',
+                          current_status_notes: fields.current_status_notes || '',
+                          next_steps: fields.next_steps || '',
+                          notes: fields.notes || '',
+                        });
+                        toast.success('Campos da atividade atualizados!');
+                      }}
+                    >
+                      <div className="shrink-0 w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-medium">Preencher campos da atividade</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {Object.keys(rawSuggestion.activity_fields).length} campo(s) sugerido(s)
+                        </div>
+                      </div>
+                      <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                    </button>
+                  )}
+
+                  {rawSuggestion.lead_fields && Object.keys(rawSuggestion.lead_fields).length > 0 && (
+                    <button
+                      className="w-full flex items-center gap-2 p-2 rounded-lg border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/15 transition-colors text-left"
+                      onClick={() => {
+                        if (onApplyLeadFields) {
+                          onApplyLeadFields(rawSuggestion.lead_fields);
+                          toast.success('Campos do lead atualizados!');
+                        } else {
+                          toast.info('Abra o lead para aplicar as atualizações');
+                        }
+                      }}
+                    >
+                      <div className="shrink-0 w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <Briefcase className="h-3.5 w-3.5 text-amber-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-medium">Atualizar campos do Lead</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {Object.entries(rawSuggestion.lead_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        </div>
+                      </div>
+                      <Check className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    </button>
+                  )}
+
+                  {rawSuggestion.contact_fields && Object.keys(rawSuggestion.contact_fields).length > 0 && (
+                    <button
+                      className="w-full flex items-center gap-2 p-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/15 transition-colors text-left"
+                      onClick={() => {
+                        if (onApplyContactFields) {
+                          onApplyContactFields(rawSuggestion.contact_fields);
+                          toast.success('Campos do contato atualizados!');
+                        } else {
+                          toast.info('Abra o contato para aplicar as atualizações');
+                        }
+                      }}
+                    >
+                      <div className="shrink-0 w-7 h-7 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                        <User className="h-3.5 w-3.5 text-emerald-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-medium">Atualizar campos do Contato</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {Object.entries(rawSuggestion.contact_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        </div>
+                      </div>
+                      <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    </button>
+                  )}
+
+                  {rawSuggestion.new_activity && (
+                    <button
+                      className="w-full flex items-center gap-2 p-2 rounded-lg border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 transition-colors text-left"
+                      onClick={() => {
+                        if (onCreateActivity) {
+                          onCreateActivity({
+                            ...rawSuggestion.new_activity,
+                            lead_id: contextData.lead?.id || null,
+                            lead_name: contextData.lead?.lead_name || null,
+                            contact_id: contextData.contact?.id || null,
+                            contact_name: contextData.contact?.full_name || null,
+                          });
+                          toast.success('Nova atividade criada!');
+                        } else {
+                          toast.info('Funcionalidade de criação não disponível neste contexto');
+                        }
+                      }}
+                    >
+                      <div className="shrink-0 w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center">
+                        <Plus className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-medium">Criar nova atividade</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''}
+                        </div>
+                      </div>
+                      <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // File description (old behavior)
       if (isFileDescription) {
         return (
           <div key={msg.id} className="flex justify-center my-3">
@@ -734,34 +975,39 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         );
       }
 
-      if (!suggestion) return null;
-      return (
-        <div key={msg.id} className="flex justify-center my-3">
-          <div className="bg-primary/90 border border-primary rounded-xl p-3 max-w-[90%] space-y-2 text-primary-foreground">
-            <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground">
-              <Sparkles className="h-3.5 w-3.5" /> Sugestão da IA
+      // Old format suggestion
+      if (isOldSuggestion) {
+        const suggestion = rawSuggestion as AISuggestion;
+        return (
+          <div key={msg.id} className="flex justify-center my-3">
+            <div className="bg-primary/90 border border-primary rounded-xl p-3 max-w-[90%] space-y-2 text-primary-foreground">
+              <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground">
+                <Sparkles className="h-3.5 w-3.5" /> Sugestão da IA
+              </div>
+              <Separator className="bg-primary-foreground/20" />
+              <div className="space-y-1.5 text-xs text-primary-foreground">
+                {suggestion.what_was_done && (
+                  <div><span className="font-medium">O que foi feito:</span> {suggestion.what_was_done}</div>
+                )}
+                {suggestion.current_status_notes && (
+                  <div><span className="font-medium">Status atual:</span> {suggestion.current_status_notes}</div>
+                )}
+                {suggestion.next_steps && (
+                  <div><span className="font-medium">Próximos passos:</span> {suggestion.next_steps}</div>
+                )}
+                {suggestion.notes && (
+                  <div><span className="font-medium">Observações:</span> {suggestion.notes}</div>
+                )}
+              </div>
+              <Button size="sm" className="w-full h-7 text-xs mt-1 bg-primary-foreground text-primary hover:bg-primary-foreground/90" onClick={() => handleApplySuggestion(suggestion)}>
+                <Check className="h-3 w-3 mr-1" /> Aplicar nos campos
+              </Button>
             </div>
-            <Separator className="bg-primary-foreground/20" />
-            <div className="space-y-1.5 text-xs text-primary-foreground">
-              {suggestion.what_was_done && (
-                <div><span className="font-medium">O que foi feito:</span> {suggestion.what_was_done}</div>
-              )}
-              {suggestion.current_status_notes && (
-                <div><span className="font-medium">Status atual:</span> {suggestion.current_status_notes}</div>
-              )}
-              {suggestion.next_steps && (
-                <div><span className="font-medium">Próximos passos:</span> {suggestion.next_steps}</div>
-              )}
-              {suggestion.notes && (
-                <div><span className="font-medium">Observações:</span> {suggestion.notes}</div>
-              )}
-            </div>
-            <Button size="sm" className="w-full h-7 text-xs mt-1 bg-primary-foreground text-primary hover:bg-primary-foreground/90" onClick={() => handleApplySuggestion(suggestion)}>
-              <Check className="h-3 w-3 mr-1" /> Aplicar nos campos
-            </Button>
           </div>
-        </div>
-      );
+        );
+      }
+
+      return null;
     }
 
     return (
@@ -989,19 +1235,39 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           ) : (
             messages.map(renderMessage)
           )}
+          {/* AI responding indicator */}
+          {aiResponding && (
+            <div className="flex justify-start mb-2">
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-primary">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>IA está pensando...</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* AI button */}
-        <div className="shrink-0 px-3 py-1.5 border-t bg-muted/30">
+        {/* AI buttons */}
+        <div className="shrink-0 px-3 py-1.5 border-t bg-muted/30 flex gap-1.5">
+          <Button
+            variant={aiAssistantMode ? 'default' : 'outline'}
+            size="sm"
+            className="flex-1 h-7 text-xs gap-1"
+            onClick={() => setAiAssistantMode(!aiAssistantMode)}
+          >
+            <MessageCircle className="h-3 w-3" />
+            {aiAssistantMode ? 'Chat IA ativo' : 'Conversar com IA'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
-            className="w-full h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+            className="flex-1 h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
             onClick={handleAIAnalyze}
             disabled={analyzing || messages.length === 0}
           >
             {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {analyzing ? 'Analisando...' : 'IA Preencher Campos'}
+            {analyzing ? 'Analisando...' : 'Preencher Campos'}
           </Button>
         </div>
 
@@ -1060,9 +1326,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Digite uma mensagem..."
-                className="h-8 text-sm flex-1"
-                disabled={sending}
+                placeholder={aiAssistantMode ? "Pergunte à IA sobre o caso..." : "Digite uma mensagem..."}
+                className={cn("h-8 text-sm flex-1", aiAssistantMode && "border-primary/40")}
+                disabled={sending || aiResponding}
               />
               {inputText.trim() ? (
                 <Button size="icon" className="h-8 w-8 rounded-full shrink-0" onClick={handleSendText} disabled={sending}>
