@@ -69,6 +69,8 @@ import {
   Scale,
   RefreshCw,
   CheckSquare,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -170,6 +172,8 @@ export function LeadEditDialog({
   const [groupLink, setGroupLink] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused'>('');
+  const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -236,6 +240,17 @@ export function LeadEditDialog({
       setClientClassification(lead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
+      // Outcome
+      if (leadAny.became_client_date) {
+        setLeadOutcome('closed');
+        setLeadOutcomeDate(leadAny.became_client_date || '');
+      } else if (leadAny.classification_date) {
+        setLeadOutcome('refused');
+        setLeadOutcomeDate(leadAny.classification_date || '');
+      } else {
+        setLeadOutcome('');
+        setLeadOutcomeDate('');
+      }
       
       // Accident fields
       setVictimName(leadAny.victim_name || '');
@@ -555,6 +570,8 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
         expected_birth_date: expectedBirthDate || null,
+        became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
       } as Partial<Lead>);
 
       // Save custom field values
@@ -861,6 +878,60 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                     />
                   </div>
                 )}
+
+                {/* Lead Outcome - Fechado/Recusado */}
+                <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
+                  <Label className="text-sm font-medium">Resultado do Lead</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'closed' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'closed') {
+                          setLeadOutcome('');
+                          setLeadOutcomeDate('');
+                        } else {
+                          setLeadOutcome('closed');
+                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
+                        }
+                      }}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Fechado (ganho)
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={leadOutcome === 'refused' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'refused') {
+                          setLeadOutcome('');
+                          setLeadOutcomeDate('');
+                        } else {
+                          setLeadOutcome('refused');
+                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
+                        }
+                      }}
+                    >
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Recusado (perdido)
+                    </Button>
+                  </div>
+                  {leadOutcome && (
+                    <div>
+                      <Label className="text-xs">{leadOutcome === 'closed' ? 'Data de Fechamento' : 'Data da Recusa'}</Label>
+                      <Input
+                        type="date"
+                        value={leadOutcomeDate}
+                        onChange={(e) => setLeadOutcomeDate(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+                </div>
 
                 <div className="col-span-2">
                   <Label>Observações</Label>
