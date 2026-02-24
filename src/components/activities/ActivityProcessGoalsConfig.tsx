@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Target, ChevronDown, ChevronUp } from 'lucide-react';
-import { PROCESS_METRIC_OPTIONS } from '@/hooks/useRoutineProcessGoals';
+import { GOAL_CATEGORIES, PROCESS_METRIC_OPTIONS, type GoalCategory, type MetricOption } from '@/hooks/useRoutineProcessGoals';
 import { cn } from '@/lib/utils';
 
 export interface ProcessGoalEntry {
@@ -28,9 +27,18 @@ interface Props {
 export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange }: Props) {
   const [expanded, setExpanded] = useState(goals.length > 0);
 
-  const addGoal = () => {
-    const usedMetrics = new Set(goals.map(g => g.metric_key));
-    const available = PROCESS_METRIC_OPTIONS.find(m => !usedMetrics.has(m.value));
+  const usedMetrics = new Set(goals.map(g => g.metric_key));
+
+  const getGoalsForCategory = (category: GoalCategory) => {
+    const categoryMetricKeys = GOAL_CATEGORIES.find(c => c.key === category)?.metrics.map(m => m.value) || [];
+    return goals
+      .map((g, idx) => ({ ...g, originalIdx: idx }))
+      .filter(g => categoryMetricKeys.includes(g.metric_key));
+  };
+
+  const addGoal = (category: GoalCategory) => {
+    const categoryMetrics = GOAL_CATEGORIES.find(c => c.key === category)?.metrics || [];
+    const available = categoryMetrics.find(m => !usedMetrics.has(m.value));
     if (!available) return;
     onChange([...goals, { metric_key: available.value, target_value: 0, board_id: null }]);
     setExpanded(true);
@@ -44,7 +52,12 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
     onChange(goals.map((g, i) => i === idx ? { ...g, ...patch } : g));
   };
 
-  const usedMetrics = new Set(goals.map(g => g.metric_key));
+  const getAvailableMetricsForCategory = (category: GoalCategory, currentMetricKey?: string) => {
+    const categoryMetrics = GOAL_CATEGORIES.find(c => c.key === category)?.metrics || [];
+    return categoryMetrics.filter(m => !usedMetrics.has(m.value) || m.value === currentMetricKey);
+  };
+
+  const totalGoals = goals.length;
 
   return (
     <div className="border-t border-dashed border-muted-foreground/20 pt-2 mt-2">
@@ -53,84 +66,102 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
         className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors w-full"
       >
         <Target className="h-3 w-3" />
-        Metas Processuais ({goals.length})
+        Metas ({totalGoals})
         {expanded ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}
       </button>
 
       {expanded && (
-        <div className="mt-2 space-y-2">
-          {goals.map((goal, idx) => (
-            <div key={idx} className="flex items-center gap-1.5 flex-wrap">
-              <Select
-                value={goal.metric_key}
-                onValueChange={v => updateGoal(idx, { metric_key: v })}
-              >
-                <SelectTrigger className="h-7 text-xs w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROCESS_METRIC_OPTIONS.map(m => (
-                    <SelectItem
-                      key={m.value}
-                      value={m.value}
-                      disabled={usedMetrics.has(m.value) && goal.metric_key !== m.value}
+        <div className="mt-2 space-y-3">
+          {GOAL_CATEGORIES.map(cat => {
+            const categoryGoals = getGoalsForCategory(cat.key);
+            const availableMetrics = getAvailableMetricsForCategory(cat.key);
+            const allCategoryMetrics = cat.metrics;
+            const hasRoom = availableMetrics.length > categoryGoals.length || categoryGoals.length < allCategoryMetrics.length;
+
+            return (
+              <div key={cat.key} className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px]">{cat.icon}</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                    {cat.label} ({categoryGoals.length})
+                  </span>
+                </div>
+
+                {categoryGoals.map(goal => (
+                  <div key={goal.originalIdx} className="flex items-center gap-1.5 flex-wrap pl-3">
+                    <Select
+                      value={goal.metric_key}
+                      onValueChange={v => updateGoal(goal.originalIdx, { metric_key: v })}
                     >
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                      <SelectTrigger className="h-7 text-xs w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cat.metrics.map(m => (
+                          <SelectItem
+                            key={m.value}
+                            value={m.value}
+                            disabled={usedMetrics.has(m.value) && goal.metric_key !== m.value}
+                          >
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-              <Input
-                type="number"
-                min={0}
-                value={goal.target_value || ''}
-                onChange={e => updateGoal(idx, { target_value: parseInt(e.target.value) || 0 })}
-                placeholder="Meta"
-                className="h-7 text-xs w-[70px]"
-              />
+                    <Input
+                      type="number"
+                      min={0}
+                      value={goal.target_value || ''}
+                      onChange={e => updateGoal(goal.originalIdx, { target_value: parseInt(e.target.value) || 0 })}
+                      placeholder="Meta"
+                      className="h-7 text-xs w-[70px]"
+                    />
 
-              <Select
-                value={goal.board_id || 'all'}
-                onValueChange={v => updateGoal(idx, { board_id: v === 'all' ? null : v })}
-              >
-                <SelectTrigger className="h-7 text-xs w-[130px]">
-                  <SelectValue placeholder="Funil" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os funis</SelectItem>
-                  {boards.map(b => (
-                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    <Select
+                      value={goal.board_id || 'all'}
+                      onValueChange={v => updateGoal(goal.originalIdx, { board_id: v === 'all' ? null : v })}
+                    >
+                      <SelectTrigger className="h-7 text-xs w-[130px]">
+                        <SelectValue placeholder="Funil" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os funis</SelectItem>
+                        {boards.map(b => (
+                          <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                onClick={() => removeGoal(idx)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeGoal(goal.originalIdx)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
 
-          {goals.length < PROCESS_METRIC_OPTIONS.length && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-[10px] gap-1 text-muted-foreground"
-              onClick={addGoal}
-            >
-              <Plus className="h-3 w-3" />
-              Adicionar métrica
-            </Button>
-          )}
+                {hasRoom && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-[10px] gap-1 text-muted-foreground pl-3"
+                    onClick={() => addGoal(cat.key)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Adicionar {cat.label.toLowerCase().replace('metas de ', '')}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
 
-          {goals.length === 0 && (
+          {totalGoals === 0 && (
             <p className="text-[10px] text-muted-foreground italic">
-              Nenhuma meta definida. Clique em "Adicionar métrica" para vincular metas a este tipo.
+              Nenhuma meta definida. Clique em "Adicionar" para vincular metas a este tipo.
             </p>
           )}
         </div>
