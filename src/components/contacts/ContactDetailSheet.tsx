@@ -997,7 +997,16 @@ export function ContactDetailSheet({
                   {contactLeads.map((contactLead) => (
                     <div
                       key={contactLead.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={async () => {
+                        if (contactLead.lead?.id) {
+                          const { data } = await supabase.from('leads').select('*').eq('id', contactLead.lead.id).single();
+                          if (data) {
+                            setNewCreatedLead(data as Lead);
+                            setShowLeadEditDialog(true);
+                          }
+                        }
+                      }}
                     >
                       <Link2 className="h-4 w-4 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
@@ -1015,7 +1024,7 @@ export function ContactDetailSheet({
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank')}
+                          onClick={(e) => { e.stopPropagation(); window.open(`https://wa.me/${contactLead.lead?.lead_phone?.replace(/\D/g, '')}`, '_blank'); }}
                         >
                           <MessageSquare className="h-4 w-4 text-green-600" />
                         </Button>
