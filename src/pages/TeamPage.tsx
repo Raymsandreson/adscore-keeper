@@ -15,6 +15,7 @@ import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
 import { CommissionGoals } from '@/components/team/CommissionGoals';
 import { MemberRoutineManager } from '@/components/team/MemberRoutineManager';
 import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstancePermissions';
+import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import {
   Users,
   BarChart3,
@@ -29,6 +30,7 @@ import {
   Landmark,
   CalendarClock,
   MessageSquare,
+  GraduationCap,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -59,7 +61,7 @@ export default function TeamPage() {
 
   // All authenticated users can access - admin-only tabs are filtered below
   const availableTabs = isAdmin
-    ? ['productivity', 'commission', 'evaluations', 'members', 'teams', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
+    ? ['productivity', 'commission', 'evaluations', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
     : ['productivity', 'members', 'teams'];
 
   return (
@@ -80,7 +82,7 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={availableTabs.includes(activeTab) ? activeTab : 'productivity'} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full max-w-7xl ${isAdmin ? 'grid-cols-10' : 'grid-cols-3'}`}>
+          <TabsList className={`grid w-full max-w-7xl ${isAdmin ? 'grid-cols-11' : 'grid-cols-3'}`}>
             <TabsTrigger value="productivity" className="gap-2">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
@@ -105,6 +107,12 @@ export default function TeamPage() {
               <UsersRound className="h-4 w-4" />
               <span className="hidden sm:inline">Times</span>
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="career" className="gap-2">
+                <GraduationCap className="h-4 w-4" />
+                <span className="hidden sm:inline">Carreira</span>
+              </TabsTrigger>
+            )}
             {isAdmin && (
               <TabsTrigger value="routines" className="gap-2">
                 <CalendarClock className="h-4 w-4" />
@@ -155,6 +163,10 @@ export default function TeamPage() {
 
           <TabsContent value="teams">
             <TeamsManager />
+          </TabsContent>
+
+          <TabsContent value="career">
+            <CareerPlanManager />
           </TabsContent>
 
           <TabsContent value="routines">
