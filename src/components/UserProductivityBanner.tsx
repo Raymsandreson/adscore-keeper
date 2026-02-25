@@ -6,6 +6,7 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { MemberProductivitySheet } from '@/components/team/MemberProductivitySheet';
+import { DailyReportDialog } from '@/components/team/DailyReportDialog';
 import type { UserProductivity } from '@/hooks/useTeamProductivity';
 import { startOfDay, endOfDay } from 'date-fns';
 import { Progress } from '@/components/ui/progress';
@@ -41,6 +42,7 @@ import {
   Medal,
   Eye,
   Circle,
+  FileText,
 } from 'lucide-react';
 
 const METRICS = [
@@ -66,6 +68,7 @@ export function UserProductivityBanner() {
   const { ranking, myTeams, selectedTeamId, selectTeam, myPosition, loading: rankingLoading, fetchRanking } = useMyTeamRanking();
   const { configs: timeBlocks } = useTimeBlockSettings();
   const [expanded, setExpanded] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [rankingFetched, setRankingFetched] = useState(false);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [metricSheetOpen, setMetricSheetOpen] = useState(false);
@@ -711,6 +714,17 @@ export function UserProductivityBanner() {
           </PopoverContent>
         </Popover>
 
+        {/* Daily report */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 flex-shrink-0"
+          onClick={() => setReportOpen(true)}
+          title="Relatório diário"
+        >
+          <FileText className="h-4 w-4" />
+        </Button>
+
         {/* Expand/collapse */}
         <Button
           variant="ghost"
@@ -1073,6 +1087,15 @@ export function UserProductivityBanner() {
       targetUserId={blockMetricSheet.userId}
       targetUserName={blockMetricSheet.userName}
       dateRangeOverride={blockMetricSheet.dateRange}
+    />
+    <DailyReportDialog
+      open={reportOpen}
+      onOpenChange={setReportOpen}
+      userId={user?.id || ''}
+      userName={profile?.full_name || 'Usuário'}
+      productivity={data}
+      goals={goals}
+      goalProgress={goalProgress}
     />
     </>
   );
