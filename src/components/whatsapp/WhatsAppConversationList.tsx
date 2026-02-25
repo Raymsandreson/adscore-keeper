@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -34,6 +34,7 @@ interface Props {
 }
 
 type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls';
+type SortMode = 'alpha' | 'last_received' | 'last_sent';
 
 export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered }: Props) {
   const [search, setSearch] = useState('');
@@ -43,6 +44,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   // Multi-select passos
   const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('alpha');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
@@ -166,8 +168,28 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     return true;
   }), [conversations, search, quickFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
 
-  // Group by first letter for alphabet navigation
+  // Sort conversations based on mode
+  const sortedFiltered = useMemo(() => {
+    if (sortMode === 'last_received') {
+      return [...filtered].sort((a, b) => {
+        const aTime = a.messages.filter(m => m.direction === 'inbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
+        const bTime = b.messages.filter(m => m.direction === 'inbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+    }
+    if (sortMode === 'last_sent') {
+      return [...filtered].sort((a, b) => {
+        const aTime = a.messages.filter(m => m.direction === 'outbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
+        const bTime = b.messages.filter(m => m.direction === 'outbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+    }
+    return filtered; // alpha uses groupedByLetter
+  }, [filtered, sortMode]);
+
+  // Group by first letter for alphabet navigation (only used in alpha mode)
   const groupedByLetter = useMemo(() => {
+    if (sortMode !== 'alpha') return [];
     const groups = new Map<string, WhatsAppConversation[]>();
     for (const conv of filtered) {
       const name = conv.contact_name || conv.phone;
@@ -176,14 +198,13 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(conv);
     }
-    // Sort groups alphabetically, # at the end
     const sorted = Array.from(groups.entries()).sort((a, b) => {
       if (a[0] === '#') return 1;
       if (b[0] === '#') return -1;
       return a[0].localeCompare(b[0]);
     });
     return sorted;
-  }, [filtered]);
+  }, [filtered, sortMode]);
 
   const formatPhone = (phone: string) => {
     if (phone.length === 13) return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
@@ -379,6 +400,31 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
         {bulkMode && selectedPhones && selectedPhones.size > 0 && (
           <Badge variant="secondary" className="text-[9px] ml-auto">{selectedPhones.size} selecionada{selectedPhones.size > 1 ? 's' : ''}</Badge>
         )}
+        {!bulkMode && (
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              onClick={() => setSortMode('alpha')}
+              className={cn("p-1 rounded", sortMode === 'alpha' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+              title="Ordenar por nome (A-Z)"
+            >
+              <ArrowDownAZ className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => setSortMode('last_received')}
+              className={cn("p-1 rounded", sortMode === 'last_received' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+              title="Ordenar por última mensagem recebida"
+            >
+              <ArrowDown className="h-3 w-3" />
+            </button>
+            <button
+              onClick={() => setSortMode('last_sent')}
+              className={cn("p-1 rounded", sortMode === 'last_sent' ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
+              title="Ordenar por última mensagem enviada"
+            >
+              <ArrowDownUp className="h-3 w-3" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -386,157 +432,160 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
           <div className="text-center py-8 text-sm text-muted-foreground">
             Nenhuma conversa encontrada
           </div>
-        ) : (
+        ) : sortMode === 'alpha' ? (
           groupedByLetter.map(([letter, convs]) => (
             <div key={letter}>
-              {/* Letter header */}
               <div className="sticky top-0 z-10 px-3 py-1 text-[11px] font-bold text-muted-foreground bg-muted/60 backdrop-blur-sm border-b border-border/20">
                 {letter}
               </div>
-              {convs.map(conv => {
-                const unansweredAt = isUnanswered(conv) ? getLastInboundAt(conv) : null;
-                const convHasCalls = hasCalls(conv);
-                const info = getLeadInfo(conv);
-                const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
-                const stage = board?.stages.find(s => s.id === info?.current_stage);
-                const isSelected = selectedPhone === conv.phone;
-
-                return (
-                  <div key={conv.phone} className="flex items-center">
-                    {bulkMode && (
-                      <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        <Checkbox
-                          checked={selectedPhones?.has(conv.phone) || false}
-                          onCheckedChange={() => onToggleBulkPhone?.(conv.phone)}
-                          className="h-4 w-4"
-                        />
-                      </div>
-                    )}
-                    <button
-                      onClick={() => bulkMode ? onToggleBulkPhone?.(conv.phone) : onSelect(conv)}
-                      className={cn(
-                        "flex-1 flex items-start gap-3 p-3 text-left border-b border-border/30",
-                        isSelected && !bulkMode
-                          ? "bg-primary border-l-2 border-l-primary shadow-sm"
-                          : bulkMode && selectedPhones?.has(conv.phone)
-                            ? "bg-accent/60 border-l-2 border-l-primary"
-                            : "hover:bg-accent/40 border-l-2 border-l-transparent"
-                      )}
-                    >
-                    <div className={cn(
-                      "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",
-                      isSelected
-                        ? "bg-primary-foreground/20"
-                        : "bg-green-100 dark:bg-green-900/30"
-                    )}>
-                      <User className={cn("h-5 w-5", isSelected ? "text-primary-foreground" : "text-green-600")} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={cn(
-                          "font-semibold text-sm truncate",
-                          isSelected ? "text-primary-foreground" : "text-foreground"
-                        )}>
-                          {conv.contact_name || formatPhone(conv.phone)}
-                        </span>
-                        <span className={cn(
-                          "text-[10px] flex-shrink-0",
-                          isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
-                        )}>
-                          {format(new Date(conv.last_message_at), 'HH:mm', { locale: ptBR })}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <p className={cn(
-                          "text-xs truncate",
-                          isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
-                        )}>
-                          {conv.last_message || '(mídia)'}
-                        </p>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {conv.lead_id && <Link2 className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-blue-500")} />}
-                          {convHasCalls && <PhoneCall className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-purple-500")} />}
-                          {conv.unread_count > 0 && (
-                            <Badge className={cn(
-                              "h-5 min-w-5 flex items-center justify-center text-[10px] p-0 px-1.5",
-                              isSelected
-                                ? "bg-primary-foreground text-primary hover:bg-primary-foreground"
-                                : "bg-green-600 hover:bg-green-600"
-                            )}>
-                              {conv.unread_count}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      {(board || stage) && (
-                        <div className="flex items-center gap-1 mt-1 flex-wrap">
-                          {board && (
-                            <span className={cn(
-                              "text-[10px] px-1.5 py-0.5 rounded",
-                              isSelected
-                                ? "bg-primary-foreground/20 text-primary-foreground"
-                                : "bg-muted text-muted-foreground"
-                            )}>
-                              {board.name}
-                            </span>
-                          )}
-                          {stage && (
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                              style={isSelected
-                                ? { background: 'rgba(255,255,255,0.25)', color: 'white' }
-                                : { background: `${stage.color}22`, color: stage.color }
-                              }
-                            >
-                              {stage.name}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {conv.contact_name && (
-                          <p className={cn(
-                            "text-[10px]",
-                            isSelected ? "text-primary-foreground/60" : "text-muted-foreground"
-                          )}>{formatPhone(conv.phone)}</p>
-                        )}
-                        {conv.instance_name && (
-                          <span className={cn(
-                            "text-[9px] flex items-center gap-0.5 ml-auto",
-                            isSelected ? "text-primary-foreground/60" : "text-muted-foreground/70"
-                          )}>
-                            <Smartphone className="h-2.5 w-2.5" />
-                            {conv.instance_name}
-                          </span>
-                        )}
-                      </div>
-
-                      {unansweredAt && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <span className={cn(
-                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border",
-                            isSelected
-                              ? "border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
-                              : ""
-                          )}
-                            style={!isSelected ? { color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' } : {}}
-                          >
-                            <Clock className="h-2.5 w-2.5" />
-                            Sem resposta há {formatDistanceToNow(new Date(unansweredAt), { locale: ptBR })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                  </div>
-                );
-              })}
+              {convs.map(conv => renderConversationCard(conv))}
             </div>
           ))
+        ) : (
+          sortedFiltered.map(conv => renderConversationCard(conv))
         )}
       </div>
     </div>
   );
+
+  function renderConversationCard(conv: WhatsAppConversation) {
+    const unansweredAt = isUnanswered(conv) ? getLastInboundAt(conv) : null;
+    const convHasCalls = hasCalls(conv);
+    const info = getLeadInfo(conv);
+    const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
+    const stage = board?.stages.find(s => s.id === info?.current_stage);
+    const isSelected = selectedPhone === conv.phone;
+
+    return (
+      <div key={conv.phone} className="flex items-center">
+        {bulkMode && (
+          <div className="pl-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+            <Checkbox
+              checked={selectedPhones?.has(conv.phone) || false}
+              onCheckedChange={() => onToggleBulkPhone?.(conv.phone)}
+              className="h-4 w-4"
+            />
+          </div>
+        )}
+        <button
+          onClick={() => bulkMode ? onToggleBulkPhone?.(conv.phone) : onSelect(conv)}
+          className={cn(
+            "flex-1 flex items-start gap-3 p-3 text-left border-b border-border/30",
+            isSelected && !bulkMode
+              ? "bg-primary border-l-2 border-l-primary shadow-sm"
+              : bulkMode && selectedPhones?.has(conv.phone)
+                ? "bg-accent/60 border-l-2 border-l-primary"
+                : "hover:bg-accent/40 border-l-2 border-l-transparent"
+          )}
+        >
+          <div className={cn(
+            "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",
+            isSelected
+              ? "bg-primary-foreground/20"
+              : "bg-green-100 dark:bg-green-900/30"
+          )}>
+            <User className={cn("h-5 w-5", isSelected ? "text-primary-foreground" : "text-green-600")} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span className={cn(
+                "font-semibold text-sm truncate",
+                isSelected ? "text-primary-foreground" : "text-foreground"
+              )}>
+                {conv.contact_name || formatPhone(conv.phone)}
+              </span>
+              <span className={cn(
+                "text-[10px] flex-shrink-0",
+                isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
+              )}>
+                {format(new Date(conv.last_message_at), 'HH:mm', { locale: ptBR })}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-0.5">
+              <p className={cn(
+                "text-xs truncate",
+                isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+              )}>
+                {conv.last_message || '(mídia)'}
+              </p>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {conv.lead_id && <Link2 className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-blue-500")} />}
+                {convHasCalls && <PhoneCall className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-purple-500")} />}
+                {conv.unread_count > 0 && (
+                  <Badge className={cn(
+                    "h-5 min-w-5 flex items-center justify-center text-[10px] p-0 px-1.5",
+                    isSelected
+                      ? "bg-primary-foreground text-primary hover:bg-primary-foreground"
+                      : "bg-green-600 hover:bg-green-600"
+                  )}>
+                    {conv.unread_count}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {(board || stage) && (
+              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                {board && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded",
+                    isSelected
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    {board.name}
+                  </span>
+                )}
+                {stage && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                    style={isSelected
+                      ? { background: 'rgba(255,255,255,0.25)', color: 'white' }
+                      : { background: `${stage.color}22`, color: stage.color }
+                    }
+                  >
+                    {stage.name}
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1 mt-0.5">
+              {conv.contact_name && (
+                <p className={cn(
+                  "text-[10px]",
+                  isSelected ? "text-primary-foreground/60" : "text-muted-foreground"
+                )}>{formatPhone(conv.phone)}</p>
+              )}
+              {conv.instance_name && (
+                <span className={cn(
+                  "text-[9px] flex items-center gap-0.5 ml-auto",
+                  isSelected ? "text-primary-foreground/60" : "text-muted-foreground/70"
+                )}>
+                  <Smartphone className="h-2.5 w-2.5" />
+                  {conv.instance_name}
+                </span>
+              )}
+            </div>
+
+            {unansweredAt && (
+              <div className="flex items-center gap-1 mt-1">
+                <span className={cn(
+                  "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border",
+                  isSelected
+                    ? "border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground"
+                    : ""
+                )}
+                  style={!isSelected ? { color: 'hsl(38 92% 40%)', borderColor: 'hsl(38 92% 50% / 0.3)', background: 'hsl(38 92% 50% / 0.08)' } : {}}
+                >
+                  <Clock className="h-2.5 w-2.5" />
+                  Sem resposta há {formatDistanceToNow(new Date(unansweredAt), { locale: ptBR })}
+                </span>
+              </div>
+            )}
+          </div>
+        </button>
+      </div>
+    );
+  }
 }
