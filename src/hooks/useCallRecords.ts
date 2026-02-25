@@ -34,24 +34,98 @@ export function useCallRecords() {
   const { user } = useAuthContext();
   const [records, setRecords] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authorizedInstances, setAuthorizedInstances] = useState<{ id: string; instance_name: string; owner_phone: string | null }[]>([]);
+
+  // Fetch user's authorized instances
+  const fetchAuthorizedInstances = useCallback(async () => {
+    if (!user) return [];
+    try {
+      // Get instance IDs the user has access to
+      const { data: permissions } = await supabase
+        .from('whatsapp_instance_users')
+        .select('instance_id')
+        .eq('user_id', user.id);
+
+      const instanceIds = (permissions || []).map(p => (p as any).instance_id);
+      if (instanceIds.length === 0) return [];
+
+      const { data: instances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, owner_phone')
+        .in('id', instanceIds);
+
+      const result = (instances || []) as { id: string; instance_name: string; owner_phone: string | null }[];
+      setAuthorizedInstances(result);
+      return result;
+    } catch (e) {
+      console.error('Error fetching authorized instances:', e);
+      return [];
+    }
+  }, [user]);
 
   const fetchRecords = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const instances = await fetchAuthorizedInstances();
+
+      // Build list of phone_used values to match: instance names + owner phones
+      const matchValues: string[] = [];
+      for (const inst of instances) {
+        if (inst.instance_name) matchValues.push(inst.instance_name);
+        if (inst.owner_phone) {
+          matchValues.push(inst.owner_phone);
+          // Also add cleaned version
+          const cleaned = inst.owner_phone.replace(/\D/g, '');
+          if (cleaned) matchValues.push(cleaned);
+        }
+      }
+
+      // Fetch own records + records from authorized instances
+      let allRecords: CallRecord[] = [];
+
+      // Always fetch user's own records
+      const { data: ownData, error: ownError } = await supabase
         .from('call_records')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-      if (error) throw error;
-      setRecords((data || []) as CallRecord[]);
+
+      if (ownError) throw ownError;
+      allRecords = (ownData || []) as CallRecord[];
+
+      // Fetch records from other users on authorized instances
+      if (matchValues.length > 0) {
+        // Build OR filter for phone_used matching any instance name or phone
+        const orFilters = matchValues.map(v => `phone_used.ilike.%${v}%`).join(',');
+        
+        const { data: instanceData, error: instanceError } = await supabase
+          .from('call_records')
+          .select('*')
+          .neq('user_id', user.id)
+          .or(orFilters)
+          .order('created_at', { ascending: false });
+
+        if (!instanceError && instanceData) {
+          // Deduplicate by id
+          const existingIds = new Set(allRecords.map(r => r.id));
+          for (const r of instanceData as CallRecord[]) {
+            if (!existingIds.has(r.id)) {
+              allRecords.push(r);
+            }
+          }
+        }
+      }
+
+      // Sort all by created_at desc
+      allRecords.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setRecords(allRecords);
     } catch (e) {
       console.error('Error fetching call records:', e);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchAuthorizedInstances]);
 
   useEffect(() => {
     if (user) fetchRecords();
@@ -86,5 +160,5 @@ export function useCallRecords() {
     await fetchRecords();
   };
 
-  return { records, loading, fetchRecords, updateRecord, deleteRecord, createRecord };
+  return { records, loading, fetchRecords, updateRecord, deleteRecord, createRecord, authorizedInstances };
 }
