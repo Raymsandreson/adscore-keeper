@@ -200,9 +200,12 @@ export function DailyReportDialog({
     const today = format(new Date(), "dd/MM/yyyy (EEEE)", { locale: ptBR });
     const lines: string[] = [];
 
+    const emittedAt = format(new Date(), 'HH:mm', { locale: ptBR });
+    const perfLabel = goalProgress >= 80 ? '🟢 RENDIMENTO ALTO' : goalProgress >= 50 ? '🟡 RENDIMENTO MÉDIO' : '🔴 RENDIMENTO BAIXO';
     lines.push(`📊 RELATÓRIO DIÁRIO — ${today}`);
+    lines.push(`🕐 Emitido às ${emittedAt}`);
     lines.push(`👤 ${userName}`);
-    lines.push(`🎯 Meta geral: ${goalProgress}%`);
+    lines.push(`🎯 Meta geral: ${goalProgress}% — ${perfLabel}`);
     lines.push('');
     lines.push('═══ RESUMO DAS MÉTRICAS ═══');
     lines.push(`💬 Comentários: ${productivity.commentReplies}/${goals.target_replies} (${metricPercent(productivity.commentReplies, goals.target_replies)}%)`);
@@ -338,9 +341,14 @@ export function DailyReportDialog({
           <ScrollArea className="h-[calc(100vh-220px)]">
             <div className="space-y-5 pr-2">
               {/* Goal progress header */}
-              <div className={`text-center p-3 rounded-lg border ${goalProgress >= 100 ? 'bg-green-50 border-green-200' : goalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+              <div className={`text-center p-3 rounded-lg border ${goalProgress >= 80 ? 'bg-green-50 border-green-200' : goalProgress >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
                 <p className="text-2xl font-bold">{goalProgress}%</p>
-                <p className="text-xs text-muted-foreground">Meta geral do dia</p>
+                <p className={`text-sm font-semibold ${goalProgress >= 80 ? 'text-green-700' : goalProgress >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                  {goalProgress >= 80 ? '🟢 Rendimento Alto' : goalProgress >= 50 ? '🟡 Rendimento Médio' : '🔴 Rendimento Baixo'}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Emitido às {format(new Date(), 'HH:mm', { locale: ptBR })} — {format(new Date(), "dd/MM/yyyy", { locale: ptBR })}
+                </p>
               </div>
 
               {/* Metrics grid */}
