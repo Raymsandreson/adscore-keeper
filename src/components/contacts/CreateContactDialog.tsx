@@ -49,6 +49,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
   const [existingLeads, setExistingLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [newLeadName, setNewLeadName] = useState('');
+  const [selectedRelationship, setSelectedRelationship] = useState('');
   const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedBoardId, setSelectedBoardId] = useState('');
   const [loadingLeads, setLoadingLeads] = useState(false);
@@ -63,6 +64,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       }));
       setLeadLinkMode('none');
       setSelectedLeadId('');
+      setSelectedRelationship('');
       setNewLeadName('');
     }
   }, [open, defaultName, defaultPhone]);
@@ -165,8 +167,12 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
 
       // 2. Handle lead linking
       if (leadLinkMode === 'existing' && selectedLeadId) {
-        // Link contact to existing lead via contact_leads
-        await supabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: selectedLeadId });
+        // Link contact to existing lead via contact_leads with relationship
+        await supabase.from('contact_leads').insert({
+          contact_id: contact.id,
+          lead_id: selectedLeadId,
+          ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
+        } as any);
         // Also update contacts.lead_id
         await supabase.from('contacts').update({ lead_id: selectedLeadId }).eq('id', contact.id);
         linkedLeadId = selectedLeadId;
@@ -185,7 +191,11 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
           .single();
 
         if (!leadError && lead) {
-          await supabase.from('contact_leads').insert({ contact_id: contact.id, lead_id: lead.id });
+          await supabase.from('contact_leads').insert({
+            contact_id: contact.id,
+            lead_id: lead.id,
+            ...(selectedRelationship ? { relationship_to_victim: selectedRelationship } : {}),
+          } as any);
           await supabase.from('contacts').update({ lead_id: lead.id }).eq('id', contact.id);
           linkedLeadId = lead.id;
         }
@@ -199,6 +209,7 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
       setForm({ full_name: '', phone: '', email: '', instagram_url: '', classification: 'prospect', city: '', state: '', notes: '', follower_status: 'none', professions: [] });
       setLeadLinkMode('none');
       setSelectedLeadId('');
+      setSelectedRelationship('');
       setNewLeadName('');
     } catch (e) {
       console.error(e);
@@ -352,6 +363,20 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+            )}
+
+            {(leadLinkMode === 'existing' || leadLinkMode === 'new') && (
+              <div className="mt-2">
+                <Label className="text-xs">Relação com a vítima</Label>
+                <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
+                  <SelectContent>
+                    {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Familiar', 'Amigo(a)', 'Colega de Trabalho', 'Advogado(a)', 'Testemunha', 'Responsável', 'Outro'].map(r => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
