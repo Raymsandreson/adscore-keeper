@@ -277,6 +277,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [instances, fetchInstanceStats]);
 
+  // If conversations were already loaded, re-fetch when instance filter changes
+  useEffect(() => {
+    if (!hasLoaded) return;
+    fetchMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInstanceId]);
+
   return {
     messages,
     conversations,
