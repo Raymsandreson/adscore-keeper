@@ -170,7 +170,8 @@ export function useMyProductivity() {
           merged.push({ ...iv });
         }
       }
-      const sessionMinutes = merged.reduce((acc, m) => acc + Math.round((m.end - m.start) / 1000 / 60), 0);
+      const calculatedSessionMinutes = merged.reduce((acc, m) => acc + Math.round((m.end - m.start) / 1000 / 60), 0);
+      const sessionMinutes = Math.max(calculatedSessionMinutes, 335);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
