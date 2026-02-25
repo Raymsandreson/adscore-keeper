@@ -23,6 +23,7 @@ const RELATIONSHIP_OPTIONS = [
   'Irmão(ã)',
   'Familiar',
   'Amigo(a)',
+  'Colega de Trabalho',
   'Advogado(a)',
   'Testemunha',
   'Responsável',

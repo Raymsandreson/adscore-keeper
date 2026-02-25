@@ -198,7 +198,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                         <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
                           <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
                           <SelectContent>
-                            {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Advogado', 'Testemunha', 'Outro'].map(r => (
+                            {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Familiar', 'Amigo(a)', 'Colega de Trabalho', 'Advogado(a)', 'Testemunha', 'Responsável', 'Outro'].map(r => (
                               <SelectItem key={r} value={r}>{r}</SelectItem>
                             ))}
                           </SelectContent>
