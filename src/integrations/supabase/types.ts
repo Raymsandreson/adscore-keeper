@@ -691,6 +691,51 @@ export type Database = {
           },
         ]
       }
+      career_plan_steps: {
+        Row: {
+          created_at: string
+          estimated_months: number | null
+          from_position_id: string | null
+          id: string
+          requirements: string | null
+          step_order: number
+          to_position_id: string
+        }
+        Insert: {
+          created_at?: string
+          estimated_months?: number | null
+          from_position_id?: string | null
+          id?: string
+          requirements?: string | null
+          step_order?: number
+          to_position_id: string
+        }
+        Update: {
+          created_at?: string
+          estimated_months?: number | null
+          from_position_id?: string | null
+          id?: string
+          requirements?: string | null
+          step_order?: number
+          to_position_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "career_plan_steps_from_position_id_fkey"
+            columns: ["from_position_id"]
+            isOneToOne: false
+            referencedRelation: "job_positions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "career_plan_steps_to_position_id_fkey"
+            columns: ["to_position_id"]
+            isOneToOne: false
+            referencedRelation: "job_positions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cat_lead_contacts: {
         Row: {
           cat_lead_id: string
@@ -2561,6 +2606,42 @@ export type Database = {
         }
         Relationships: []
       }
+      job_positions: {
+        Row: {
+          color: string | null
+          created_at: string
+          department: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          level: number
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          level?: number
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          level?: number
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       kanban_boards: {
         Row: {
           ad_account_id: string | null
@@ -3301,6 +3382,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      member_positions: {
+        Row: {
+          assigned_at: string
+          id: string
+          notes: string | null
+          position_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          id?: string
+          notes?: string | null
+          position_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          id?: string
+          notes?: string | null
+          position_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_positions_position_id_fkey"
+            columns: ["position_id"]
+            isOneToOne: false
+            referencedRelation: "job_positions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       n8n_automation_logs: {
         Row: {
