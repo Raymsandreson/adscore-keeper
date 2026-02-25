@@ -8,6 +8,7 @@ const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes - check if still active
 export function useSessionTracker() {
   const { user } = useAuthContext();
   const sessionIdRef = useRef<string | null>(null);
+  const sessionStartedAtRef = useRef<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const lastHeartbeatActivityRef = useRef<number>(Date.now()); // tracks last real interaction sent to DB
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,6 +41,7 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = data.id;
+      sessionStartedAtRef.current = Date.now();
       lastActivityRef.current = Date.now();
       console.log('[Session] Started:', data.id);
     } catch (error) {
@@ -82,6 +84,7 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = null;
+      sessionStartedAtRef.current = null;
     } catch (error) {
       console.error('Error ending session:', error);
     }
@@ -235,6 +238,7 @@ export function useSessionTracker() {
 
   return {
     sessionId: sessionIdRef.current,
+    sessionStartedAt: sessionStartedAtRef.current,
     logPageVisit,
     updateActivity,
     endSession,

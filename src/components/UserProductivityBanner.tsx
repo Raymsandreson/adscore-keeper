@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMyProductivity } from '@/hooks/useMyProductivity';
+import { useSession } from '@/contexts/SessionContext';
 import { useMyTeamRanking } from '@/hooks/useMyTeamRanking';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
@@ -64,7 +65,8 @@ const HIDDEN_ROUTES = ['/dashboard', '/expense-form'];
 
 export function UserProductivityBanner() {
   const { user, profile } = useAuthContext();
-  const { data, goals, goalProgress, loading } = useMyProductivity();
+  const { sessionStartedAt } = useSession();
+  const { data, goals, goalProgress, loading } = useMyProductivity(sessionStartedAt);
   const { ranking, myTeams, selectedTeamId, selectTeam, myPosition, loading: rankingLoading, fetchRanking } = useMyTeamRanking();
   const { configs: timeBlocks } = useTimeBlockSettings();
   const [expanded, setExpanded] = useState(false);

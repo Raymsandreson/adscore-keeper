@@ -47,7 +47,7 @@ const hardcodedDefaults: MyDailyGoals = {
   target_leads_closed: 2, target_checklist_items: 10,
 };
 
-export function useMyProductivity() {
+export function useMyProductivity(sessionStartedAt?: number | null) {
   const { user } = useAuthContext();
   const [data, setData] = useState<MyProductivity>(emptyProductivity);
   const [goals, setGoals] = useState<MyDailyGoals>(hardcodedDefaults);
@@ -138,7 +138,7 @@ export function useMyProductivity() {
       const nowMs = Date.now();
       const dayStartMs = new Date(startDate).getTime();
       const dayEndMs = new Date(endDate).getTime();
-      const SESSION_INACTIVITY_GRACE_MS = 5 * 60 * 1000;
+      const SESSION_INACTIVITY_GRACE_MS = 10 * 60 * 1000;
 
       // Merge overlapping intervals to avoid double-counting concurrent sessions
       const intervals: { start: number; end: number }[] = [];
@@ -171,7 +171,13 @@ export function useMyProductivity() {
         }
       }
       const calculatedSessionMinutes = merged.reduce((acc, m) => acc + Math.round((m.end - m.start) / 1000 / 60), 0);
-      const sessionMinutes = Math.max(calculatedSessionMinutes, 335);
+      
+      // Add local session time that hasn't been persisted yet
+      let localSessionMinutes = 0;
+      if (sessionStartedAt) {
+        localSessionMinutes = Math.round((Date.now() - sessionStartedAt) / 1000 / 60);
+      }
+      const sessionMinutes = Math.max(calculatedSessionMinutes, localSessionMinutes);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
@@ -307,7 +313,7 @@ export function useMyProductivity() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, sessionStartedAt]);
 
   // Auto-refresh every 60 seconds
   useEffect(() => {
