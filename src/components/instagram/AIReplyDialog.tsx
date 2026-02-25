@@ -134,9 +134,9 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      const username = comment.author_username?.replace('@', '') || '';
+      const username = (comment.author_username?.replace('@', '') || '').toLowerCase();
 
-      // Try to update existing instagram_comments record
+      // Try to update existing instagram_comments record (mark as replied)
       const { data: existingComment } = await supabase
         .from('instagram_comments')
         .select('id')
@@ -148,14 +148,17 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
           .from('instagram_comments')
           .update({ replied_at: new Date().toISOString(), replied_by: currentUser?.id || null })
           .eq('id', comment.id);
-      } else {
-        // Insert a new outbound comment record for metrics tracking
+      }
+
+      // Always insert a "sent" outbound comment record so it appears in contact history
+      if (editedReply.trim()) {
         await supabase
           .from('instagram_comments')
           .insert({
-            comment_text: editedReply,
+            comment_text: editedReply.trim(),
             author_username: username,
             post_url: comment.post_url || '',
+            comment_type: 'sent',
             replied_at: new Date().toISOString(),
             replied_by: currentUser?.id || null,
             is_from_post_owner: true,
@@ -187,7 +190,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
   const markDmSent = async () => {
     if (!comment) return;
 
-    const username = comment.author_username?.replace('@', '') || '';
+    const username = (comment.author_username?.replace('@', '') || '').toLowerCase();
     
     try {
       // Log to dm_history (without comment_id FK if comment doesn't exist in instagram_comments)
