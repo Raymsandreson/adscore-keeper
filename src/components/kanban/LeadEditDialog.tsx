@@ -652,58 +652,60 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <TabsList className="grid w-full grid-cols-11 h-auto">
-            <TabsTrigger value="basic" className="text-xs py-2">
-              <User className="h-3 w-3 mr-1" />
-              Básico
-            </TabsTrigger>
-            <TabsTrigger value="contacts" className="text-xs py-2">
-              <Users className="h-3 w-3 mr-1" />
-              Contatos
-            </TabsTrigger>
-            <TabsTrigger value="checklist" className="text-xs py-2">
-              <CheckSquare className="h-3 w-3 mr-1" />
-              Checklist
-            </TabsTrigger>
-            <TabsTrigger value="activities" className="text-xs py-2">
-              <Calendar className="h-3 w-3 mr-1" />
-              Atividades
-            </TabsTrigger>
-            <TabsTrigger value="accident" className="text-xs py-2">
-              <FileText className="h-3 w-3 mr-1" />
-              Acidente
-            </TabsTrigger>
-            <TabsTrigger value="location" className="text-xs py-2">
-              <MapPin className="h-3 w-3 mr-1" />
-              Local
-            </TabsTrigger>
-            <TabsTrigger value="companies" className="text-xs py-2">
-              <Building className="h-3 w-3 mr-1" />
-              Empresas
-            </TabsTrigger>
-            <TabsTrigger value="legal" className="text-xs py-2">
-              <Briefcase className="h-3 w-3 mr-1" />
-              Jurídico
-            </TabsTrigger>
-            <TabsTrigger value="history" className="text-xs py-2">
-              <History className="h-3 w-3 mr-1" />
-              Histórico
-            </TabsTrigger>
-            {leadOutcome === 'closed' && (
-              <TabsTrigger value="processos" className="text-xs py-2">
-                <Scale className="h-3 w-3 mr-1" />
-                Processos
+          <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent pb-1">
+            <TabsList className="inline-flex w-max h-auto gap-0.5 p-1">
+              <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <User className="h-3 w-3 mr-1" />
+                Básico
               </TabsTrigger>
-            )}
-            <TabsTrigger value="config" className="text-xs py-2">
-              <Settings className="h-3 w-3 mr-1" />
-              Config
-            </TabsTrigger>
-            <TabsTrigger value="ai_chat" className="text-xs py-2">
-              <Sparkles className="h-3 w-3 mr-1" />
-              Chat IA
-            </TabsTrigger>
-          </TabsList>
+              <TabsTrigger value="contacts" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Users className="h-3 w-3 mr-1" />
+                Contatos
+              </TabsTrigger>
+              <TabsTrigger value="checklist" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <CheckSquare className="h-3 w-3 mr-1" />
+                Checklist
+              </TabsTrigger>
+              <TabsTrigger value="activities" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Calendar className="h-3 w-3 mr-1" />
+                Atividades
+              </TabsTrigger>
+              <TabsTrigger value="accident" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <FileText className="h-3 w-3 mr-1" />
+                Acidente
+              </TabsTrigger>
+              <TabsTrigger value="location" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <MapPin className="h-3 w-3 mr-1" />
+                Local
+              </TabsTrigger>
+              <TabsTrigger value="companies" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Building className="h-3 w-3 mr-1" />
+                Empresas
+              </TabsTrigger>
+              <TabsTrigger value="legal" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Briefcase className="h-3 w-3 mr-1" />
+                Jurídico
+              </TabsTrigger>
+              <TabsTrigger value="history" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <History className="h-3 w-3 mr-1" />
+                Histórico
+              </TabsTrigger>
+              {leadOutcome === 'closed' && (
+                <TabsTrigger value="processos" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                  <Scale className="h-3 w-3 mr-1" />
+                  Processos
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="config" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Settings className="h-3 w-3 mr-1" />
+                Config
+              </TabsTrigger>
+              <TabsTrigger value="ai_chat" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Chat IA
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <div 
             className="overflow-y-scroll pr-3 mt-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-muted/30" 
