@@ -8,7 +8,7 @@ export interface InstanceStatus {
   status_raw: string | null;
 }
 
-export function useWhatsAppInstanceStatus(enabled = true) {
+export function useWhatsAppInstanceStatus(enabled: boolean = true) {
   const [statuses, setStatuses] = useState<InstanceStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
