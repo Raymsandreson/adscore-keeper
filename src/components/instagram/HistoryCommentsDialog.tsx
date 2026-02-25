@@ -545,17 +545,28 @@ export function HistoryCommentsDialog({
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs bg-gradient-to-r from-emerald-500/10 to-green-500/10 border-emerald-500/30 hover:border-emerald-500/50"
-                            onClick={() => {
+                            onClick={async () => {
                               const linkedLeads = getContactData(comment.author_username).linkedLeads;
                               const firstLead = linkedLeads[0];
                               if (firstLead) {
+                                // Try local first
                                 const fullLeadData = leads?.find(l => l.id === firstLead.id);
                                 if (fullLeadData) {
                                   setFullLead(fullLeadData);
                                   setShowLeadEdit(true);
                                 } else {
-                                  setEditingLeadId(firstLead.id);
-                                  setShowLeadEdit(true);
+                                  // Fetch from database
+                                  const { data } = await supabase
+                                    .from('leads')
+                                    .select('*')
+                                    .eq('id', firstLead.id)
+                                    .single();
+                                  if (data) {
+                                    setFullLead(data as Lead);
+                                    setShowLeadEdit(true);
+                                  } else {
+                                    toast.error('Lead não encontrado');
+                                  }
                                 }
                               }
                             }}
