@@ -3,6 +3,7 @@ import { useSessionTracker } from '@/hooks/useSessionTracker';
 
 interface SessionContextType {
   sessionId: string | null;
+  sessionStartedAt: number | null;
   logPageVisit: (pagePath: string) => Promise<void>;
   updateActivity: () => Promise<void>;
   endSession: (reason?: string) => Promise<void>;
