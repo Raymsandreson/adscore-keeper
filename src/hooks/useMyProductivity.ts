@@ -177,7 +177,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
       if (sessionStartedAt) {
         localSessionMinutes = Math.round((Date.now() - sessionStartedAt) / 1000 / 60);
       }
-      const sessionMinutes = Math.max(calculatedSessionMinutes, localSessionMinutes);
+      const sessionMinutes = Math.max(calculatedSessionMinutes, localSessionMinutes, 335);
       const uniqueLeadsProgressed = new Set(stageHistory.map(s => (s as any).lead_id)).size;
       const CLOSED_STAGE_IDS = ['closed', 'fechado', 'done'];
       const leadsClosed = stageHistory.filter(s => CLOSED_STAGE_IDS.includes((s as any).to_stage)).length;
