@@ -624,7 +624,7 @@ export function HistoryCommentsDialog({
         lead={selectedLead}
       />
       
-      {/* Lead Edit Dialog */}
+      {/* Lead Edit Sheet (side panel) */}
       <LeadEditDialog
         open={showLeadEdit}
         onOpenChange={(open) => {
@@ -635,6 +635,7 @@ export function HistoryCommentsDialog({
           }
         }}
         lead={fullLead}
+        mode="sheet"
         onSave={async (leadId, updates) => {
           await updateLead(leadId, updates);
           refetchContactData();
