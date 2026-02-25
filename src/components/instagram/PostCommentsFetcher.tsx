@@ -161,6 +161,48 @@ export function PostCommentsFetcher() {
         setSavedCount(data.savedToDatabase || 0);
         setLastCostUsd(data.costUsd || 0);
         
+        // Auto-save posts to external_posts table so they persist
+        const commentsData = data.comments || [];
+        for (const url of postUrls) {
+          const normalizedUrl = url.trim().replace(/\/reels\//gi, '/reel/').replace(/\/$/, '');
+          const commentsForPost = commentsData.filter((c: any) => {
+            const commentUrl = (c.post_url || '').replace(/\/reels\//gi, '/reel/').replace(/\/$/, '');
+            return commentUrl === normalizedUrl;
+          });
+          const firstComment = commentsForPost[0];
+          const authorUsername = firstComment?.metadata?.post_owner || firstComment?.author_username || null;
+          
+          // Check if post already exists
+          const { data: existingPost } = await supabase
+            .from('external_posts')
+            .select('id')
+            .eq('url', normalizedUrl)
+            .maybeSingle();
+          
+          if (existingPost) {
+            // Update comments count and last fetched
+            await supabase
+              .from('external_posts')
+              .update({
+                comments_count: commentsForPost.length,
+                last_fetched_at: new Date().toISOString(),
+                ...(authorUsername ? { author_username: authorUsername } : {}),
+              })
+              .eq('id', existingPost.id);
+          } else {
+            // Create new external post
+            await supabase
+              .from('external_posts')
+              .insert({
+                url: normalizedUrl,
+                platform: 'instagram',
+                comments_count: commentsForPost.length,
+                last_fetched_at: new Date().toISOString(),
+                author_username: authorUsername,
+              });
+          }
+        }
+
         // Extract post metadata from first post for history
         const firstPost = data.posts?.[0];
         const postMetadata = firstPost ? {
