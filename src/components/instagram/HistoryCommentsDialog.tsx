@@ -21,6 +21,7 @@ import {
   Loader2,
   User,
   Pencil,
+  Bot,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -32,6 +33,7 @@ import { CommentClassificationDialog } from './CommentClassificationDialog';
 import { ReplyStatusBadge } from './ReplyStatusBadge';
 import { LeadHistorySheet } from './LeadHistorySheet';
 import { PostPreviewCard } from './PostPreviewCard';
+import { AIReplyDialog } from './AIReplyDialog';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { 
@@ -114,6 +116,8 @@ export function HistoryCommentsDialog({
   const [showContactEdit, setShowContactEdit] = useState(false);
   const [fullContact, setFullContact] = useState<Contact | null>(null);
   const [fullLead, setFullLead] = useState<Lead | null>(null);
+  const [showAIReplyDialog, setShowAIReplyDialog] = useState(false);
+  const [aiReplyComment, setAiReplyComment] = useState<any>(null);
   
   const { fetchMetadata, getCachedMetadata } = usePostMetadata();
   const { updateLead, leads } = useLeads();
@@ -513,6 +517,28 @@ export function HistoryCommentsDialog({
                           </Button>
                         )}
                         
+                        {/* AI Reply + DM button */}
+                        {comment.author_username && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs bg-gradient-to-r from-violet-500/10 to-blue-500/10 border-violet-500/30 hover:border-violet-500/50"
+                            onClick={() => {
+                              setAiReplyComment({
+                                id: comment.id || comment.comment_id || '',
+                                comment_id: comment.comment_id,
+                                comment_text: comment.comment_text,
+                                author_username: comment.author_username,
+                                post_url: comment.post_url,
+                              });
+                              setShowAIReplyDialog(true);
+                            }}
+                          >
+                            <Bot className="h-3 w-3 mr-1 text-violet-600" />
+                            IA Comentário + DM
+                          </Button>
+                        )}
+                        
                         {/* Quick link lead */}
                         {comment.author_username && (
                           <QuickLinkLeadPopover 
@@ -601,6 +627,17 @@ export function HistoryCommentsDialog({
         }}
         contact={fullContact}
         onContactUpdated={refetchContactData}
+      />
+      
+      {/* AI Reply + DM Dialog */}
+      <AIReplyDialog
+        open={showAIReplyDialog}
+        onOpenChange={setShowAIReplyDialog}
+        comment={aiReplyComment}
+        isThirdPartyPost={true}
+        onReplyPosted={() => {
+          refetchContactData();
+        }}
       />
     </>
   );
