@@ -100,30 +100,74 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     }
   };
 
+  // Helper to find lead ID by instagram username (direct or through contacts)
+  const findLeadByUsername = async (username: string): Promise<string | null> => {
+    // 1. Direct lookup on leads table
+    const { data: directLead } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('instagram_username', username)
+      .maybeSingle();
+    if (directLead) return directLead.id;
+
+    // 2. Lookup through contacts → contact_leads
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('instagram_username', username)
+      .maybeSingle();
+    if (contact) {
+      const { data: contactLead } = await supabase
+        .from('contact_leads')
+        .select('lead_id')
+        .eq('contact_id', contact.id)
+        .limit(1)
+        .maybeSingle();
+      if (contactLead) return contactLead.lead_id;
+    }
+
+    return null;
+  };
+
   const markAsCommented = async () => {
     if (!comment) return;
     
     try {
-      // Update comment as replied
-      // Get current user for replied_by attribution
       const { data: { user: currentUser } } = await supabase.auth.getUser();
-      await supabase
+      const username = comment.author_username?.replace('@', '') || '';
+
+      // Try to update existing instagram_comments record
+      const { data: existingComment } = await supabase
         .from('instagram_comments')
-        .update({ replied_at: new Date().toISOString(), replied_by: currentUser?.id || null })
-        .eq('id', comment.id);
+        .select('id')
+        .eq('id', comment.id)
+        .maybeSingle();
 
-      // Try to find linked lead and add followup
-      const username = comment.author_username?.replace('@', '');
+      if (existingComment) {
+        await supabase
+          .from('instagram_comments')
+          .update({ replied_at: new Date().toISOString(), replied_by: currentUser?.id || null })
+          .eq('id', comment.id);
+      } else {
+        // Insert a new outbound comment record for metrics tracking
+        await supabase
+          .from('instagram_comments')
+          .insert({
+            comment_text: editedReply,
+            author_username: username,
+            post_url: comment.post_url || '',
+            replied_at: new Date().toISOString(),
+            replied_by: currentUser?.id || null,
+            is_from_post_owner: true,
+          } as any);
+      }
+
+      // Find linked lead and add followup
       if (username) {
-        const { data: lead } = await supabase
-          .from('leads')
-          .select('id')
-          .eq('instagram_username', username)
-          .maybeSingle();
-
-        if (lead) {
+        const leadId = await findLeadByUsername(username);
+        if (leadId) {
           await supabase.from('lead_followups').insert({
-            lead_id: lead.id,
+            lead_id: leadId,
             followup_type: 'instagram_comment',
             notes: `Comentário feito no post: ${comment.post_url || 'N/A'}\n\nTexto: ${editedReply.slice(0, 500)}`,
             outcome: 'done',
@@ -135,6 +179,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       toast.success("Comentário registrado! ✅");
       onReplyPosted?.();
     } catch (error) {
+      console.error('Error marking as commented:', error);
       toast.error("Erro ao marcar como comentado");
     }
   };
@@ -145,31 +190,38 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
     const username = comment.author_username?.replace('@', '') || '';
     
     try {
-      // Log to dm_history
-      await supabase.from('dm_history').insert({
+      // Log to dm_history (without comment_id FK if comment doesn't exist in instagram_comments)
+      const dmInsert: any = {
         user_id: user?.id,
         instagram_username: username,
         dm_message: editedDm.trim(),
         original_suggestion: dmSuggestion || '',
         was_edited: editedDm.trim() !== (dmSuggestion || '').trim(),
         action_type: 'sent',
-        comment_id: comment.id,
         author_id: (comment as any).author_id || null,
-      });
+      };
 
-      // Try to find linked lead and add followup
+      // Only set comment_id if it exists in instagram_comments
+      const { data: existingComment } = await supabase
+        .from('instagram_comments')
+        .select('id')
+        .eq('id', comment.id)
+        .maybeSingle();
+      
+      if (existingComment) {
+        dmInsert.comment_id = comment.id;
+      }
+
+      await supabase.from('dm_history').insert(dmInsert);
+
+      // Find linked lead and add followup
       if (username) {
-        const { data: lead } = await supabase
-          .from('leads')
-          .select('id')
-          .eq('instagram_username', username)
-          .maybeSingle();
-
-        if (lead) {
+        const leadId = await findLeadByUsername(username);
+        if (leadId) {
           await supabase.from('lead_followups').insert({
-            lead_id: lead.id,
+            lead_id: leadId,
             followup_type: 'instagram_dm',
-            notes: `DM enviada via Instagram\n\nTexto: ${editedDm.slice(0, 500)}`,
+            notes: `DM enviada via Instagram para @${username}\n\nTexto: ${editedDm.slice(0, 500)}`,
             outcome: 'done',
           });
         }
@@ -179,6 +231,7 @@ export const AIReplyDialog = ({ open, onOpenChange, comment, accessToken, onRepl
       toast.success("DM registrada no histórico! 📩");
       onReplyPosted?.();
     } catch (error) {
+      console.error('Error marking DM as sent:', error);
       toast.error("Erro ao registrar DM");
     }
   };
