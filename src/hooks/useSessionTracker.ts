@@ -142,6 +142,12 @@ export function useSessionTracker() {
       hasRecentActivityRef.current = true;
       lastActivityRef.current = Date.now();
 
+      // If session was ended by inactivity, start a new one automatically
+      if (!sessionIdRef.current) {
+        startSession();
+        return;
+      }
+
       // Reset inactivity timer on real interaction
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
