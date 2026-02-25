@@ -29,7 +29,7 @@ serve(async (req) => {
     const selectedTone = toneInstructions[tone as keyof typeof toneInstructions] || toneInstructions.friendly;
 
     // Build context section
-    let contextSection = `- Autor do comentário: @${authorUsername || 'usuário'}`;
+    let contextSection = `- Autor do comentário: ${authorUsername || 'usuário'} (NÃO use @ antes do nome)`;
     
     if (postContext) {
       contextSection += `\n- Sobre a postagem: ${postContext}`;
@@ -61,45 +61,45 @@ Antes de responder, analise CUIDADOSAMENTE:
 2. O SENTIMENTO DO COMENTÁRIO: Pode conter palavras incompletas como "lu" (luto), "tristeza", ou referências a lugares afetados por tragédias
 3. Palavras-chave de alerta: "morreu", "faleceu", "luto", "acidente", "tragédia", "vítima", "soterrado", "falecimento", "indenização"
 
-REGRAS CRÍTICAS:
-1. Se a postagem ou comentário indicam LUTO, MORTE ou TRAGÉDIA:
+REGRAS CRÍTICAS DE ABORDAGEM:
+1. NUNCA prometa apoio, ajuda jurídica ou assessoria logo de cara no comentário ou DM
+2. PRIMEIRO precisamos CONHECER A HISTÓRIA da pessoa - faça perguntas para entender o caso
+3. A abordagem deve ser de CURIOSIDADE e ESCUTA, não de venda de serviço
+4. Ao invés de "vamos te ajudar", prefira "conte-nos mais sobre o que aconteceu"
+
+5. Se a postagem ou comentário indicam LUTO, MORTE ou TRAGÉDIA:
    - NUNCA responda de forma alegre ou casual
    - Use tom de CONDOLÊNCIAS e SOLIDARIEDADE
-   - Ofereça apoio de forma respeitosa
-   - Exemplo: "Lamentamos muito por essa situação, @usuario. Enviamos uma mensagem no seu Direct com mais informações de como podemos ajudar. 🙏"
+   - Exemplo: "Lamentamos muito por essa situação, ${authorUsername || 'amigo'}. Gostaríamos de conhecer melhor o que aconteceu. Podemos conversar no Direct? 🙏"
 
-2. Se o comentário menciona uma cidade/local + contexto de tragédia:
+6. Se o comentário menciona uma cidade/local + contexto de tragédia:
    - A pessoa provavelmente está expressando solidariedade ou é afetada
    - Responda com empatia e respeito
 
 ESTRATÉGIAS PARA GERAR RESPOSTA (escolha a mais adequada):
 1. **Pergunta Aberta**: Faça uma pergunta que incentive resposta
    - "Podemos saber mais sobre o seu caso? Responda aqui ou confira nosso Direct! 📩"
-   - "Você ou alguém próximo passou por isso? Conta pra gente nos comentários ou no Direct!"
+   - "Você ou alguém próximo passou por isso? Conta pra gente!"
 
-2. **Oferta de Ajuda + Direcionamento DM**: Ofereça ajuda e mencione o Direct
-   - "Enviamos uma mensagem no seu Direct com informações importantes! Confere lá 📩"
-   - "Podemos te ajudar! Dá uma olhada no Direct que enviamos algo especial pra você 💬"
+2. **Direcionamento DM com curiosidade**: Direcione ao Direct para conversar
+   - "Te mandamos uma mensagem no Direct, dá uma olhada! 📩"
+   - "Dá uma olhada no Direct que queremos entender melhor sua situação 💬"
 
-3. **Curiosidade/Gancho**: Crie curiosidade que estimule verificar o DM
-   - "Temos uma informação importante pra você! Confere o Direct 📩"
-   - "Mandamos algo no seu Direct que pode te interessar muito! 👀"
+3. **Validação + Convite**: Valide o comentário e convide para continuar
+   - "Exatamente isso! Quer conversar mais sobre? Te chamamos no Direct 📩"
 
-4. **Validação + Convite**: Valide o comentário e convide para continuar
-   - "Exatamente isso! Quer saber mais? Te mandamos no Direct 📩"
-   - "Você tem razão! Enviamos mais detalhes no seu Direct, confere lá!"
-
-REGRAS GERAIS:
-1. Responda SEMPRE em português brasileiro
-2. Seja conciso - comentários do Instagram devem ser curtos (máximo 200 caracteres)
-3. ${selectedTone}
-4. Nunca use hashtags na resposta
-5. Personalize a resposta mencionando o nome do usuário quando apropriado
-6. SEMPRE inclua uma chamada para verificar o Direct ou responder
-7. Mantenha o tom humano e autêntico - evite respostas genéricas
-8. Use no máximo 1-2 emojis (📩 💬 👀 para direcionar ao DM, 🙏 para situações tristes)
-9. FINALIZE com menção ao Direct ou pergunta que estimule resposta
-${parentComment ? '10. IMPORTANTE: Este comentário é uma resposta em uma thread - mantenha a coerência com a conversa' : ''}
+REGRAS DE FORMATAÇÃO DO NOME:
+1. NUNCA use @ antes do nome do usuário. Use apenas o nome simples: "${authorUsername || 'amigo'}" ao invés de "@${authorUsername}"
+2. Trate pelo nome de forma natural e humana
+3. Responda SEMPRE em português brasileiro
+4. Seja conciso - comentários do Instagram devem ser curtos (máximo 200 caracteres)
+5. ${selectedTone}
+6. Nunca use hashtags na resposta
+7. SEMPRE inclua uma chamada para verificar o Direct ou responder
+8. Mantenha o tom humano e autêntico - evite respostas genéricas
+9. Use no máximo 1-2 emojis (📩 💬 👀 para direcionar ao DM, 🙏 para situações tristes)
+10. FINALIZE com menção ao Direct ou pergunta que estimule resposta
+${parentComment ? '11. IMPORTANTE: Este comentário é uma resposta em uma thread - mantenha a coerência com a conversa' : ''}
 ${customInstructions}
 
 CONTEXTO:
@@ -190,19 +190,21 @@ ${contextSection}`;
         dmContextSection += `\n- Comentário de @${authorUsername}: "${comment}"`;
       }
 
-      const dmSystemPrompt = `Você é um assistente especializado em criar mensagens para Direct (DM) do Instagram para uma empresa brasileira.
+      const dmSystemPrompt = `Você é um assistente especializado em criar mensagens para Direct (DM) do Instagram para uma empresa brasileira de advocacia.
 
 REGRAS IMPORTANTES:
 1. Escreva SEMPRE em português brasileiro
 2. A mensagem deve ser uma continuação natural da interação nos comentários
 3. ${selectedTone}
 4. Seja breve mas acolhedor (máximo 300 caracteres)
-5. IMPORTANTE: A DM é para @${authorUsername || 'usuário'} - use APENAS este @ na saudação
+5. NUNCA use @ antes do nome. Use o nome simples: "${authorUsername || 'amigo'}" (sem @)
 6. NÃO mencione outros usuários na saudação da DM
 7. Mencione brevemente o contexto da interação anterior
-8. Faça uma pergunta ou convite para continuar a conversa
-9. Evite ser muito formal ou robótico
-10. Use 1-2 emojis se apropriado
+8. NUNCA prometa apoio jurídico ou assessoria de cara - PRIMEIRO queremos CONHECER A HISTÓRIA da pessoa
+9. Faça perguntas para entender o caso: "Pode nos contar mais sobre o que aconteceu?"
+10. Evite ser muito formal ou robótico
+11. Use 1-2 emojis se apropriado
+12. A abordagem deve ser de ESCUTA e CURIOSIDADE, não de venda de serviço
 
 CONTEXTO DA INTERAÇÃO:
 ${dmContextSection}
@@ -218,7 +220,7 @@ ${dmContextSection}
           model: "google/gemini-3-flash-preview",
           messages: [
             { role: "system", content: dmSystemPrompt },
-            { role: "user", content: `Crie uma mensagem para enviar no Direct do Instagram para @${authorUsername || 'usuário'}. IMPORTANTE: Dirija a mensagem APENAS para @${authorUsername}, não mencione outros usuários na saudação.` }
+            { role: "user", content: `Crie uma mensagem para enviar no Direct do Instagram para ${authorUsername || 'o usuário'}. IMPORTANTE: NÃO use @ antes do nome. Use o nome de forma natural. NÃO prometa apoio ou ajuda jurídica, primeiro pergunte sobre a história da pessoa.` }
           ],
           max_tokens: 200,
           temperature: 0.7,
