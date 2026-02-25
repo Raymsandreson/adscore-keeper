@@ -211,17 +211,44 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   const sendMessage = async (phone: string, message: string, contactId?: string, leadId?: string) => {
     try {
+      // Check if the instance has auto_identify_sender enabled
+      let finalMessage = message;
+      
+      const targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
+      
+      if (targetInstanceId && user) {
+        const { data: instData } = await supabase
+          .from('whatsapp_instances')
+          .select('auto_identify_sender')
+          .eq('id', targetInstanceId)
+          .single();
+        
+        if (instData?.auto_identify_sender) {
+          // Fetch user profile with treatment_title
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('full_name, treatment_title')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (profileData?.full_name) {
+            const title = (profileData as any).treatment_title;
+            const senderName = title ? `${title} ${profileData.full_name}` : profileData.full_name;
+            finalMessage = `*${senderName}:*\n${message}`;
+          }
+        }
+      }
+      
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
         body: { 
-          phone, message, 
+          phone, message: finalMessage, 
           contact_id: contactId, lead_id: leadId,
-          instance_id: selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined,
+          instance_id: targetInstanceId,
         },
       });
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
       toast.success('Mensagem enviada!');
-      // Only refresh the current conversation, not all
       fetchMessages();
       return true;
     } catch (error: any) {

@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, UserCheck } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -11,6 +13,7 @@ import { toast } from 'sonner';
 interface Instance {
   id: string;
   instance_name: string;
+  auto_identify_sender: boolean;
 }
 
 interface InstanceUser {
@@ -29,10 +32,10 @@ export function WhatsAppInstancePermissions() {
   const fetchData = useCallback(async () => {
     try {
       const [instRes, iuRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
+        supabase.from('whatsapp_instances').select('id, instance_name, auto_identify_sender').eq('is_active', true).order('instance_name'),
         supabase.from('whatsapp_instance_users').select('id, instance_id, user_id'),
       ]);
-      setInstances(instRes.data || []);
+      setInstances((instRes.data || []).map((i: any) => ({ ...i, auto_identify_sender: i.auto_identify_sender ?? false })));
       setInstanceUsers(iuRes.data || []);
     } catch (e) {
       console.error(e);
@@ -63,6 +66,16 @@ export function WhatsAppInstancePermissions() {
       toast.error('Erro ao atualizar acesso');
     } finally {
       setSaving(null);
+    }
+  };
+
+  const toggleAutoIdentify = async (instanceId: string, current: boolean) => {
+    try {
+      await supabase.from('whatsapp_instances').update({ auto_identify_sender: !current } as any).eq('id', instanceId);
+      setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, auto_identify_sender: !current } : i));
+      toast.success(!current ? 'Identificação automática ativada' : 'Identificação automática desativada');
+    } catch {
+      toast.error('Erro ao atualizar configuração');
     }
   };
 
@@ -132,6 +145,26 @@ export function WhatsAppInstancePermissions() {
               ))}
             </TableBody>
           </Table>
+        </div>
+
+        {/* Auto-identify sender settings */}
+        <div className="mt-6 space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm font-medium">Identificação automática do remetente</Label>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            Quando ativado, as mensagens enviadas incluirão o nome do colaborador (com pronome de tratamento) antes do texto.
+          </p>
+          {instances.map(inst => (
+            <div key={inst.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">
+              <span className="text-sm">{inst.instance_name}</span>
+              <Switch 
+                checked={inst.auto_identify_sender} 
+                onCheckedChange={() => toggleAutoIdentify(inst.id, inst.auto_identify_sender)}
+              />
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
