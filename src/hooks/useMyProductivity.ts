@@ -81,6 +81,7 @@ export function useMyProductivity() {
           .gte('created_at', startDate).lte('created_at', endDate),
         supabase.from('user_sessions').select('duration_seconds, started_at, last_activity_at, ended_at').eq('user_id', userId)
           .lte('started_at', endDate)
+          .gte('last_activity_at', startDate)
           .or(`ended_at.is.null,ended_at.gte.${startDate}`),
         supabase.from('user_activity_log').select('action_type').eq('user_id', userId)
           .gte('created_at', startDate).lte('created_at', endDate),
