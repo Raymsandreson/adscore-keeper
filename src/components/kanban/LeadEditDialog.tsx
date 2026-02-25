@@ -782,7 +782,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 </div>
 
                 <div className="col-span-2">
-                  <Label>Link do Grupo</Label>
+                  <Label>Link da Notícia</Label>
                   <Input
                     value={groupLink}
                     onChange={(e) => setGroupLink(e.target.value)}

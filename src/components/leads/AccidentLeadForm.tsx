@@ -266,7 +266,7 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
             </div>
 
             <div className="col-span-2">
-              <Label>Link do Grupo</Label>
+              <Label>Link da Notícia</Label>
               <Input
                 value={formData.group_link}
                 onChange={(e) => updateField('group_link', e.target.value)}
