@@ -47,7 +47,7 @@ function formatDuration(seconds: number) {
 
 export default function CallsPage() {
   const { user } = useAuthContext();
-  const { records, loading, updateRecord, deleteRecord, createRecord } = useCallRecords();
+  const { records, loading, updateRecord, deleteRecord, createRecord, authorizedInstances } = useCallRecords();
   const [search, setSearch] = useState('');
   const [filterResult, setFilterResult] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -110,17 +110,17 @@ export default function CallsPage() {
     return () => clearTimeout(t);
   }, [leadSearch, searchLeads]);
 
-  // Fetch instances and members for filters
+  // Use authorized instances for filters, fetch members separately
   useEffect(() => {
-    const fetchFilterData = async () => {
-      const [instRes, membersRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name, owner_phone'),
-        supabase.from('profiles').select('user_id, full_name').order('full_name'),
-      ]);
-      setInstances((instRes.data || []) as any[]);
-      setMembers((membersRes.data || []) as any[]);
+    setInstances(authorizedInstances as any[]);
+  }, [authorizedInstances]);
+
+  useEffect(() => {
+    const fetchMembers = async () => {
+      const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
+      setMembers((data || []) as any[]);
     };
-    fetchFilterData();
+    fetchMembers();
   }, []);
 
   // Fetch contacts for selected lead
