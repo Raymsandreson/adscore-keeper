@@ -652,8 +652,8 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         />
 
         <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
-          <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent pb-1">
-            <TabsList className="inline-flex w-max h-auto gap-0.5 p-1">
+          <div className="w-full overflow-x-auto pb-1 flex-shrink-0" style={{ minHeight: '42px' }}>
+            <TabsList className="inline-flex w-max h-auto gap-0.5 p-1 bg-muted">
               <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5 whitespace-nowrap">
                 <User className="h-3 w-3 mr-1" />
                 Básico
