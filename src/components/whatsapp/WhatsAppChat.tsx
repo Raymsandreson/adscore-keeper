@@ -32,6 +32,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [selectedRelationship, setSelectedRelationship] = useState('');
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -106,11 +107,40 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     setLeads(data || []);
   };
 
-  const handleLinkLead = () => {
+  const handleLinkLead = async () => {
     if (selectedLeadId) {
       onLinkToLead(conversation.phone, selectedLeadId);
+      
+      // If there's a contact linked, also create contact_leads bridge with relationship
+      if (conversation.contact_id && selectedRelationship) {
+        try {
+          // Check if bridge already exists
+          const { data: existing } = await supabase
+            .from('contact_leads')
+            .select('id')
+            .eq('contact_id', conversation.contact_id)
+            .eq('lead_id', selectedLeadId)
+            .maybeSingle();
+          
+          if (existing) {
+            await supabase.from('contact_leads')
+              .update({ relationship_to_victim: selectedRelationship } as any)
+              .eq('id', existing.id);
+          } else {
+            await supabase.from('contact_leads').insert({
+              contact_id: conversation.contact_id,
+              lead_id: selectedLeadId,
+              relationship_to_victim: selectedRelationship,
+            } as any);
+          }
+        } catch (e) {
+          console.error('Error linking contact to lead:', e);
+        }
+      }
+      
       setShowLinkDialog(false);
       setSelectedLeadId('');
+      setSelectedRelationship('');
     }
   };
 
@@ -162,6 +192,19 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                         ))}
                       </SelectContent>
                     </Select>
+                    {conversation.contact_id && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Relação com a vítima</label>
+                        <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
+                          <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
+                          <SelectContent>
+                            {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Advogado', 'Testemunha', 'Outro'].map(r => (
+                              <SelectItem key={r} value={r}>{r}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button className="w-full" onClick={handleLinkLead} disabled={!selectedLeadId}>
                       Vincular
                     </Button>
