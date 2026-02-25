@@ -3476,6 +3476,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          treatment_title: string | null
           updated_at: string
           user_id: string
         }
@@ -3484,6 +3485,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          treatment_title?: string | null
           updated_at?: string
           user_id: string
         }
@@ -3492,6 +3494,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          treatment_title?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -4235,6 +4238,7 @@ export type Database = {
         Row: {
           ad_account_id: string | null
           ad_account_name: string | null
+          auto_identify_sender: boolean | null
           base_url: string | null
           created_at: string
           id: string
@@ -4248,6 +4252,7 @@ export type Database = {
         Insert: {
           ad_account_id?: string | null
           ad_account_name?: string | null
+          auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
           id?: string
@@ -4261,6 +4266,7 @@ export type Database = {
         Update: {
           ad_account_id?: string | null
           ad_account_name?: string | null
+          auto_identify_sender?: boolean | null
           base_url?: string | null
           created_at?: string
           id?: string

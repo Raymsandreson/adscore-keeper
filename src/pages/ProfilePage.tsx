@@ -6,13 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowLeft, User, Mail, Save, Loader2 } from "lucide-react";
 
+const TREATMENT_OPTIONS = [
+  { value: 'none', label: 'Nenhum' },
+  { value: 'Dr.', label: 'Dr.' },
+  { value: 'Dra.', label: 'Dra.' },
+  { value: 'Sr.', label: 'Sr.' },
+  { value: 'Sra.', label: 'Sra.' },
+  { value: 'Prof.', label: 'Prof.' },
+  { value: 'Profa.', label: 'Profa.' },
+];
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user, profile, updateProfile, loading } = useAuthContext();
   const [fullName, setFullName] = useState(profile?.full_name || "");
+  const [treatmentTitle, setTreatmentTitle] = useState((profile as any)?.treatment_title || "none");
   const [isSaving, setIsSaving] = useState(false);
 
   const getInitials = () => {
@@ -34,7 +45,10 @@ const ProfilePage = () => {
     }
 
     setIsSaving(true);
-    const { error } = await updateProfile({ full_name: fullName.trim() });
+    const { error } = await updateProfile({ 
+      full_name: fullName.trim(),
+      treatment_title: treatmentTitle === 'none' ? null : treatmentTitle,
+    } as any);
     
     if (error) {
       toast.error("Erro ao salvar perfil", { description: error.message });
@@ -91,6 +105,31 @@ const ProfilePage = () => {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Seu nome completo"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Pronome de tratamento
+              </Label>
+              <Select value={treatmentTitle} onValueChange={setTreatmentTitle}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {TREATMENT_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Usado para identificação automática nas mensagens do WhatsApp
+                {treatmentTitle !== 'none' && fullName ? (
+                  <span className="block mt-1 font-medium text-foreground">
+                    Prévia: {treatmentTitle} {fullName}
+                  </span>
+                ) : null}
+              </p>
             </div>
 
             <div className="space-y-2">
