@@ -106,9 +106,6 @@ const AnalyticsPage = () => {
           <TabsContent value="comments" className="space-y-6">
             <CommentsAdminPanel />
           </TabsContent>
-          <TabsContent value="comments" className="space-y-6">
-            <CommentsAdminPanel />
-          </TabsContent>
 
           {/* External Posts Tab */}
           <TabsContent value="external" className="space-y-6">

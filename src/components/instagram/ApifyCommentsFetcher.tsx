@@ -61,6 +61,30 @@ export const ApifyCommentsFetcher = ({ myUsername, onSuccess }: ApifyCommentsFet
         postsProcessed: data.postsProcessed
       });
 
+      // Auto-save posts to external_posts table
+      for (const url of urls) {
+        const normalizedUrl = url.replace(/\/reels\//gi, '/reel/').replace(/\/$/, '');
+        const { data: existingPost } = await supabase
+          .from('external_posts')
+          .select('id')
+          .eq('url', normalizedUrl)
+          .maybeSingle();
+
+        if (existingPost) {
+          await supabase.from('external_posts').update({
+            comments_count: data.total || 0,
+            last_fetched_at: new Date().toISOString(),
+          }).eq('id', existingPost.id);
+        } else {
+          await supabase.from('external_posts').insert({
+            url: normalizedUrl,
+            platform: 'instagram',
+            comments_count: data.total || 0,
+            last_fetched_at: new Date().toISOString(),
+          });
+        }
+      }
+
       if (data.savedToDatabase > 0) {
         toast.success(`${data.savedToDatabase} comentários importados!`);
         onSuccess?.();
