@@ -138,9 +138,16 @@ export function useSessionTracker() {
   useEffect(() => {
     if (!user) return;
 
+    let lastHandledAt = 0;
+    const THROTTLE_MS = 10_000; // only process activity once every 10s to avoid spam from mousemove
+
     const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastHandledAt < THROTTLE_MS) return;
+      lastHandledAt = now;
+
       hasRecentActivityRef.current = true;
-      lastActivityRef.current = Date.now();
+      lastActivityRef.current = now;
 
       // If session was ended by inactivity, start a new one automatically
       if (!sessionIdRef.current) {
@@ -157,8 +164,8 @@ export function useSessionTracker() {
       }, INACTIVITY_TIMEOUT);
     };
 
-    // Track user interactions
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    // Track user interactions (include mousemove so reading/hovering counts as active)
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
     events.forEach(event => {
       window.addEventListener(event, handleActivity, { passive: true });
     });
