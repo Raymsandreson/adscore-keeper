@@ -5,10 +5,11 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin } from 'lucide-react';
+import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin, Search } from 'lucide-react';
 import { ProfileItem } from '@/hooks/useProfilesList';
 
 export interface LeadFilters {
+  searchTerm: string;
   createdBy: string;
   updatedBy: string;
   createdFrom: string;
@@ -26,6 +27,7 @@ export interface LeadFilters {
 }
 
 export const emptyFilters: LeadFilters = {
+  searchTerm: '',
   createdBy: '',
   updatedBy: '',
   createdFrom: '',
@@ -72,6 +74,7 @@ interface LeadAdvancedFiltersProps {
 
 // Map filter keys to human-readable labels
 const FILTER_LABELS: Record<keyof LeadFilters, string> = {
+  searchTerm: 'Busca',
   createdBy: 'Criado por',
   updatedBy: 'Atualizado por',
   createdFrom: 'Criado de',
@@ -140,6 +143,16 @@ export function LeadAdvancedFilters({
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome..."
+            className="h-8 w-48 pl-7 text-xs"
+            value={filters.searchTerm}
+            onChange={e => update('searchTerm', e.target.value)}
+          />
+        </div>
+
         <CollapsibleTrigger asChild>
           <Button variant="outline" size="sm" className="gap-2">
             <Filter className="h-4 w-4" />
@@ -350,6 +363,13 @@ export function LeadAdvancedFilters({
 // Helper to apply filters to a leads array
 export function applyLeadFilters(leads: any[], filters: LeadFilters): any[] {
   return leads.filter(lead => {
+    if (filters.searchTerm) {
+      const term = filters.searchTerm.toLowerCase();
+      const name = (lead.lead_name || '').toLowerCase();
+      const desc = (lead.description || '').toLowerCase();
+      if (!name.includes(term) && !desc.includes(term)) return false;
+    }
+
     if (filters.createdBy && lead.created_by !== filters.createdBy) return false;
     if (filters.updatedBy && lead.updated_by !== filters.updatedBy) return false;
 
