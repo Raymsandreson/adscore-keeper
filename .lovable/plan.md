@@ -1,44 +1,36 @@
 
 
-## Diagnose
+## Problema
 
-I found the root cause. The current `sendMessage` logic requires **both** conditions to be true:
-1. The instance's `auto_identify_sender` setting (from database)
-2. The conversation's switch `identifySender` (from the UI)
+O componente `BankTransactionsView.tsx` (aba **Conta**) nunca recebeu os campos financeiros novos. Ele tem seu próprio estado de edição (`editData`) que só inclui `categoryId`, `linkType`, `linkId`, `notes`, `manualState`, `manualCity` — sem Empresa, Setor, Natureza, Recorrência, Beneficiário, Forma de Pagamento ou Nº NF.
 
-But the database shows **all instances have `auto_identify_sender = false`**, including "Atendimento Processual". So even with the conversation switch ON, the sender identification never executes because `autoIdentify` is always `false`.
+## Plano de Implementação
 
-The user confirmed: **the conversation switch should be the only thing that matters** -- if it's ON, identify the sender regardless of the instance setting.
+### 1. Adicionar imports e hooks
 
-Additionally, the user's `treatment_title` is currently `null` in the database, so we need to ensure the Profile page has a field to set it.
+Importar `useCompanies`, `useCostCenters`, `useBeneficiaries` no `BankTransactionsView.tsx` e inicializar os hooks.
 
-## Plan
+### 2. Expandir o estado `editData`
 
-### 1. Fix `sendMessage` in `src/hooks/useWhatsAppMessages.ts`
+Adicionar os 7 campos ao tipo do estado: `companyId`, `costCenterId`, `nature`, `recurrence`, `beneficiaryId`, `paymentMethod`, `invoiceNumber` (linhas 106-113).
 
-Remove the dependency on `autoIdentify` from the instance. The logic should be:
-- If `identifySender` parameter is `true` (from the chat switch), fetch profile and prepend the sender name
-- Remove all the `autoIdentify` variable and related instance queries for this purpose
-- Keep the instance resolution logic only for determining `targetInstanceId`
+### 3. Atualizar `startEditing`
 
-Simplified flow:
-```
-if (user && identifySender) {
-  // fetch profile → prepend *Name:* to message
-}
-```
+Carregar os novos campos do override existente ao iniciar edição (linhas 310-339).
 
-### 2. Verify Profile page has `treatment_title` field
+### 4. Atualizar `cancelEditing`
 
-Check `src/pages/ProfilePage.tsx` to confirm the treatment title selector exists. If not, add it so users can configure their title (Dr., Dra., Sr., Sra., etc.).
+Limpar os novos campos ao cancelar (linha 344).
 
-### Technical Details
+### 5. Atualizar `saveTransaction`
 
-**File: `src/hooks/useWhatsAppMessages.ts`** (lines 224-272)
-- Remove the 3 blocks that query `auto_identify_sender` from the database
-- Keep only the instance ID resolution for sending
-- Change line 260 from `if (user && autoIdentify && identifySender)` to `if (user && identifySender)`
+Passar os novos campos como `extraFields` para `setTransactionOverride` (linhas 347-368).
 
-**File: `src/pages/ProfilePage.tsx`**
-- Verify treatment_title field exists; add if missing
+### 6. Adicionar campos no formulário de edição
+
+Inserir entre a seção de Localização (linha 716) e Descrição (linha 718) os mesmos blocos de campos já presentes em `PendingTransactionsList.tsx`:
+- **Empresa + Setor/Centro de Custo** (grid 2 cols)
+- **Natureza + Recorrência** (grid 2 cols)
+- **Beneficiário + Forma de Pagamento** (grid 2 cols)
+- **Nº NF** (junto com Descrição em grid 3 cols, igual ao PendingTransactionsList)
 
