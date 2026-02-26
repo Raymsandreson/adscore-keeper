@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { AlertTriangle, Clock, Phone, MessageSquare, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { StagnantLead } from '@/hooks/useStagnationAlerts';
 import { LeadStatus } from '@/hooks/useLeads';
 import { useState } from 'react';
@@ -122,19 +123,19 @@ export const StagnantLeadsList = ({
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm truncate">
+                      <CopyableText copyValue={lead.lead_name || ''} label="Nome" className="font-medium text-sm truncate">
                         {lead.lead_name || 'Sem nome'}
-                      </p>
+                      </CopyableText>
                       <Badge variant="outline" className={`text-xs ${statusColors[lead.status]}`}>
                         {statusLabels[lead.status]}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                       {lead.lead_phone && (
-                        <span className="flex items-center gap-1">
+                        <CopyableText copyValue={lead.lead_phone || ''} label="Telefone" className="flex items-center gap-1">
                           <Phone className="h-3 w-3" />
                           {lead.lead_phone}
-                        </span>
+                        </CopyableText>
                       )}
                       {lead.campaign_name && (
                         <span className="truncate max-w-32">{lead.campaign_name}</span>

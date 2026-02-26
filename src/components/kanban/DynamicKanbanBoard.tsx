@@ -50,6 +50,7 @@ import {
   ClipboardPlus,
   Copy,
 } from 'lucide-react';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
 import { differenceInDays } from 'date-fns';
@@ -516,9 +517,11 @@ export function DynamicKanbanBoard({
                                     <div className="min-w-0 flex-1">
                                       <Tooltip>
                                         <TooltipTrigger asChild>
-                                          <p className="font-medium text-sm break-words cursor-default">
-                                            {lead.lead_name || 'Sem nome'}
-                                          </p>
+                                          <div className="font-medium text-sm break-words cursor-default" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
+                                            <CopyableText copyValue={lead.lead_name || 'Sem nome'} label="Nome">
+                                              {lead.lead_name || 'Sem nome'}
+                                            </CopyableText>
+                                          </div>
                                         </TooltipTrigger>
                                         <TooltipContent side="top" className="max-w-xs">
                                           <p>{lead.lead_name || 'Sem nome'}</p>
@@ -756,15 +759,19 @@ export function DynamicKanbanBoard({
 
                                   <div className="mt-2 space-y-1">
                                     {lead.lead_phone && (
-                                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                         <Phone className="h-3 w-3" />
-                                        <span className="truncate">{lead.lead_phone}</span>
+                                        <CopyableText copyValue={lead.lead_phone} label="Telefone" className="truncate">
+                                          {lead.lead_phone}
+                                        </CopyableText>
                                       </div>
                                     )}
                                     {lead.lead_email && (
-                                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
                                         <Mail className="h-3 w-3" />
-                                        <span className="truncate">{lead.lead_email}</span>
+                                        <CopyableText copyValue={lead.lead_email} label="Email" className="truncate">
+                                          {lead.lead_email}
+                                        </CopyableText>
                                       </div>
                                     )}
                                   </div>

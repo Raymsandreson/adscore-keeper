@@ -66,6 +66,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Briefcase } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import { Sparkles } from 'lucide-react';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
@@ -473,7 +474,9 @@ export function ContactDetailSheet({
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2 text-xl">
               <User className="h-5 w-5" />
-              {fullName || contact.full_name}
+              <CopyableText copyValue={fullName || contact.full_name} label="Nome">
+                {fullName || contact.full_name}
+              </CopyableText>
             </Title>
             <div className="flex items-center gap-1">
               <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
@@ -730,7 +733,9 @@ export function ContactDetailSheet({
                     {contact.phone && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Phone className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1">{contact.phone}</span>
+                        <CopyableText copyValue={contact.phone} label="Telefone" className="flex-1">
+                          {contact.phone}
+                        </CopyableText>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -745,7 +750,9 @@ export function ContactDetailSheet({
                     {contact.email && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="flex-1">{contact.email}</span>
+                        <CopyableText copyValue={contact.email} label="Email" className="flex-1">
+                          {contact.email}
+                        </CopyableText>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -760,14 +767,9 @@ export function ContactDetailSheet({
                     {contact.instagram_username && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Instagram className="h-4 w-4 text-muted-foreground" />
-                        <a 
-                          href={`https://instagram.com/${contact.instagram_username?.replace('@', '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 text-primary hover:underline truncate"
-                        >
-                          https://instagram.com/{contact.instagram_username?.replace('@', '')}
-                        </a>
+                        <CopyableText copyValue={`@${contact.instagram_username?.replace('@', '')}`} label="Instagram" className="flex-1 truncate">
+                          @{contact.instagram_username?.replace('@', '')}
+                        </CopyableText>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -782,14 +784,14 @@ export function ContactDetailSheet({
                     {(contact as any).profession && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Briefcase className="h-4 w-4 text-muted-foreground" />
-                        <div className="flex-1">
-                          <span>{(contact as any).profession}</span>
+                        <CopyableText copyValue={(contact as any).profession} label="Profissão" className="flex-1">
+                          {(contact as any).profession}
                           {(contact as any).profession_cbo_code && (
                             <span className="text-xs text-muted-foreground ml-2">
                               (CBO: {(contact as any).profession_cbo_code})
                             </span>
                           )}
-                        </div>
+                        </CopyableText>
                       </div>
                     )}
 
