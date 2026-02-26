@@ -17,6 +17,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
+const NAME_FORMAT_OPTIONS = [
+  { value: 'full', label: 'Nome completo' },
+  { value: 'first', label: 'Primeiro nome' },
+  { value: 'first_last', label: 'Primeiro e último' },
+];
 
 interface Props {
   conversation: WhatsAppConversation;
@@ -28,7 +33,8 @@ interface Props {
     conversationInstanceName?: string | null,
     identifySender?: boolean,
     chatId?: string,
-    treatmentOverride?: string | null
+    treatmentOverride?: string | null,
+    nameFormatOverride?: string
   ) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
@@ -49,6 +55,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
+  const [nameFormat, setNameFormat] = useState<string>('full');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
@@ -63,6 +70,10 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     const treatmentKey = `wa-treatment:${conversation.phone}`;
     const savedTreatment = localStorage.getItem(treatmentKey);
     setTreatmentTitle(savedTreatment ?? '');
+
+    const nameFormatKey = `wa-name-format:${conversation.phone}`;
+    const savedFormat = localStorage.getItem(nameFormatKey);
+    setNameFormat(savedFormat || 'full');
   }, [conversation.phone]);
 
   // Fetch call records for this phone
@@ -116,6 +127,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     localStorage.setItem(treatmentKey, v);
   };
 
+  const handleNameFormatChange = (value: string) => {
+    setNameFormat(value);
+    const nameFormatKey = `wa-name-format:${conversation.phone}`;
+    localStorage.setItem(nameFormatKey, value);
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -133,7 +150,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         conversation.instance_name,
         identifySender,
         conversationChatId,
-        treatmentTitle || null
+        treatmentTitle || null,
+        nameFormat
       );
       if (success) setNewMessage('');
     } catch (err) {
@@ -414,17 +432,29 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
       <div className="p-3 border-t bg-card shrink-0 space-y-2">
         <div className="flex items-center justify-end gap-2 flex-wrap">
           {identifySender && (
-            <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
-              <SelectTrigger className="h-7 w-[100px] text-xs">
-                <SelectValue placeholder="Título" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sem título</SelectItem>
-                {TREATMENT_OPTIONS.filter(t => t).map(t => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <>
+              <Select value={nameFormat} onValueChange={handleNameFormatChange}>
+                <SelectTrigger className="h-7 w-[120px] text-xs">
+                  <SelectValue placeholder="Nome" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NAME_FORMAT_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
+                <SelectTrigger className="h-7 w-[100px] text-xs">
+                  <SelectValue placeholder="Título" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem título</SelectItem>
+                  {TREATMENT_OPTIONS.filter(t => t).map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           )}
           <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
             Identificar remetente
