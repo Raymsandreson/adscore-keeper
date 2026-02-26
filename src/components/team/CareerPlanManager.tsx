@@ -664,9 +664,9 @@ export function CareerPlanManager() {
                         </div>
                         {p.description && (
                           <details className="mt-0.5 max-w-sm group/desc">
-                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none">
-                              <span className="line-clamp-1 group-open/desc:hidden">{p.description}</span>
-                              <span className="hidden group-open/desc:inline text-xs text-muted-foreground">▾ Ocultar</span>
+                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none select-none">
+                              <span className="line-clamp-1 group-open/desc:hidden">▸ {p.description}</span>
+                              <span className="hidden group-open/desc:inline font-medium">▾ Ocultar descrição</span>
                             </summary>
                             <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{p.description}</p>
                           </details>
