@@ -698,6 +698,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== DEDUPLICATION ==========
+    if (externalMessageId) {
+      const { data: existing } = await supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('external_message_id', externalMessageId)
+        .limit(1)
+        .maybeSingle();
+      
+      if (existing) {
+        console.log('Duplicate message detected, skipping:', externalMessageId);
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: 'duplicate', existing_id: existing.id }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const { data: message, error } = await supabase
       .from('whatsapp_messages')
       .insert({
