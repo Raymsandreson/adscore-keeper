@@ -19,12 +19,12 @@ Deno.serve(async (req) => {
     let userId: string | null = null
     const authHeader = req.headers.get('Authorization')
     if (authHeader?.startsWith('Bearer ')) {
-      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || supabaseKey
       const userClient = createClient(supabaseUrl, anonKey, {
         global: { headers: { Authorization: authHeader } }
       })
-      const { data: claimsData } = await userClient.auth.getClaims(authHeader.replace('Bearer ', ''))
-      userId = claimsData?.claims?.sub as string || null
+      const { data: userData } = await userClient.auth.getUser()
+      userId = userData?.user?.id || null
     }
 
     const body = await req.json()

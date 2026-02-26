@@ -48,6 +48,48 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     // ==========================================
+    // Mode: summarize_text
+    // ==========================================
+    if (action === "summarize_text") {
+      const { text, context: summaryContext } = body;
+      if (!text) {
+        return new Response(JSON.stringify({ error: "text required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const summaryResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: "Você é um assistente que resume transcrições de ligações telefônicas. Gere um resumo conciso e objetivo em português, destacando: pontos principais discutidos, decisões tomadas, próximos passos acordados. Seja direto e use bullet points quando apropriado.",
+            },
+            {
+              role: "user",
+              content: `${summaryContext ? `Contexto: ${summaryContext}\n\n` : ''}Transcrição:\n${text}`,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 1000,
+        }),
+      });
+
+      const summaryData = await summaryResponse.json();
+      const summaryText = summaryData?.choices?.[0]?.message?.content || "Não foi possível gerar o resumo.";
+
+      return new Response(JSON.stringify({ summary: summaryText }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ==========================================
     // Mode: transcribe_call
     // ==========================================
     if (action === "transcribe_call") {
