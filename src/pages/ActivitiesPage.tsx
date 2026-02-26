@@ -1198,7 +1198,7 @@ const ActivitiesPage = () => {
 
             const fieldLines = fieldSettings
               .filter(f => f.include_in_message)
-              .map(f => `${f.label}: ${valueMap[f.field_key] || '—'}`)
+              .map(f => `*${f.label}:* ${valueMap[f.field_key] || '—'}`)
               .join('\n\n');
 
             const createdByName = selectedActivity ? resolveUserName(selectedActivity.created_by) : resolveUserName(user?.id || null);
@@ -1211,16 +1211,16 @@ const ActivitiesPage = () => {
 
             const msg = `*Boa tarde Sr(a). *
 
-Assunto da atividade: ${formTitle.toUpperCase()}
+*Assunto da atividade:* ${formTitle.toUpperCase()}
 
 ${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
 
 ${fieldLines}
 
-${formAssignedToName ? `${formAssignedToName} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.` : ''}
+${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações no dia *${notifDate || '—'}*, até o final do dia.` : ''}
 ${tempoStr}
 
-Criado por: ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\nÚltima atualização por: ${updatedByName} em ${updatedAtFmt}` : ''}
+*Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}
 
 Atenciosamente, ${createdByName || 'Equipe'}
 
