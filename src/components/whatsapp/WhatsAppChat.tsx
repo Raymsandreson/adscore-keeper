@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format } from 'date-fns';
@@ -69,11 +69,52 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [newNickname, setNewNickname] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Detect if this is a group conversation
+  const isGroup = messages.some(msg => {
+    const meta = msg.metadata;
+    if (!meta) return false;
+    const chatId = meta?.chat?.wa_chatid || meta?.message?.chatid || '';
+    return chatId.includes('@g.us');
+  });
+
+  // Extract sender info from group message metadata
+  const getGroupSenderInfo = (msg: any): { name: string | null; phone: string | null } => {
+    const meta = msg.metadata;
+    if (!meta || msg.direction === 'outbound') return { name: null, phone: null };
+    
+    const participant = meta?.message?.participant || meta?.chat?.participant || meta?.participant || '';
+    const senderPhone = (meta?.sender_pn || participant).replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    const senderName = meta?.chat?.pushName || meta?.senderName || meta?.pushName || null;
+    
+    return { name: senderName, phone: senderPhone || null };
+  };
+
+  // Extract unique group participants from messages metadata
+  const groupParticipants = isGroup ? (() => {
+    const participantMap = new Map<string, string>();
+    for (const msg of messages) {
+      const { name, phone } = getGroupSenderInfo(msg);
+      if (phone && !participantMap.has(phone)) {
+        participantMap.set(phone, name || phone);
+      }
+    }
+    return Array.from(participantMap.entries()).map(([phone, name]) => ({ phone, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })() : [];
+
+  // Color assignment for group senders
+  const senderColors = ['text-blue-600', 'text-emerald-600', 'text-purple-600', 'text-orange-600', 'text-pink-600', 'text-teal-600', 'text-amber-600', 'text-indigo-600'];
+  const getSenderColor = (phone: string) => {
+    let hash = 0;
+    for (let i = 0; i < phone.length; i++) hash = phone.charCodeAt(i) + ((hash << 5) - hash);
+    return senderColors[Math.abs(hash) % senderColors.length];
+  };
 
   useEffect(() => {
     const storageKey = `wa-identify-sender:${conversation.phone}`;
@@ -413,6 +454,46 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               {isPrivate ? 'Conversa privada (clique para tornar pública)' : 'Tornar conversa privada'}
             </TooltipContent>
           </Tooltip>
+          {isGroup && (
+            <Dialog open={showGroupMembers} onOpenChange={setShowGroupMembers}>
+              <DialogTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-8 w-8">
+                      <Users className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Membros do grupo ({groupParticipants.length})</TooltipContent>
+                </Tooltip>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Membros do grupo ({groupParticipants.length})
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[400px] overflow-y-auto space-y-1">
+                  {groupParticipants.map(p => (
+                    <div key={p.phone} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatPhone(p.phone)}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {groupParticipants.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhum participante identificado nas mensagens.
+                    </p>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
@@ -488,6 +569,19 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                     : "bg-card border rounded-bl-sm"
                 )}
               >
+                {/* Group sender name */}
+                {isGroup && msg.direction === 'inbound' && (() => {
+                  const sender = getGroupSenderInfo(msg);
+                  if (!sender.phone && !sender.name) return null;
+                  return (
+                    <p className={cn("text-[11px] font-semibold mb-0.5", sender.phone ? getSenderColor(sender.phone) : 'text-primary')}>
+                      {sender.name || formatPhone(sender.phone || '')}
+                      {sender.name && sender.phone && (
+                        <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
+                      )}
+                    </p>
+                  );
+                })()}
                 {/* Media rendering */}
                 {msg.message_type === 'audio' && msg.media_url && (
                   <audio controls className="max-w-full mb-1" preload="none">
