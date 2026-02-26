@@ -42,6 +42,13 @@ export interface TransactionOverride {
   manual_state: string | null;
   link_acknowledged: boolean;
   cost_account_id: string | null;
+  company_id: string | null;
+  cost_center_id: string | null;
+  nature: string | null;
+  recurrence: string | null;
+  beneficiary_id: string | null;
+  payment_method: string | null;
+  invoice_number: string | null;
   created_at: string;
 }
 
@@ -317,7 +324,16 @@ export function useExpenseCategories() {
     manualCity?: string,
     manualState?: string,
     linkAcknowledged: boolean = false,
-    costAccountId?: string
+    costAccountId?: string,
+    extraFields?: {
+      company_id?: string;
+      cost_center_id?: string;
+      nature?: string;
+      recurrence?: string;
+      beneficiary_id?: string;
+      payment_method?: string;
+      invoice_number?: string;
+    }
   ) => {
     try {
       const { error } = await supabase
@@ -332,6 +348,13 @@ export function useExpenseCategories() {
           manual_state: manualState || null,
           link_acknowledged: linkAcknowledged,
           cost_account_id: costAccountId || null,
+          company_id: extraFields?.company_id || null,
+          cost_center_id: extraFields?.cost_center_id || null,
+          nature: extraFields?.nature || null,
+          recurrence: extraFields?.recurrence || null,
+          beneficiary_id: extraFields?.beneficiary_id || null,
+          payment_method: extraFields?.payment_method || null,
+          invoice_number: extraFields?.invoice_number || null,
         }], { onConflict: 'transaction_id' });
 
       if (error) throw error;

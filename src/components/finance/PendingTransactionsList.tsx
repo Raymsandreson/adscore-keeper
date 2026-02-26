@@ -429,13 +429,13 @@ export function PendingTransactionsList({
       notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
       manualCity: override?.manual_city || transaction.merchant_city || '',
-      companyId: '',
-      costCenterId: '',
-      nature: '',
-      recurrence: '',
-      beneficiaryId: '',
-      paymentMethod: '',
-      invoiceNumber: '',
+      companyId: override?.company_id || '',
+      costCenterId: override?.cost_center_id || '',
+      nature: override?.nature || '',
+      recurrence: override?.recurrence || '',
+      beneficiaryId: override?.beneficiary_id || '',
+      paymentMethod: override?.payment_method || '',
+      invoiceNumber: override?.invoice_number || '',
     });
     
     if (override?.manual_state || transaction.merchant_state) {
@@ -500,7 +500,17 @@ export function PendingTransactionsList({
         editData.notes || undefined,
         editData.manualCity || undefined,
         editData.manualState || undefined,
-        linkAcknowledged
+        linkAcknowledged,
+        undefined,
+        {
+          company_id: editData.companyId || undefined,
+          cost_center_id: editData.costCenterId || undefined,
+          nature: editData.nature || undefined,
+          recurrence: editData.recurrence || undefined,
+          beneficiary_id: editData.beneficiaryId || undefined,
+          payment_method: editData.paymentMethod || undefined,
+          invoice_number: editData.invoiceNumber || undefined,
+        }
       );
       
       setEditingId(null);
