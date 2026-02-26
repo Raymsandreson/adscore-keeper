@@ -392,6 +392,36 @@ export type Database = {
         }
         Relationships: []
       }
+      beneficiaries: {
+        Row: {
+          created_at: string
+          document: string | null
+          id: string
+          is_active: boolean
+          name: string
+          person_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          document?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          person_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          document?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          person_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       call_events_pending: {
         Row: {
           call_id: string
@@ -1212,6 +1242,39 @@ export type Database = {
           },
         ]
       }
+      companies: {
+        Row: {
+          cnpj: string | null
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          trading_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          cnpj?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          trading_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cnpj?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          trading_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       contact_classifications: {
         Row: {
           color: string
@@ -1515,6 +1578,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      cost_centers: {
+        Row: {
+          company_id: string | null
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          company_id?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_centers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_card_transactions: {
         Row: {
@@ -2162,6 +2266,116 @@ export type Database = {
             columns: ["field_id"]
             isOneToOne: false
             referencedRelation: "lead_custom_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_entries: {
+        Row: {
+          accrual_amount: number | null
+          accrual_end_date: string | null
+          accrual_start_date: string | null
+          beneficiary_id: string | null
+          cash_amount: number
+          category_id: string | null
+          company_id: string
+          cost_center_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          entry_date: string
+          entry_type: string
+          id: string
+          invoice_number: string | null
+          invoice_url: string | null
+          linked_account: string | null
+          nature: string | null
+          payment_method: string | null
+          recurrence: string | null
+          reference_id: string | null
+          source_transaction_id: string | null
+          source_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          accrual_amount?: number | null
+          accrual_end_date?: string | null
+          accrual_start_date?: string | null
+          beneficiary_id?: string | null
+          cash_amount?: number
+          category_id?: string | null
+          company_id: string
+          cost_center_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          invoice_number?: string | null
+          invoice_url?: string | null
+          linked_account?: string | null
+          nature?: string | null
+          payment_method?: string | null
+          recurrence?: string | null
+          reference_id?: string | null
+          source_transaction_id?: string | null
+          source_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accrual_amount?: number | null
+          accrual_end_date?: string | null
+          accrual_start_date?: string | null
+          beneficiary_id?: string | null
+          cash_amount?: number
+          category_id?: string | null
+          company_id?: string
+          cost_center_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          invoice_number?: string | null
+          invoice_url?: string | null
+          linked_account?: string | null
+          nature?: string | null
+          payment_method?: string | null
+          recurrence?: string | null
+          reference_id?: string | null
+          source_transaction_id?: string | null
+          source_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_entries_beneficiary_id_fkey"
+            columns: ["beneficiary_id"]
+            isOneToOne: false
+            referencedRelation: "beneficiaries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_cost_center_id_fkey"
+            columns: ["cost_center_id"]
+            isOneToOne: false
+            referencedRelation: "cost_centers"
             referencedColumns: ["id"]
           },
         ]
