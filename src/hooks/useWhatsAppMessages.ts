@@ -218,7 +218,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     leadId?: string,
     conversationInstanceName?: string | null,
     identifySender = true,
-    chatId?: string
+    chatId?: string,
+    treatmentOverride?: string | null
   ) => {
     try {
       let finalMessage = message;
@@ -247,8 +248,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       }
 
       if (user && identifySender && profileCacheRef.current?.full_name) {
-        const { full_name, treatment_title } = profileCacheRef.current;
-        const senderName = treatment_title ? `${treatment_title} ${full_name}` : full_name;
+        const { full_name } = profileCacheRef.current;
+        // Use conversation-level treatment override if provided, otherwise fall back to profile
+        const title = treatmentOverride !== undefined && treatmentOverride !== null
+          ? treatmentOverride
+          : (profileCacheRef.current.treatment_title || '');
+        const senderName = title ? `${title} ${full_name}` : full_name;
         finalMessage = `*${senderName}:*\n${message}`;
       }
 
