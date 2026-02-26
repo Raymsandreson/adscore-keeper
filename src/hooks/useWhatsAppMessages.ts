@@ -216,7 +216,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     contactId?: string,
     leadId?: string,
     conversationInstanceName?: string | null,
-    identifySender = true
+    identifySender = true,
+    chatId?: string
   ) => {
     try {
       let finalMessage = message;
@@ -257,6 +258,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
         body: {
           phone,
+          chat_id: chatId,
           message: finalMessage,
           contact_id: contactId,
           lead_id: leadId,

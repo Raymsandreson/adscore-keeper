@@ -24,7 +24,8 @@ interface Props {
     contactId?: string,
     leadId?: string,
     conversationInstanceName?: string | null,
-    identifySender?: boolean
+    identifySender?: boolean,
+    chatId?: string
   ) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
@@ -102,6 +103,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
+
+    const conversationChatId =
+      conversation.messages.find((msg) => typeof msg.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
+      conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+
     setSending(true);
     try {
       const success = await onSendMessage(
@@ -110,7 +116,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         conversation.contact_id || undefined,
         conversation.lead_id || undefined,
         conversation.instance_name,
-        identifySender
+        identifySender,
+        conversationChatId
       );
       if (success) setNewMessage('');
     } catch (err) {

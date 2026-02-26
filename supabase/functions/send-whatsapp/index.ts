@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const body = await req.json()
-    const { phone, message, contact_id, lead_id, instance_id } = body
+    const { phone, chat_id, message, contact_id, lead_id, instance_id } = body
 
     if (!phone || !message) {
       return new Response(
@@ -60,13 +60,15 @@ Deno.serve(async (req) => {
     
     console.log('Sending via UazAPI:', sendUrl, 'instance:', instance.instance_name, 'to phone:', phone)
 
+    const targetNumber = typeof chat_id === 'string' && chat_id.trim() ? chat_id.trim() : phone
+
     const uazResponse = await fetch(sendUrl, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
         'token': instance.instance_token,
       },
-      body: JSON.stringify({ number: phone, text: message }),
+      body: JSON.stringify({ number: targetNumber, text: message }),
     })
 
     if (!uazResponse.ok) {
