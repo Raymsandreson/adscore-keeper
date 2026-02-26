@@ -9,13 +9,35 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { careerName, department, existingPositions, userPrompt } = await req.json();
+    const { careerName, department, existingPositions, userPrompt, editMode, currentStructure } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const promptText = userPrompt 
-      ? `The user described: "${userPrompt}". Create a complete career plan based on this description.`
-      : `Based on the career path "${careerName}" ${department ? `in the "${department}" department` : ''}, generate a structured career plan with job positions and progression steps.`;
+    let promptText: string;
+
+    if (editMode && currentStructure) {
+      // Edit mode: AI receives the full current structure and an edit instruction
+      promptText = `You are editing an EXISTING career plan called "${careerName}"${department ? ` in the "${department}" department` : ''}.
+
+CURRENT STRUCTURE (positions and progression steps):
+${JSON.stringify(currentStructure, null, 2)}
+
+THE USER WANTS THE FOLLOWING CHANGES:
+"${userPrompt}"
+
+Analyze the current structure carefully and apply the requested changes. You may:
+- Add new positions
+- Modify existing position descriptions, salaries, levels, or tracks
+- Remove positions
+- Add, modify, or remove progression steps
+- Restructure the entire plan if needed
+
+Return the COMPLETE updated plan (not just the changes). All positions and steps should be included in the response, even unchanged ones.`;
+    } else if (userPrompt) {
+      promptText = `The user described: "${userPrompt}". Create a complete career plan based on this description.`;
+    } else {
+      promptText = `Based on the career path "${careerName}" ${department ? `in the "${department}" department` : ''}, generate a structured career plan with job positions and progression steps.`;
+    }
 
     const prompt = `You are an expert HR consultant specializing in organizational design based on US best practices from companies like Google, Amazon, Salesforce, HubSpot, and other top US companies.
 
@@ -46,7 +68,7 @@ CRITICAL PRINCIPLES TO FOLLOW (based on Tallis Gomes / modern US practices):
 
 ${promptText}
 
-${existingPositions?.length ? `Existing positions: ${existingPositions.join(', ')}. Build upon these.` : ''}
+${!editMode && existingPositions?.length ? `Existing positions: ${existingPositions.join(', ')}. Build upon these.` : ''}
 
 Return a JSON response using the suggest_career_plan function with:
 - positions: array of 5-8 positions covering BOTH IC and management tracks, each with:
