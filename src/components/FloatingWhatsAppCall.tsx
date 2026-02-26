@@ -62,15 +62,23 @@ export function FloatingWhatsAppCall() {
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactSearch, setContactSearch] = useState('');
   const [contactsFetched, setContactsFetched] = useState(false);
-  // Fetch user's instances
+  // Fetch user's instances with default selection
   const fetchInstances = useCallback(async () => {
     if (!user) return;
     try {
-      const { data: permissions } = await supabase
-        .from('whatsapp_instance_users')
-        .select('instance_id')
-        .eq('user_id', user.id);
+      const [permRes, profileRes] = await Promise.all([
+        supabase
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', user.id),
+        supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', user.id)
+          .single(),
+      ]);
 
+      const permissions = permRes.data;
       if (!permissions || permissions.length === 0) return;
 
       const instanceIds = permissions.map(p => p.instance_id);
@@ -82,9 +90,9 @@ export function FloatingWhatsAppCall() {
 
       if (data && data.length > 0) {
         setInstances(data as UserInstance[]);
-        if (data.length === 1) {
-          setSelectedInstance(data[0] as UserInstance);
-        }
+        const defaultId = profileRes.data?.default_instance_id;
+        const defaultInst = defaultId ? data.find(i => i.id === defaultId) : null;
+        setSelectedInstance((defaultInst || (data.length === 1 ? data[0] : null)) as UserInstance | null);
       }
     } catch (err) {
       console.error('Error fetching instances:', err);
