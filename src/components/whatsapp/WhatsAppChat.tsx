@@ -80,18 +80,23 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const isGroup = messages.some(msg => {
     const meta = msg.metadata;
     if (!meta) return false;
-    const chatId = meta?.chat?.wa_chatid || meta?.message?.chatid || '';
-    return chatId.includes('@g.us');
+    // UazAPI: chat.wa_isGroup or message.isGroup or chatid contains @g.us
+    return meta?.chat?.wa_isGroup === true 
+      || meta?.message?.isGroup === true 
+      || (meta?.chat?.wa_chatid || '').includes('@g.us');
   });
 
-  // Extract sender info from group message metadata
+  // Extract sender info from group message metadata (UazAPI format)
   const getGroupSenderInfo = (msg: any): { name: string | null; phone: string | null } => {
     const meta = msg.metadata;
     if (!meta || msg.direction === 'outbound') return { name: null, phone: null };
     
-    const participant = meta?.message?.participant || meta?.chat?.participant || meta?.participant || '';
-    const senderPhone = (meta?.sender_pn || participant).replace('@s.whatsapp.net', '').replace(/\D/g, '');
-    const senderName = meta?.chat?.pushName || meta?.senderName || meta?.pushName || null;
+    // UazAPI: sender phone is in message.sender_pn (e.g. "5588...@s.whatsapp.net")
+    const senderPn = meta?.message?.sender_pn || meta?.sender_pn || '';
+    const senderPhone = senderPn.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+    
+    // UazAPI: sender name is in message.senderName or message.groupName is the group name
+    const senderName = meta?.message?.senderName || meta?.senderName || meta?.chat?.pushName || null;
     
     return { name: senderName, phone: senderPhone || null };
   };
@@ -100,9 +105,20 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const groupParticipants = isGroup ? (() => {
     const participantMap = new Map<string, string>();
     for (const msg of messages) {
-      const { name, phone } = getGroupSenderInfo(msg);
-      if (phone && !participantMap.has(phone)) {
-        participantMap.set(phone, name || phone);
+      const meta = msg.metadata;
+      if (!meta) continue;
+      
+      if (msg.direction === 'inbound') {
+        const { name, phone } = getGroupSenderInfo(msg);
+        if (phone && !participantMap.has(phone)) {
+          participantMap.set(phone, name || phone);
+        }
+      } else {
+        // Outbound: owner phone
+        const ownerPhone = (meta?.owner || meta?.message?.owner || '').replace(/\D/g, '');
+        if (ownerPhone && !participantMap.has(ownerPhone)) {
+          participantMap.set(ownerPhone, 'Você');
+        }
       }
     }
     return Array.from(participantMap.entries()).map(([phone, name]) => ({ phone, name })).sort((a, b) => a.name.localeCompare(b.name));
