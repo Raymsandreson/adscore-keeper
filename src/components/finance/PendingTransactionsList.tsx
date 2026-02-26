@@ -10,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { useCompanies } from '@/hooks/useCompanies';
+import { useCostCenters } from '@/hooks/useCostCenters';
+import { useBeneficiaries } from '@/hooks/useBeneficiaries';
 import { AccidentDataExtractor, ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { 
@@ -103,6 +106,9 @@ export function PendingTransactionsList({
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { fetchLocation, loading: geoLoading } = useGeolocation();
   const teamProfiles = useProfilesList();
+  const { activeCompanies } = useCompanies();
+  const { activeCostCenters, getByCompany } = useCostCenters();
+  const { activeBeneficiaries, addBeneficiary: addNewBeneficiary } = useBeneficiaries();
   
   const NONE_SELECTED = 'NONE';
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -115,13 +121,27 @@ export function PendingTransactionsList({
     notes: string;
     manualState: string;
     manualCity: string;
+    companyId: string;
+    costCenterId: string;
+    nature: string;
+    recurrence: string;
+    beneficiaryId: string;
+    paymentMethod: string;
+    invoiceNumber: string;
   }>({
     categoryId: null,
     linkType: 'lead',
     linkId: null,
     notes: '',
     manualState: '',
-    manualCity: ''
+    manualCity: '',
+    companyId: '',
+    costCenterId: '',
+    nature: '',
+    recurrence: '',
+    beneficiaryId: '',
+    paymentMethod: '',
+    invoiceNumber: '',
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -408,7 +428,14 @@ export function PendingTransactionsList({
       linkId,
       notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
-      manualCity: override?.manual_city || transaction.merchant_city || ''
+      manualCity: override?.manual_city || transaction.merchant_city || '',
+      companyId: '',
+      costCenterId: '',
+      nature: '',
+      recurrence: '',
+      beneficiaryId: '',
+      paymentMethod: '',
+      invoiceNumber: '',
     });
     
     if (override?.manual_state || transaction.merchant_state) {
@@ -437,7 +464,14 @@ export function PendingTransactionsList({
       linkId: null,
       notes: '',
       manualState: '',
-      manualCity: ''
+      manualCity: '',
+      companyId: '',
+      costCenterId: '',
+      nature: '',
+      recurrence: '',
+      beneficiaryId: '',
+      paymentMethod: '',
+      invoiceNumber: '',
     });
   };
 
@@ -844,16 +878,106 @@ export function PendingTransactionsList({
                           </Select>
                         </div>
                       </div>
-                      
-                      {/* Notes */}
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium">Descrição</label>
-                        <Input
-                          value={editData.notes}
-                          onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))}
-                          placeholder="Descreva o que foi este gasto..."
-                          className="h-8 text-xs"
-                        />
+
+                      {/* === NEW FINANCIAL FIELDS === */}
+                      {/* Company + Cost Center */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Empresa</label>
+                          <Select value={editData.companyId} onValueChange={(v) => { setEditData(prev => ({ ...prev, companyId: v, costCenterId: '' })); }}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              {activeCompanies.map(c => <SelectItem key={c.id} value={c.id}>{c.trading_name || c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Setor / Centro de Custo</label>
+                          <Select value={editData.costCenterId} onValueChange={(v) => setEditData(prev => ({ ...prev, costCenterId: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              {(editData.companyId ? getByCompany(editData.companyId) : activeCostCenters).map(cc => (
+                                <SelectItem key={cc.id} value={cc.id}>{cc.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Nature + Recurrence */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Natureza</label>
+                          <Select value={editData.nature} onValueChange={(v) => setEditData(prev => ({ ...prev, nature: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="fixo">Fixo</SelectItem>
+                              <SelectItem value="variavel">Variável</SelectItem>
+                              <SelectItem value="semi_fixo">Semi-fixo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Recorrência</label>
+                          <Select value={editData.recurrence} onValueChange={(v) => setEditData(prev => ({ ...prev, recurrence: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="semanal">Semanal</SelectItem>
+                              <SelectItem value="mensal">Mensal</SelectItem>
+                              <SelectItem value="anual">Anual</SelectItem>
+                              <SelectItem value="eventual">Eventual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Beneficiary + Payment Method */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Beneficiário</label>
+                          <Select value={editData.beneficiaryId} onValueChange={(v) => setEditData(prev => ({ ...prev, beneficiaryId: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              {activeBeneficiaries.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Forma de Pagamento</label>
+                          <Select value={editData.paymentMethod} onValueChange={(v) => setEditData(prev => ({ ...prev, paymentMethod: v }))}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pix">PIX</SelectItem>
+                              <SelectItem value="boleto">Boleto</SelectItem>
+                              <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                              <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                              <SelectItem value="transferencia">Transferência</SelectItem>
+                              <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Invoice + Notes */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Nº NF</label>
+                          <Input
+                            value={editData.invoiceNumber}
+                            onChange={(e) => setEditData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                            placeholder="Nº NF"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div className="col-span-2 space-y-1">
+                          <label className="text-xs font-medium">Descrição</label>
+                          <Input
+                            value={editData.notes}
+                            onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))}
+                            placeholder="Descreva o que foi este gasto..."
+                            className="h-8 text-xs"
+                          />
+                        </div>
                       </div>
                       
                       {/* Actions */}
