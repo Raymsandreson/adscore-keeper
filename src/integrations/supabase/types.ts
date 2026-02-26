@@ -736,6 +736,36 @@ export type Database = {
           },
         ]
       }
+      career_plans: {
+        Row: {
+          created_at: string
+          department: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cat_lead_contacts: {
         Row: {
           cat_lead_id: string
@@ -2608,6 +2638,7 @@ export type Database = {
       }
       job_positions: {
         Row: {
+          career_plan_id: string | null
           color: string | null
           created_at: string
           department: string | null
@@ -2619,6 +2650,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          career_plan_id?: string | null
           color?: string | null
           created_at?: string
           department?: string | null
@@ -2630,6 +2662,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          career_plan_id?: string | null
           color?: string | null
           created_at?: string
           department?: string | null
@@ -2640,7 +2673,15 @@ export type Database = {
           name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "job_positions_career_plan_id_fkey"
+            columns: ["career_plan_id"]
+            isOneToOne: false
+            referencedRelation: "career_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       kanban_boards: {
         Row: {
