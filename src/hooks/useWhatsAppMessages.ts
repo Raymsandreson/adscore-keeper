@@ -219,7 +219,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     conversationInstanceName?: string | null,
     identifySender = true,
     chatId?: string,
-    treatmentOverride?: string | null
+    treatmentOverride?: string | null,
+    nameFormatOverride?: string
   ) => {
     try {
       let finalMessage = message;
@@ -249,11 +250,20 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       if (user && identifySender && profileCacheRef.current?.full_name) {
         const { full_name } = profileCacheRef.current;
+        // Apply name format
+        const fmt = nameFormatOverride || 'full';
+        let displayName = full_name;
+        if (fmt === 'first') {
+          displayName = full_name.split(' ')[0];
+        } else if (fmt === 'first_last') {
+          const parts = full_name.split(' ');
+          displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
+        }
         // Use conversation-level treatment override if provided, otherwise fall back to profile
         const title = treatmentOverride !== undefined && treatmentOverride !== null
           ? treatmentOverride
           : (profileCacheRef.current.treatment_title || '');
-        const senderName = title ? `${title} ${full_name}` : full_name;
+        const senderName = title ? `${title} ${displayName}` : displayName;
         finalMessage = `*${senderName}:*\n${message}`;
       }
 
