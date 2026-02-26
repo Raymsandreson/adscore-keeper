@@ -336,8 +336,8 @@ export function WhatsAppInbox() {
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={refetch} title="Atualizar">
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={() => { refetch(); toast.info('Atualizando conversas...'); }} title="Atualizar conversas" disabled={loading}>
+            <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowSetup(true)} title="Configuração">
             <Settings className="h-4 w-4" />
