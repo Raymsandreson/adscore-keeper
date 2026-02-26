@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import {
   Briefcase, Plus, Trash2, Edit, Users, Loader2, GraduationCap,
-  ChevronRight, Sparkles, FolderOpen, ArrowRight,
+  ChevronRight, Sparkles, FolderOpen, ArrowRight, DollarSign, GitBranch,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -44,6 +44,12 @@ interface JobPosition {
   color: string;
   is_active: boolean;
   career_plan_id: string | null;
+  salary_fixed: number | null;
+  salary_variable: number | null;
+  ote_total: number | null;
+  track_type: 'ic' | 'management';
+  allows_demotion: boolean;
+  demotion_note: string | null;
   created_at: string;
 }
 
@@ -87,6 +93,10 @@ export function CareerPlanManager() {
   const [posDesc, setPosDesc] = useState('');
   const [posLevel, setPosLevel] = useState(1);
   const [posColor, setPosColor] = useState('#6366f1');
+  const [posTrack, setPosTrack] = useState<'ic' | 'management'>('ic');
+  const [posSalaryFixed, setPosSalaryFixed] = useState('');
+  const [posSalaryVariable, setPosSalaryVariable] = useState('');
+  const [posAllowsDemotion, setPosAllowsDemotion] = useState(true);
 
   // Career step dialog
   const [stepDialog, setStepDialog] = useState(false);
@@ -170,6 +180,7 @@ export function CareerPlanManager() {
   const openNewPosition = () => {
     setEditingPos(null);
     setPosName(''); setPosDesc(''); setPosLevel(1); setPosColor('#6366f1');
+    setPosTrack('ic'); setPosSalaryFixed(''); setPosSalaryVariable(''); setPosAllowsDemotion(true);
     setPosDialog(true);
   };
 
@@ -177,6 +188,10 @@ export function CareerPlanManager() {
     setEditingPos(p);
     setPosName(p.name); setPosDesc(p.description || '');
     setPosLevel(p.level); setPosColor(p.color);
+    setPosTrack(p.track_type || 'ic');
+    setPosSalaryFixed(p.salary_fixed?.toString() || '');
+    setPosSalaryVariable(p.salary_variable?.toString() || '');
+    setPosAllowsDemotion(p.allows_demotion ?? true);
     setPosDialog(true);
   };
 
@@ -187,7 +202,11 @@ export function CareerPlanManager() {
       if (editingPos) {
         await (supabase as any).from('job_positions').update({
           name: posName, description: posDesc || null,
-          level: posLevel, color: posColor,
+          level: posLevel, color: posColor, track_type: posTrack,
+          salary_fixed: posSalaryFixed ? parseFloat(posSalaryFixed) : null,
+          salary_variable: posSalaryVariable ? parseFloat(posSalaryVariable) : null,
+          ote_total: (posSalaryFixed ? parseFloat(posSalaryFixed) : 0) + (posSalaryVariable ? parseFloat(posSalaryVariable) : 0) || null,
+          allows_demotion: posAllowsDemotion,
         }).eq('id', editingPos.id);
         toast.success('Cargo atualizado');
       } else {
@@ -196,6 +215,11 @@ export function CareerPlanManager() {
           department: selectedPlan.department || null,
           level: posLevel, color: posColor,
           career_plan_id: selectedPlan.id,
+          track_type: posTrack,
+          salary_fixed: posSalaryFixed ? parseFloat(posSalaryFixed) : null,
+          salary_variable: posSalaryVariable ? parseFloat(posSalaryVariable) : null,
+          ote_total: (posSalaryFixed ? parseFloat(posSalaryFixed) : 0) + (posSalaryVariable ? parseFloat(posSalaryVariable) : 0) || null,
+          allows_demotion: posAllowsDemotion,
         });
         toast.success('Cargo criado');
       }
@@ -334,6 +358,12 @@ export function CareerPlanManager() {
         name: pos.name, description: pos.description, level: pos.level,
         color: pos.color, career_plan_id: planId,
         department: department || null,
+        track_type: pos.track_type || 'ic',
+        salary_fixed: pos.salary_fixed || null,
+        salary_variable: pos.salary_variable || null,
+        ote_total: (pos.salary_fixed || 0) + (pos.salary_variable || 0) || null,
+        allows_demotion: pos.allows_demotion ?? true,
+        demotion_note: pos.demotion_note || null,
       }).select('id').single();
       positionIds.push(inserted?.id);
     }
@@ -545,7 +575,9 @@ export function CareerPlanManager() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Cargo</TableHead>
+                  <TableHead>Trilha</TableHead>
                   <TableHead>Nível</TableHead>
+                  <TableHead>OTE (Fixo + Variável)</TableHead>
                   <TableHead>Membros</TableHead>
                   <TableHead className="w-24"></TableHead>
                 </TableRow>
@@ -553,6 +585,7 @@ export function CareerPlanManager() {
               <TableBody>
                 {planPositions.map(p => {
                   const count = memberPositions.filter(mp => mp.position_id === p.id).length;
+                  const formatCurrency = (v: number | null) => v ? `R$ ${v.toLocaleString('pt-BR')}` : '—';
                   return (
                     <TableRow key={p.id}>
                       <TableCell>
@@ -560,12 +593,27 @@ export function CareerPlanManager() {
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
                           <span className="font-medium">{p.name}</span>
                         </div>
-                        {p.description && <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>}
+                        {p.description && <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{p.description}</p>}
+                        {p.allows_demotion && p.demotion_note && (
+                          <p className="text-xs text-amber-600 mt-0.5">↩ {p.demotion_note}</p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={p.track_type === 'management' ? 'default' : 'outline'} className="text-xs">
+                          {p.track_type === 'management' ? '👔 Gestão' : '⚡ IC'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge className={levelColors[(p.level - 1) % levelColors.length]} variant="secondary">
                           Nível {p.level}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs space-y-0.5">
+                          <p>Fixo: <span className="font-medium">{formatCurrency(p.salary_fixed)}</span></p>
+                          <p>Var: <span className="font-medium">{formatCurrency(p.salary_variable)}</span></p>
+                          {p.ote_total && <p className="text-primary font-semibold">OTE: {formatCurrency(p.ote_total)}</p>}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline"><Users className="h-3 w-3 mr-1" />{count}</Badge>
@@ -701,6 +749,16 @@ export function CareerPlanManager() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <Label>Trilha</Label>
+                <Select value={posTrack} onValueChange={v => setPosTrack(v as 'ic' | 'management')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ic">⚡ IC (Contribuidor Individual)</SelectItem>
+                    <SelectItem value="management">👔 Gestão</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
                 <Label>Nível (senioridade)</Label>
                 <Select value={String(posLevel)} onValueChange={v => setPosLevel(Number(v))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -709,13 +767,28 @@ export function CareerPlanManager() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Cor</Label>
-                <div className="flex items-center gap-2">
-                  <input type="color" value={posColor} onChange={e => setPosColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0" />
-                  <span className="text-sm text-muted-foreground">{posColor}</span>
-                </div>
+                <Label className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> Salário Fixo (R$)</Label>
+                <Input type="number" placeholder="Ex: 3000" value={posSalaryFixed} onChange={e => setPosSalaryFixed(e.target.value)} />
               </div>
+              <div>
+                <Label className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> Variável na Meta (R$)</Label>
+                <Input type="number" placeholder="Ex: 2000" value={posSalaryVariable} onChange={e => setPosSalaryVariable(e.target.value)} />
+              </div>
+            </div>
+            {posSalaryFixed && posSalaryVariable && (
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <span className="text-muted-foreground">OTE (On-Target Earnings): </span>
+                <span className="font-semibold text-primary">
+                  R$ {((parseFloat(posSalaryFixed) || 0) + (parseFloat(posSalaryVariable) || 0)).toLocaleString('pt-BR')}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input type="color" value={posColor} onChange={e => setPosColor(e.target.value)} className="w-8 h-8 rounded cursor-pointer border-0" />
+              <span className="text-sm text-muted-foreground">{posColor}</span>
             </div>
           </div>
           <DialogFooter>
