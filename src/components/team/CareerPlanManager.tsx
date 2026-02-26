@@ -102,6 +102,8 @@ export function CareerPlanManager() {
 
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiPromptDialog, setAiPromptDialog] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -264,7 +266,7 @@ export function CareerPlanManager() {
     fetchAll();
   };
 
-  // ---- AI Suggestion ----
+  // ---- AI Suggestion (within existing plan) ----
   const generateAIPlan = async () => {
     if (!selectedPlan) return;
     setAiLoading(true);
@@ -278,41 +280,76 @@ export function CareerPlanManager() {
       });
       if (error) throw error;
       if (data?.error) { toast.error(data.error); setAiLoading(false); return; }
-
-      const { positions: aiPositions, steps: aiSteps } = data;
-
-      // Insert positions
-      const positionIds: string[] = [];
-      for (const pos of aiPositions) {
-        const { data: inserted } = await (supabase as any).from('job_positions').insert({
-          name: pos.name, description: pos.description, level: pos.level,
-          color: pos.color, career_plan_id: selectedPlan.id,
-          department: selectedPlan.department || null,
-        }).select('id').single();
-        positionIds.push(inserted?.id);
-      }
-
-      // Insert steps
-      for (const step of aiSteps) {
-        const fromId = step.from_index !== null && step.from_index !== undefined ? positionIds[step.from_index] : null;
-        const toId = positionIds[step.to_index];
-        if (toId) {
-          await (supabase as any).from('career_plan_steps').insert({
-            from_position_id: fromId || null,
-            to_position_id: toId,
-            requirements: step.requirements,
-            estimated_months: step.estimated_months,
-            step_order: (step.from_index ?? -1) + 1,
-          });
-        }
-      }
-
+      await insertAIPositionsAndSteps(data, selectedPlan.id, selectedPlan.department);
       toast.success('Plano de carreira gerado com IA!');
       fetchAll();
     } catch (e: any) {
       toast.error('Erro ao gerar plano: ' + (e?.message || 'erro desconhecido'));
     }
     setAiLoading(false);
+  };
+
+  // ---- AI Full Career from Prompt ----
+  const generateFullCareerFromPrompt = async () => {
+    if (!aiPrompt.trim()) { toast.error('Descreva a carreira que deseja criar'); return; }
+    setAiLoading(true);
+    try {
+      // Create the career plan first
+      const { data: newPlan, error: planError } = await (supabase as any).from('career_plans').insert({
+        name: aiPrompt.trim().slice(0, 60),
+        description: `Gerado por IA: ${aiPrompt}`,
+      }).select().single();
+      if (planError) throw planError;
+
+      // Generate positions & steps via AI
+      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+        body: {
+          careerName: aiPrompt,
+          department: null,
+          existingPositions: [],
+          userPrompt: aiPrompt,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); setAiLoading(false); return; }
+
+      await insertAIPositionsAndSteps(data, newPlan.id, null);
+
+      toast.success('Carreira completa gerada com IA!');
+      setAiPromptDialog(false);
+      setAiPrompt('');
+      await fetchAll();
+      setSelectedPlan(newPlan);
+    } catch (e: any) {
+      toast.error('Erro ao gerar carreira: ' + (e?.message || 'erro desconhecido'));
+    }
+    setAiLoading(false);
+  };
+
+  const insertAIPositionsAndSteps = async (data: any, planId: string, department: string | null) => {
+    const { positions: aiPositions, steps: aiSteps } = data;
+    const positionIds: string[] = [];
+    for (const pos of aiPositions) {
+      const { data: inserted } = await (supabase as any).from('job_positions').insert({
+        name: pos.name, description: pos.description, level: pos.level,
+        color: pos.color, career_plan_id: planId,
+        department: department || null,
+      }).select('id').single();
+      positionIds.push(inserted?.id);
+    }
+    for (const step of aiSteps) {
+      const fromId = step.from_index !== null && step.from_index !== undefined ? positionIds[step.from_index] : null;
+      const toId = positionIds[step.to_index];
+      if (toId) {
+        await (supabase as any).from('career_plan_steps').insert({
+          from_position_id: fromId || null,
+          to_position_id: toId,
+          requirements: step.requirements,
+          estimated_months: step.estimated_months,
+          step_order: (step.from_index ?? -1) + 1,
+        });
+      }
+    }
   };
 
   const getPositionName = (id: string) => positions.find(p => p.id === id)?.name || '—';
@@ -335,7 +372,12 @@ export function CareerPlanManager() {
               <CardTitle className="flex items-center gap-2"><GraduationCap className="h-5 w-5" /> Carreiras</CardTitle>
               <CardDescription>Crie carreiras (ex: Comercial, Jurídico) e depois defina cargos e progressões</CardDescription>
             </div>
-            <Button onClick={openNewPlan} size="sm"><Plus className="h-4 w-4 mr-1" /> Nova Carreira</Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setAiPromptDialog(true)} variant="outline" size="sm">
+                <Sparkles className="h-4 w-4 mr-1" /> Gerar com IA
+              </Button>
+              <Button onClick={openNewPlan} size="sm"><Plus className="h-4 w-4 mr-1" /> Nova Carreira</Button>
+            </div>
           </CardHeader>
           <CardContent>
             {careerPlans.length === 0 ? (
@@ -418,6 +460,42 @@ export function CareerPlanManager() {
               <Button onClick={savePlan} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
                 {editingPlan ? 'Salvar' : 'Criar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* AI Prompt Dialog */}
+        <Dialog open={aiPromptDialog} onOpenChange={setAiPromptDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" /> Gerar Carreira com IA</DialogTitle>
+              <DialogDescription>
+                Descreva a carreira que deseja criar e a IA montará cargos, níveis e progressões baseados nas melhores práticas de empresas americanas.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Descreva a carreira *</Label>
+                <Textarea
+                  placeholder="Ex: Quero um plano de carreira para o time comercial de um escritório de advocacia, com SDR, Closer e Gerente..."
+                  value={aiPrompt}
+                  onChange={e => setAiPrompt(e.target.value)}
+                  rows={4}
+                />
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">💡 Dicas de prompt:</p>
+                <p>• Especifique a área: "time comercial", "departamento jurídico", "marketing digital"</p>
+                <p>• Mencione cargos que já conhece: "incluir SDR, BDR e Closer"</p>
+                <p>• Defina o tamanho: "equipe pequena de 5 pessoas" ou "departamento grande"</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAiPromptDialog(false)}>Cancelar</Button>
+              <Button onClick={generateFullCareerFromPrompt} disabled={aiLoading}>
+                {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                Gerar Carreira
               </Button>
             </DialogFooter>
           </DialogContent>
