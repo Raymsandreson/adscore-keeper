@@ -114,6 +114,8 @@ export function CareerPlanManager() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPromptDialog, setAiPromptDialog] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiEditDialog, setAiEditDialog] = useState(false);
+  const [aiEditPrompt, setAiEditPrompt] = useState('');
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -309,6 +311,65 @@ export function CareerPlanManager() {
       fetchAll();
     } catch (e: any) {
       toast.error('Erro ao gerar plano: ' + (e?.message || 'erro desconhecido'));
+    }
+    setAiLoading(false);
+  };
+
+  // ---- AI Edit existing plan ----
+  const editWithAI = async () => {
+    if (!selectedPlan || !aiEditPrompt.trim()) { toast.error('Descreva as alterações desejadas'); return; }
+    setAiLoading(true);
+    try {
+      const currentStructure = {
+        positions: planPositions.map(p => ({
+          name: p.name,
+          description: p.description,
+          level: p.level,
+          color: p.color,
+          track_type: p.track_type,
+          salary_fixed: p.salary_fixed,
+          salary_variable: p.salary_variable,
+          allows_demotion: p.allows_demotion,
+          demotion_note: p.demotion_note,
+        })),
+        steps: planSteps.map(s => ({
+          from: getPositionName(s.from_position_id || ''),
+          to: getPositionName(s.to_position_id),
+          requirements: s.requirements,
+          estimated_months: s.estimated_months,
+        })),
+      };
+
+      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+        body: {
+          careerName: selectedPlan.name,
+          department: selectedPlan.department,
+          editMode: true,
+          currentStructure,
+          userPrompt: aiEditPrompt,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); setAiLoading(false); return; }
+
+      // Remove old positions and steps for this plan
+      const oldPosIds = planPositions.map(p => p.id);
+      if (oldPosIds.length > 0) {
+        await (supabase as any).from('career_plan_steps')
+          .delete()
+          .or(oldPosIds.map(id => `to_position_id.eq.${id}`).join(','));
+        await (supabase as any).from('job_positions')
+          .delete()
+          .eq('career_plan_id', selectedPlan.id);
+      }
+
+      await insertAIPositionsAndSteps(data, selectedPlan.id, selectedPlan.department);
+      toast.success('Plano de carreira atualizado com IA!');
+      setAiEditDialog(false);
+      setAiEditPrompt('');
+      fetchAll();
+    } catch (e: any) {
+      toast.error('Erro ao editar plano: ' + (e?.message || 'erro desconhecido'));
     }
     setAiLoading(false);
   };
@@ -552,10 +613,18 @@ export function CareerPlanManager() {
           </h2>
           {selectedPlan.description && <p className="text-sm text-muted-foreground">{selectedPlan.description}</p>}
         </div>
-        <Button onClick={generateAIPlan} variant="outline" size="sm" disabled={aiLoading}>
-          {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-          Gerar com IA
-        </Button>
+        <div className="flex gap-2">
+          {planPositions.length > 0 && (
+            <Button onClick={() => setAiEditDialog(true)} variant="outline" size="sm" disabled={aiLoading}>
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Edit className="h-4 w-4 mr-1" />}
+              Editar com IA
+            </Button>
+          )}
+          <Button onClick={generateAIPlan} variant="outline" size="sm" disabled={aiLoading}>
+            {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+            Gerar com IA
+          </Button>
+        </div>
       </div>
 
       {/* Cargos */}
@@ -890,6 +959,45 @@ export function CareerPlanManager() {
             <Button onClick={assignMember} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
               Atribuir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* AI Edit Dialog */}
+      <Dialog open={aiEditDialog} onOpenChange={setAiEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" /> Editar Plano com IA</DialogTitle>
+            <DialogDescription>
+              Descreva as alterações que deseja fazer no plano de carreira "{selectedPlan.name}" e a IA aplicará as mudanças.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>O que deseja alterar? *</Label>
+              <Textarea
+                placeholder="Ex: Adicionar um cargo de Tech Lead entre Sênior e Gerente, aumentar o salário do Diretor em 20%, remover o cargo de Estagiário..."
+                value={aiEditPrompt}
+                onChange={e => setAiEditPrompt(e.target.value)}
+                rows={4}
+              />
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">💡 Exemplos de edições:</p>
+              <p>• "Adicionar um cargo de Coordenador entre Sênior e Gerente"</p>
+              <p>• "Aumentar todos os salários em 15%"</p>
+              <p>• "Trocar a trilha de gestão para incluir VP e C-Level"</p>
+              <p>• "Remover o cargo de Estagiário e adicionar Trainee"</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200">
+              ⚠️ Atenção: os cargos atuais serão substituídos pela nova versão gerada pela IA. Membros atribuídos perderão a vinculação.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiEditDialog(false)}>Cancelar</Button>
+            <Button onClick={editWithAI} disabled={aiLoading}>
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+              Aplicar Alterações
             </Button>
           </DialogFooter>
         </DialogContent>
