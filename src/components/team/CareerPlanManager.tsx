@@ -593,7 +593,14 @@ export function CareerPlanManager() {
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: p.color }} />
                           <span className="font-medium">{p.name}</span>
                         </div>
-                        {p.description && <p className="text-xs text-muted-foreground mt-0.5 max-w-xs truncate">{p.description}</p>}
+                        {p.description && (
+                          <details className="mt-0.5 max-w-sm">
+                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate list-none">
+                              <span className="line-clamp-1">{p.description}</span>
+                            </summary>
+                            <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{p.description}</p>
+                          </details>
+                        )}
                         {p.allows_demotion && p.demotion_note && (
                           <p className="text-xs text-amber-600 mt-0.5">↩ {p.demotion_note}</p>
                         )}
