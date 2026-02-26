@@ -6,54 +6,34 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  Briefcase,
-  Plus,
-  Trash2,
-  Edit,
-  ArrowRight,
-  TrendingUp,
-  Users,
-  Loader2,
-  GraduationCap,
-  ChevronRight,
+  Briefcase, Plus, Trash2, Edit, Users, Loader2, GraduationCap,
+  ChevronRight, Sparkles, FolderOpen, ArrowRight,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+
+interface CareerPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  department: string | null;
+  is_active: boolean;
+  created_at: string;
+}
 
 interface JobPosition {
   id: string;
@@ -63,6 +43,7 @@ interface JobPosition {
   level: number;
   color: string;
   is_active: boolean;
+  career_plan_id: string | null;
   created_at: string;
 }
 
@@ -84,21 +65,28 @@ interface MemberPosition {
 }
 
 export function CareerPlanManager() {
+  const [careerPlans, setCareerPlans] = useState<CareerPlan[]>([]);
   const [positions, setPositions] = useState<JobPosition[]>([]);
   const [careerSteps, setCareerSteps] = useState<CareerStep[]>([]);
   const [memberPositions, setMemberPositions] = useState<MemberPosition[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPlan, setSelectedPlan] = useState<CareerPlan | null>(null);
   const { members } = useTeamMembers();
+
+  // Career plan dialog
+  const [planDialog, setPlanDialog] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<CareerPlan | null>(null);
+  const [planName, setPlanName] = useState('');
+  const [planDesc, setPlanDesc] = useState('');
+  const [planDept, setPlanDept] = useState('');
 
   // Position dialog
   const [posDialog, setPosDialog] = useState(false);
   const [editingPos, setEditingPos] = useState<JobPosition | null>(null);
   const [posName, setPosName] = useState('');
   const [posDesc, setPosDesc] = useState('');
-  const [posDept, setPosDept] = useState('');
   const [posLevel, setPosLevel] = useState(1);
   const [posColor, setPosColor] = useState('#6366f1');
-  const [saving, setSaving] = useState(false);
 
   // Career step dialog
   const [stepDialog, setStepDialog] = useState(false);
@@ -112,13 +100,18 @@ export function CareerPlanManager() {
   const [assignUserId, setAssignUserId] = useState('');
   const [assignPositionId, setAssignPositionId] = useState('');
 
+  const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [posRes, stepsRes, mpRes] = await Promise.all([
+    const [plansRes, posRes, stepsRes, mpRes] = await Promise.all([
+      (supabase as any).from('career_plans').select('*').order('created_at', { ascending: false }),
       (supabase as any).from('job_positions').select('*').order('level', { ascending: true }).order('name'),
       (supabase as any).from('career_plan_steps').select('*').order('step_order'),
       (supabase as any).from('member_positions').select('*'),
     ]);
+    setCareerPlans(plansRes.data || []);
     setPositions(posRes.data || []);
     setCareerSteps(stepsRes.data || []);
     setMemberPositions(mpRes.data || []);
@@ -127,33 +120,80 @@ export function CareerPlanManager() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // ---- Career Plan CRUD ----
+  const openNewPlan = () => {
+    setEditingPlan(null);
+    setPlanName(''); setPlanDesc(''); setPlanDept('');
+    setPlanDialog(true);
+  };
+
+  const openEditPlan = (p: CareerPlan) => {
+    setEditingPlan(p);
+    setPlanName(p.name); setPlanDesc(p.description || ''); setPlanDept(p.department || '');
+    setPlanDialog(true);
+  };
+
+  const savePlan = async () => {
+    if (!planName.trim()) { toast.error('Informe o nome da carreira'); return; }
+    setSaving(true);
+    try {
+      if (editingPlan) {
+        await (supabase as any).from('career_plans').update({
+          name: planName, description: planDesc || null, department: planDept || null,
+        }).eq('id', editingPlan.id);
+        toast.success('Carreira atualizada');
+      } else {
+        const { data } = await (supabase as any).from('career_plans').insert({
+          name: planName, description: planDesc || null, department: planDept || null,
+        }).select().single();
+        if (data) setSelectedPlan(data);
+        toast.success('Carreira criada');
+      }
+      setPlanDialog(false);
+      fetchAll();
+    } catch { toast.error('Erro ao salvar carreira'); }
+    setSaving(false);
+  };
+
+  const deletePlan = async (id: string) => {
+    await (supabase as any).from('career_plans').delete().eq('id', id);
+    if (selectedPlan?.id === id) setSelectedPlan(null);
+    toast.success('Carreira removida');
+    fetchAll();
+  };
+
+  // ---- Position CRUD ----
+  const planPositions = positions.filter(p => p.career_plan_id === selectedPlan?.id);
+
   const openNewPosition = () => {
     setEditingPos(null);
-    setPosName(''); setPosDesc(''); setPosDept(''); setPosLevel(1); setPosColor('#6366f1');
+    setPosName(''); setPosDesc(''); setPosLevel(1); setPosColor('#6366f1');
     setPosDialog(true);
   };
 
   const openEditPosition = (p: JobPosition) => {
     setEditingPos(p);
-    setPosName(p.name); setPosDesc(p.description || ''); setPosDept(p.department || '');
+    setPosName(p.name); setPosDesc(p.description || '');
     setPosLevel(p.level); setPosColor(p.color);
     setPosDialog(true);
   };
 
   const savePosition = async () => {
-    if (!posName.trim()) { toast.error('Informe o nome do cargo'); return; }
+    if (!posName.trim() || !selectedPlan) { toast.error('Informe o nome do cargo'); return; }
     setSaving(true);
     try {
       if (editingPos) {
         await (supabase as any).from('job_positions').update({
-          name: posName, description: posDesc || null, department: posDept || null,
+          name: posName, description: posDesc || null,
           level: posLevel, color: posColor,
         }).eq('id', editingPos.id);
         toast.success('Cargo atualizado');
       } else {
         await (supabase as any).from('job_positions').insert({
-          name: posName, description: posDesc || null, department: posDept || null,
+          name: posName, description: posDesc || null,
+          department: selectedPlan.department || null,
           level: posLevel, color: posColor,
+          career_plan_id: selectedPlan.id,
         });
         toast.success('Cargo criado');
       }
@@ -168,6 +208,12 @@ export function CareerPlanManager() {
     toast.success('Cargo removido');
     fetchAll();
   };
+
+  // ---- Steps ----
+  const planSteps = careerSteps.filter(s => {
+    const toPos = positions.find(p => p.id === s.to_position_id);
+    return toPos?.career_plan_id === selectedPlan?.id;
+  });
 
   const saveStep = async () => {
     if (!stepTo) { toast.error('Selecione o cargo destino'); return; }
@@ -194,6 +240,7 @@ export function CareerPlanManager() {
     fetchAll();
   };
 
+  // ---- Member assignment ----
   const assignMember = async () => {
     if (!assignUserId || !assignPositionId) { toast.error('Selecione membro e cargo'); return; }
     setSaving(true);
@@ -217,6 +264,57 @@ export function CareerPlanManager() {
     fetchAll();
   };
 
+  // ---- AI Suggestion ----
+  const generateAIPlan = async () => {
+    if (!selectedPlan) return;
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-career-plan', {
+        body: {
+          careerName: selectedPlan.name,
+          department: selectedPlan.department,
+          existingPositions: planPositions.map(p => p.name),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) { toast.error(data.error); setAiLoading(false); return; }
+
+      const { positions: aiPositions, steps: aiSteps } = data;
+
+      // Insert positions
+      const positionIds: string[] = [];
+      for (const pos of aiPositions) {
+        const { data: inserted } = await (supabase as any).from('job_positions').insert({
+          name: pos.name, description: pos.description, level: pos.level,
+          color: pos.color, career_plan_id: selectedPlan.id,
+          department: selectedPlan.department || null,
+        }).select('id').single();
+        positionIds.push(inserted?.id);
+      }
+
+      // Insert steps
+      for (const step of aiSteps) {
+        const fromId = step.from_index !== null && step.from_index !== undefined ? positionIds[step.from_index] : null;
+        const toId = positionIds[step.to_index];
+        if (toId) {
+          await (supabase as any).from('career_plan_steps').insert({
+            from_position_id: fromId || null,
+            to_position_id: toId,
+            requirements: step.requirements,
+            estimated_months: step.estimated_months,
+            step_order: (step.from_index ?? -1) + 1,
+          });
+        }
+      }
+
+      toast.success('Plano de carreira gerado com IA!');
+      fetchAll();
+    } catch (e: any) {
+      toast.error('Erro ao gerar plano: ' + (e?.message || 'erro desconhecido'));
+    }
+    setAiLoading(false);
+  };
+
   const getPositionName = (id: string) => positions.find(p => p.id === id)?.name || '—';
   const getMemberName = (userId: string) => {
     const m = members.find(m => m.user_id === userId);
@@ -227,33 +325,155 @@ export function CareerPlanManager() {
 
   if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
 
+  // ============ LIST VIEW (no plan selected) ============
+  if (!selectedPlan) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><GraduationCap className="h-5 w-5" /> Carreiras</CardTitle>
+              <CardDescription>Crie carreiras (ex: Comercial, Jurídico) e depois defina cargos e progressões</CardDescription>
+            </div>
+            <Button onClick={openNewPlan} size="sm"><Plus className="h-4 w-4 mr-1" /> Nova Carreira</Button>
+          </CardHeader>
+          <CardContent>
+            {careerPlans.length === 0 ? (
+              <p className="text-muted-foreground text-center py-8">Nenhuma carreira cadastrada. Crie a primeira!</p>
+            ) : (
+              <div className="grid gap-3">
+                {careerPlans.map(plan => {
+                  const posCount = positions.filter(p => p.career_plan_id === plan.id).length;
+                  return (
+                    <div
+                      key={plan.id}
+                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 cursor-pointer transition-colors"
+                      onClick={() => setSelectedPlan(plan)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-medium">{plan.name}</p>
+                          {plan.description && <p className="text-xs text-muted-foreground">{plan.description}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {plan.department && <Badge variant="outline">{plan.department}</Badge>}
+                        <Badge variant="secondary">{posCount} cargos</Badge>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); openEditPlan(plan); }}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" onClick={e => e.stopPropagation()}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Excluir carreira "{plan.name}"?</AlertDialogTitle>
+                                <AlertDialogDescription>Todos os cargos e progressões desta carreira serão removidos.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => deletePlan(plan.id)}>Excluir</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Plan Dialog */}
+        <Dialog open={planDialog} onOpenChange={setPlanDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingPlan ? 'Editar Carreira' : 'Nova Carreira'}</DialogTitle>
+              <DialogDescription>Defina o nome e departamento da carreira</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Nome da Carreira *</Label>
+                <Input placeholder="Ex: Comercial, Jurídico, Marketing..." value={planName} onChange={e => setPlanName(e.target.value)} />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Textarea placeholder="Descrição da carreira..." value={planDesc} onChange={e => setPlanDesc(e.target.value)} rows={3} />
+              </div>
+              <div>
+                <Label>Departamento</Label>
+                <Input placeholder="Ex: Vendas, Jurídico..." value={planDept} onChange={e => setPlanDept(e.target.value)} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPlanDialog(false)}>Cancelar</Button>
+              <Button onClick={savePlan} disabled={saving}>
+                {saving && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+                {editingPlan ? 'Salvar' : 'Criar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  // ============ DETAIL VIEW (plan selected) ============
+  const planMemberPositions = memberPositions.filter(mp =>
+    planPositions.some(p => p.id === mp.position_id)
+  );
+
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => setSelectedPlan(null)}>
+          ← Voltar
+        </Button>
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <GraduationCap className="h-5 w-5" /> {selectedPlan.name}
+          </h2>
+          {selectedPlan.description && <p className="text-sm text-muted-foreground">{selectedPlan.description}</p>}
+        </div>
+        <Button onClick={generateAIPlan} variant="outline" size="sm" disabled={aiLoading}>
+          {aiLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+          Gerar com IA
+        </Button>
+      </div>
+
       {/* Cargos */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2"><Briefcase className="h-5 w-5" /> Cargos</CardTitle>
-            <CardDescription>Cadastre os cargos da equipe (ex: SDR, Closer, Advogado)</CardDescription>
+            <CardDescription>Cargos desta carreira (ex: SDR, Closer, Advogado)</CardDescription>
           </div>
           <Button onClick={openNewPosition} size="sm"><Plus className="h-4 w-4 mr-1" /> Novo Cargo</Button>
         </CardHeader>
         <CardContent>
-          {positions.length === 0 ? (
-            <p className="text-muted-foreground text-center py-6">Nenhum cargo cadastrado. Crie o primeiro!</p>
+          {planPositions.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6">Nenhum cargo cadastrado. Crie ou gere com IA!</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Cargo</TableHead>
-                  <TableHead>Departamento</TableHead>
                   <TableHead>Nível</TableHead>
                   <TableHead>Membros</TableHead>
                   <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {positions.map(p => {
+                {planPositions.map(p => {
                   const count = memberPositions.filter(mp => mp.position_id === p.id).length;
                   return (
                     <TableRow key={p.id}>
@@ -264,7 +484,6 @@ export function CareerPlanManager() {
                         </div>
                         {p.description && <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{p.department || '—'}</TableCell>
                       <TableCell>
                         <Badge className={levelColors[(p.level - 1) % levelColors.length]} variant="secondary">
                           Nível {p.level}
@@ -302,20 +521,20 @@ export function CareerPlanManager() {
         </CardContent>
       </Card>
 
-      {/* Atribuição de membros */}
+      {/* Membros & Cargos */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" /> Membros & Cargos</CardTitle>
-            <CardDescription>Atribua cargos aos membros da equipe</CardDescription>
+            <CardDescription>Atribua membros aos cargos desta carreira</CardDescription>
           </div>
-          <Button onClick={() => setAssignDialog(true)} size="sm" disabled={positions.length === 0}>
+          <Button onClick={() => setAssignDialog(true)} size="sm" disabled={planPositions.length === 0}>
             <Plus className="h-4 w-4 mr-1" /> Atribuir
           </Button>
         </CardHeader>
         <CardContent>
-          {memberPositions.length === 0 ? (
-            <p className="text-muted-foreground text-center py-6">Nenhum membro com cargo atribuído.</p>
+          {planMemberPositions.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6">Nenhum membro atribuído nesta carreira.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -326,12 +545,10 @@ export function CareerPlanManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {memberPositions.map(mp => (
+                {planMemberPositions.map(mp => (
                   <TableRow key={mp.id}>
                     <TableCell className="font-medium">{getMemberName(mp.user_id)}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{getPositionName(mp.position_id)}</Badge>
-                    </TableCell>
+                    <TableCell><Badge variant="secondary">{getPositionName(mp.position_id)}</Badge></TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => removeAssignment(mp.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -345,23 +562,23 @@ export function CareerPlanManager() {
         </CardContent>
       </Card>
 
-      {/* Plano de Carreira */}
+      {/* Progressão */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2"><GraduationCap className="h-5 w-5" /> Plano de Carreira</CardTitle>
-            <CardDescription>Defina as progressões entre cargos e requisitos</CardDescription>
+            <CardTitle className="flex items-center gap-2"><ArrowRight className="h-5 w-5" /> Progressão</CardTitle>
+            <CardDescription>Passos de evolução entre os cargos</CardDescription>
           </div>
-          <Button onClick={() => setStepDialog(true)} size="sm" disabled={positions.length < 2}>
+          <Button onClick={() => setStepDialog(true)} size="sm" disabled={planPositions.length < 2}>
             <Plus className="h-4 w-4 mr-1" /> Nova Progressão
           </Button>
         </CardHeader>
         <CardContent>
-          {careerSteps.length === 0 ? (
-            <p className="text-muted-foreground text-center py-6">Nenhuma progressão definida. Crie pelo menos 2 cargos primeiro.</p>
+          {planSteps.length === 0 ? (
+            <p className="text-muted-foreground text-center py-6">Nenhuma progressão definida.</p>
           ) : (
             <div className="space-y-3">
-              {careerSteps.map(step => (
+              {planSteps.map(step => (
                 <div key={step.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
                   <Badge variant="outline" className="whitespace-nowrap">
                     {step.from_position_id ? getPositionName(step.from_position_id) : 'Entrada'}
@@ -393,7 +610,7 @@ export function CareerPlanManager() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingPos ? 'Editar Cargo' : 'Novo Cargo'}</DialogTitle>
-            <DialogDescription>Defina nome, departamento e nível do cargo</DialogDescription>
+            <DialogDescription>Defina nome e nível do cargo</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -406,26 +623,20 @@ export function CareerPlanManager() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Departamento</Label>
-                <Input placeholder="Ex: Comercial, Jurídico..." value={posDept} onChange={e => setPosDept(e.target.value)} />
-              </div>
-              <div>
                 <Label>Nível (senioridade)</Label>
                 <Select value={String(posLevel)} onValueChange={v => setPosLevel(Number(v))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {[1,2,3,4,5].map(n => (
-                      <SelectItem key={n} value={String(n)}>Nível {n}</SelectItem>
-                    ))}
+                    {[1,2,3,4,5].map(n => <SelectItem key={n} value={String(n)}>Nível {n}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div>
-              <Label>Cor</Label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={posColor} onChange={e => setPosColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0" />
-                <span className="text-sm text-muted-foreground">{posColor}</span>
+              <div>
+                <Label>Cor</Label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={posColor} onChange={e => setPosColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0" />
+                  <span className="text-sm text-muted-foreground">{posColor}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -443,7 +654,7 @@ export function CareerPlanManager() {
       <Dialog open={stepDialog} onOpenChange={setStepDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nova Progressão de Carreira</DialogTitle>
+            <DialogTitle>Nova Progressão</DialogTitle>
             <DialogDescription>Defina de qual cargo para qual cargo o membro pode progredir</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -453,7 +664,7 @@ export function CareerPlanManager() {
                 <SelectTrigger><SelectValue placeholder="Entrada (primeiro cargo)" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="entry">Entrada (primeiro cargo)</SelectItem>
-                  {positions.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {planPositions.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -462,7 +673,7 @@ export function CareerPlanManager() {
               <Select value={stepTo} onValueChange={setStepTo}>
                 <SelectTrigger><SelectValue placeholder="Selecione o cargo destino" /></SelectTrigger>
                 <SelectContent>
-                  {positions.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {planPositions.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -499,9 +710,7 @@ export function CareerPlanManager() {
                 <SelectTrigger><SelectValue placeholder="Selecione um membro" /></SelectTrigger>
                 <SelectContent>
                   {members.map(m => (
-                    <SelectItem key={m.user_id} value={m.user_id}>
-                      {m.full_name || m.email}
-                    </SelectItem>
+                    <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || m.email}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -511,7 +720,7 @@ export function CareerPlanManager() {
               <Select value={assignPositionId} onValueChange={setAssignPositionId}>
                 <SelectTrigger><SelectValue placeholder="Selecione um cargo" /></SelectTrigger>
                 <SelectContent>
-                  {positions.map(p => (
+                  {planPositions.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
