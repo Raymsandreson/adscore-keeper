@@ -119,11 +119,11 @@ export function useLeadActivities() {
 
       if (error) throw error;
 
-      // Auto-sync to Google Calendar (silent, best-effort)
+      // Auto-sync to Google Calendar (silent, best-effort, only if connected)
       if (data && (activity.deadline || activity.notification_date)) {
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
+          const { data: checkData } = await supabase.functions.invoke('google-check-connection');
+          if (checkData?.connected) {
             supabase.functions.invoke('google-calendar-event', {
               body: {
                 action_type: 'call',
@@ -133,7 +133,7 @@ export function useLeadActivities() {
                 contact_name: activity.contact_name || activity.lead_name || undefined,
                 notes: `Lead: ${activity.lead_name || ''}\nTipo: ${activity.activity_type || ''}\nStatus: pendente`,
               },
-            }).catch(() => {}); // silent fail if not connected
+            }).catch(() => {});
           }
         } catch {}
       }
