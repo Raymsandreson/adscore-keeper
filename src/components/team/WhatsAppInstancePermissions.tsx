@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
+
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { MessageSquare, UserCheck, Smartphone } from 'lucide-react';
+import { MessageSquare, Smartphone } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,7 +14,6 @@ import { toast } from 'sonner';
 interface Instance {
   id: string;
   instance_name: string;
-  auto_identify_sender: boolean;
 }
 
 interface InstanceUser {
@@ -39,11 +38,11 @@ export function WhatsAppInstancePermissions() {
   const fetchData = useCallback(async () => {
     try {
       const [instRes, iuRes, profilesRes] = await Promise.all([
-        supabase.from('whatsapp_instances').select('id, instance_name, auto_identify_sender').eq('is_active', true).order('instance_name'),
+        supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true).order('instance_name'),
         supabase.from('whatsapp_instance_users').select('id, instance_id, user_id'),
         supabase.from('profiles').select('user_id, default_instance_id'),
       ]);
-      setInstances((instRes.data || []).map((i: any) => ({ ...i, auto_identify_sender: i.auto_identify_sender ?? false })));
+      setInstances(instRes.data || []);
       setInstanceUsers(iuRes.data || []);
       setMemberDefaults((profilesRes.data || []).map((p: any) => ({ user_id: p.user_id, default_instance_id: p.default_instance_id })));
     } catch (e) {
@@ -99,15 +98,6 @@ export function WhatsAppInstancePermissions() {
     }
   };
 
-  const toggleAutoIdentify = async (instanceId: string, current: boolean) => {
-    try {
-      await supabase.from('whatsapp_instances').update({ auto_identify_sender: !current } as any).eq('id', instanceId);
-      setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, auto_identify_sender: !current } : i));
-      toast.success(!current ? 'Identificação automática ativada' : 'Identificação automática desativada');
-    } catch {
-      toast.error('Erro ao atualizar configuração');
-    }
-  };
 
   if (loading || membersLoading) {
     return <div className="space-y-4"><Skeleton className="h-12 w-full" /><Skeleton className="h-64 w-full" /></div>;
@@ -226,33 +216,6 @@ export function WhatsAppInstancePermissions() {
         </CardContent>
       </Card>
 
-      {/* Auto-identify sender settings */}
-      <Card className="border-0 shadow-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <UserCheck className="h-5 w-5" />
-            Identificação automática do remetente
-          </CardTitle>
-          <CardDescription>
-            Quando ativado, as mensagens enviadas incluirão o nome do colaborador (com pronome de tratamento) antes do texto.
-            Configure seu pronome de tratamento em{' '}
-            <a href="/profile" className="underline text-primary hover:text-primary/80 font-medium">Meu Perfil</a>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {instances.map(inst => (
-              <div key={inst.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">
-                <span className="text-sm">{inst.instance_name}</span>
-                <Switch 
-                  checked={inst.auto_identify_sender} 
-                  onCheckedChange={() => toggleAutoIdentify(inst.id, inst.auto_identify_sender)}
-                />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
