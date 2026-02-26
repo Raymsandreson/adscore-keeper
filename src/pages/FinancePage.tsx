@@ -70,6 +70,9 @@ import { BankTransactionsView } from "@/components/finance/BankTransactionsView"
 import { InvestmentsView } from "@/components/finance/InvestmentsView";
 import { LoansView } from "@/components/finance/LoansView";
 import { CategorizedTransactionsView } from "@/components/finance/CategorizedTransactionsView";
+import { FinancialEntryForm } from "@/components/finance/FinancialEntryForm";
+import { FinancialConfigManager } from "@/components/finance/FinancialConfigManager";
+import { FinancialEntriesView } from "@/components/finance/FinancialEntriesView";
 
 // Pluggy Connect type definition
 interface PluggyConnectConfig {
@@ -139,6 +142,7 @@ export default function FinancePage() {
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
   const [generatingLinkFor, setGeneratingLinkFor] = useState<string | null>(null);
+  const [entryFormOpen, setEntryFormOpen] = useState(false);
 
   // Get unique card digits for assignment manager
   const availableCards = useMemo(() => {
@@ -1143,28 +1147,42 @@ export default function FinancePage() {
 
             {/* Financial Section Tabs */}
             <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
-              <TabsList className="grid w-full grid-cols-4 h-11">
+              <TabsList className="grid w-full grid-cols-5 h-11">
+                <TabsTrigger value="entries" className="flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  <span className="hidden sm:inline">Lançamentos</span>
+                  <span className="sm:hidden">Lanç.</span>
+                </TabsTrigger>
                 <TabsTrigger value="credit-card" className="flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
-                  <span className="hidden sm:inline">Cartão de Crédito</span>
+                  <span className="hidden sm:inline">Cartão</span>
                   <span className="sm:hidden">Cartão</span>
                 </TabsTrigger>
                 <TabsTrigger value="bank" className="flex items-center gap-2">
                   <Wallet className="h-4 w-4" />
-                  <span className="hidden sm:inline">Conta Corrente</span>
+                  <span className="hidden sm:inline">Conta</span>
                   <span className="sm:hidden">Conta</span>
                 </TabsTrigger>
                 <TabsTrigger value="investments" className="flex items-center gap-2">
                   <TrendingDown className="h-4 w-4" />
-                  <span className="hidden sm:inline">Investimentos</span>
+                  <span className="hidden sm:inline">Invest.</span>
                   <span className="sm:hidden">Invest.</span>
                 </TabsTrigger>
                 <TabsTrigger value="loans" className="flex items-center gap-2">
                   <Landmark className="h-4 w-4" />
-                  <span className="hidden sm:inline">Empréstimos</span>
+                  <span className="hidden sm:inline">Emprest.</span>
                   <span className="sm:hidden">Emprest.</span>
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="entries" className="mt-4">
+                <FinancialEntriesView
+                  startDate={startDate}
+                  endDate={endDate}
+                  searchTerm={searchTerm}
+                  onNewEntry={() => setEntryFormOpen(true)}
+                />
+              </TabsContent>
 
               <TabsContent value="bank" className="mt-4">
                 <BankTransactionsView 
@@ -1454,6 +1472,9 @@ export default function FinancePage() {
               <TabsContent value="settings" className="mt-4 space-y-4">
                 <LimitAnalysisPanel transactions={filteredTransactions} />
                 
+                {/* Financial Config: Companies, Cost Centers, Beneficiaries */}
+                <FinancialConfigManager />
+                
                 {/* Card Permissions Manager - Admin only */}
                 {isAdmin && (
                   <CardPermissionsManager availableCards={availableCards} />
@@ -1480,6 +1501,13 @@ export default function FinancePage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Financial Entry Form Dialog */}
+        <FinancialEntryForm
+          open={entryFormOpen}
+          onOpenChange={setEntryFormOpen}
+          onSaved={() => {}}
+        />
       </div>
     </div>
   );
