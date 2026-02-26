@@ -4281,50 +4281,85 @@ export type Database = {
       }
       transaction_category_overrides: {
         Row: {
+          beneficiary_id: string | null
           category_id: string
+          company_id: string | null
           contact_id: string | null
           cost_account_id: string | null
+          cost_center_id: string | null
           created_at: string
           id: string
+          invoice_number: string | null
           lead_id: string | null
           link_acknowledged: boolean
           manual_city: string | null
           manual_state: string | null
+          nature: string | null
           notes: string | null
+          payment_method: string | null
+          recurrence: string | null
           transaction_id: string
         }
         Insert: {
+          beneficiary_id?: string | null
           category_id: string
+          company_id?: string | null
           contact_id?: string | null
           cost_account_id?: string | null
+          cost_center_id?: string | null
           created_at?: string
           id?: string
+          invoice_number?: string | null
           lead_id?: string | null
           link_acknowledged?: boolean
           manual_city?: string | null
           manual_state?: string | null
+          nature?: string | null
           notes?: string | null
+          payment_method?: string | null
+          recurrence?: string | null
           transaction_id: string
         }
         Update: {
+          beneficiary_id?: string | null
           category_id?: string
+          company_id?: string | null
           contact_id?: string | null
           cost_account_id?: string | null
+          cost_center_id?: string | null
           created_at?: string
           id?: string
+          invoice_number?: string | null
           lead_id?: string | null
           link_acknowledged?: boolean
           manual_city?: string | null
           manual_state?: string | null
+          nature?: string | null
           notes?: string | null
+          payment_method?: string | null
+          recurrence?: string | null
           transaction_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "transaction_category_overrides_beneficiary_id_fkey"
+            columns: ["beneficiary_id"]
+            isOneToOne: false
+            referencedRelation: "beneficiaries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transaction_category_overrides_category_id_fkey"
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
           {
@@ -4339,6 +4374,13 @@ export type Database = {
             columns: ["cost_account_id"]
             isOneToOne: false
             referencedRelation: "cost_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transaction_category_overrides_cost_center_id_fkey"
+            columns: ["cost_center_id"]
+            isOneToOne: false
+            referencedRelation: "cost_centers"
             referencedColumns: ["id"]
           },
           {
