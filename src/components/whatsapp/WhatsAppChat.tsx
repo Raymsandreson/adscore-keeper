@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
+
 interface Props {
   conversation: WhatsAppConversation;
   onSendMessage: (
@@ -25,7 +27,8 @@ interface Props {
     leadId?: string,
     conversationInstanceName?: string | null,
     identifySender?: boolean,
-    chatId?: string
+    chatId?: string,
+    treatmentOverride?: string | null
   ) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
@@ -45,6 +48,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [selectedRelationship, setSelectedRelationship] = useState('');
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const [identifySender, setIdentifySender] = useState(true);
+  const [treatmentTitle, setTreatmentTitle] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
@@ -55,6 +59,10 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     const storageKey = `wa-identify-sender:${conversation.phone}`;
     const savedPreference = localStorage.getItem(storageKey);
     setIdentifySender(savedPreference !== 'false');
+
+    const treatmentKey = `wa-treatment:${conversation.phone}`;
+    const savedTreatment = localStorage.getItem(treatmentKey);
+    setTreatmentTitle(savedTreatment ?? '');
   }, [conversation.phone]);
 
   // Fetch call records for this phone
@@ -101,6 +109,13 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     localStorage.setItem(storageKey, checked ? 'true' : 'false');
   };
 
+  const handleTreatmentChange = (value: string) => {
+    const v = value === 'none' ? '' : value;
+    setTreatmentTitle(v);
+    const treatmentKey = `wa-treatment:${conversation.phone}`;
+    localStorage.setItem(treatmentKey, v);
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -117,7 +132,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         conversation.lead_id || undefined,
         conversation.instance_name,
         identifySender,
-        conversationChatId
+        conversationChatId,
+        treatmentTitle || null
       );
       if (success) setNewMessage('');
     } catch (err) {
@@ -396,9 +412,22 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
 
       {/* Input */}
       <div className="p-3 border-t bg-card shrink-0 space-y-2">
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          {identifySender && (
+            <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
+              <SelectTrigger className="h-7 w-[100px] text-xs">
+                <SelectValue placeholder="Título" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem título</SelectItem>
+                {TREATMENT_OPTIONS.filter(t => t).map(t => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
-            Identificar remetente nesta conversa
+            Identificar remetente
           </Label>
           <Switch
             id="identify-sender"
