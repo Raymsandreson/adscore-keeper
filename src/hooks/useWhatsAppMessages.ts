@@ -222,42 +222,25 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       let finalMessage = message;
 
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
-      let autoIdentify = false;
 
       if (conversationInstanceName) {
         const { data: instanceData } = await supabase
           .from('whatsapp_instances')
-          .select('id, auto_identify_sender')
+          .select('id')
           .eq('instance_name', conversationInstanceName)
           .eq('is_active', true)
           .maybeSingle();
 
         if (instanceData?.id) {
           targetInstanceId = instanceData.id;
-          autoIdentify = instanceData.auto_identify_sender ?? false;
         }
       }
 
-      if (!conversationInstanceName && targetInstanceId) {
-        const { data: instData } = await supabase
-          .from('whatsapp_instances')
-          .select('auto_identify_sender')
-          .eq('id', targetInstanceId)
-          .single();
-        autoIdentify = instData?.auto_identify_sender ?? false;
+      if (!targetInstanceId && instances.length > 0) {
+        targetInstanceId = instances[0].id;
       }
 
-      if (!conversationInstanceName && !targetInstanceId && instances.length > 0) {
-        const { data: instData } = await supabase
-          .from('whatsapp_instances')
-          .select('id, auto_identify_sender')
-          .eq('id', instances[0].id)
-          .single();
-        targetInstanceId = instData?.id ?? instances[0].id;
-        autoIdentify = instData?.auto_identify_sender ?? false;
-      }
-
-      if (user && autoIdentify && identifySender) {
+      if (user && identifySender) {
         const { data: profileData } = await supabase
           .from('profiles')
           .select('full_name, treatment_title')
