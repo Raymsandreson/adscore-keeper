@@ -64,6 +64,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [statsLoading, setStatsLoading] = useState(true);
   const conversationsRef = useRef<WhatsAppConversation[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const profileCacheRef = useRef<{ full_name: string | null; treatment_title: string | null } | null>(null);
 
   const fetchInstances = async () => {
     if (!user) return;
@@ -221,38 +222,34 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   ) => {
     try {
       let finalMessage = message;
-
       let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
 
-      if (conversationInstanceName) {
-        const { data: instanceData } = await supabase
-          .from('whatsapp_instances')
-          .select('id')
-          .eq('instance_name', conversationInstanceName)
-          .eq('is_active', true)
-          .maybeSingle();
+      // Run instance lookup and profile fetch in parallel
+      const instancePromise = conversationInstanceName
+        ? supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle()
+        : Promise.resolve(null);
 
-        if (instanceData?.id) {
-          targetInstanceId = instanceData.id;
-        }
+      const profilePromise = (user && identifySender && !profileCacheRef.current)
+        ? supabase.from('profiles').select('full_name, treatment_title').eq('user_id', user.id).single()
+        : Promise.resolve(null);
+
+      const [instanceResult, profileResult] = await Promise.all([instancePromise, profilePromise]);
+
+      if (instanceResult?.data?.id) {
+        targetInstanceId = instanceResult.data.id;
       }
-
       if (!targetInstanceId && instances.length > 0) {
         targetInstanceId = instances[0].id;
       }
 
-      if (user && identifySender) {
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('full_name, treatment_title')
-          .eq('user_id', user.id)
-          .single();
+      if (profileResult?.data) {
+        profileCacheRef.current = profileResult.data;
+      }
 
-        if (profileData?.full_name) {
-          const title = profileData.treatment_title;
-          const senderName = title ? `${title} ${profileData.full_name}` : profileData.full_name;
-          finalMessage = `*${senderName}:*\n${message}`;
-        }
+      if (user && identifySender && profileCacheRef.current?.full_name) {
+        const { full_name, treatment_title } = profileCacheRef.current;
+        const senderName = treatment_title ? `${treatment_title} ${full_name}` : full_name;
+        finalMessage = `*${senderName}:*\n${message}`;
       }
 
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
@@ -268,7 +265,34 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
       toast.success('Mensagem enviada!');
-      fetchMessages();
+
+      // Optimistic local update instead of full refetch
+      const optimisticMsg: WhatsAppMessage = {
+        id: data.message_id || crypto.randomUUID(),
+        phone,
+        contact_name: null,
+        message_text: finalMessage,
+        message_type: 'text',
+        media_url: null,
+        media_type: null,
+        direction: 'outbound',
+        status: 'sent',
+        contact_id: contactId || null,
+        lead_id: leadId || null,
+        external_message_id: null,
+        metadata: null,
+        created_at: new Date().toISOString(),
+        read_at: null,
+        instance_name: data.instance_name || conversationInstanceName || null,
+        instance_token: null,
+      };
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setConversations(prev => prev.map(c =>
+        c.phone === phone
+          ? { ...c, last_message: finalMessage, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] }
+          : c
+      ));
+
       return true;
     } catch (error: any) {
       console.error('Error sending message:', error);
