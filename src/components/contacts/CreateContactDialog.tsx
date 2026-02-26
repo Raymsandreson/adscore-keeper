@@ -153,13 +153,16 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
         }
       }
 
-      // Auto-sync to Google Contacts
+      // Auto-sync to Google Contacts (only if connected)
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          supabase.functions.invoke('google-save-contact', {
-            body: { name: form.full_name, phone: form.phone || undefined, email: form.email || undefined, instagram_username: igUsername || undefined, notes: form.notes || undefined },
-          }).catch(() => {});
+          const { data: googleCheck } = await supabase.functions.invoke('google-check-connection');
+          if (googleCheck?.connected) {
+            supabase.functions.invoke('google-save-contact', {
+              body: { name: form.full_name, phone: form.phone || undefined, email: form.email || undefined, instagram_username: igUsername || undefined, notes: form.notes || undefined },
+            }).catch(() => {});
+          }
         }
       } catch {}
 
