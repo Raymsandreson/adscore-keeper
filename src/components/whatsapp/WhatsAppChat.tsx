@@ -103,16 +103,21 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
     setSending(true);
-    const success = await onSendMessage(
-      conversation.phone,
-      newMessage.trim(),
-      conversation.contact_id || undefined,
-      conversation.lead_id || undefined,
-      conversation.instance_name,
-      identifySender
-    );
-    if (success) setNewMessage('');
-    setSending(false);
+    try {
+      const success = await onSendMessage(
+        conversation.phone,
+        newMessage.trim(),
+        conversation.contact_id || undefined,
+        conversation.lead_id || undefined,
+        conversation.instance_name,
+        identifySender
+      );
+      if (success) setNewMessage('');
+    } catch (err) {
+      console.error('handleSend error:', err);
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
