@@ -138,45 +138,47 @@ export function WhatsAppInstancePermissions() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[160px]">Membro</TableHead>
-                  {instances.map(inst => (
-                    <TableHead key={inst.id} className="text-center min-w-[100px]">
-                      <span className="text-xs leading-tight">{inst.instance_name}</span>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.map(member => (
-                  <TableRow key={member.user_id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-sm">{member.full_name || 'Sem nome'}</p>
-                        <p className="text-xs text-muted-foreground">{member.email}</p>
-                      </div>
-                    </TableCell>
-                    {instances.map(inst => {
-                      const checked = hasAccess(member.user_id, inst.id);
-                      const isSaving = saving === `${member.user_id}-${inst.id}`;
-                      return (
-                        <TableCell key={inst.id} className="text-center">
-                          <Checkbox
-                            checked={checked}
-                            disabled={isSaving}
-                            onCheckedChange={() => toggleAccess(member.user_id, inst.id)}
-                            className="mx-auto"
-                          />
-                        </TableCell>
-                      );
-                    })}
+          <div className="overflow-auto max-h-[70vh] [transform:rotateX(180deg)]">
+            <div className="[transform:rotateX(180deg)]">
+              <Table>
+                <TableHeader className="sticky top-0 z-30 bg-card">
+                  <TableRow>
+                    <TableHead className="min-w-[200px] sticky left-0 z-40 bg-card">Membro</TableHead>
+                    {instances.map(inst => (
+                      <TableHead key={inst.id} className="text-center min-w-[100px] bg-card">
+                        <span className="text-xs leading-tight">{inst.instance_name}</span>
+                      </TableHead>
+                    ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {members.map(member => (
+                    <TableRow key={member.user_id}>
+                      <TableCell className="sticky left-0 z-10 bg-card">
+                        <div>
+                          <p className="font-medium text-sm">{member.full_name || 'Sem nome'}</p>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                      </TableCell>
+                      {instances.map(inst => {
+                        const checked = hasAccess(member.user_id, inst.id);
+                        const isSaving = saving === `${member.user_id}-${inst.id}`;
+                        return (
+                          <TableCell key={inst.id} className="text-center">
+                            <Checkbox
+                              checked={checked}
+                              disabled={isSaving}
+                              onCheckedChange={() => toggleAccess(member.user_id, inst.id)}
+                              className="mx-auto"
+                            />
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
