@@ -229,19 +229,27 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           autoIdentify = instData?.auto_identify_sender ?? false;
         } else if (instances.length > 0) {
           // When no specific instance selected, check the first available
-          autoIdentify = instances[0]?.auto_identify_sender ?? false;
+          const { data: instData } = await supabase
+            .from('whatsapp_instances')
+            .select('auto_identify_sender')
+            .eq('id', instances[0].id)
+            .single();
+          autoIdentify = instData?.auto_identify_sender ?? false;
         }
         
+        console.log('[WhatsApp] auto_identify_sender:', autoIdentify, 'targetInstanceId:', targetInstanceId);
+        
         if (autoIdentify) {
-          // Fetch user profile with treatment_title
           const { data: profileData } = await supabase
             .from('profiles')
             .select('full_name, treatment_title')
             .eq('user_id', user.id)
             .single();
           
+          console.log('[WhatsApp] profile data:', profileData);
+          
           if (profileData?.full_name) {
-            const title = (profileData as any).treatment_title;
+            const title = profileData.treatment_title;
             const senderName = title ? `${title} ${profileData.full_name}` : profileData.full_name;
             finalMessage = `*${senderName}:*\n${message}`;
           }

@@ -82,63 +82,63 @@ export default function TeamPage() {
 
         {/* Tabs */}
         <Tabs value={availableTabs.includes(activeTab) ? activeTab : 'productivity'} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full max-w-7xl ${isAdmin ? 'grid-cols-11' : 'grid-cols-3'}`}>
-            <TabsTrigger value="productivity" className="gap-2">
+          <TabsList className="flex w-full max-w-7xl overflow-x-auto">
+            <TabsTrigger value="productivity" className="gap-2 shrink-0">
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="commission" className="gap-2">
+              <TabsTrigger value="commission" className="gap-2 shrink-0">
                 <DollarSign className="h-4 w-4" />
                 <span className="hidden sm:inline">Metas</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="evaluations" className="gap-2">
+              <TabsTrigger value="evaluations" className="gap-2 shrink-0">
                 <Star className="h-4 w-4" />
                 <span className="hidden sm:inline">Avaliações</span>
               </TabsTrigger>
             )}
-            <TabsTrigger value="members" className="gap-2">
+            <TabsTrigger value="members" className="gap-2 shrink-0">
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">Membros</span>
             </TabsTrigger>
-            <TabsTrigger value="teams" className="gap-2">
+            <TabsTrigger value="teams" className="gap-2 shrink-0">
               <UsersRound className="h-4 w-4" />
               <span className="hidden sm:inline">Times</span>
             </TabsTrigger>
             {isAdmin && (
-              <TabsTrigger value="career" className="gap-2">
+              <TabsTrigger value="career" className="gap-2 shrink-0">
                 <GraduationCap className="h-4 w-4" />
                 <span className="hidden sm:inline">Carreira</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="routines" className="gap-2">
+              <TabsTrigger value="routines" className="gap-2 shrink-0">
                 <CalendarClock className="h-4 w-4" />
                 <span className="hidden sm:inline">Rotinas</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="whatsapp" className="gap-2">
+              <TabsTrigger value="whatsapp" className="gap-2 shrink-0">
                 <MessageSquare className="h-4 w-4" />
                 <span className="hidden sm:inline">WhatsApp</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="permissions" className="gap-2">
+              <TabsTrigger value="permissions" className="gap-2 shrink-0">
                 <CreditCard className="h-4 w-4" />
                 <span className="hidden sm:inline">Cartões</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="accounts" className="gap-2">
+              <TabsTrigger value="accounts" className="gap-2 shrink-0">
                 <Landmark className="h-4 w-4" />
                 <span className="hidden sm:inline">Contas</span>
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="modules" className="gap-2">
+              <TabsTrigger value="modules" className="gap-2 shrink-0">
                 <Lock className="h-4 w-4" />
                 <span className="hidden sm:inline">Acessos</span>
               </TabsTrigger>
