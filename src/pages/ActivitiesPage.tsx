@@ -238,6 +238,15 @@ const ActivitiesPage = () => {
     loadWorkflowStepTypes();
   }, [activities]);
 
+  const handleCloneActivity = async (activity: LeadActivity) => {
+    const { id, created_at, updated_at, completed_at, completed_by, completed_by_name, ...cloneData } = activity;
+    await createActivity({
+      ...cloneData,
+      title: `${activity.title} (cópia)`,
+      status: 'pendente',
+    });
+    fetchActivities(getFilterParams());
+  };
 
   // Pre-filter raw activities based on OTHER active filters (excluding the field being counted)
   const getFilteredRaw = useMemo(() => {
@@ -1817,6 +1826,13 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                   </button>
                                 )}
                                 <button
+                                  className="text-muted-foreground hover:text-primary p-0.5 rounded"
+                                  onClick={e => { e.stopPropagation(); handleCloneActivity(activity); }}
+                                  title="Duplicar"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                                <button
                                   className="text-muted-foreground hover:text-destructive p-0.5 rounded"
                                   onClick={e => { e.stopPropagation(); handleDelete(activity.id); }}
                                 >
@@ -2366,6 +2382,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         <span onClick={e => e.stopPropagation()}>
                           <ShareMenu entityType="activity" entityId={activity.id} entityName={activity.title} summary={activity.lead_name ? `Lead: ${activity.lead_name}` : undefined} size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" />
                         </span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={e => { e.stopPropagation(); handleCloneActivity(activity); }} title="Duplicar">
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(activity.id); }} title="Excluir">
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -2589,6 +2608,14 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         onClick={() => selectedActivity && handleDelete(selectedActivity.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs gap-1"
+                        onClick={() => selectedActivity && handleCloneActivity(selectedActivity)}
+                      >
+                        <Copy className="h-3.5 w-3.5" /> Duplicar
                       </Button>
                       <Button
                         variant="outline"

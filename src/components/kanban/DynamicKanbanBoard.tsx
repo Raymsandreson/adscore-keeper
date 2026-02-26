@@ -48,6 +48,7 @@ import {
   CheckCircle2,
   XCircle,
   ClipboardPlus,
+  Copy,
 } from 'lucide-react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { Lead } from '@/hooks/useLeads';
@@ -66,6 +67,7 @@ interface DynamicKanbanBoardProps {
   onMoveToStage: (leadId: string, stageId: string) => void;
   onMoveToBoard: (leadId: string, boardId: string, stageId?: string) => void;
   onDeleteLead: (id: string) => void;
+  onCloneLead?: (lead: Lead) => void;
   onEditLead?: (lead: Lead) => void;
   onManageContacts?: (lead: Lead) => void;
   availableBoards?: KanbanBoard[];
@@ -78,6 +80,7 @@ export function DynamicKanbanBoard({
   onMoveToStage,
   onMoveToBoard,
   onDeleteLead,
+  onCloneLead,
   onEditLead,
   onManageContacts,
   availableBoards = [],
@@ -733,6 +736,12 @@ export function DynamicKanbanBoard({
                                           Nova Atividade
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
+                                        {onCloneLead && (
+                                          <DropdownMenuItem onClick={() => onCloneLead(lead)}>
+                                            <Copy className="h-3 w-3 mr-2" />
+                                            Duplicar Lead
+                                          </DropdownMenuItem>
+                                        )}
                                         <DropdownMenuItem
                                           className="text-destructive"
                                           onClick={() => handleDeleteClick(lead.id)}

@@ -584,6 +584,15 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
           onMoveToStage={handleMoveToStage}
           onMoveToBoard={handleMoveToBoard}
           onDeleteLead={deleteLead}
+          onCloneLead={async (lead) => {
+            const { id, created_at, updated_at, qualified_at, converted_at, facebook_lead_id, sync_status, last_sync_at, ...cloneData } = lead;
+            await addLead({
+              ...cloneData,
+              lead_name: `${lead.lead_name || 'Lead'} (cópia)`,
+              status: 'new',
+            });
+            fetchLeads();
+          }}
           onEditLead={(lead) => setEditingLeadId(lead.id)}
           availableBoards={boards}
         />
