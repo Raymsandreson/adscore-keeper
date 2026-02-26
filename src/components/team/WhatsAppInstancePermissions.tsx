@@ -155,6 +155,8 @@ export function WhatsAppInstancePermissions() {
           </div>
           <p className="text-xs text-muted-foreground mb-3">
             Quando ativado, as mensagens enviadas incluirão o nome do colaborador (com pronome de tratamento) antes do texto.
+            Configure seu pronome de tratamento em{' '}
+            <a href="/profile" className="underline text-primary hover:text-primary/80 font-medium">Meu Perfil</a>.
           </p>
           {instances.map(inst => (
             <div key={inst.id} className="flex items-center justify-between py-2 px-3 rounded-lg border">

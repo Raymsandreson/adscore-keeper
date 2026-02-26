@@ -42,6 +42,7 @@ export interface WhatsAppInstance {
   owner_phone: string | null;
   base_url: string | null;
   is_active: boolean;
+  auto_identify_sender?: boolean | null;
 }
 
 export interface InstanceStats {
@@ -216,14 +217,22 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       
       const targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
       
-      if (targetInstanceId && user) {
-        const { data: instData } = await supabase
-          .from('whatsapp_instances')
-          .select('auto_identify_sender')
-          .eq('id', targetInstanceId)
-          .single();
+      if (user) {
+        // Find the instance to check auto_identify_sender
+        let autoIdentify = false;
+        if (targetInstanceId) {
+          const { data: instData } = await supabase
+            .from('whatsapp_instances')
+            .select('auto_identify_sender')
+            .eq('id', targetInstanceId)
+            .single();
+          autoIdentify = instData?.auto_identify_sender ?? false;
+        } else if (instances.length > 0) {
+          // When no specific instance selected, check the first available
+          autoIdentify = instances[0]?.auto_identify_sender ?? false;
+        }
         
-        if (instData?.auto_identify_sender) {
+        if (autoIdentify) {
           // Fetch user profile with treatment_title
           const { data: profileData } = await supabase
             .from('profiles')
