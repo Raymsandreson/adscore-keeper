@@ -268,12 +268,20 @@ async function handleCallEvent(supabase: any, body: any) {
   }
 
   // ===== EVENT ROUTING =====
-  // offer = call started → save pending event
-  // accept = call answered → save pending event  
-  // terminate = call ended → create final record with calculated duration
+  // offer/ringing = call started → save pending event
+  // accept/answered = call answered → save pending event  
+  // terminate/ended/reject/timeout/cancel = call ended → create final record
 
-  if (eventTag === 'offer') {
-    // Save the offer timestamp
+  const isOffer = eventTag === 'offer' || eventTag === 'ringing' || eventTag === 'ring';
+  const isAccept = eventTag === 'accept' || eventTag === 'accepted' || eventTag === 'answer' || eventTag === 'answered' || eventTag === 'connected';
+  const isTerminate = eventTag === 'terminate' || eventTag === 'terminated' || eventTag === 'ended' || eventTag === 'end' 
+    || eventTag === 'reject' || eventTag === 'rejected' || eventTag === 'timeout' || eventTag === 'miss' || eventTag === 'missed'
+    || eventTag === 'cancel' || eventTag === 'cancelled' || eventTag === 'busy' || eventTag === 'hangup' || eventTag === 'declined'
+    || eventTag === 'failed' || eventTag === 'unavailable';
+
+  console.log('Call event routing:', { eventTag, isOffer, isAccept, isTerminate });
+
+  if (isOffer) {
     await supabase.from('call_events_pending').insert({
       call_id: callId,
       instance_name: instanceName,
@@ -283,11 +291,10 @@ async function handleCallEvent(supabase: any, body: any) {
       from_me: !isIncoming,
     });
     console.log('Saved offer event for call:', callId);
-    return null; // Don't create a call_record yet
+    return null;
   }
 
-  if (eventTag === 'accept') {
-    // Save the accept timestamp
+  if (isAccept) {
     await supabase.from('call_events_pending').insert({
       call_id: callId,
       instance_name: instanceName,
@@ -297,7 +304,13 @@ async function handleCallEvent(supabase: any, body: any) {
       from_me: !isIncoming,
     });
     console.log('Saved accept event for call:', callId);
-    return null; // Don't create a call_record yet
+    return null;
+  }
+
+  // If it's not a recognized terminate event AND not offer/accept, log and skip
+  if (!isTerminate) {
+    console.log('Unknown call eventTag, treating as intermediate (skipping):', eventTag);
+    return null;
   }
 
   // ===== TERMINATE: Create the final call record =====
