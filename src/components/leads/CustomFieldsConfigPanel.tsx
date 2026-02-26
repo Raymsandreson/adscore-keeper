@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, GripVertical, Settings2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, GripVertical, Settings2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLeadCustomFields, CustomField, CustomFieldValue, FieldType } from '@/hooks/useLeadCustomFields';
 import { useKanbanBoards, KanbanBoard } from '@/hooks/useKanbanBoards';
+import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { toast } from 'sonner';
 
@@ -38,6 +39,12 @@ export function CustomFieldsConfigPanel({
   const { boards: hookBoards } = useKanbanBoards();
   const boards = externalBoards || hookBoards;
   const currentBoard = boards.find(b => b.id === currentBoardId);
+  const { getStagesForField, setFieldStages, fetchRequirements } = useFieldStageRequirements(currentBoardId || undefined);
+
+  // Stage requirements dialog
+  const [stageReqDialogOpen, setStageReqDialogOpen] = useState(false);
+  const [stageReqField, setStageReqField] = useState<CustomField | null>(null);
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]);
 
   // Load all custom fields (no board filter to show everything relevant)
   const {
@@ -241,6 +248,32 @@ export function CustomFieldsConfigPanel({
     );
   };
 
+  const openStageReqDialog = (field: CustomField) => {
+    setStageReqField(field);
+    const currentStages = getStagesForField(field.id);
+    setSelectedStageIds(currentStages);
+    setStageReqDialogOpen(true);
+  };
+
+  const handleSaveStageRequirements = async () => {
+    if (!stageReqField || !currentBoardId) return;
+    try {
+      await setFieldStages(stageReqField.id, currentBoardId, selectedStageIds);
+      toast.success('Obrigatoriedade por etapa salva!');
+      setStageReqDialogOpen(false);
+    } catch {
+      toast.error('Erro ao salvar');
+    }
+  };
+
+  const toggleStageSelection = (stageId: string) => {
+    setSelectedStageIds(prev =>
+      prev.includes(stageId)
+        ? prev.filter(id => id !== stageId)
+        : [...prev, stageId]
+    );
+  };
+
   // Save field values (called externally via parent)
   const saveValues = async () => {
     if (Object.keys(localFieldValues).length > 0) {
@@ -312,6 +345,23 @@ export function CustomFieldsConfigPanel({
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
                       Global
                     </Badge>
+                  )}
+                  {getStagesForField(field.id).length > 0 && (
+                    <Badge variant="default" className="text-[10px] gap-0.5">
+                      <ShieldCheck className="h-2.5 w-2.5" />
+                      {getStagesForField(field.id).length} etapa(s)
+                    </Badge>
+                  )}
+                  {currentBoard && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => openStageReqDialog(field)}
+                      title="Obrigatório por etapa"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                    </Button>
                   )}
                   <Button
                     variant="ghost"
@@ -542,6 +592,55 @@ export function CustomFieldsConfigPanel({
               disabled={scopeChoice === 'select' && selectedBoardIds.length === 0}
             >
               {editingField ? 'Salvar Campo' : 'Criar Campo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stage Requirements Dialog */}
+      <Dialog open={stageReqDialogOpen} onOpenChange={setStageReqDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Obrigatório por etapa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Selecione em quais etapas do fluxo o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório para o lead avançar.
+            </p>
+            {currentBoard && currentBoard.stages.length > 0 ? (
+              <div className="space-y-1 border rounded-lg overflow-hidden">
+                {currentBoard.stages.map((stage) => (
+                  <label
+                    key={stage.id}
+                    className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-accent/30 cursor-pointer transition-colors"
+                  >
+                    <Checkbox
+                      checked={selectedStageIds.includes(stage.id)}
+                      onCheckedChange={() => toggleStageSelection(stage.id)}
+                    />
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                    <span className="text-sm font-medium">{stage.name}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhuma etapa configurada neste fluxo.
+              </p>
+            )}
+            {selectedStageIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                ⚠️ Ao mover um lead para essas etapas, o campo será validado como obrigatório.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStageReqDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveStageRequirements}>
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2127,6 +2127,45 @@ export type Database = {
           },
         ]
       }
+      field_stage_requirements: {
+        Row: {
+          board_id: string
+          created_at: string
+          field_id: string
+          id: string
+          stage_id: string
+        }
+        Insert: {
+          board_id: string
+          created_at?: string
+          field_id: string
+          id?: string
+          stage_id: string
+        }
+        Update: {
+          board_id?: string
+          created_at?: string
+          field_id?: string
+          id?: string
+          stage_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_stage_requirements_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "kanban_boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_stage_requirements_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "lead_custom_fields"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       goal_history: {
         Row: {
           achieved_value: number

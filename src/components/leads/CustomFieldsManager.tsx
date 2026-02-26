@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { Plus, Trash2, GripVertical, Pencil } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Pencil, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useLeadCustomFields, CustomField, FieldType } from '@/hooks/useLeadCustomFields';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 
 interface CustomFieldsManagerProps {
   adAccountId?: string;
@@ -29,6 +31,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
   
   const boardFilter = selectedBoardId === 'all' ? undefined : selectedBoardId;
   const { customFields, loading, addCustomField, updateCustomField, deleteCustomField } = useLeadCustomFields(adAccountId, boardFilter);
+  const { getStagesForField, setFieldStages } = useFieldStageRequirements(boardFilter);
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingField, setEditingField] = useState<CustomField | null>(null);
@@ -38,6 +41,11 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
   const [fieldOptions, setFieldOptions] = useState('');
   const [isRequired, setIsRequired] = useState(false);
   const [fieldBoardId, setFieldBoardId] = useState<string>('none');
+
+  // Stage requirements
+  const [stageReqDialogOpen, setStageReqDialogOpen] = useState(false);
+  const [stageReqField, setStageReqField] = useState<CustomField | null>(null);
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]);
 
   const resetForm = () => {
     setFieldName('');
@@ -110,6 +118,31 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
   const getBoardName = (boardId: string | null) => {
     if (!boardId) return null;
     return boards.find(b => b.id === boardId)?.name;
+  };
+
+  const openStageReqDialog = (field: CustomField) => {
+    setStageReqField(field);
+    setSelectedStageIds(getStagesForField(field.id));
+    setStageReqDialogOpen(true);
+  };
+
+  const handleSaveStageReqs = async () => {
+    if (!stageReqField) return;
+    const bId = stageReqField.board_id || selectedBoardId;
+    if (!bId || bId === 'all') return;
+    try {
+      await setFieldStages(stageReqField.id, bId, selectedStageIds);
+      setStageReqDialogOpen(false);
+    } catch { /* handled */ }
+  };
+
+  const toggleStageId = (id: string) => {
+    setSelectedStageIds(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  };
+
+  const getFieldBoard = (field: CustomField) => {
+    const bId = field.board_id || (selectedBoardId !== 'all' ? selectedBoardId : null);
+    return bId ? boards.find(b => b.id === bId) : null;
   };
 
   return (
@@ -264,10 +297,26 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                           ({field.field_options.length} opções)
                         </span>
                       )}
+                      {getStagesForField(field.id).length > 0 && (
+                        <Badge variant="default" className="text-xs gap-0.5">
+                          <ShieldCheck className="h-2.5 w-2.5" />
+                          {getStagesForField(field.id).length} etapa(s)
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {getFieldBoard(field) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openStageReqDialog(field)}
+                      title="Obrigatório por etapa"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -288,6 +337,53 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
           </div>
         )}
       </CardContent>
+
+      {/* Stage Requirements Dialog */}
+      <Dialog open={stageReqDialogOpen} onOpenChange={setStageReqDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Obrigatório por etapa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Em quais etapas o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório?
+            </p>
+            {(() => {
+              const board = stageReqField ? getFieldBoard(stageReqField) : null;
+              if (!board) return <p className="text-sm text-muted-foreground text-center py-4">Selecione um funil específico para configurar etapas.</p>;
+              return (
+                <div className="space-y-1 border rounded-lg overflow-hidden">
+                  {board.stages.map((stage) => (
+                    <label
+                      key={stage.id}
+                      className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-accent/30 cursor-pointer transition-colors"
+                    >
+                      <Checkbox
+                        checked={selectedStageIds.includes(stage.id)}
+                        onCheckedChange={() => toggleStageId(stage.id)}
+                      />
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: stage.color }} />
+                      <span className="text-sm font-medium">{stage.name}</span>
+                    </label>
+                  ))}
+                </div>
+              );
+            })()}
+            {selectedStageIds.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                ⚠️ Ao mover um lead para essas etapas, este campo será validado como obrigatório.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStageReqDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveStageReqs}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
