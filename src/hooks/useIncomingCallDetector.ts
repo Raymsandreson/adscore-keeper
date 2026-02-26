@@ -18,6 +18,27 @@ export function useIncomingCallDetector() {
   const [activeCall, setActiveCall] = useState<IncomingCallEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const dismissedCallIds = useRef<Set<string>>(new Set());
+  const defaultInstanceNameRef = useRef<string | null>(null);
+
+  // Fetch user's default instance name
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('default_instance_id')
+        .eq('user_id', user.id)
+        .single();
+      if (profile?.default_instance_id) {
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_name')
+          .eq('id', profile.default_instance_id)
+          .single();
+        defaultInstanceNameRef.current = inst?.instance_name || null;
+      }
+    })();
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -33,7 +54,10 @@ export function useIncomingCallDetector() {
         },
         (payload) => {
           const event = payload.new as IncomingCallEvent;
-          // Trigger on 'offer' (ringing) events for both inbound and outbound calls
+          // Only trigger for the user's default (main) instance
+          if (defaultInstanceNameRef.current && event.instance_name !== defaultInstanceNameRef.current) {
+            return;
+          }
           if ((event.event_type === 'offer' || event.event_type === 'accept') && !dismissedCallIds.current.has(event.call_id)) {
             setActiveCall(event);
             setDismissed(false);
