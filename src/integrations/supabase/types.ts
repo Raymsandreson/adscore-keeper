@@ -3686,6 +3686,7 @@ export type Database = {
           created_at: string
           email: string | null
           full_name: string | null
+          gender: string | null
           id: string
           treatment_title: string | null
           updated_at: string
@@ -3695,6 +3696,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          gender?: string | null
           id?: string
           treatment_title?: string | null
           updated_at?: string
@@ -3704,6 +3706,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           full_name?: string | null
+          gender?: string | null
           id?: string
           treatment_title?: string | null
           updated_at?: string

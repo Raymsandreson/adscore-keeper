@@ -220,7 +220,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     identifySender = true,
     chatId?: string,
     treatmentOverride?: string | null,
-    nameFormatOverride?: string
+    nameFormatOverride?: string,
+    nicknameOverride?: string | null
   ) => {
     try {
       let finalMessage = message;
@@ -248,23 +249,27 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         profileCacheRef.current = profileResult.data;
       }
 
-      if (user && identifySender && profileCacheRef.current?.full_name) {
-        const { full_name } = profileCacheRef.current;
-        // Apply name format
-        const fmt = nameFormatOverride || 'full';
-        let displayName = full_name;
-        if (fmt === 'first') {
-          displayName = full_name.split(' ')[0];
-        } else if (fmt === 'first_last') {
-          const parts = full_name.split(' ');
-          displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
+      if (user && identifySender) {
+        const fmt = nameFormatOverride || 'first_last';
+        
+        if (fmt === 'nickname' && nicknameOverride) {
+          // Nickname mode: just the nickname, no treatment title
+          finalMessage = `*${nicknameOverride}:*\n${message}`;
+        } else if (profileCacheRef.current?.full_name) {
+          const { full_name } = profileCacheRef.current;
+          let displayName = full_name;
+          if (fmt === 'first') {
+            displayName = full_name.split(' ')[0];
+          } else if (fmt === 'first_last') {
+            const parts = full_name.split(' ');
+            displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
+          }
+          const title = treatmentOverride !== undefined && treatmentOverride !== null
+            ? treatmentOverride
+            : (profileCacheRef.current.treatment_title || '');
+          const senderName = title ? `${title} ${displayName}` : displayName;
+          finalMessage = `*${senderName}:*\n${message}`;
         }
-        // Use conversation-level treatment override if provided, otherwise fall back to profile
-        const title = treatmentOverride !== undefined && treatmentOverride !== null
-          ? treatmentOverride
-          : (profileCacheRef.current.treatment_title || '');
-        const senderName = title ? `${title} ${displayName}` : displayName;
-        finalMessage = `*${senderName}:*\n${message}`;
       }
 
       const { data, error } = await supabase.functions.invoke('send-whatsapp', {
