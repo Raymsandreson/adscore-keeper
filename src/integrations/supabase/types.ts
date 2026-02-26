@@ -2638,39 +2638,57 @@ export type Database = {
       }
       job_positions: {
         Row: {
+          allows_demotion: boolean | null
           career_plan_id: string | null
           color: string | null
           created_at: string
+          demotion_note: string | null
           department: string | null
           description: string | null
           id: string
           is_active: boolean
           level: number
           name: string
+          ote_total: number | null
+          salary_fixed: number | null
+          salary_variable: number | null
+          track_type: string | null
           updated_at: string
         }
         Insert: {
+          allows_demotion?: boolean | null
           career_plan_id?: string | null
           color?: string | null
           created_at?: string
+          demotion_note?: string | null
           department?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
           level?: number
           name: string
+          ote_total?: number | null
+          salary_fixed?: number | null
+          salary_variable?: number | null
+          track_type?: string | null
           updated_at?: string
         }
         Update: {
+          allows_demotion?: boolean | null
           career_plan_id?: string | null
           color?: string | null
           created_at?: string
+          demotion_note?: string | null
           department?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
           level?: number
           name?: string
+          ote_total?: number | null
+          salary_fixed?: number | null
+          salary_variable?: number | null
+          track_type?: string | null
           updated_at?: string
         }
         Relationships: [
