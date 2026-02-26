@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
     const cleanPhone = phone.replace(/\D/g, '')
     const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`
 
-    // Get instance by id, name, or fallback to first active
+    // Get instance by id, name, or user's default, or fallback to first active
     let instance: any = null
     if (instance_id) {
       const { data } = await supabase
@@ -61,6 +61,24 @@ Deno.serve(async (req) => {
         .eq('is_active', true)
         .single()
       instance = data
+    }
+
+    // Fallback: try user's default instance from profile
+    if (!instance && userId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('default_instance_id')
+        .eq('user_id', userId)
+        .single()
+      if (profile?.default_instance_id) {
+        const { data } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('id', profile.default_instance_id)
+          .eq('is_active', true)
+          .single()
+        instance = data
+      }
     }
 
     if (!instance) {
