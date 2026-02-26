@@ -663,9 +663,10 @@ export function CareerPlanManager() {
                           <span className="font-medium">{p.name}</span>
                         </div>
                         {p.description && (
-                          <details className="mt-0.5 max-w-sm">
-                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground truncate list-none">
-                              <span className="line-clamp-1">{p.description}</span>
+                          <details className="mt-0.5 max-w-sm group/desc">
+                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none">
+                              <span className="line-clamp-1 group-open/desc:hidden">{p.description}</span>
+                              <span className="hidden group-open/desc:inline text-xs text-muted-foreground">▾ Ocultar</span>
                             </summary>
                             <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{p.description}</p>
                           </details>
