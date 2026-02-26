@@ -19,8 +19,9 @@ export function useIncomingCallDetector() {
   const [dismissed, setDismissed] = useState(false);
   const dismissedCallIds = useRef<Set<string>>(new Set());
   const defaultInstanceNameRef = useRef<string | null>(null);
+  const allowedInstanceNamesRef = useRef<string[] | null>(null); // null = not loaded yet
 
-  // Fetch user's default instance name
+  // Fetch user's default instance OR allowed instances
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -29,13 +30,34 @@ export function useIncomingCallDetector() {
         .select('default_instance_id')
         .eq('user_id', user.id)
         .single();
+
       if (profile?.default_instance_id) {
+        // User has a main instance — only listen to that one
         const { data: inst } = await supabase
           .from('whatsapp_instances')
           .select('instance_name')
           .eq('id', profile.default_instance_id)
           .single();
         defaultInstanceNameRef.current = inst?.instance_name || null;
+        allowedInstanceNamesRef.current = inst?.instance_name ? [inst.instance_name] : [];
+      } else {
+        // No main instance — load all instances the user has access to
+        const { data: accessRows } = await supabase
+          .from('whatsapp_instance_users')
+          .select('instance_id')
+          .eq('user_id', user.id);
+
+        if (accessRows && accessRows.length > 0) {
+          const ids = accessRows.map(r => r.instance_id);
+          const { data: instances } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name')
+            .in('id', ids)
+            .eq('is_active', true);
+          allowedInstanceNamesRef.current = (instances || []).map(i => i.instance_name);
+        } else {
+          allowedInstanceNamesRef.current = [];
+        }
       }
     })();
   }, [user]);
@@ -54,8 +76,13 @@ export function useIncomingCallDetector() {
         },
         (payload) => {
           const event = payload.new as IncomingCallEvent;
-          // Only trigger for the user's default (main) instance
-          if (defaultInstanceNameRef.current && event.instance_name !== defaultInstanceNameRef.current) {
+          // Filter: only trigger for allowed instances
+          const allowed = allowedInstanceNamesRef.current;
+          if (allowed && allowed.length > 0 && event.instance_name && !allowed.includes(event.instance_name)) {
+            return;
+          }
+          // If allowed is empty array (no access), block all
+          if (allowed && allowed.length === 0) {
             return;
           }
           if ((event.event_type === 'offer' || event.event_type === 'accept') && !dismissedCallIds.current.has(event.call_id)) {
