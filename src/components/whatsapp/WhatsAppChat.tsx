@@ -5,6 +5,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -16,7 +18,14 @@ import { toast } from 'sonner';
 
 interface Props {
   conversation: WhatsAppConversation;
-  onSendMessage: (phone: string, message: string, contactId?: string, leadId?: string) => Promise<boolean>;
+  onSendMessage: (
+    phone: string,
+    message: string,
+    contactId?: string,
+    leadId?: string,
+    conversationInstanceName?: string | null,
+    identifySender?: boolean
+  ) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
   onCreateLead: () => void;
@@ -34,11 +43,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState('');
   const [callRecords, setCallRecords] = useState<any[]>([]);
+  const [identifySender, setIdentifySender] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  useEffect(() => {
+    const storageKey = `wa-identify-sender:${conversation.phone}`;
+    const savedPreference = localStorage.getItem(storageKey);
+    setIdentifySender(savedPreference !== 'false');
+  }, [conversation.phone]);
 
   // Fetch call records for this phone
   useEffect(() => {
@@ -78,6 +94,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [timelineItems.length]);
 
+  const handleToggleIdentifySender = (checked: boolean) => {
+    setIdentifySender(checked);
+    const storageKey = `wa-identify-sender:${conversation.phone}`;
+    localStorage.setItem(storageKey, checked ? 'true' : 'false');
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
     setSending(true);
@@ -85,7 +107,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
       conversation.phone,
       newMessage.trim(),
       conversation.contact_id || undefined,
-      conversation.lead_id || undefined
+      conversation.lead_id || undefined,
+      conversation.instance_name,
+      identifySender
     );
     if (success) setNewMessage('');
     setSending(false);
@@ -359,7 +383,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t bg-card shrink-0">
+      <div className="p-3 border-t bg-card shrink-0 space-y-2">
+        <div className="flex items-center justify-end gap-2">
+          <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
+            Identificar remetente nesta conversa
+          </Label>
+          <Switch
+            id="identify-sender"
+            checked={identifySender}
+            onCheckedChange={handleToggleIdentifySender}
+          />
+        </div>
         <div className="flex gap-2">
           <Textarea
             placeholder="Digite uma mensagem..."
