@@ -9,6 +9,7 @@ import {
   MapPin, Building2, User, Calendar, FileText, ExternalLink, 
   ChevronDown, ChevronUp, ClipboardPlus
 } from 'lucide-react';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { ShareMenu } from '@/components/ShareMenu';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -77,7 +78,7 @@ export function WhatsAppLeadPreview({ leadId, contactId, contactName, onCreateAc
         <div className="flex items-center gap-2 px-3 py-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold truncate">{lead.lead_name || 'Lead'}</span>
+              <CopyableText copyValue={lead.lead_name || 'Lead'} label="Lead" className="text-xs font-semibold truncate">{lead.lead_name || 'Lead'}</CopyableText>
               {lead.status && (
                 <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">
                   {statusLabels[lead.status] || lead.status}

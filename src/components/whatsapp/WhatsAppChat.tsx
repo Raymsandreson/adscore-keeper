@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen } from 'lucide-react';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format } from 'date-fns';
@@ -381,10 +382,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           <User className="h-5 w-5 text-green-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm truncate">
+          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
             {conversation.contact_name || formatPhone(conversation.phone)}
-          </p>
-          <p className="text-xs text-muted-foreground">{formatPhone(conversation.phone)}</p>
+          </CopyableText>
+          <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="p">
+            {formatPhone(conversation.phone)}
+          </CopyableText>
         </div>
         <div className="flex items-center gap-2">
           {conversation.lead_id ? (
