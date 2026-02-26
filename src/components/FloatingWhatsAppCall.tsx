@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, Loader2 } from 'lucide-react';
+import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, Loader2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -225,6 +225,16 @@ export function FloatingWhatsAppCall() {
     handleMakeCall(dialNumber.trim());
   };
 
+  const handleCopyNumber = (phone: string, contactName?: string | null) => {
+    const clean = phone.replace(/\D/g, '');
+    const formatted = clean.startsWith('55') ? clean : `55${clean}`;
+    navigator.clipboard.writeText(formatted).then(() => {
+      toast.success(`Número ${contactName ? `de ${contactName} ` : ''}copiado!`);
+    }).catch(() => {
+      toast.error('Erro ao copiar número');
+    });
+  };
+
   const formatDuration = (s: number) => {
     if (!s) return '0s';
     const m = Math.floor(s / 60);
@@ -345,9 +355,18 @@ export function FloatingWhatsAppCall() {
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{contact.full_name}</p>
-                              <p className="text-[11px] text-muted-foreground">{contact.phone}</p>
+                                <p className="text-[11px] text-muted-foreground">{contact.phone}</p>
                             </div>
-                            <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyNumber(contact.phone!, contact.full_name); }}
+                                className="p-1 rounded hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                                title="Copiar número"
+                              >
+                                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                              </button>
+                              <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -420,6 +439,16 @@ export function FloatingWhatsAppCall() {
                     />
                     <Button
                       size="sm"
+                      variant="outline"
+                      className="h-9 px-2"
+                      onClick={() => dialNumber.trim() && handleCopyNumber(dialNumber.trim())}
+                      disabled={!dialNumber.trim()}
+                      title="Copiar número"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
                       className="bg-green-600 hover:bg-green-700 h-9 px-3"
                       onClick={handleDialDirect}
                       disabled={!dialNumber.trim() || calling}
@@ -460,10 +489,14 @@ export function FloatingWhatsAppCall() {
                                 {conv.last_message || conv.phone}
                               </p>
                             </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <span className="text-[10px] text-muted-foreground">
-                                {formatDistanceToNow(new Date(conv.last_message_at), { addSuffix: true, locale: ptBR })}
-                              </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyNumber(conv.phone, conv.contact_name); }}
+                                className="p-1 rounded hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                                title="Copiar número"
+                              >
+                                <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                              </button>
                               <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                           </button>
@@ -510,12 +543,21 @@ export function FloatingWhatsAppCall() {
                                 <span>{formatDuration(call.duration_seconds)}</span>
                               </div>
                             </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0">
                               <span className="text-[10px] text-muted-foreground">
                                 {formatDistanceToNow(new Date(call.created_at), { addSuffix: true, locale: ptBR })}
                               </span>
                               {call.contact_phone && (
-                                <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCopyNumber(call.contact_phone!, call.contact_name); }}
+                                    className="p-1 rounded hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+                                    title="Copiar número"
+                                  >
+                                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </button>
+                                  <Phone className="h-3.5 w-3.5 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </>
                               )}
                             </div>
                           </button>
