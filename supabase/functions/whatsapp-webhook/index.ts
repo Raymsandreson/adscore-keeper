@@ -425,7 +425,7 @@ async function handleCallEvent(supabase: any, body: any) {
       lead_name: leadName || finalContactName,
       contact_name: finalContactName,
       contact_phone: finalPhone,
-      phone_used: 'whatsapp',
+      phone_used: instanceName || 'whatsapp',
       ai_summary: aiSummary,
       ai_transcript: aiTranscript,
       audio_url: audioUrl,
@@ -478,7 +478,10 @@ Deno.serve(async (req) => {
     console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
 
     // ========== CALL EVENT HANDLING ==========
-    if (body.EventType === 'call' || body.event === 'call' || body.type === 'call') {
+    const isCallEvent = body.EventType === 'call' || body.event === 'call' || body.type === 'call' 
+      || (body.EventType === 'call_log') || (body.type === 'CallState')
+      || (body.EventType === 'calls');
+    if (isCallEvent) {
       console.log('Detected CALL event, processing...')
       const callRecord = await handleCallEvent(supabase, body);
       return new Response(
@@ -510,7 +513,19 @@ Deno.serve(async (req) => {
       
       console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
 
+      // Allow call-related EventTypes to pass through to the call handler above
       if (body.EventType !== 'messages') {
+        // Check if this is a call event that wasn't caught above (UazAPI may use different naming)
+        const callRelated = body.EventType === 'call' || body.EventType === 'calls' || body.EventType === 'call_log';
+        if (callRelated) {
+          console.log('Detected UazAPI call event via EventType:', body.EventType);
+          const callRecord = await handleCallEvent(supabase, body);
+          return new Response(
+            JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        console.log('SKIPPING non-message, non-call EventType:', body.EventType, 'Full type field:', body.type, 'Keys:', Object.keys(body).join(','));
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: `EventType ${body.EventType} ignored` }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
