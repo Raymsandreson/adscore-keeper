@@ -1,34 +1,44 @@
 
 
-## Diagnóstico
+## Diagnose
 
-O problema tem duas partes:
+I found the root cause. The current `sendMessage` logic requires **both** conditions to be true:
+1. The instance's `auto_identify_sender` setting (from database)
+2. The conversation's switch `identifySender` (from the UI)
 
-1. **Valor fixo de 335 minutos**: Na correção anterior, foi adicionado um `Math.max(calculatedSessionMinutes, 335)` que trava o tempo em no mínimo 335 minutos, impedindo que o valor real calculado (que pode ser maior agora) seja usado.
+But the database shows **all instances have `auto_identify_sender = false`**, including "Atendimento Processual". So even with the conversation switch ON, the sender identification never executes because `autoIdentify` is always `false`.
 
-2. **Sessões fragmentadas**: Os dados do banco mostram **56 sessões** no dia, muitas com duração de 0-2 minutos e várias sem `ended_at`. O algoritmo de merge de intervalos calcula corretamente os intervalos sobrepostos, mas a fragmentação excessiva (sessões reiniciando a cada 2 minutos) faz com que o tempo total calculado fique menor que o real, pois os gaps de inatividade (5 min grace) não cobrem todas as lacunas.
+The user confirmed: **the conversation switch should be the only thing that matters** -- if it's ON, identify the sender regardless of the instance setting.
 
-## Plano de Correção
+Additionally, the user's `treatment_title` is currently `null` in the database, so we need to ensure the Profile page has a field to set it.
 
-### 1. Remover o hardcode de 335 minutos
-- Remover a linha `Math.max(calculatedSessionMinutes, 335)` e usar diretamente `calculatedSessionMinutes`.
+## Plan
 
-### 2. Aumentar o grace period de inatividade
-- Atualmente o `SESSION_INACTIVITY_GRACE_MS` é 5 minutos. Para sessões sem `ended_at`, o sistema infere o fim como `last_activity_at + 5min`. Como as sessões reabrem frequentemente a cada 2 minutos, há gaps entre o fim inferido de uma sessão e o início da próxima.
-- Aumentar o grace period para **10 minutos** para cobrir melhor as lacunas entre sessões fragmentadas, evitando subcontagem.
+### 1. Fix `sendMessage` in `src/hooks/useWhatsAppMessages.ts`
 
-### 3. Usar sessão local como complemento
-- Adicionar lógica no `useSessionTracker` para manter um contador local (`performance.now()`) do tempo desde o início da sessão atual, e somar esse valor ao tempo calculado do banco. Isso garante que a sessão ativa (ainda não persistida) conte imediatamente.
+Remove the dependency on `autoIdentify` from the instance. The logic should be:
+- If `identifySender` parameter is `true` (from the chat switch), fetch profile and prepend the sender name
+- Remove all the `autoIdentify` variable and related instance queries for this purpose
+- Keep the instance resolution logic only for determining `targetInstanceId`
 
-### Arquivos a editar
-- `src/hooks/useMyProductivity.ts` — remover hardcode, aumentar grace, somar sessão local
-- `src/hooks/useSessionTracker.ts` — expor `sessionStartedAt` para cálculo local
+Simplified flow:
+```
+if (user && identifySender) {
+  // fetch profile → prepend *Name:* to message
+}
+```
 
-### Detalhe Técnico
+### 2. Verify Profile page has `treatment_title` field
 
-O cálculo atual com os dados reais do banco:
-- 56 sessões com merge de intervalos
-- Grace period de 5 min → calculado ~88 minutos (muitos gaps)
-- Com grace de 10 min → estimado ~350+ minutos (cobre lacunas)
-- Somando sessão ativa local → reflete tempo real
+Check `src/pages/ProfilePage.tsx` to confirm the treatment title selector exists. If not, add it so users can configure their title (Dr., Dra., Sr., Sra., etc.).
+
+### Technical Details
+
+**File: `src/hooks/useWhatsAppMessages.ts`** (lines 224-272)
+- Remove the 3 blocks that query `auto_identify_sender` from the database
+- Keep only the instance ID resolution for sending
+- Change line 260 from `if (user && autoIdentify && identifySender)` to `if (user && identifySender)`
+
+**File: `src/pages/ProfilePage.tsx`**
+- Verify treatment_title field exists; add if missing
 
