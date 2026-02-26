@@ -33,6 +33,7 @@ interface SearchResult {
   raw: any;
 }
 
+// Global search component
 export function GlobalDatabaseSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
