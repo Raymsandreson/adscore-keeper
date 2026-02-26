@@ -76,15 +76,13 @@ export function useIncomingCallDetector() {
         },
         (payload) => {
           const event = payload.new as IncomingCallEvent;
-          // Filter: only trigger for allowed instances
+          // Block ALL events until allowed list is loaded (null = not loaded yet)
           const allowed = allowedInstanceNamesRef.current;
-          if (allowed && allowed.length > 0 && event.instance_name && !allowed.includes(event.instance_name)) {
-            return;
-          }
+          if (allowed === null) return;
           // If allowed is empty array (no access), block all
-          if (allowed && allowed.length === 0) {
-            return;
-          }
+          if (allowed.length === 0) return;
+          // Filter: only trigger for allowed instances
+          if (event.instance_name && !allowed.includes(event.instance_name)) return;
           if ((event.event_type === 'offer' || event.event_type === 'accept') && !dismissedCallIds.current.has(event.call_id)) {
             setActiveCall(event);
             setDismissed(false);
