@@ -14,6 +14,7 @@ import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 
 interface LeadActivity {
   id: string;
@@ -427,19 +428,40 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
               </div>
               <div>
                 <Label className="text-xs">Descrição</Label>
-                <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={2} className="text-sm" />
+                <ActivityNotesField
+                  value={editDescription}
+                  onChange={setEditDescription}
+                  activityId={editActivity?.id}
+                  placeholder="Descrição..."
+                  label=""
+                />
               </div>
               <div>
-                <Label className="text-xs">O que foi feito</Label>
-                <Textarea value={editWhatWasDone} onChange={e => setEditWhatWasDone(e.target.value)} placeholder="Descreva o que já foi realizado..." rows={2} className="text-sm" />
+                <ActivityNotesField
+                  value={editWhatWasDone}
+                  onChange={setEditWhatWasDone}
+                  activityId={editActivity?.id}
+                  placeholder="Descreva o que já foi realizado..."
+                  label="O que foi feito"
+                />
               </div>
               <div>
-                <Label className="text-xs">Status atual / Observações</Label>
-                <Textarea value={editCurrentStatusNotes} onChange={e => setEditCurrentStatusNotes(e.target.value)} placeholder="Situação atual..." rows={2} className="text-sm" />
+                <ActivityNotesField
+                  value={editCurrentStatusNotes}
+                  onChange={setEditCurrentStatusNotes}
+                  activityId={editActivity?.id}
+                  placeholder="Situação atual..."
+                  label="Status atual / Observações"
+                />
               </div>
               <div>
-                <Label className="text-xs">Próximos passos</Label>
-                <Textarea value={editNextSteps} onChange={e => setEditNextSteps(e.target.value)} placeholder="O que precisa ser feito a seguir..." rows={2} className="text-sm" />
+                <ActivityNotesField
+                  value={editNextSteps}
+                  onChange={setEditNextSteps}
+                  activityId={editActivity?.id}
+                  placeholder="O que precisa ser feito a seguir..."
+                  label="Próximos passos"
+                />
               </div>
             </div>
           </ScrollArea>
