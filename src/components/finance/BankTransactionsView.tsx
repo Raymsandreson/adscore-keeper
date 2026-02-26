@@ -33,6 +33,9 @@ import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useGeolocation } from '@/hooks/useGeolocation';
+import { useCompanies } from '@/hooks/useCompanies';
+import { useCostCenters } from '@/hooks/useCostCenters';
+import { useBeneficiaries } from '@/hooks/useBeneficiaries';
 import { translateCategory } from '@/utils/categoryTranslations';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -110,7 +113,14 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
     notes: string;
     manualState: string;
     manualCity: string;
-  }>({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '' });
+    companyId: string;
+    costCenterId: string;
+    nature: string;
+    recurrence: string;
+    beneficiaryId: string;
+    paymentMethod: string;
+    invoiceNumber: string;
+  }>({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
 
   // Leads & Contacts for linking
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -140,6 +150,9 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { fetchLocation, loading: geoLoading } = useGeolocation();
   const teamProfiles = useProfilesList();
+  const { activeCompanies } = useCompanies();
+  const { activeCostCenters, getByCompany } = useCostCenters();
+  const { activeBeneficiaries } = useBeneficiaries();
 
   const parentCategories = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
 
@@ -321,6 +334,13 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
       notes: override?.notes || '',
       manualState: override?.manual_state || transaction.merchant_state || '',
       manualCity: override?.manual_city || transaction.merchant_city || '',
+      companyId: (override as any)?.company_id || '',
+      costCenterId: (override as any)?.cost_center_id || '',
+      nature: (override as any)?.nature || '',
+      recurrence: (override as any)?.recurrence || '',
+      beneficiaryId: (override as any)?.beneficiary_id || '',
+      paymentMethod: (override as any)?.payment_method || '',
+      invoiceNumber: (override as any)?.invoice_number || '',
     });
 
     if (override?.manual_state || transaction.merchant_state) {
@@ -341,7 +361,7 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const cancelEditing = () => {
     setEditingId(null);
-    setEditData({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '' });
+    setEditData({ categoryId: null, linkType: 'lead', linkId: null, notes: '', manualState: '', manualCity: '', companyId: '', costCenterId: '', nature: '', recurrence: '', beneficiaryId: '', paymentMethod: '', invoiceNumber: '' });
   };
 
   const saveTransaction = async (transactionId: string) => {
@@ -357,7 +377,17 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
         editData.notes || undefined,
         editData.manualCity || undefined,
         editData.manualState || undefined,
-        isNoneSelected
+        isNoneSelected,
+        undefined,
+        {
+          company_id: editData.companyId || undefined,
+          cost_center_id: editData.costCenterId || undefined,
+          nature: editData.nature || undefined,
+          recurrence: editData.recurrence || undefined,
+          beneficiary_id: editData.beneficiaryId || undefined,
+          payment_method: editData.paymentMethod || undefined,
+          invoice_number: editData.invoiceNumber || undefined,
+        }
       );
       setEditingId(null);
       toast.success('Transação categorizada!');
@@ -715,10 +745,87 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
                   </div>
                 </div>
 
-                {/* Notes */}
-                <div className="space-y-1">
-                  <label className="text-xs font-medium">Descrição</label>
-                  <Input value={editData.notes} onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Descreva o que foi este gasto..." className="h-8 text-xs" />
+                {/* Empresa + Setor */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Empresa</label>
+                    <Select value={editData.companyId} onValueChange={(v) => setEditData(prev => ({ ...prev, companyId: v, costCenterId: '' }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar empresa" /></SelectTrigger>
+                      <SelectContent>{activeCompanies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Setor / Centro de Custo</label>
+                    <Select value={editData.costCenterId} onValueChange={(v) => setEditData(prev => ({ ...prev, costCenterId: v }))} disabled={!editData.companyId}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar setor" /></SelectTrigger>
+                      <SelectContent>{(editData.companyId ? getByCompany(editData.companyId) : activeCostCenters).map(cc => <SelectItem key={cc.id} value={cc.id}>{cc.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Natureza + Recorrência */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Natureza</label>
+                    <Select value={editData.nature} onValueChange={(v) => setEditData(prev => ({ ...prev, nature: v }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixo">Fixo</SelectItem>
+                        <SelectItem value="variavel">Variável</SelectItem>
+                        <SelectItem value="semi-fixo">Semi-fixo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Recorrência</label>
+                    <Select value={editData.recurrence} onValueChange={(v) => setEditData(prev => ({ ...prev, recurrence: v }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="semanal">Semanal</SelectItem>
+                        <SelectItem value="mensal">Mensal</SelectItem>
+                        <SelectItem value="anual">Anual</SelectItem>
+                        <SelectItem value="eventual">Eventual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Beneficiário + Forma de Pagamento */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Beneficiário</label>
+                    <Select value={editData.beneficiaryId} onValueChange={(v) => setEditData(prev => ({ ...prev, beneficiaryId: v }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                      <SelectContent>{activeBeneficiaries.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Forma de Pagamento</label>
+                    <Select value={editData.paymentMethod} onValueChange={(v) => setEditData(prev => ({ ...prev, paymentMethod: v }))}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pix">PIX</SelectItem>
+                        <SelectItem value="boleto">Boleto</SelectItem>
+                        <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                        <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                        <SelectItem value="transferencia">Transferência</SelectItem>
+                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                        <SelectItem value="cheque">Cheque</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Nº NF + Descrição */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Nº Nota Fiscal</label>
+                    <Input value={editData.invoiceNumber} onChange={(e) => setEditData(prev => ({ ...prev, invoiceNumber: e.target.value }))} placeholder="Nº NF" className="h-8 text-xs" />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs font-medium">Descrição</label>
+                    <Input value={editData.notes} onChange={(e) => setEditData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Descreva o que foi este gasto..." className="h-8 text-xs" />
+                  </div>
                 </div>
 
                 {/* Actions */}
