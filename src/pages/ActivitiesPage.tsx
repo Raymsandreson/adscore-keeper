@@ -1197,6 +1197,9 @@ const ActivitiesPage = () => {
             const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
             const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
 
+            const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
+            const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+
             const msg = `*Boa tarde Sr(a). *
 
 Assunto da atividade: ${formTitle.toUpperCase()}
@@ -1206,10 +1209,11 @@ ${formLeadName ? `Referente ao caso de ${formLeadName}` : ''}
 ${fieldLines}
 
 ${formAssignedToName ? `${formAssignedToName} voltará com mais informações no dia ${notifDate || '—'}, até o final do dia.` : ''}
+${tempoStr}
 
 Criado por: ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\nÚltima atualização por: ${updatedByName} em ${updatedAtFmt}` : ''}
 
-Com Carinho, ${formAssignedToName || 'Equipe'}
+Atenciosamente, ${createdByName || 'Equipe'}
 
 Estamos à disposição para quaisquer dúvidas.
 
