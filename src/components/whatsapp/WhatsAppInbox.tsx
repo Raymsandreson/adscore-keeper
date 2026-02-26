@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
@@ -23,6 +23,14 @@ import { useNavigate } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useModulePermissions } from '@/hooks/useModulePermissions';
+import { useAuthContext } from '@/contexts/AuthContext';
+
+interface PrivateConv {
+  phone: string;
+  instance_name: string;
+  private_by: string;
+}
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
@@ -30,6 +38,8 @@ export function WhatsAppInbox() {
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const { boards } = useKanbanBoards();
+  const { canView } = useModulePermissions();
+  const { user } = useAuthContext();
   const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
@@ -54,8 +64,34 @@ export function WhatsAppInbox() {
   const [bulkSelectedPhones, setBulkSelectedPhones] = useState<Set<string>>(new Set());
   const [showBulkDialog, setShowBulkDialog] = useState(false);
 
-  const selectedConversation = conversations.find(c => c.phone === selectedPhone) || null;
-  const totalUnread = conversations.reduce((sum, c) => sum + c.unread_count, 0);
+  // Private conversations
+  const [privateConvs, setPrivateConvs] = useState<PrivateConv[]>([]);
+  const canViewPrivate = canView('whatsapp_private');
+
+  useEffect(() => {
+    const fetchPrivate = async () => {
+      const { data } = await supabase
+        .from('whatsapp_private_conversations')
+        .select('phone, instance_name, private_by');
+      setPrivateConvs((data || []) as PrivateConv[]);
+    };
+    fetchPrivate();
+  }, []);
+
+  // Filter out private conversations the user can't see
+  const visibleConversations = useMemo(() => {
+    if (!user) return conversations;
+    return conversations.filter(conv => {
+      const priv = privateConvs.find(p => p.phone === conv.phone && p.instance_name === conv.instance_name);
+      if (!priv) return true; // not private
+      if (priv.private_by === user.id) return true; // owner
+      if (canViewPrivate) return true; // has permission
+      return false;
+    });
+  }, [conversations, privateConvs, user, canViewPrivate]);
+
+  const selectedConversation = visibleConversations.find(c => c.phone === selectedPhone) || null;
+  const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     setSelectedPhone(conv.phone);
@@ -383,7 +419,7 @@ export function WhatsAppInbox() {
         {/* Conversation List */}
         <div className="w-80 border-r flex-shrink-0 overflow-y-auto bg-card">
           <WhatsAppConversationList
-            conversations={conversations}
+            conversations={visibleConversations}
             loading={loading}
             selectedPhone={selectedPhone}
             onSelect={handleSelectConversation}
@@ -409,6 +445,12 @@ export function WhatsAppInbox() {
               onCreateActivity={handleCreateActivity}
               onNavigateToLead={handleNavigateToLead}
               onViewContact={handleViewContact}
+              onPrivacyChanged={async () => {
+                const { data } = await supabase
+                  .from('whatsapp_private_conversations')
+                  .select('phone, instance_name, private_by');
+                setPrivateConvs((data || []) as PrivateConv[]);
+              }}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center bg-muted/20">

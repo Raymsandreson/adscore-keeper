@@ -9,7 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format } from 'date-fns';
@@ -48,9 +49,10 @@ interface Props {
   onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
+  onPrivacyChanged?: () => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -65,6 +67,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [nicknames, setNicknames] = useState<string[]>([]);
   const [selectedNickname, setSelectedNickname] = useState<string>('');
   const [newNickname, setNewNickname] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [togglingPrivate, setTogglingPrivate] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
@@ -96,6 +100,49 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     const savedSelectedNickname = localStorage.getItem(selectedNicknameKey);
     setSelectedNickname(savedSelectedNickname || '');
   }, [conversation.phone, profile]);
+
+  // Check if conversation is private
+  useEffect(() => {
+    if (!conversation.phone || !conversation.instance_name) return;
+    const checkPrivate = async () => {
+      const { data } = await supabase
+        .from('whatsapp_private_conversations')
+        .select('id')
+        .eq('phone', conversation.phone)
+        .eq('instance_name', conversation.instance_name)
+        .maybeSingle();
+      setIsPrivate(!!data);
+    };
+    checkPrivate();
+  }, [conversation.phone, conversation.instance_name]);
+
+  const handleTogglePrivate = async () => {
+    if (!conversation.instance_name) return;
+    setTogglingPrivate(true);
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (!currentUser) return;
+      
+      if (isPrivate) {
+        await supabase.from('whatsapp_private_conversations')
+          .delete()
+          .eq('phone', conversation.phone)
+          .eq('instance_name', conversation.instance_name);
+        setIsPrivate(false);
+        toast.success('Conversa tornada pública');
+      } else {
+        await supabase.from('whatsapp_private_conversations')
+          .insert({ phone: conversation.phone, instance_name: conversation.instance_name, private_by: currentUser.id });
+        setIsPrivate(true);
+        toast.success('Conversa marcada como privada');
+      }
+      onPrivacyChanged?.();
+    } catch (e) {
+      toast.error('Erro ao alterar privacidade');
+    } finally {
+      setTogglingPrivate(false);
+    }
+  };
 
   // Fetch call records for this phone
   useEffect(() => {
@@ -350,6 +397,22 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
             leadId={conversation.lead_id}
             instanceName={conversation.instance_name}
           />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={isPrivate ? "default" : "outline"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleTogglePrivate}
+                disabled={togglingPrivate}
+              >
+                {isPrivate ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isPrivate ? 'Conversa privada (clique para tornar pública)' : 'Tornar conversa privada'}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

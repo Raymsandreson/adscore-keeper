@@ -4,14 +4,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Shield, Eye, Edit2, Ban, CheckSquare, Users, Calendar, BarChart3, DollarSign, MessageCircle, Phone, MessageSquare, Contact } from 'lucide-react';
+import { Shield, Eye, Edit2, Ban, CheckSquare, Users, Calendar, BarChart3, DollarSign, MessageCircle, Phone, MessageSquare, Contact, Lock } from 'lucide-react';
 import { useModulePermissions, MODULE_DEFINITIONS, AccessLevel } from '@/hooks/useModulePermissions';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 const iconMap: Record<string, React.ElementType> = {
-  CheckSquare, Users, Calendar, BarChart3, DollarSign, MessageCircle, Phone, MessageSquare, Contact,
+  CheckSquare, Users, Calendar, BarChart3, DollarSign, MessageCircle, Phone, MessageSquare, Contact, Lock,
 };
 
 const accessLabels: Record<AccessLevel, { label: string; color: string; icon: React.ElementType }> = {
