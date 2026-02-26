@@ -7,7 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Send, User, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X } from 'lucide-react';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format } from 'date-fns';
@@ -15,12 +17,14 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
   { value: 'full', label: 'Nome completo' },
   { value: 'first', label: 'Primeiro nome' },
   { value: 'first_last', label: 'Primeiro e último' },
+  { value: 'nickname', label: 'Apelido' },
 ];
 
 interface Props {
@@ -34,7 +38,8 @@ interface Props {
     identifySender?: boolean,
     chatId?: string,
     treatmentOverride?: string | null,
-    nameFormatOverride?: string
+    nameFormatOverride?: string,
+    nicknameOverride?: string | null
   ) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
@@ -46,6 +51,7 @@ interface Props {
 }
 
 export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact }: Props) {
+  const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -55,7 +61,10 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
-  const [nameFormat, setNameFormat] = useState<string>('full');
+  const [nameFormat, setNameFormat] = useState<string>('first_last');
+  const [nicknames, setNicknames] = useState<string[]>([]);
+  const [selectedNickname, setSelectedNickname] = useState<string>('');
+  const [newNickname, setNewNickname] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
@@ -69,12 +78,24 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
 
     const treatmentKey = `wa-treatment:${conversation.phone}`;
     const savedTreatment = localStorage.getItem(treatmentKey);
-    setTreatmentTitle(savedTreatment ?? '');
+    // Default treatment: Dr. for male, Dra. for female, based on profile gender
+    const profileGender = (profile as any)?.gender;
+    const defaultTreatment = profileGender === 'female' ? 'Dra.' : profileGender === 'male' ? 'Dr.' : '';
+    setTreatmentTitle(savedTreatment ?? defaultTreatment);
 
     const nameFormatKey = `wa-name-format:${conversation.phone}`;
     const savedFormat = localStorage.getItem(nameFormatKey);
-    setNameFormat(savedFormat || 'full');
-  }, [conversation.phone]);
+    setNameFormat(savedFormat || 'first_last');
+
+    // Load nicknames list (global) and selected nickname (per conversation)
+    const nicknamesKey = `wa-nicknames`;
+    const savedNicknames = localStorage.getItem(nicknamesKey);
+    setNicknames(savedNicknames ? JSON.parse(savedNicknames) : []);
+
+    const selectedNicknameKey = `wa-selected-nickname:${conversation.phone}`;
+    const savedSelectedNickname = localStorage.getItem(selectedNicknameKey);
+    setSelectedNickname(savedSelectedNickname || '');
+  }, [conversation.phone, profile]);
 
   // Fetch call records for this phone
   useEffect(() => {
@@ -133,6 +154,32 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     localStorage.setItem(nameFormatKey, value);
   };
 
+  const handleAddNickname = () => {
+    const trimmed = newNickname.trim();
+    if (!trimmed || nicknames.includes(trimmed)) return;
+    const updated = [...nicknames, trimmed];
+    setNicknames(updated);
+    localStorage.setItem('wa-nicknames', JSON.stringify(updated));
+    setSelectedNickname(trimmed);
+    localStorage.setItem(`wa-selected-nickname:${conversation.phone}`, trimmed);
+    setNewNickname('');
+  };
+
+  const handleRemoveNickname = (nick: string) => {
+    const updated = nicknames.filter(n => n !== nick);
+    setNicknames(updated);
+    localStorage.setItem('wa-nicknames', JSON.stringify(updated));
+    if (selectedNickname === nick) {
+      setSelectedNickname(updated[0] || '');
+      localStorage.setItem(`wa-selected-nickname:${conversation.phone}`, updated[0] || '');
+    }
+  };
+
+  const handleSelectNickname = (value: string) => {
+    setSelectedNickname(value);
+    localStorage.setItem(`wa-selected-nickname:${conversation.phone}`, value);
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -150,8 +197,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         conversation.instance_name,
         identifySender,
         conversationChatId,
-        treatmentTitle || null,
-        nameFormat
+        nameFormat === 'nickname' ? null : (treatmentTitle || null),
+        nameFormat,
+        nameFormat === 'nickname' ? (selectedNickname || null) : null
       );
       if (success) setNewMessage('');
     } catch (err) {
@@ -434,7 +482,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           {identifySender && (
             <>
               <Select value={nameFormat} onValueChange={handleNameFormatChange}>
-                <SelectTrigger className="h-7 w-[120px] text-xs">
+                <SelectTrigger className="h-7 w-[130px] text-xs">
                   <SelectValue placeholder="Nome" />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,17 +491,69 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
-                <SelectTrigger className="h-7 w-[100px] text-xs">
-                  <SelectValue placeholder="Título" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sem título</SelectItem>
-                  {TREATMENT_OPTIONS.filter(t => t).map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {nameFormat === 'nickname' ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 max-w-[150px]">
+                      <User className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{selectedNickname || 'Escolher apelido'}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-3 space-y-3" align="end">
+                    <p className="text-xs font-medium">Apelidos cadastrados</p>
+                    {nicknames.length > 0 ? (
+                      <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                        {nicknames.map(nick => (
+                          <div key={nick} className="flex items-center justify-between gap-1">
+                            <Button
+                              variant={selectedNickname === nick ? "default" : "ghost"}
+                              size="sm"
+                              className="flex-1 justify-start h-7 text-xs"
+                              onClick={() => handleSelectNickname(nick)}
+                            >
+                              {nick}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleRemoveNickname(nick)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Nenhum apelido cadastrado</p>
+                    )}
+                    <div className="flex gap-1">
+                      <Input
+                        placeholder="Novo apelido..."
+                        value={newNickname}
+                        onChange={e => setNewNickname(e.target.value)}
+                        className="h-7 text-xs"
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddNickname(); } }}
+                      />
+                      <Button size="sm" className="h-7 text-xs px-2" onClick={handleAddNickname} disabled={!newNickname.trim()}>
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                <Select value={treatmentTitle || 'none'} onValueChange={handleTreatmentChange}>
+                  <SelectTrigger className="h-7 w-[100px] text-xs">
+                    <SelectValue placeholder="Título" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sem título</SelectItem>
+                    {TREATMENT_OPTIONS.filter(t => t).map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </>
           )}
           <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">

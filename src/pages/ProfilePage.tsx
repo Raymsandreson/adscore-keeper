@@ -19,11 +19,18 @@ const TREATMENT_OPTIONS = [
   { value: 'Prof.', label: 'Prof.' },
   { value: 'Profa.', label: 'Profa.' },
 ];
+const GENDER_OPTIONS = [
+  { value: 'none', label: 'Não informado' },
+  { value: 'male', label: 'Masculino' },
+  { value: 'female', label: 'Feminino' },
+];
+
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user, profile, updateProfile, loading } = useAuthContext();
   const [fullName, setFullName] = useState(profile?.full_name || "");
   const [treatmentTitle, setTreatmentTitle] = useState((profile as any)?.treatment_title || "none");
+  const [gender, setGender] = useState((profile as any)?.gender || "none");
   const [isSaving, setIsSaving] = useState(false);
 
   const getInitials = () => {
@@ -48,6 +55,7 @@ const ProfilePage = () => {
     const { error } = await updateProfile({ 
       full_name: fullName.trim(),
       treatment_title: treatmentTitle === 'none' ? null : treatmentTitle,
+      gender: gender === 'none' ? null : gender,
     } as any);
     
     if (error) {
@@ -129,6 +137,26 @@ const ProfilePage = () => {
                     Prévia: {treatmentTitle} {fullName}
                   </span>
                 ) : null}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Gênero
+              </Label>
+              <Select value={gender} onValueChange={setGender}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Usado para definir o pronome de tratamento padrão (Dr./Dra.) no WhatsApp
               </p>
             </div>
 
