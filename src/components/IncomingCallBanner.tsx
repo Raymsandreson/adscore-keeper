@@ -9,6 +9,7 @@ import { PhoneIncoming, PhoneOutgoing, Mic, Square, Loader2 } from 'lucide-react
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+// v2 - force clean rebuild after hook refactor
 export function IncomingCallBanner() {
   const { user } = useAuthContext();
   const { activeCall, dismiss } = useIncomingCallDetector();
