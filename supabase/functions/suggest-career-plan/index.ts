@@ -9,13 +9,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { careerName, department, existingPositions } = await req.json();
+    const { careerName, department, existingPositions, userPrompt } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    const promptText = userPrompt 
+      ? `The user described: "${userPrompt}". Create a complete career plan based on this description.`
+      : `Based on the career path "${careerName}" ${department ? `in the "${department}" department` : ''}, generate a structured career plan with job positions and progression steps.`;
+
     const prompt = `You are an expert HR consultant specializing in organizational design based on US best practices from companies like Google, Amazon, Salesforce, HubSpot, and other top US companies.
 
-Based on the career path "${careerName}" ${department ? `in the "${department}" department` : ''}, generate a structured career plan with job positions and progression steps.
+${promptText}
 
 ${existingPositions?.length ? `Existing positions: ${existingPositions.join(', ')}. Build upon these.` : ''}
 
