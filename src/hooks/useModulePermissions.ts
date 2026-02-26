@@ -20,6 +20,7 @@ export const MODULE_DEFINITIONS = [
   { key: 'instagram', label: 'Instagram / Comentários', icon: 'MessageCircle', route: '/workflow' },
   { key: 'calls', label: 'Ligações', icon: 'Phone', route: '/calls' },
   { key: 'whatsapp', label: 'WhatsApp', icon: 'MessageSquare', route: '/whatsapp' },
+  { key: 'whatsapp_private', label: 'Conversas Privadas', icon: 'Lock', route: '/whatsapp' },
   { key: 'contacts', label: 'Contatos', icon: 'Contact', route: '/leaderboard' },
 ] as const;
 

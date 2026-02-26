@@ -3684,6 +3684,7 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          default_instance_id: string | null
           email: string | null
           full_name: string | null
           gender: string | null
@@ -3694,6 +3695,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_instance_id?: string | null
           email?: string | null
           full_name?: string | null
           gender?: string | null
@@ -3704,6 +3706,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_instance_id?: string | null
           email?: string | null
           full_name?: string | null
           gender?: string | null
@@ -3712,7 +3715,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_default_instance_id_fkey"
+            columns: ["default_instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       promoted_posts: {
         Row: {
@@ -4567,6 +4578,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      whatsapp_private_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          instance_name: string
+          phone: string
+          private_by: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_name: string
+          phone: string
+          private_by: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_name?: string
+          phone?: string
+          private_by?: string
+        }
+        Relationships: []
       }
       workflow_daily_goals: {
         Row: {
