@@ -230,6 +230,7 @@ export function WhatsAppInbox() {
         .from('leads')
         .insert({
           lead_name: selectedConversation.contact_name || 'Novo Lead - WhatsApp',
+          lead_phone: selectedConversation.phone || null,
           source: 'whatsapp',
           created_by: currentUser?.id || null,
           board_id: boardId,
