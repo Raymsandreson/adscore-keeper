@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +25,17 @@ import type { Contact } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useModulePermissions } from '@/hooks/useModulePermissions';
 import { useAuthContext } from '@/contexts/AuthContext';
+
+const FIELD_LABELS: Record<string, string> = {
+  lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
+  city: 'Cidade', state: 'Estado', neighborhood: 'Bairro', main_company: 'Empresa Principal',
+  contractor_company: 'Empresa Contratante', accident_address: 'Local do Acidente', accident_date: 'Data do Acidente',
+  damage_description: 'Descrição do Dano', case_number: 'Nº do Processo', case_type: 'Tipo do Caso',
+  notes: 'Observações', sector: 'Setor', visit_city: 'Cidade (Visita)', visit_state: 'Estado (Visita)',
+  visit_address: 'Endereço (Visita)', liability_type: 'Tipo de Responsabilidade', news_link: 'Link da Notícia',
+  full_name: 'Nome Completo', phone: 'Telefone', email: 'E-mail', instagram_url: 'Instagram', profession: 'Profissão',
+};
+const fieldLabel = (key: string) => FIELD_LABELS[key] || key.replace(/_/g, ' ');
 
 interface PrivateConv {
   phone: string;
@@ -93,7 +104,8 @@ export function WhatsAppInbox() {
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string }>({});
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
-
+  const [aiPreview, setAiPreview] = useState<{ leadFields: Record<string, string>; contactFields: Record<string, string> } | null>(null);
+  const [showAiPreview, setShowAiPreview] = useState(false);
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelectedPhones, setBulkSelectedPhones] = useState<Set<string>>(new Set());
@@ -310,63 +322,67 @@ export function WhatsAppInbox() {
   const handleUpdateWithAI = async () => {
     if (!selectedConversation) return;
     try {
-      const updates: string[] = [];
+      const leadFields: Record<string, string> = {};
+      const contactFields: Record<string, string> = {};
 
-      // Update lead if linked
       if (selectedConversation.lead_id) {
         const extracted = await extractConversationData('lead');
-        if (Object.keys(extracted).length > 0) {
-          const leadFields: Record<string, string> = {};
-          const allowedLeadFields = [
-            'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
-            'main_company', 'contractor_company', 'accident_address', 'accident_date',
-            'damage_description', 'case_number', 'case_type', 'notes', 'sector',
-            'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
-          ];
-          for (const field of allowedLeadFields) {
-            if (extracted[field]) leadFields[field] = extracted[field];
-          }
-          if (Object.keys(leadFields).length > 0) {
-            const { error } = await supabase
-              .from('leads')
-              .update(leadFields)
-              .eq('id', selectedConversation.lead_id);
-            if (!error) updates.push('Lead');
-          }
+        const allowedLeadFields = [
+          'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
+          'main_company', 'contractor_company', 'accident_address', 'accident_date',
+          'damage_description', 'case_number', 'case_type', 'notes', 'sector',
+          'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+        ];
+        for (const field of allowedLeadFields) {
+          if (extracted[field]) leadFields[field] = extracted[field];
         }
       }
 
-      // Update contact if linked
       if (selectedConversation.contact_id) {
         const extracted = await extractConversationData('contact');
-        if (Object.keys(extracted).length > 0) {
-          const contactFields: Record<string, string> = {};
-          const allowedContactFields = [
-            'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
-            'notes', 'instagram_url', 'profession',
-          ];
-          for (const field of allowedContactFields) {
-            if (extracted[field]) contactFields[field] = extracted[field];
-          }
-          if (Object.keys(contactFields).length > 0) {
-            const { error } = await supabase
-              .from('contacts')
-              .update(contactFields)
-              .eq('id', selectedConversation.contact_id);
-            if (!error) updates.push('Contato');
-          }
+        const allowedContactFields = [
+          'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
+          'notes', 'instagram_url', 'profession',
+        ];
+        for (const field of allowedContactFields) {
+          if (extracted[field]) contactFields[field] = extracted[field];
         }
       }
 
-      if (updates.length > 0) {
-        toast.success(`${updates.join(' e ')} atualizado(s) com dados da conversa!`);
-        refetch();
-      } else {
+      if (Object.keys(leadFields).length === 0 && Object.keys(contactFields).length === 0) {
         toast.info('Nenhuma informação nova encontrada na conversa.');
+        return;
       }
+
+      setAiPreview({ leadFields, contactFields });
+      setShowAiPreview(true);
     } catch (e) {
       console.error('Update with AI error:', e);
-      toast.error('Erro ao atualizar com IA');
+      toast.error('Erro ao extrair dados com IA');
+    }
+  };
+
+  const handleConfirmAiUpdate = async () => {
+    if (!aiPreview || !selectedConversation) return;
+    try {
+      const updates: string[] = [];
+      if (Object.keys(aiPreview.leadFields).length > 0 && selectedConversation.lead_id) {
+        const { error } = await supabase.from('leads').update(aiPreview.leadFields).eq('id', selectedConversation.lead_id);
+        if (!error) updates.push('Lead');
+      }
+      if (Object.keys(aiPreview.contactFields).length > 0 && selectedConversation.contact_id) {
+        const { error } = await supabase.from('contacts').update(aiPreview.contactFields).eq('id', selectedConversation.contact_id);
+        if (!error) updates.push('Contato');
+      }
+      if (updates.length > 0) {
+        toast.success(`${updates.join(' e ')} atualizado(s)!`);
+        refetch();
+      }
+    } catch (e) {
+      toast.error('Erro ao atualizar');
+    } finally {
+      setShowAiPreview(false);
+      setAiPreview(null);
     }
   };
 
@@ -819,7 +835,55 @@ export function WhatsAppInbox() {
         </DialogContent>
       </Dialog>
 
-      {/* Bulk Lead Creation Dialog */}
+      {/* AI Preview Confirmation Dialog */}
+      <Dialog open={showAiPreview} onOpenChange={(open) => { if (!open) { setShowAiPreview(false); setAiPreview(null); } }}>
+        <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Dados extraídos da conversa
+            </DialogTitle>
+          </DialogHeader>
+          {aiPreview && (
+            <div className="space-y-4">
+              {Object.keys(aiPreview.leadFields).length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-primary">Lead</p>
+                  <div className="rounded-lg border divide-y">
+                    {Object.entries(aiPreview.leadFields).map(([key, value]) => (
+                      <div key={key} className="flex items-start gap-3 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{fieldLabel(key)}</span>
+                        <span className="font-medium break-words">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {Object.keys(aiPreview.contactFields).length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-primary">Contato</p>
+                  <div className="rounded-lg border divide-y">
+                    {Object.entries(aiPreview.contactFields).map(([key, value]) => (
+                      <div key={key} className="flex items-start gap-3 px-3 py-2 text-sm">
+                        <span className="text-muted-foreground min-w-[140px] shrink-0">{fieldLabel(key)}</span>
+                        <span className="font-medium break-words">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowAiPreview(false); setAiPreview(null); }}>Cancelar</Button>
+            <Button onClick={handleConfirmAiUpdate} className="gap-1.5">
+              <Check className="h-4 w-4" /> Confirmar Atualização
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       <BulkLeadCreationDialog
         open={showBulkDialog}
         onOpenChange={setShowBulkDialog}
