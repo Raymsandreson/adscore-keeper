@@ -32,6 +32,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
 import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLeadCustomFields';
@@ -40,6 +41,7 @@ import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { CustomFieldsConfigPanel } from '@/components/leads/CustomFieldsConfigPanel';
+import { FormLayoutConfigurator } from '@/components/leads/FormLayoutConfigurator';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
 import { LeadChecklistPanel } from '@/components/kanban/LeadChecklistPanel';
 import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
@@ -1338,7 +1340,13 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             </TabsContent>
 
             {/* Configurações Tab */}
-            <TabsContent value="config" className="mt-0">
+            <TabsContent value="config" className="mt-0 space-y-6">
+              {/* Form Layout Configurator */}
+              <FormLayoutConfigurator adAccountId={adAccountId} />
+              
+              <Separator className="my-4" />
+              
+              {/* Custom Fields Config */}
               <CustomFieldsConfigPanel
                 leadId={lead.id}
                 currentBoardId={lead.board_id || selectedBoardId || null}
