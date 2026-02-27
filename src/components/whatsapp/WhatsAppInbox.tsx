@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
@@ -8,13 +8,14 @@ import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
+const LazyBroadcastPage = lazy(() => import('./WhatsAppBroadcastPage').then(m => ({ default: m.WhatsAppBroadcastPage })));
 import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Megaphone } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,6 +92,7 @@ export function WhatsAppInbox() {
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -518,6 +520,14 @@ export function WhatsAppInbox() {
     );
   }
 
+  if (showBroadcast) {
+    return (
+      <Suspense fallback={<div className="p-8 text-center text-muted-foreground">Carregando...</div>}>
+        <LazyBroadcastPage onBack={() => setShowBroadcast(false)} />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col relative">
       {/* Header */}
@@ -571,6 +581,9 @@ export function WhatsAppInbox() {
           >
             <ListChecks className="h-4 w-4" />
             {bulkMode && <span className="ml-1 text-xs">Lote</span>}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setShowBroadcast(true)} title="Transmissão & Campanhas">
+            <Megaphone className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
             <Chrome className="h-4 w-4" />
