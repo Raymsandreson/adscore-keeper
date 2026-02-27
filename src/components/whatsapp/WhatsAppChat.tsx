@@ -56,6 +56,7 @@ interface Props {
   onLinkToContact: (phone: string, contactId: string) => void;
   onCreateLead: () => void;
   onCreateContact: () => void;
+  extractingData?: boolean;
   onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
@@ -63,7 +64,7 @@ interface Props {
   shareInfo?: ConvShareInfo | null;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -446,8 +447,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   </div>
                 </DialogContent>
               </Dialog>
-              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateLead}>
-                <Plus className="h-3 w-3" /> Criar Lead
+              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateLead} disabled={extractingData}>
+                {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Criar Lead
               </Button>
             </>
           )}
@@ -456,8 +457,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               <User className="h-3 w-3" /> Ver Contato
             </Button>
           ) : (
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateContact}>
-              <UserPlus className="h-3 w-3" /> Criar Contato
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateContact} disabled={extractingData}>
+              {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Criar Contato
             </Button>
           )}
           <WhatsAppCallRecorder
