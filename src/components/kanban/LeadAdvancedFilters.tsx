@@ -72,6 +72,7 @@ interface LeadAdvancedFiltersProps {
   availableCities: string[];
   availableRegions: string[];
   availableCaseTypes: string[];
+  availableAcolhedores: string[];
 }
 
 // Map filter keys to human-readable labels
@@ -102,6 +103,7 @@ export function LeadAdvancedFilters({
   availableCities,
   availableRegions,
   availableCaseTypes,
+  availableAcolhedores,
 }: LeadAdvancedFiltersProps) {
   const [open, setOpen] = useState(false);
 
@@ -128,7 +130,7 @@ export function LeadAdvancedFilters({
       if (!filters[key]) return;
       let displayValue = filters[key];
 
-      if (key === 'createdBy' || key === 'updatedBy' || key === 'acolhedor') {
+      if (key === 'createdBy' || key === 'updatedBy') {
         const profile = profiles.find(p => p.user_id === filters[key]);
         displayValue = profile?.full_name || profile?.email || filters[key].slice(0, 8);
       } else if (key === 'ageRange') {
@@ -236,8 +238,8 @@ export function LeadAdvancedFilters({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_all">Todos</SelectItem>
-                    {profiles.map(p => (
-                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
+                    {availableAcolhedores.map(name => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
