@@ -798,22 +798,22 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
 
               <div className="flex flex-wrap gap-2">
                 {globalTypes.map(t => (
-                  <div key={t.key} className="flex items-center gap-1 rounded-full border px-3 py-1 text-xs bg-background group">
-                    <span className={cn('h-2 w-2 rounded-full', t.color)} />
-                    <span>{t.label}</span>
+                  <div key={t.key} className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs bg-background">
+                    <span className={cn('h-2.5 w-2.5 rounded-full', t.color)} />
+                    <span className="font-medium">{t.label}</span>
                     <button
                       onClick={() => handleStartEdit(t)}
-                      className="ml-1 text-muted-foreground/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                      className="ml-1 text-muted-foreground hover:text-primary transition-colors"
                       title="Editar tipo"
                     >
-                      <Pencil className="h-3 w-3" />
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => handleDeleteCheck(t)}
-                      className="text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
                       title="Excluir tipo"
                     >
-                      <X className="h-3 w-3" />
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))}
