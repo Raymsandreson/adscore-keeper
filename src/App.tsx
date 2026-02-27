@@ -86,7 +86,7 @@ function AppRoutes() {
       <Suspense fallback={null}>
         <GlobalDatabaseSearch />
         <UserProductivityBanner />
-        <IncomingCallBanner />
+        {/* IncomingCallBanner removido — contabilidade mantida via webhooks */}
         <CallFieldSuggestionsBanner />
         <FloatingWhatsAppCall />
       </Suspense>
