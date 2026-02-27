@@ -307,6 +307,69 @@ export function WhatsAppInbox() {
     setShowCreateContactDialog(true);
   };
 
+  const handleUpdateWithAI = async () => {
+    if (!selectedConversation) return;
+    try {
+      const updates: string[] = [];
+
+      // Update lead if linked
+      if (selectedConversation.lead_id) {
+        const extracted = await extractConversationData('lead');
+        if (Object.keys(extracted).length > 0) {
+          const leadFields: Record<string, string> = {};
+          const allowedLeadFields = [
+            'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
+            'main_company', 'contractor_company', 'accident_address', 'accident_date',
+            'damage_description', 'case_number', 'case_type', 'notes', 'sector',
+            'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+          ];
+          for (const field of allowedLeadFields) {
+            if (extracted[field]) leadFields[field] = extracted[field];
+          }
+          if (Object.keys(leadFields).length > 0) {
+            const { error } = await supabase
+              .from('leads')
+              .update(leadFields)
+              .eq('id', selectedConversation.lead_id);
+            if (!error) updates.push('Lead');
+          }
+        }
+      }
+
+      // Update contact if linked
+      if (selectedConversation.contact_id) {
+        const extracted = await extractConversationData('contact');
+        if (Object.keys(extracted).length > 0) {
+          const contactFields: Record<string, string> = {};
+          const allowedContactFields = [
+            'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
+            'notes', 'instagram_url', 'profession',
+          ];
+          for (const field of allowedContactFields) {
+            if (extracted[field]) contactFields[field] = extracted[field];
+          }
+          if (Object.keys(contactFields).length > 0) {
+            const { error } = await supabase
+              .from('contacts')
+              .update(contactFields)
+              .eq('id', selectedConversation.contact_id);
+            if (!error) updates.push('Contato');
+          }
+        }
+      }
+
+      if (updates.length > 0) {
+        toast.success(`${updates.join(' e ')} atualizado(s) com dados da conversa!`);
+        refetch();
+      } else {
+        toast.info('Nenhuma informação nova encontrada na conversa.');
+      }
+    } catch (e) {
+      console.error('Update with AI error:', e);
+      toast.error('Erro ao atualizar com IA');
+    }
+  };
+
   const handleContactCreated = (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
       linkToContact(selectedConversation.phone, contact.id);
@@ -612,6 +675,7 @@ export function WhatsAppInbox() {
               onCreateLead={handleCreateLead}
               onCreateContact={handleCreateContact}
               extractingData={extracting}
+              onUpdateWithAI={handleUpdateWithAI}
               onCreateActivity={handleCreateActivity}
               onNavigateToLead={handleNavigateToLead}
               onViewContact={handleViewContact}
