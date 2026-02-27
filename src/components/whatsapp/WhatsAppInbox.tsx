@@ -53,7 +53,7 @@ interface ConvShare {
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
-  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats } = useWhatsAppMessages(selectedInstanceId);
+  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const { boards } = useKanbanBoards();
@@ -218,6 +218,8 @@ export function WhatsAppInbox() {
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
     setSelectedPhone(conv.phone);
+    // Load full message history for this conversation
+    fetchFullConversation(conv.phone);
     if (conv.unread_count > 0) {
       markAsRead(conv.phone);
     }
