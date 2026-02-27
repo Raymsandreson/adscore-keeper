@@ -105,9 +105,10 @@ serve(async (req) => {
       if (isUnsupportedUrl(urlToScrape)) {
         return new Response(
           JSON.stringify({ 
+            success: false,
             error: 'Links do Instagram, Facebook, TikTok e X/Twitter não são suportados para extração automática. Por favor, copie e cole o texto da publicação diretamente ou faça um print da tela e use a opção de imagem.' 
           }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
@@ -116,8 +117,8 @@ serve(async (req) => {
         textContent = scrapedContent;
       } else {
         return new Response(
-          JSON.stringify({ error: 'Não foi possível acessar o link. Verifique se a URL está correta e tente novamente.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: 'Não foi possível acessar o link. Verifique se a URL está correta e tente novamente.' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     } else if (type === 'image') {
