@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2 } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles } from 'lucide-react';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -62,9 +62,10 @@ interface Props {
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
   shareInfo?: ConvShareInfo | null;
+  onUpdateWithAI?: () => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -401,6 +402,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           </CopyableText>
         </div>
         <div className="flex items-center gap-2">
+          {(conversation.lead_id || conversation.contact_id) && (
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onUpdateWithAI} disabled={extractingData}>
+              {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Atualizar com IA
+            </Button>
+          )}
           {conversation.lead_id ? (
             <Badge variant="outline" className="text-xs gap-1 text-blue-600">
               <Link2 className="h-3 w-3" /> Lead vinculado
