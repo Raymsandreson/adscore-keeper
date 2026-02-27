@@ -3,8 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { ListChecks } from 'lucide-react';
+import { ListChecks, MessageSquareText, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 
 interface ChecklistItem {
@@ -12,6 +13,8 @@ interface ChecklistItem {
   label: string;
   description?: string;
   checked?: boolean;
+  script?: string;
+  docChecklist?: { id: string; label: string; checked?: boolean; type?: string }[];
 }
 
 interface ChecklistInstance {
@@ -245,11 +248,32 @@ export function LeadCardChecklists({ leadId, boardId, stageId }: LeadCardCheckli
                     className="h-3 w-3"
                   />
                   <span className={cn(
-                    "text-[10px] leading-tight",
+                    "text-[10px] leading-tight flex-1",
                     item.checked && "line-through text-muted-foreground"
                   )}>
                     {item.label}
                   </span>
+                  {item.script && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <MessageSquareText className="h-3 w-3 text-primary flex-shrink-0" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[250px]">
+                        <p className="text-[10px] font-semibold mb-1">Script de Contato</p>
+                        <p className="text-[10px] whitespace-pre-wrap line-clamp-4">{item.script}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {item.docChecklist && item.docChecklist.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <ClipboardList className="h-3 w-3 text-orange-500 flex-shrink-0" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p className="text-[10px]">{item.docChecklist.length} itens de checklist</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </label>
               ))}
             </div>

@@ -2380,6 +2380,93 @@ export type Database = {
           },
         ]
       }
+      form_layout_fields: {
+        Row: {
+          col_span: number
+          created_at: string
+          custom_field_id: string | null
+          display_order: number
+          field_key: string | null
+          id: string
+          is_hidden: boolean
+          label_override: string | null
+          tab_id: string
+          updated_at: string
+        }
+        Insert: {
+          col_span?: number
+          created_at?: string
+          custom_field_id?: string | null
+          display_order?: number
+          field_key?: string | null
+          id?: string
+          is_hidden?: boolean
+          label_override?: string | null
+          tab_id: string
+          updated_at?: string
+        }
+        Update: {
+          col_span?: number
+          created_at?: string
+          custom_field_id?: string | null
+          display_order?: number
+          field_key?: string | null
+          id?: string
+          is_hidden?: boolean
+          label_override?: string | null
+          tab_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "form_layout_fields_custom_field_id_fkey"
+            columns: ["custom_field_id"]
+            isOneToOne: false
+            referencedRelation: "lead_custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "form_layout_fields_tab_id_fkey"
+            columns: ["tab_id"]
+            isOneToOne: false
+            referencedRelation: "form_layout_tabs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      form_layout_tabs: {
+        Row: {
+          created_at: string
+          display_order: number
+          icon: string | null
+          id: string
+          is_system: boolean
+          name: string
+          system_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          name: string
+          system_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_system?: boolean
+          name?: string
+          system_key?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       goal_history: {
         Row: {
           achieved_value: number
