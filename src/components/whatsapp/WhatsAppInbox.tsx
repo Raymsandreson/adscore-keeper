@@ -211,9 +211,35 @@ export function WhatsAppInbox() {
     }
   };
 
+  const [extracting, setExtracting] = useState(false);
+  const [contactDefaults, setContactDefaults] = useState<Record<string, string>>({});
+
+  const extractConversationData = async (targetType: 'lead' | 'contact') => {
+    if (!selectedConversation?.messages?.length) return {};
+    try {
+      setExtracting(true);
+      toast.info('Extraindo informações da conversa...', { duration: 2000 });
+      const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+        body: {
+          messages: selectedConversation.messages.slice(-50).map(m => ({
+            direction: m.direction,
+            message_text: m.message_text,
+          })),
+          targetType,
+        },
+      });
+      if (error) throw error;
+      return data?.data || {};
+    } catch (e) {
+      console.error('Extraction error:', e);
+      return {};
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const handleCreateLead = () => {
     if (!selectedConversation) return;
-    // If only one board, skip picker
     if (boards.length === 1) {
       createLeadWithBoard(boards[0].id);
     } else {
@@ -226,35 +252,58 @@ export function WhatsAppInbox() {
     if (!selectedConversation || !boardId) return;
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
+
+      // Extract data from conversation using AI
+      const extracted = await extractConversationData('lead');
+
+      const insertData: Record<string, any> = {
+        lead_name: extracted.lead_name || selectedConversation.contact_name || 'Novo Lead - WhatsApp',
+        lead_phone: selectedConversation.phone || null,
+        source: 'whatsapp',
+        created_by: currentUser?.id || null,
+        board_id: boardId,
+      };
+
+      // Merge extracted fields
+      const leadFields = [
+        'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
+        'main_company', 'contractor_company', 'accident_address', 'accident_date',
+        'damage_description', 'case_number', 'case_type', 'notes', 'sector',
+        'visit_city', 'visit_state', 'visit_address', 'liability_type', 'news_link',
+      ];
+      for (const field of leadFields) {
+        if (extracted[field]) {
+          insertData[field] = extracted[field];
+        }
+      }
+
       const { data, error } = await supabase
         .from('leads')
-        .insert({
-          lead_name: selectedConversation.contact_name || 'Novo Lead - WhatsApp',
-          lead_phone: selectedConversation.phone || null,
-          source: 'whatsapp',
-          created_by: currentUser?.id || null,
-          board_id: boardId,
-        })
+        .insert(insertData)
         .select('*')
         .single();
 
       if (error) throw error;
 
-      // Link to conversation
       linkToLead(selectedConversation.phone, data.id);
-
-      // Open for editing with full form
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
       setShowBoardPicker(false);
+      
+      if (Object.keys(extracted).length > 0) {
+        toast.success('Lead criado com dados extraídos da conversa!');
+      }
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar lead');
     }
   };
 
-  const handleCreateContact = () => {
+  const handleCreateContact = async () => {
     if (!selectedConversation) return;
+    // Extract data from conversation
+    const extracted = await extractConversationData('contact');
+    setContactDefaults(extracted);
     setShowCreateContactDialog(true);
   };
 
@@ -562,6 +611,7 @@ export function WhatsAppInbox() {
               onLinkToContact={linkToContact}
               onCreateLead={handleCreateLead}
               onCreateContact={handleCreateContact}
+              extractingData={extracting}
               onCreateActivity={handleCreateActivity}
               onNavigateToLead={handleNavigateToLead}
               onViewContact={handleViewContact}
@@ -662,7 +712,8 @@ export function WhatsAppInbox() {
         open={showCreateContactDialog}
         onOpenChange={setShowCreateContactDialog}
         defaultPhone={selectedConversation?.phone}
-        defaultName={selectedConversation?.contact_name || ''}
+        defaultName={contactDefaults.full_name || selectedConversation?.contact_name || ''}
+        defaultData={contactDefaults}
         onContactCreated={handleContactCreated}
       />
 

@@ -1,0 +1,133 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { messages, targetType } = await req.json();
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response(JSON.stringify({ error: 'No messages provided' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Build conversation text (last 50 messages for context)
+    const recentMessages = messages.slice(-50);
+    const conversationText = recentMessages
+      .map((m: any) => {
+        const dir = m.direction === 'outbound' ? 'Atendente' : 'Cliente';
+        return `[${dir}]: ${m.message_text || ''}`;
+      })
+      .join('\n');
+
+    const systemPrompt = `Você é um assistente especializado em extrair informações estruturadas de conversas de WhatsApp para um escritório de advocacia focado em acidentes de trabalho.
+
+Analise a conversa abaixo e extraia TODAS as informações relevantes que encontrar. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos (use null para campos não encontrados):
+
+${targetType === 'contact' ? `{
+  "full_name": "nome completo da pessoa",
+  "phone": "telefone adicional mencionado",
+  "email": "e-mail mencionado",
+  "city": "cidade",
+  "state": "sigla do estado (ex: SP, RJ, MG)",
+  "neighborhood": "bairro",
+  "notes": "informações importantes resumidas da conversa",
+  "instagram_url": "perfil do instagram se mencionado",
+  "profession": "profissão mencionada"
+}` : `{
+  "lead_name": "nome do lead/caso (formato: Local/Vítima/Empresa)",
+  "victim_name": "nome da vítima do acidente",
+  "lead_phone": "telefone principal",
+  "lead_email": "e-mail",
+  "city": "cidade do acidente ou do cliente",
+  "state": "sigla do estado (ex: SP, RJ, MG)",
+  "neighborhood": "bairro",
+  "main_company": "empresa onde a vítima trabalha",
+  "contractor_company": "empresa contratante/terceirizada",
+  "accident_address": "endereço do acidente",
+  "accident_date": "data do acidente (formato YYYY-MM-DD se possível)",
+  "damage_description": "descrição do dano/lesão",
+  "case_number": "número do caso/processo se mencionado",
+  "case_type": "tipo do caso (acidente_trabalho, acidente_transito, etc)",
+  "notes": "resumo das informações importantes da conversa para acompanhamento",
+  "sector": "setor/área de atuação da vítima",
+  "visit_city": "cidade para visita",
+  "visit_state": "estado para visita",
+  "visit_address": "endereço para visita",
+  "liability_type": "tipo de responsabilidade",
+  "news_link": "link de notícia mencionado"
+}`}
+
+IMPORTANTE:
+- Extraia APENAS informações explicitamente mencionadas na conversa
+- Não invente dados
+- Para o campo "notes", faça um resumo útil das informações relevantes da conversa
+- Retorne APENAS o JSON, sem nenhum texto adicional ou markdown`;
+
+    const apiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!apiKey) {
+      throw new Error('LOVABLE_API_KEY not configured');
+    }
+
+    const response = await fetch('https://api.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: conversationText },
+        ],
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`AI API error: ${response.status} - ${errText}`);
+    }
+
+    const aiResult = await response.json();
+    const content = aiResult.choices?.[0]?.message?.content || '{}';
+
+    // Parse the JSON, stripping markdown if present
+    const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    let extracted: Record<string, any>;
+    try {
+      extracted = JSON.parse(jsonStr);
+    } catch {
+      extracted = {};
+    }
+
+    // Remove null values
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(extracted)) {
+      if (value !== null && value !== undefined && value !== '') {
+        cleaned[key] = value;
+      }
+    }
+
+    return new Response(JSON.stringify({ data: cleaned }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('Error:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});

@@ -19,12 +19,13 @@ interface CreateContactDialogProps {
   onOpenChange: (open: boolean) => void;
   defaultPhone?: string;
   defaultName?: string;
+  defaultData?: Record<string, string>;
   onContactCreated?: (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => void;
 }
 
 type LeadLinkMode = 'none' | 'existing' | 'new';
 
-export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultName, onContactCreated }: CreateContactDialogProps) {
+export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultName, defaultData, onContactCreated }: CreateContactDialogProps) {
   const { states } = useBrazilianLocations();
   const [saving, setSaving] = useState(false);
 
@@ -59,15 +60,21 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
     if (open) {
       setForm(f => ({
         ...f,
-        full_name: defaultName || '',
+        full_name: defaultData?.full_name || defaultName || '',
         phone: defaultPhone || '',
+        email: defaultData?.email || '',
+        instagram_url: defaultData?.instagram_url || '',
+        city: defaultData?.city || '',
+        state: defaultData?.state || '',
+        notes: defaultData?.notes || '',
+        // Keep existing classification and follower_status defaults
       }));
       setLeadLinkMode('none');
       setSelectedLeadId('');
       setSelectedRelationship('');
       setNewLeadName('');
     }
-  }, [open, defaultName, defaultPhone]);
+  }, [open, defaultName, defaultPhone, defaultData]);
 
   // Fetch cities when state changes
   useEffect(() => {
