@@ -48,6 +48,21 @@ export function WhatsAppInbox() {
   const { boards } = useKanbanBoards();
   const { canView } = useModulePermissions();
   const { user } = useAuthContext();
+
+  // Auto-select default instance on mount
+  const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
+  useEffect(() => {
+    if (defaultInstanceApplied || !user || instances.length === 0) return;
+    const applyDefault = async () => {
+      const { data } = await supabase.from('profiles').select('default_instance_id').eq('user_id', user.id).single();
+      const defaultId = (data as any)?.default_instance_id;
+      if (defaultId && instances.some(i => i.id === defaultId)) {
+        setSelectedInstanceId(defaultId);
+      }
+      setDefaultInstanceApplied(true);
+    };
+    applyDefault();
+  }, [user, instances, defaultInstanceApplied]);
   const navigate = useNavigate();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
