@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Share2, Trash2, UserPlus } from 'lucide-react';
+import { Share2, Trash2, UserPlus, Link2, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -104,6 +104,11 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
         });
       if (error) throw error;
       toast.success('Conversa compartilhada!');
+      // Copy link to clipboard automatically
+      const url = `${window.location.origin}/whatsapp?openChat=${encodeURIComponent(phone)}`;
+      navigator.clipboard.writeText(url).then(() => {
+        toast.info('Link copiado para enviar ao usuário!', { duration: 3000 });
+      });
       setSelectedUserId('');
       setIdentifySender(true);
       setCanReshare(false);
@@ -178,6 +183,26 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Copy link to chat */}
+          {shares.length > 0 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => {
+                  const url = `${window.location.origin}/whatsapp?openChat=${encodeURIComponent(phone)}`;
+                  navigator.clipboard.writeText(url).then(() => {
+                    toast.success('Link da conversa copiado!');
+                  });
+                }}
+              >
+                <Link2 className="h-4 w-4" />
+                Copiar link da conversa
+              </Button>
+            </div>
+          )}
+
           {/* Add new share */}
           {canShare && availableProfiles.length > 0 && (
             <div className="space-y-3 p-3 rounded-lg border bg-muted/30">

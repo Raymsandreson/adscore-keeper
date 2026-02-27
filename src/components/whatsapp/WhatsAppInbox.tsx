@@ -19,7 +19,7 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Lead } from '@/hooks/useLeads';
 import type { Contact } from '@/hooks/useContacts';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -64,7 +64,19 @@ export function WhatsAppInbox() {
     applyDefault();
   }, [user, instances, defaultInstanceApplied]);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+
+  // Deep link: auto-open chat from URL param
+  useEffect(() => {
+    const openChat = searchParams.get('openChat');
+    if (openChat && hasLoaded) {
+      setSelectedPhone(openChat);
+      // Clean up the URL param
+      searchParams.delete('openChat');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, hasLoaded]);
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
