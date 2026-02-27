@@ -1365,47 +1365,71 @@ export function CommissionGoals() {
               </div>
               <p className="text-[10px] text-muted-foreground">Apenas nesses dias o snapshot de meta será registrado e contabilizado.</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Respostas / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_replies} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))} />
+            {/* ⚡ Metas de Ação (diária) */}
+            <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">⚡</span>
+                <Label className="text-xs font-semibold uppercase tracking-wide">Metas de Ação</Label>
+                <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">diária</span>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">DMs / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_dms} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Leads / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_leads} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tempo online (min)</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_session_minutes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Contatos / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_contacts} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_contacts: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Ligações / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_calls} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_calls: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Atividades / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_activities} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Fases / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_stage_changes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Passos / dia</Label>
-                <Input type="number" min={0} value={editingUserGoals.target_checklist_items} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Respostas / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_replies} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_replies: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">DMs / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_dms} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_dms: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Leads / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_leads} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_leads: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tempo online (min)</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_session_minutes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_session_minutes: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Contatos / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_contacts} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_contacts: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Ligações / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_calls} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_calls: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Atividades / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_activities} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
+                </div>
               </div>
             </div>
-            {/* Per-board closing targets with period selector */}
+
+            {/* 📈 Metas de Progresso (diária) */}
+            <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📈</span>
+                <Label className="text-xs font-semibold uppercase tracking-wide">Metas de Progresso</Label>
+                <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">diária</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Fases / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_stage_changes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Passos / dia</Label>
+                  <Input type="number" min={0} value={editingUserGoals.target_checklist_items} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_checklist_items: Number(e.target.value) || 0 }))} />
+                </div>
+              </div>
+            </div>
+            {/* 🏆 Metas de Resultado */}
             {boards.length > 0 && (
-              <div className="space-y-3 border-t pt-3">
+              <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🏆</span>
+                  <Label className="text-xs font-semibold uppercase tracking-wide">Metas de Resultado</Label>
+                  <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">mensal</span>
+                </div>
                 <Label className="text-xs font-medium">Fechamentos por funil</Label>
                 <p className="text-[10px] text-muted-foreground">Defina a meta de fechamentos e o período para cada funil. Deixe 0 para ignorar.</p>
                 <div className="space-y-3">
@@ -1470,14 +1494,11 @@ export function CommissionGoals() {
                     );
                   })}
                 </div>
-              </div>
-            )}
-            {/* Per-board refused targets with period selector */}
-            {boards.length > 0 && (
-              <div className="space-y-3 border-t pt-3">
-                <Label className="text-xs font-medium">Recusados por funil</Label>
-                <p className="text-[10px] text-muted-foreground">Defina a meta de recusados e o período para cada funil. Deixe 0 para ignorar.</p>
-                <div className="space-y-3">
+
+                <div className="border-t pt-3 space-y-3">
+                  <Label className="text-xs font-medium">Recusados por funil</Label>
+                  <p className="text-[10px] text-muted-foreground">Defina a meta de recusados e o período para cada funil. Deixe 0 para ignorar.</p>
+                  <div className="space-y-3">
                   {boards.map(board => {
                     const boardConfig = editingRefusedByBoard[board.id] || { target: 0, period: 'daily' };
                     return (
@@ -1538,6 +1559,7 @@ export function CommissionGoals() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               </div>
             )}
