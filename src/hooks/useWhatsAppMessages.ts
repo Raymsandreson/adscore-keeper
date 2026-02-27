@@ -156,7 +156,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         .from('whatsapp_messages')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(500);
+        .limit(2000);
 
       if (selectedInstanceId && selectedInstanceId !== 'all') {
         const inst = instances.find(i => i.id === selectedInstanceId);
@@ -374,6 +374,32 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInstanceId]);
 
+  // Load all messages for a specific conversation (when selected)
+  const fetchFullConversation = useCallback(async (phone: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+      const allMsgs = (data || []) as WhatsAppMessage[];
+
+      setConversations(prev => prev.map(c => {
+        if (c.phone !== phone) return c;
+        // Merge: use all fetched messages (they are the complete set for this phone)
+        const existingIds = new Set(c.messages.map(m => m.id));
+        const newMsgs = allMsgs.filter(m => !existingIds.has(m.id));
+        if (newMsgs.length === 0) return c;
+        return { ...c, messages: [...c.messages, ...newMsgs] };
+      }));
+    } catch (error) {
+      console.error('Error fetching full conversation:', error);
+    }
+  }, []);
+
   return {
     messages,
     conversations,
@@ -388,5 +414,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     linkToContact,
     refetch: fetchMessages,
     refetchStats: fetchInstanceStats,
+    fetchFullConversation,
   };
 }
