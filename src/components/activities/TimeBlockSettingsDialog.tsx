@@ -508,20 +508,47 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                 >
                   {/* Type header */}
                   <div
-                    className="flex items-center gap-3 p-3 cursor-pointer select-none"
-                    onClick={() => handleToggle(type)}
+                    className="flex items-center gap-3 p-3 select-none"
                   >
                     {isAdmin && (
                       <GripVertical
-                        className="h-4 w-4 text-muted-foreground/40 flex-shrink-0"
+                        className="h-4 w-4 text-muted-foreground/40 flex-shrink-0 cursor-grab"
                         onClick={e => e.stopPropagation()}
                       />
                     )}
                     <span className={cn('h-3 w-3 rounded-full flex-shrink-0', type.color)} />
-                    <span className="flex-1 text-sm font-medium">{type.label}</span>
-                    {sel
-                      ? <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
-                      : <Circle className="h-4 w-4 text-muted-foreground/40 flex-shrink-0" />}
+                    <span
+                      className="flex-1 text-sm font-medium cursor-pointer"
+                      onClick={() => handleToggle(type)}
+                    >
+                      {type.label}
+                    </span>
+                    {isAdmin && (
+                      <div className="flex items-center gap-1 mr-2">
+                        <button
+                          onClick={e => { e.stopPropagation(); handleStartEdit(type); }}
+                          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Editar tipo"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDeleteCheck(type); }}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Excluir tipo"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    <div
+                      className="cursor-pointer flex-shrink-0"
+                      onClick={() => handleToggle(type)}
+                    >
+                      {sel
+                        ? <CheckCircle2 className="h-4 w-4 text-primary" />
+                        : <Circle className="h-4 w-4 text-muted-foreground/40" />}
+                    </div>
                   </div>
 
                   {/* Blocks — only when selected */}
