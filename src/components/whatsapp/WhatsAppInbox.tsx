@@ -9,6 +9,7 @@ import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
 import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
+import { CreateCaseFromWhatsAppDialog } from './CreateCaseFromWhatsAppDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -98,6 +99,7 @@ export function WhatsAppInbox() {
   const [showContactPanel, setShowContactPanel] = useState(false);
   // Create contact dialog
   const [showCreateContactDialog, setShowCreateContactDialog] = useState(false);
+  const [showCreateCaseDialog, setShowCreateCaseDialog] = useState(false);
 
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
@@ -692,6 +694,7 @@ export function WhatsAppInbox() {
               onLinkToContact={linkToContact}
               onCreateLead={handleCreateLead}
               onCreateContact={handleCreateContact}
+              onCreateCase={() => setShowCreateCaseDialog(true)}
               extractingData={extracting}
               onUpdateWithAI={handleUpdateWithAI}
               onCreateActivity={handleCreateActivity}
@@ -797,6 +800,16 @@ export function WhatsAppInbox() {
         defaultName={contactDefaults.full_name || selectedConversation?.contact_name || ''}
         defaultData={contactDefaults}
         onContactCreated={handleContactCreated}
+      />
+
+      {/* Create Case Dialog */}
+      <CreateCaseFromWhatsAppDialog
+        open={showCreateCaseDialog}
+        onOpenChange={setShowCreateCaseDialog}
+        leadId={selectedConversation?.lead_id}
+        leadName={selectedConversation?.contact_name}
+        contactName={selectedConversation?.contact_name}
+        onCaseCreated={() => toast.success('Caso criado com sucesso!')}
       />
 
       {/* Activity Creation Sheet */}

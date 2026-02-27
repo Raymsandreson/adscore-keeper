@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale } from 'lucide-react';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -56,6 +56,7 @@ interface Props {
   onLinkToContact: (phone: string, contactId: string) => void;
   onCreateLead: () => void;
   onCreateContact: () => void;
+  onCreateCase?: () => void;
   extractingData?: boolean;
   onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
@@ -65,7 +66,7 @@ interface Props {
   onUpdateWithAI?: () => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -467,6 +468,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Criar Contato
             </Button>
           )}
+          <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateCase}>
+            <Scale className="h-3 w-3" /> Criar Caso
+          </Button>
           <WhatsAppCallRecorder
             phone={conversation.phone}
             contactName={conversation.contact_name}

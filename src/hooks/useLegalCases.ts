@@ -54,7 +54,7 @@ export function useLegalCases(leadId?: string) {
     }
   }, [leadId]);
 
-  const createCase = useCallback(async (caseData: { lead_id: string; nucleus_id?: string | null; title: string; description?: string; notes?: string }) => {
+  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -66,7 +66,7 @@ export function useLegalCases(leadId?: string) {
       const { data, error } = await supabase
         .from('legal_cases')
         .insert({
-          lead_id: caseData.lead_id,
+          lead_id: caseData.lead_id || null,
           nucleus_id: caseData.nucleus_id || null,
           case_number: caseNumber,
           title: caseData.title,
