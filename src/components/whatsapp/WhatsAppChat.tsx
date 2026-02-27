@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2 } from 'lucide-react';
+import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -28,6 +29,14 @@ const NAME_FORMAT_OPTIONS = [
   { value: 'first_last', label: 'Primeiro e último' },
   { value: 'nickname', label: 'Apelido' },
 ];
+
+interface ConvShareInfo {
+  phone: string;
+  instance_name: string;
+  identify_sender: boolean;
+  can_reshare: boolean;
+  shared_by: string;
+}
 
 interface Props {
   conversation: WhatsAppConversation;
@@ -51,9 +60,10 @@ interface Props {
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
+  shareInfo?: ConvShareInfo | null;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -457,6 +467,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
             leadId={conversation.lead_id}
             instanceName={conversation.instance_name}
           />
+          <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -735,11 +746,17 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
             Identificar remetente
           </Label>
-          <Switch
-            id="identify-sender"
-            checked={identifySender}
-            onCheckedChange={handleToggleIdentifySender}
-          />
+          {shareInfo ? (
+            <Badge variant={shareInfo.identify_sender ? 'default' : 'secondary'} className="text-[9px]">
+              {shareInfo.identify_sender ? 'Identificado' : 'Anônimo'}
+            </Badge>
+          ) : (
+            <Switch
+              id="identify-sender"
+              checked={identifySender}
+              onCheckedChange={handleToggleIdentifySender}
+            />
+          )}
         </div>
         <div className="flex gap-2">
           <Textarea

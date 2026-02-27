@@ -32,6 +32,14 @@ interface PrivateConv {
   private_by: string;
 }
 
+interface ConvShare {
+  phone: string;
+  instance_name: string;
+  identify_sender: boolean;
+  can_reshare: boolean;
+  shared_by: string;
+}
+
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats } = useWhatsAppMessages(selectedInstanceId);
@@ -68,6 +76,10 @@ export function WhatsAppInbox() {
   const [privateConvs, setPrivateConvs] = useState<PrivateConv[]>([]);
   const canViewPrivate = canView('whatsapp_private');
 
+  // Shared conversations
+  const [sharedConvs, setSharedConvs] = useState<ConvShare[]>([]);
+  const [sharedMessages, setSharedMessages] = useState<WhatsAppConversation[]>([]);
+
   useEffect(() => {
     const fetchPrivate = async () => {
       const { data } = await supabase
@@ -78,17 +90,89 @@ export function WhatsAppInbox() {
     fetchPrivate();
   }, []);
 
-  // Filter out private conversations the user can't see
+  // Fetch shared conversation records for this user
+  useEffect(() => {
+    if (!user) return;
+    const fetchShared = async () => {
+      const { data } = await supabase
+        .from('whatsapp_conversation_shares')
+        .select('phone, instance_name, identify_sender, can_reshare, shared_by')
+        .eq('shared_with', user.id);
+      const shares = (data || []) as ConvShare[];
+      setSharedConvs(shares);
+
+      // Fetch messages for shared conversations that may not be in the user's instances
+      if (shares.length === 0) {
+        setSharedMessages([]);
+        return;
+      }
+
+      const phones = [...new Set(shares.map(s => s.phone))];
+      const { data: msgs } = await supabase
+        .from('whatsapp_messages')
+        .select('*')
+        .in('phone', phones)
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (!msgs) { setSharedMessages([]); return; }
+
+      // Build conversations from messages
+      const convMap = new Map<string, WhatsAppConversation>();
+      for (const msg of msgs) {
+        // Only include messages from shared instances
+        const isShared = shares.some(s => s.phone === msg.phone && s.instance_name === msg.instance_name);
+        if (!isShared) continue;
+
+        const existing = convMap.get(msg.phone);
+        if (!existing) {
+          convMap.set(msg.phone, {
+            phone: msg.phone,
+            contact_name: msg.contact_name,
+            contact_id: msg.contact_id,
+            lead_id: msg.lead_id,
+            last_message: msg.message_text,
+            last_message_at: msg.created_at,
+            unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
+            messages: [msg],
+            instance_name: msg.instance_name,
+          });
+        } else {
+          existing.messages.push(msg);
+          if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
+          if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
+          if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
+          if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+        }
+      }
+      setSharedMessages(Array.from(convMap.values()));
+    };
+    fetchShared();
+  }, [user, hasLoaded]);
+
+  // Filter out private conversations the user can't see and merge shared conversations
   const visibleConversations = useMemo(() => {
     if (!user) return conversations;
-    return conversations.filter(conv => {
+
+    const filtered = conversations.filter(conv => {
       const priv = privateConvs.find(p => p.phone === conv.phone && p.instance_name === conv.instance_name);
-      if (!priv) return true; // not private
-      if (priv.private_by === user.id) return true; // owner
-      if (canViewPrivate) return true; // has permission
+      if (!priv) return true;
+      if (priv.private_by === user.id) return true;
+      if (canViewPrivate) return true;
       return false;
     });
-  }, [conversations, privateConvs, user, canViewPrivate]);
+
+    // Merge shared conversations that aren't already in the list
+    const existingPhones = new Set(filtered.map(c => c.phone));
+    for (const sharedConv of sharedMessages) {
+      if (!existingPhones.has(sharedConv.phone)) {
+        filtered.push(sharedConv);
+        existingPhones.add(sharedConv.phone);
+      }
+    }
+
+    return filtered;
+  }, [conversations, privateConvs, sharedMessages, user, canViewPrivate]);
 
   const selectedConversation = visibleConversations.find(c => c.phone === selectedPhone) || null;
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
@@ -437,7 +521,15 @@ export function WhatsAppInbox() {
           {selectedConversation ? (
             <WhatsAppChat
               conversation={selectedConversation}
-              onSendMessage={sendMessage}
+              onSendMessage={(() => {
+                const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
+                if (share) {
+                  return (phone: string, message: string, contactId?: string, leadId?: string, instanceName?: string | null, _identifySender?: boolean, chatId?: string, treatmentOverride?: string | null, nameFormatOverride?: string, nicknameOverride?: string | null) =>
+                    sendMessage(phone, message, contactId, leadId, instanceName, share.identify_sender, chatId, treatmentOverride, nameFormatOverride, nicknameOverride);
+                }
+                return sendMessage;
+              })()}
+              shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
               onLinkToLead={linkToLead}
               onLinkToContact={linkToContact}
               onCreateLead={handleCreateLead}
