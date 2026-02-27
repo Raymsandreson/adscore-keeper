@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useLeadCustomFields, FieldType } from '@/hooks/useLeadCustomFields';
+import { useFieldStageRequirements } from '@/hooks/useFieldStageRequirements';
 import { Pencil, Trash2 as Trash2Fields } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -64,8 +66,10 @@ const fieldTypeLabels: Record<FieldType, string> = {
   checkbox: 'Checkbox',
 };
 
-function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
+function BoardCustomFieldsSection({ boardId, stages }: { boardId: string; stages: KanbanStage[] }) {
   const { customFields, loading, addCustomField, updateCustomField, deleteCustomField } = useLeadCustomFields(undefined, boardId);
+  const { getStagesForField, setFieldStages } = useFieldStageRequirements(boardId);
+  const [requiredStages, setRequiredStages] = useState<string[]>([]);
   const [showFieldDialog, setShowFieldDialog] = useState(false);
   const [editingField, setEditingField] = useState<{ id: string; field_name: string; field_type: FieldType; field_options: string[]; is_required: boolean } | null>(null);
   const [fieldName, setFieldName] = useState('');
@@ -78,6 +82,7 @@ function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
     setFieldType('text');
     setFieldOptions('');
     setIsRequired(false);
+    setRequiredStages([]);
     setEditingField(null);
   };
 
@@ -88,6 +93,7 @@ function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
       setFieldType(field.field_type);
       setFieldOptions(field.field_options?.join(', ') || '');
       setIsRequired(field.is_required);
+      setRequiredStages(getStagesForField(field.id));
     } else {
       resetFieldForm();
     }
@@ -100,8 +106,16 @@ function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
     try {
       if (editingField) {
         await updateCustomField(editingField.id, { field_name: fieldName, field_type: fieldType, field_options: options, is_required: isRequired });
+        if (isRequired) {
+          await setFieldStages(editingField.id, boardId, requiredStages);
+        } else {
+          await setFieldStages(editingField.id, boardId, []);
+        }
       } else {
-        await addCustomField({ board_id: boardId, field_name: fieldName, field_type: fieldType, field_options: options, is_required: isRequired });
+        const newField = await addCustomField({ board_id: boardId, field_name: fieldName, field_type: fieldType, field_options: options, is_required: isRequired });
+        if (isRequired && newField?.id) {
+          await setFieldStages(newField.id, boardId, requiredStages);
+        }
       }
       setShowFieldDialog(false);
       resetFieldForm();
@@ -174,9 +188,35 @@ function BoardCustomFieldsSection({ boardId }: { boardId: string }) {
             </div>
           )}
           <div className="flex items-center gap-2">
-            <Switch checked={isRequired} onCheckedChange={setIsRequired} id="field-req" />
+            <Switch checked={isRequired} onCheckedChange={(checked) => {
+              setIsRequired(checked);
+              if (!checked) setRequiredStages([]);
+            }} id="field-req" />
             <Label htmlFor="field-req" className="text-xs">Obrigatório</Label>
           </div>
+          {isRequired && stages.length > 0 && (
+            <div className="pl-1 space-y-1.5">
+              <Label className="text-xs text-muted-foreground">A partir de qual etapa é obrigatório?</Label>
+              <div className="space-y-1">
+                {stages.map((stage) => (
+                  <label key={stage.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <Checkbox
+                      checked={requiredStages.includes(stage.id)}
+                      onCheckedChange={(checked) => {
+                        setRequiredStages(prev =>
+                          checked
+                            ? [...prev, stage.id]
+                            : prev.filter(id => id !== stage.id)
+                        );
+                      }}
+                    />
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
+                    <span>{stage.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => { setShowFieldDialog(false); resetFieldForm(); }}>Cancelar</Button>
             <Button size="sm" onClick={handleSaveField} disabled={!fieldName.trim()}>{editingField ? 'Salvar' : 'Criar'}</Button>
@@ -621,7 +661,7 @@ export function KanbanBoardSelector({
             </div>
 
             {editingBoard && (
-              <BoardCustomFieldsSection boardId={editingBoard.id} />
+              <BoardCustomFieldsSection boardId={editingBoard.id} stages={editingBoard.stages} />
             )}
           </div>
 
