@@ -12,6 +12,7 @@ export interface LeadFilters {
   searchTerm: string;
   createdBy: string;
   updatedBy: string;
+  acolhedor: string;
   createdFrom: string;
   createdTo: string;
   updatedFrom: string;
@@ -30,6 +31,7 @@ export const emptyFilters: LeadFilters = {
   searchTerm: '',
   createdBy: '',
   updatedBy: '',
+  acolhedor: '',
   createdFrom: '',
   createdTo: '',
   updatedFrom: '',
@@ -77,6 +79,7 @@ const FILTER_LABELS: Record<keyof LeadFilters, string> = {
   searchTerm: 'Busca',
   createdBy: 'Criado por',
   updatedBy: 'Atualizado por',
+  acolhedor: 'Acolhedor',
   createdFrom: 'Criado de',
   createdTo: 'Criado até',
   updatedFrom: 'Atualizado de',
@@ -125,7 +128,7 @@ export function LeadAdvancedFilters({
       if (!filters[key]) return;
       let displayValue = filters[key];
 
-      if (key === 'createdBy' || key === 'updatedBy') {
+      if (key === 'createdBy' || key === 'updatedBy' || key === 'acolhedor') {
         const profile = profiles.find(p => p.user_id === filters[key]);
         displayValue = profile?.full_name || profile?.email || filters[key].slice(0, 8);
       } else if (key === 'ageRange') {
@@ -213,6 +216,21 @@ export function LeadAdvancedFilters({
               <div className="space-y-1">
                 <Label className="text-xs">Atualizado por</Label>
                 <Select value={filters.updatedBy} onValueChange={v => update('updatedBy', v === '_all' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Todos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all">Todos</SelectItem>
+                    {profiles.map(p => (
+                      <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email || p.user_id.slice(0, 8)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Acolhedor</Label>
+                <Select value={filters.acolhedor} onValueChange={v => update('acolhedor', v === '_all' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
@@ -392,6 +410,8 @@ export function applyLeadFilters(leads: any[], filters: LeadFilters): any[] {
     }
 
     if (filters.caseType && lead.case_type !== filters.caseType) return false;
+
+    if (filters.acolhedor && lead.acolhedor !== filters.acolhedor) return false;
 
     if (filters.accidentDateFrom) {
       const d = lead.accident_date;
