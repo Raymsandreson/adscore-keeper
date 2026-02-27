@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -7,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
-  Settings2, RotateCcw, Save, Plus, Trash2, X,
+  Settings2, RotateCcw, Save, Plus, Trash2, X, Pencil, AlertTriangle,
   Sparkles, Loader2, Wand2, GripVertical, CheckCircle2, Circle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -144,6 +146,16 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
   const [newLabel, setNewLabel] = useState('');
   const [newColor, setNewColor] = useState('bg-teal-500');
 
+  // Edit type state
+  const [editingType, setEditingType] = useState<ActivityType | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editColor, setEditColor] = useState('');
+
+  // Delete with migration state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: ActivityType; linkedCount: number } | null>(null);
+  const [migrateToKey, setMigrateToKey] = useState('');
+  const [deletingType, setDeletingType] = useState(false);
+
   // AI assistant
   const [showAI, setShowAI] = useState(false);
   const [aiDescription, setAiDescription] = useState('');
@@ -275,6 +287,61 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     setNewLabel('');
     setNewColor('bg-teal-500');
     setShowAddType(false);
+  };
+
+  const handleStartEdit = (type: ActivityType) => {
+    setEditingType(type);
+    setEditLabel(type.label);
+    setEditColor(type.color);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingType || !editLabel.trim()) return;
+    await updateType(editingType.id, { label: editLabel.trim(), color: editColor });
+    setEditingType(null);
+    toast.success('Tipo atualizado!');
+  };
+
+  const handleDeleteCheck = async (type: ActivityType) => {
+    // Check if there are activities or routine blocks linked to this type
+    const [activitiesRes, blocksRes] = await Promise.all([
+      supabase.from('lead_activities').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
+      supabase.from('user_timeblock_settings').select('id', { count: 'exact', head: true }).eq('activity_type', type.key),
+    ]);
+    const total = (activitiesRes.count || 0) + (blocksRes.count || 0);
+    if (total > 0) {
+      setDeleteConfirm({ type, linkedCount: total });
+      setMigrateToKey('');
+    } else {
+      await deleteType(type.id);
+    }
+  };
+
+  const handleDeleteWithMigration = async () => {
+    if (!deleteConfirm || !migrateToKey) return;
+    setDeletingType(true);
+    try {
+      // Migrate activities
+      await supabase.from('lead_activities').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
+      // Migrate routine blocks
+      await supabase.from('user_timeblock_settings').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
+      // Delete the type
+      await deleteType(deleteConfirm.type.id);
+      // Update local blocks too
+      const migrateTarget = globalTypes.find(t => t.key === migrateToKey);
+      if (migrateTarget) {
+        setBlocks(prev => prev.map(b => b.activityType === deleteConfirm.type.key
+          ? { ...b, activityType: migrateTarget.key, label: migrateTarget.label, color: migrateTarget.color }
+          : b
+        ));
+      }
+      toast.success('Tipo excluído e registros migrados!');
+      setDeleteConfirm(null);
+    } catch (e: any) {
+      toast.error('Erro ao migrar: ' + (e.message || 'Erro desconhecido'));
+    } finally {
+      setDeletingType(false);
+    }
   };
 
   const handleAISuggest = async () => {
@@ -731,21 +798,115 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
 
               <div className="flex flex-wrap gap-2">
                 {globalTypes.map(t => (
-                  <div key={t.key} className="flex items-center gap-1 rounded-full border px-3 py-1 text-xs bg-background">
+                  <div key={t.key} className="flex items-center gap-1 rounded-full border px-3 py-1 text-xs bg-background group">
                     <span className={cn('h-2 w-2 rounded-full', t.color)} />
                     <span>{t.label}</span>
                     <button
-                      onClick={() => deleteType(t.id)}
-                      className="ml-1 text-muted-foreground/50 hover:text-destructive transition-colors"
+                      onClick={() => handleStartEdit(t)}
+                      className="ml-1 text-muted-foreground/50 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                      title="Editar tipo"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCheck(t)}
+                      className="text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                      title="Excluir tipo"
                     >
                       <X className="h-3 w-3" />
                     </button>
                   </div>
                 ))}
               </div>
+
+              {/* Inline edit type */}
+              {editingType && (
+                <div className="flex gap-2 items-end border rounded-lg p-3 bg-muted/20">
+                  <div className="flex-1 space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Editar: {editingType.label}</p>
+                    <Input
+                      value={editLabel}
+                      onChange={e => setEditLabel(e.target.value)}
+                      className="h-8 text-sm"
+                      onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground">Cor</p>
+                    <div className="flex gap-1 flex-wrap max-w-[200px]">
+                      {COLOR_OPTIONS.map(c => (
+                        <button
+                          key={c.value}
+                          onClick={() => setEditColor(c.value)}
+                          className={cn(
+                            'h-5 w-5 rounded-full border-2 transition-all',
+                            c.value,
+                            editColor === c.value ? 'border-foreground scale-110' : 'border-transparent'
+                          )}
+                          title={c.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <Button size="sm" className="h-8" onClick={handleSaveEdit} disabled={!editLabel.trim()}>
+                    <Save className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingType(null)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           </>
         )}
+
+        {/* Delete with migration dialog */}
+        <AlertDialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Tipo em uso
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-3">
+                <p>
+                  O tipo <strong>"{deleteConfirm?.type.label}"</strong> possui{' '}
+                  <strong>{deleteConfirm?.linkedCount}</strong> registro(s) vinculado(s) (atividades e/ou rotinas).
+                </p>
+                <p>Selecione para qual tipo deseja migrar antes de excluir:</p>
+                <Select value={migrateToKey} onValueChange={setMigrateToKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo de destino..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {globalTypes
+                      .filter(t => t.key !== deleteConfirm?.type.key)
+                      .map(t => (
+                        <SelectItem key={t.key} value={t.key}>
+                          <div className="flex items-center gap-2">
+                            <span className={cn('h-2 w-2 rounded-full', t.color)} />
+                            {t.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deletingType}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteWithMigration}
+                disabled={!migrateToKey || deletingType}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deletingType ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                Migrar e Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Save footer */}
         <div className="flex justify-end gap-2 pt-2 border-t">
