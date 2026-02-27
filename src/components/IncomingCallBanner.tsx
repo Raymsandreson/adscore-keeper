@@ -71,14 +71,14 @@ export function IncomingCallBanner() {
     }
   }, []);
 
-  // AUTO-START recording when a call is detected
-  useEffect(() => {
-    if (activeCall && !isRecording && !processing && !autoStarted && activeCall.call_id !== lastAutoStartCallId.current) {
-      lastAutoStartCallId.current = activeCall.call_id;
-      setAutoStarted(true);
-      startRecording();
-    }
-  }, [activeCall, isRecording, processing, autoStarted, startRecording]);
+  // AUTO-START recording disabled — user can start manually via the mic button
+  // useEffect(() => {
+  //   if (activeCall && !isRecording && !processing && !autoStarted && activeCall.call_id !== lastAutoStartCallId.current) {
+  //     lastAutoStartCallId.current = activeCall.call_id;
+  //     setAutoStarted(true);
+  //     startRecording();
+  //   }
+  // }, [activeCall, isRecording, processing, autoStarted, startRecording]);
 
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
