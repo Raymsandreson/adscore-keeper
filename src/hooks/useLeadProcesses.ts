@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 export interface LeadProcess {
   id: string;
   lead_id: string;
+  case_id: string | null;
   process_type: 'judicial' | 'administrativo';
   process_number: string | null;
   title: string;
@@ -20,19 +21,19 @@ export interface LeadProcess {
   updated_at: string;
 }
 
-export function useLeadProcesses(leadId?: string) {
+export function useLeadProcesses(caseId?: string) {
   const [processes, setProcesses] = useState<LeadProcess[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchProcesses = useCallback(async (id?: string) => {
-    const targetId = id || leadId;
+    const targetId = id || caseId;
     if (!targetId) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('lead_processes')
         .select('*')
-        .eq('lead_id', targetId)
+        .eq('case_id', targetId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setProcesses((data || []) as LeadProcess[]);
@@ -41,7 +42,7 @@ export function useLeadProcesses(leadId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [leadId]);
+  }, [caseId]);
 
   const addProcess = useCallback(async (process: Partial<LeadProcess>) => {
     try {
