@@ -99,6 +99,9 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
                     <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                       {cat.label} ({categoryGoals.length})
                     </span>
+                    <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                      {cat.period}
+                    </span>
                   </div>
 
                   {categoryGoals.map(goal => {
@@ -180,6 +183,9 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
                   <span className="text-[10px]">{cat.icon}</span>
                   <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                     {cat.label} ({categoryGoals.length})
+                  </span>
+                  <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                    {cat.period}
                   </span>
                 </div>
 
