@@ -182,7 +182,8 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
     const cities = [...new Set(boardLeads.map(l => (l as any).visit_city).filter(Boolean))].sort();
     const regions = [...new Set(boardLeads.map(l => (l as any).visit_region).filter(Boolean))].sort();
     const caseTypes = [...new Set(boardLeads.map(l => (l as any).case_type).filter(Boolean))].sort();
-    return { states, cities, regions, caseTypes };
+    const acolhedores = [...new Set(boardLeads.map(l => (l as any).acolhedor).filter(Boolean))].sort();
+    return { states, cities, regions, caseTypes, acolhedores };
   }, [boardLeads]);
 
   // Count leads by board
@@ -486,6 +487,7 @@ export function UnifiedKanbanManager({ adAccountId }: UnifiedKanbanManagerProps)
         availableCities={filterOptions.cities}
         availableRegions={filterOptions.regions}
         availableCaseTypes={filterOptions.caseTypes}
+        availableAcolhedores={filterOptions.acolhedores}
       />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
