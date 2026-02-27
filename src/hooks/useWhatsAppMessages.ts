@@ -347,11 +347,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
   const linkToContact = async (phone: string, contactId: string) => {
     try {
+      // Fetch contact name
+      const { data: contactData } = await supabase.from('contacts').select('full_name').eq('id', contactId).single();
       const { error } = await supabase.from('whatsapp_messages')
         .update({ contact_id: contactId } as any).eq('phone', phone);
       if (error) throw error;
       toast.success('Conversa vinculada ao contato!');
-      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, contact_id: contactId } : c));
+      setConversations(prev => prev.map(c => c.phone === phone ? { ...c, contact_id: contactId, contact_name: contactData?.full_name || c.contact_name } : c));
     } catch (error) { console.error(error); toast.error('Erro ao vincular ao contato'); }
   };
 

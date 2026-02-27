@@ -110,6 +110,26 @@ export function CreateContactDialog({ open, onOpenChange, defaultPhone, defaultN
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
+      // Check for duplicate phone
+      if (form.phone.trim()) {
+        const normalizedPhone = form.phone.replace(/\D/g, '');
+        const { data: existingContacts } = await supabase
+          .from('contacts')
+          .select('id, full_name, phone')
+          .or(`phone.eq.${normalizedPhone},phone.eq.${form.phone.trim()}`)
+          .limit(1);
+        
+        if (existingContacts && existingContacts.length > 0) {
+          const existing = existingContacts[0];
+          toast.error(`Já existe um contato com este telefone: "${existing.full_name}"`, { duration: 5000 });
+          // Offer to use existing contact
+          onContactCreated?.({ id: existing.id, full_name: existing.full_name, phone: existing.phone });
+          onOpenChange(false);
+          setSaving(false);
+          return;
+        }
+      }
+
       // Extract instagram username
       let igUsername: string | null = null;
       let igUrl: string | null = form.instagram_url || null;
