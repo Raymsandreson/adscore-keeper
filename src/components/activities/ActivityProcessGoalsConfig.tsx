@@ -125,7 +125,7 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
                             onValueChange={v => updateGoal(goal.originalIdx, { stage_id: v })}
                           >
                             <SelectTrigger className="h-7 text-xs w-[120px]">
-                              <SelectValue placeholder="Etapa" />
+                              <SelectValue placeholder="Fase" />
                             </SelectTrigger>
                             <SelectContent>
                               {selectedBoard.stages.map(s => (
@@ -163,7 +163,7 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
                     onClick={() => addGoal('progress')}
                   >
                     <Plus className="h-3 w-3" />
-                    Adicionar etapa
+                    Adicionar fase
                   </Button>
                 </div>
               );

@@ -52,7 +52,7 @@ const METRICS = [
   { key: 'contactsCreated', label: 'Contatos', icon: Users, color: 'text-teal-500' },
   { key: 'leadsCreated', label: 'Leads', icon: Target, color: 'text-indigo-500' },
   { key: 'callsMade', label: 'Ligações', icon: Phone, color: 'text-green-500', hasBreakdown: true },
-  { key: 'stageChanges', label: 'Etapas', icon: ArrowRightLeft, color: 'text-amber-500' },
+  { key: 'stageChanges', label: 'Fases', icon: ArrowRightLeft, color: 'text-amber-500' },
   { key: 'leadsProgressed', label: 'Leads Progr.', icon: Briefcase, color: 'text-purple-500' },
   { key: 'checklistItemsChecked', label: 'Passos', icon: ListChecks, color: 'text-cyan-500' },
   { key: 'activitiesCompleted', label: 'Ativ. Concl.', icon: CheckCircle2, color: 'text-emerald-500' },
@@ -473,7 +473,7 @@ export function UserProductivityBanner() {
   const compactMetrics = [
     { key: 'leadsCreated' as MetricKey, label: 'Leads', value: data.leadsCreated, icon: Target, color: 'text-indigo-500' },
     { key: 'checklistItemsChecked' as MetricKey, label: 'Passos', value: data.checklistItemsChecked, icon: ListChecks, color: 'text-cyan-500' },
-    { key: 'stageChanges' as MetricKey, label: 'Etapas', value: data.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
+    { key: 'stageChanges' as MetricKey, label: 'Fases', value: data.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
     { key: 'leadsClosed' as MetricKey, label: 'Fechados', value: data.leadsClosed, icon: Trophy, color: 'text-yellow-500' },
     { key: 'contactsCreated' as MetricKey, label: 'Contatos', value: data.contactsCreated, icon: Users, color: 'text-teal-500' },
   ];
@@ -799,7 +799,7 @@ export function UserProductivityBanner() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <ArrowRightLeft className="h-3 w-3 text-amber-500" />
                       <span className="text-xs font-semibold">{wu.stageChanges}</span>
-                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Etapas</span>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Fases</span>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Trophy className="h-3 w-3 text-yellow-500" />
@@ -1054,7 +1054,7 @@ export function UserProductivityBanner() {
                           <span title="Leads">{entry.leadsCreated}L</span>
                           <span title="DMs">{entry.dmsSent}💬</span>
                           <span title="Passos">{entry.checklistItemsChecked}P</span>
-                          <span title="Etapas">{entry.stageChanges}E</span>
+                          <span title="Fases">{entry.stageChanges}F</span>
                           <span title="Ligações">{entry.callsMade}📞</span>
                         </div>
                         <Badge variant="secondary" className="text-[10px] h-4 px-1">

@@ -280,7 +280,7 @@ export function DailyReportDialog({
     { icon: UserPlus, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Contatos', current: productivity.contactsCreated, target: goals.target_contacts },
     { icon: Target, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Leads', current: productivity.leadsCreated, target: goals.target_leads },
     { icon: Phone, color: 'text-green-600', bg: 'bg-green-50', label: 'Ligações', current: productivity.callsMade, target: goals.target_calls },
-    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Etapas', current: productivity.stageChanges, target: goals.target_stage_changes },
+    { icon: ArrowRightLeft, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Fases', current: productivity.stageChanges, target: goals.target_stage_changes },
     { icon: ListChecks, color: 'text-cyan-600', bg: 'bg-cyan-50', label: 'Passos', current: productivity.checklistItemsChecked, target: goals.target_checklist_items },
     { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Ativ. Concl.', current: productivity.activitiesCompleted, target: goals.target_activities },
     { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Atrasadas', current: productivity.activitiesOverdue, target: 0 },
