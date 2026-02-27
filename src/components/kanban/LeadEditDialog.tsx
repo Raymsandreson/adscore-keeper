@@ -74,7 +74,7 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
-import { LeadProcessesTab } from '@/components/leads/LeadProcessesTab';
+import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -691,9 +691,9 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 Histórico
               </TabsTrigger>
               {leadOutcome === 'closed' && (
-                <TabsTrigger value="processos" className="text-xs py-1.5 px-2.5">
+                <TabsTrigger value="casos" className="text-xs py-1.5 px-2.5">
                   <Scale className="h-3 w-3 mr-1" />
-                  Processos
+                  Casos
                 </TabsTrigger>
               )}
               <TabsTrigger value="config" className="text-xs py-1.5 px-2.5">
@@ -1320,10 +1320,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               )}
             </TabsContent>
 
-            {/* Processos Tab */}
+            {/* Casos Tab */}
             {leadOutcome === 'closed' && (
-              <TabsContent value="processos" className="mt-0">
-                <LeadProcessesTab leadId={lead.id} boards={boards} />
+              <TabsContent value="casos" className="mt-0">
+                <LegalCasesTab leadId={lead.id} boards={boards} />
               </TabsContent>
             )}
 

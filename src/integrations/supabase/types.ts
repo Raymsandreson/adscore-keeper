@@ -3380,6 +3380,7 @@ export type Database = {
       }
       lead_processes: {
         Row: {
+          case_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -3397,6 +3398,7 @@ export type Database = {
           workflow_name: string | null
         }
         Insert: {
+          case_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -3414,6 +3416,7 @@ export type Database = {
           workflow_name?: string | null
         }
         Update: {
+          case_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -3431,6 +3434,13 @@ export type Database = {
           workflow_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_processes_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_processes_lead_id_fkey"
             columns: ["lead_id"]
@@ -3685,6 +3695,72 @@ export type Database = {
             columns: ["instagram_comment_id"]
             isOneToOne: false
             referencedRelation: "instagram_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_cases: {
+        Row: {
+          assigned_to: string | null
+          case_number: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          lead_id: string | null
+          notes: string | null
+          nucleus_id: string | null
+          outcome: string | null
+          outcome_date: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          case_number: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          nucleus_id?: string | null
+          outcome?: string | null
+          outcome_date?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          case_number?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          nucleus_id?: string | null
+          outcome?: string | null
+          outcome_date?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_cases_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "legal_cases_nucleus_id_fkey"
+            columns: ["nucleus_id"]
+            isOneToOne: false
+            referencedRelation: "specialized_nuclei"
             referencedColumns: ["id"]
           },
         ]
@@ -3982,6 +4058,48 @@ export type Database = {
         }
         Relationships: []
       }
+      process_parties: {
+        Row: {
+          contact_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          process_id: string
+          role: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          process_id: string
+          role?: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          process_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "process_parties_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "process_parties_process_id_fkey"
+            columns: ["process_id"]
+            isOneToOne: false
+            referencedRelation: "lead_processes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -4265,6 +4383,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      specialized_nuclei: {
+        Row: {
+          color: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          prefix: string
+          sequence_counter: number
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          prefix: string
+          sequence_counter?: number
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          prefix?: string
+          sequence_counter?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       team_invitations: {
         Row: {
@@ -5329,6 +5483,7 @@ export type Database = {
         Args: { _pluggy_account_id: string; _user_id: string }
         Returns: boolean
       }
+      generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
