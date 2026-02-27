@@ -51,7 +51,7 @@ const METRIC_CONFIG: Record<MetricKey, { label: string; icon: React.ElementType;
   leadsClosed: { label: 'Leads Fechados', icon: Trophy, color: 'text-yellow-500' },
   leadsProgressed: { label: 'Leads com Progresso', icon: Briefcase, color: 'text-purple-500' },
   callsMade: { label: 'Ligações Realizadas', icon: Phone, color: 'text-green-500' },
-  stageChanges: { label: 'Mudanças de Etapa', icon: ArrowRightLeft, color: 'text-amber-500' },
+  stageChanges: { label: 'Mudanças de Fase', icon: ArrowRightLeft, color: 'text-amber-500' },
   checklistItemsChecked: { label: 'Passos Concluídos', icon: ListChecks, color: 'text-cyan-500' },
   activitiesCompleted: { label: 'Atividades Concluídas', icon: CheckCircle2, color: 'text-emerald-500' },
   activitiesOverdue: { label: 'Atividades Atrasadas', icon: AlertTriangle, color: 'text-red-500' },
