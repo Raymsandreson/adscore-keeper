@@ -213,7 +213,7 @@ export function DailyReportDialog({
     lines.push(`👥 Contatos criados: ${productivity.contactsCreated}/${goals.target_contacts} (${metricPercent(productivity.contactsCreated, goals.target_contacts)}%)`);
     lines.push(`🎯 Leads criados: ${productivity.leadsCreated}/${goals.target_leads} (${metricPercent(productivity.leadsCreated, goals.target_leads)}%)`);
     lines.push(`📞 Ligações: ${productivity.callsMade}/${goals.target_calls} (${metricPercent(productivity.callsMade, goals.target_calls)}%)`);
-    lines.push(`🔄 Etapas movidas: ${productivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(productivity.stageChanges, goals.target_stage_changes)}%)`);
+    lines.push(`🔄 Fases movidas: ${productivity.stageChanges}/${goals.target_stage_changes} (${metricPercent(productivity.stageChanges, goals.target_stage_changes)}%)`);
     lines.push(`📋 Passos checklist: ${productivity.checklistItemsChecked}/${goals.target_checklist_items} (${metricPercent(productivity.checklistItemsChecked, goals.target_checklist_items)}%)`);
     lines.push(`✅ Atividades concluídas: ${productivity.activitiesCompleted}/${goals.target_activities} (${metricPercent(productivity.activitiesCompleted, goals.target_activities)}%)`);
     lines.push(`⚠️ Atividades atrasadas: ${productivity.activitiesOverdue}`);

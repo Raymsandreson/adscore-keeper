@@ -329,7 +329,7 @@ export function InlineDatabaseSearch() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   {selectedComment.platform && <div><p className="text-xs text-muted-foreground">Plataforma</p><p className="font-medium capitalize">{selectedComment.platform}</p></div>}
                   {selectedComment.comment_type && <div><p className="text-xs text-muted-foreground">Tipo</p><p className="font-medium capitalize">{selectedComment.comment_type}</p></div>}
-                  {selectedComment.funnel_stage && <div><p className="text-xs text-muted-foreground">Etapa Funil</p><p className="font-medium capitalize">{selectedComment.funnel_stage}</p></div>}
+                  {selectedComment.funnel_stage && <div><p className="text-xs text-muted-foreground">Fase Funil</p><p className="font-medium capitalize">{selectedComment.funnel_stage}</p></div>}
                   {selectedComment.replied_at && <div><p className="text-xs text-muted-foreground">Respondido em</p><p className="font-medium">{format(new Date(selectedComment.replied_at), 'dd/MM/yy HH:mm')}</p></div>}
                 </div>
                 {selectedComment.post_url && (

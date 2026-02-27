@@ -343,7 +343,7 @@ export function GlobalDatabaseSearch() {
                   )}
                   {selectedComment.funnel_stage && (
                     <div>
-                      <p className="text-xs text-muted-foreground">Etapa Funil</p>
+                      <p className="text-xs text-muted-foreground">Fase Funil</p>
                       <p className="font-medium capitalize">{selectedComment.funnel_stage}</p>
                     </div>
                   )}

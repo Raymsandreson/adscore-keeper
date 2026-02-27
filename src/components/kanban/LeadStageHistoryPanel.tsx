@@ -81,7 +81,7 @@ export function LeadStageHistoryPanel({ leadId, boards = [] }: LeadStageHistoryP
       <div className="text-center py-8 text-muted-foreground">
         <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
         <p className="text-sm">Nenhuma movimentação registrada</p>
-        <p className="text-xs mt-1">O histórico aparecerá quando o lead for movido entre estágios</p>
+        <p className="text-xs mt-1">O histórico aparecerá quando o lead for movido entre fases</p>
       </div>
     );
   }

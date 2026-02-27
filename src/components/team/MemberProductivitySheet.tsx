@@ -287,7 +287,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
     { key: 'contacts', value: member.contactsCreated, label: 'Contatos', bg: 'bg-teal-50', text: 'text-teal-700' },
     { key: 'leads', value: member.leadsCreated, label: 'Leads', bg: 'bg-indigo-50', text: 'text-indigo-700' },
     { key: 'calls', value: member.callsMade, label: 'Ligações', bg: 'bg-green-50', text: 'text-green-700' },
-    { key: 'stages', value: member.stageChanges, label: 'Etapas', bg: 'bg-amber-50', text: 'text-amber-700' },
+    { key: 'stages', value: member.stageChanges, label: 'Fases', bg: 'bg-amber-50', text: 'text-amber-700' },
     { key: 'closed', value: member.leadsClosed, label: 'Fechados', bg: 'bg-rose-50', text: 'text-rose-700' },
     { key: 'refused', value: refusedCases.length, label: 'Recusados', bg: 'bg-gray-50', text: 'text-gray-700' },
     { key: 'sessions', value: formatMinutesToHours(member.sessionMinutes), label: 'Tempo', bg: 'bg-orange-50', text: 'text-orange-700' },
@@ -327,7 +327,7 @@ export function MemberProductivitySheet({ member, open, onOpenChange, dateRange 
             {activeTab === 'contacts' && renderList(contacts, <UserPlus className="h-4 w-4 text-teal-600" />, 'Nenhum contato no período')}
             {activeTab === 'leads' && renderList(leads, <Target className="h-4 w-4 text-indigo-600" />, 'Nenhum lead no período')}
             {activeTab === 'calls' && renderList(calls, <Phone className="h-4 w-4 text-green-600" />, 'Nenhuma ligação no período')}
-            {activeTab === 'stages' && renderList(stageChanges, <ArrowRightLeft className="h-4 w-4 text-amber-600" />, 'Nenhuma mudança de etapa')}
+            {activeTab === 'stages' && renderList(stageChanges, <ArrowRightLeft className="h-4 w-4 text-amber-600" />, 'Nenhuma mudança de fase')}
             {activeTab === 'closed' && renderList(closedCases, <CheckCircle2 className="h-4 w-4 text-rose-600" />, 'Nenhum caso fechado')}
             {activeTab === 'refused' && renderList(refusedCases, <XCircle className="h-4 w-4 text-gray-600" />, 'Nenhum caso recusado')}
             {activeTab === 'sessions' && renderList(sessions, <Clock className="h-4 w-4 text-orange-600" />, 'Nenhuma sessão no período')}

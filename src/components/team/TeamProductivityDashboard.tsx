@@ -75,7 +75,7 @@ export function TeamProductivityDashboard() {
     { key: 'contactsCreated', label: 'contatos', color: 'text-teal-600', corridaKey: 'contacts_created' },
     { key: 'leadsCreated', label: 'leads', color: 'text-indigo-600', corridaKey: 'leads_created' },
     { key: 'callsMade', label: 'ligações', color: 'text-green-600', corridaKey: 'calls_made' },
-    { key: 'stageChanges', label: 'etapas', color: 'text-amber-600', corridaKey: 'stage_changes' },
+    { key: 'stageChanges', label: 'fases', color: 'text-amber-600', corridaKey: 'stage_changes' },
     { key: 'leadsProgressed', label: 'leads progr.', color: 'text-purple-600', corridaKey: 'leads_progressed' },
     { key: 'checklistItemsChecked', label: 'passos', color: 'text-cyan-600', corridaKey: 'checklist_items' },
     { key: 'activitiesCompleted', label: 'ativ. concluídas', color: 'text-emerald-600', corridaKey: 'activities_completed' },
@@ -262,7 +262,7 @@ export function TeamProductivityDashboard() {
     respostas: p.commentReplies,
     dms: p.dmsSent,
     contatos: p.contactsCreated,
-    etapas: p.stageChanges,
+    fases: p.stageChanges,
     ligacoes: p.callsMade,
     passos: p.checklistItemsChecked,
   }));
@@ -441,7 +441,7 @@ export function TeamProductivityDashboard() {
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-amber-100 text-amber-700"><ArrowRightLeft className="h-4 w-4" /></div>
-              <div><p className="text-xl font-bold">{summary.totalStageChanges}</p><p className="text-[10px] text-muted-foreground">Etapas</p></div>
+              <div><p className="text-xl font-bold">{summary.totalStageChanges}</p><p className="text-[10px] text-muted-foreground">Fases</p></div>
             </div>
           </CardContent>
         </Card>
@@ -823,7 +823,7 @@ export function TeamProductivityDashboard() {
                     <Bar dataKey="dms" fill="#8b5cf6" name="DMs" />
                     <Bar dataKey="contatos" fill="#14b8a6" name="Contatos" />
                     <Bar dataKey="ligacoes" fill="#22c55e" name="Ligações" />
-                    <Bar dataKey="etapas" fill="#f59e0b" name="Etapas" />
+                    <Bar dataKey="fases" fill="#f59e0b" name="Fases" />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -910,7 +910,7 @@ export function TeamProductivityDashboard() {
                     <Line type="monotone" dataKey="replies" stroke="#3b82f6" name="Respostas" strokeWidth={2} />
                     <Line type="monotone" dataKey="dms" stroke="#8b5cf6" name="DMs" strokeWidth={2} />
                     <Line type="monotone" dataKey="contacts" stroke="#14b8a6" name="Contatos" strokeWidth={2} />
-                    <Line type="monotone" dataKey="stageChanges" stroke="#f59e0b" name="Etapas" strokeWidth={2} />
+                    <Line type="monotone" dataKey="stageChanges" stroke="#f59e0b" name="Fases" strokeWidth={2} />
                     <Line type="monotone" dataKey="followups" stroke="#6366f1" name="Follow-ups" strokeWidth={2} />
                   </LineChart>
                 </ResponsiveContainer>

@@ -273,7 +273,7 @@ export function LeadHistorySheet({
               <div>
                 <h4 className="font-medium mb-3 flex items-center gap-2">
                   <Activity className="h-4 w-4" />
-                  Histórico de Etapas
+                  Histórico de Fases
                 </h4>
 
                 {stageHistory.length > 0 ? (

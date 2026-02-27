@@ -27,7 +27,7 @@ const METRIC_OPTIONS = [
   { value: 'leads_created', label: 'Leads cadastrados' },
   { value: 'leads_progressed', label: 'Leads progredidos' },
   { value: 'deals_closed', label: 'Fechados' },
-  { value: 'stages', label: 'Etapas movidas' },
+  { value: 'stages', label: 'Fases movidas' },
   { value: 'velocity', label: 'Passos/h (velocidade)' },
   { value: 'replies', label: 'Respostas a comentários' },
   { value: 'dms_sent', label: 'DMs enviadas' },
@@ -1395,7 +1395,7 @@ export function CommissionGoals() {
                 <Input type="number" min={0} value={editingUserGoals.target_activities} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_activities: Number(e.target.value) || 0 }))} />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Etapas / dia</Label>
+                <Label className="text-xs">Fases / dia</Label>
                 <Input type="number" min={0} value={editingUserGoals.target_stage_changes} onChange={e => setEditingUserGoals(prev => ({ ...prev, target_stage_changes: Number(e.target.value) || 0 }))} />
               </div>
               <div className="space-y-1.5">

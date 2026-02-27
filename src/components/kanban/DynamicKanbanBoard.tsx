@@ -627,7 +627,7 @@ export function DynamicKanbanBoard({
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem disabled className="text-xs text-muted-foreground">
                                               <ArrowRightLeft className="h-3 w-3 mr-2" />
-                                              Mover para etapa
+                                              Mover para fase
                                             </DropdownMenuItem>
                                             
                                             {/* Current board stages first */}
@@ -689,7 +689,7 @@ export function DynamicKanbanBoard({
                                                       ))}
                                                       {otherBoard.stages.length === 0 && (
                                                         <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                                                          Nenhuma etapa configurada
+                                                          Nenhuma fase configurada
                                                         </DropdownMenuItem>
                                                       )}
                                                     </DropdownMenuSubContent>

@@ -756,7 +756,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
                                   <Textarea
                                     value={obj.description}
                                     onChange={e => updateObjective(phaseIdx, objIdx, { description: e.target.value })}
-                                    placeholder="Descreva o objetivo desta etapa do funil..."
+                                    placeholder="Descreva o objetivo desta fase do funil..."
                                     className="mt-1 min-h-[52px] text-xs resize-none"
                                   />
                                 </div>

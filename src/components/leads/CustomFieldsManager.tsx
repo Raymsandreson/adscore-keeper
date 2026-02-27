@@ -300,7 +300,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                       {getStagesForField(field.id).length > 0 && (
                         <Badge variant="default" className="text-xs gap-0.5">
                           <ShieldCheck className="h-2.5 w-2.5" />
-                          {getStagesForField(field.id).length} etapa(s)
+                          {getStagesForField(field.id).length} fase(s)
                         </Badge>
                       )}
                     </div>
@@ -312,7 +312,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
                       variant="ghost"
                       size="icon"
                       onClick={() => openStageReqDialog(field)}
-                      title="Obrigatório por etapa"
+                      title="Obrigatório por fase"
                     >
                       <ShieldCheck className="h-4 w-4" />
                     </Button>
@@ -344,16 +344,16 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5" />
-              Obrigatório por etapa
+              Obrigatório por fase
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Em quais etapas o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório?
+              Em quais fases o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório?
             </p>
             {(() => {
               const board = stageReqField ? getFieldBoard(stageReqField) : null;
-              if (!board) return <p className="text-sm text-muted-foreground text-center py-4">Selecione um funil específico para configurar etapas.</p>;
+              if (!board) return <p className="text-sm text-muted-foreground text-center py-4">Selecione um funil específico para configurar fases.</p>;
               return (
                 <div className="space-y-1 border rounded-lg overflow-hidden">
                   {board.stages.map((stage) => (
@@ -374,7 +374,7 @@ export function CustomFieldsManager({ adAccountId }: CustomFieldsManagerProps) {
             })()}
             {selectedStageIds.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                ⚠️ Ao mover um lead para essas etapas, este campo será validado como obrigatório.
+                ⚠️ Ao mover um lead para essas fases, este campo será validado como obrigatório.
               </p>
             )}
           </div>

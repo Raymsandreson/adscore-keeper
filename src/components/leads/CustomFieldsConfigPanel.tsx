@@ -259,7 +259,7 @@ export function CustomFieldsConfigPanel({
     if (!stageReqField || !currentBoardId) return;
     try {
       await setFieldStages(stageReqField.id, currentBoardId, selectedStageIds);
-      toast.success('Obrigatoriedade por etapa salva!');
+      toast.success('Obrigatoriedade por fase salva!');
       setStageReqDialogOpen(false);
     } catch {
       toast.error('Erro ao salvar');
@@ -349,7 +349,7 @@ export function CustomFieldsConfigPanel({
                   {getStagesForField(field.id).length > 0 && (
                     <Badge variant="default" className="text-[10px] gap-0.5">
                       <ShieldCheck className="h-2.5 w-2.5" />
-                      {getStagesForField(field.id).length} etapa(s)
+                      {getStagesForField(field.id).length} fase(s)
                     </Badge>
                   )}
                   {currentBoard && (
@@ -358,7 +358,7 @@ export function CustomFieldsConfigPanel({
                       size="icon"
                       className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => openStageReqDialog(field)}
-                      title="Obrigatório por etapa"
+                      title="Obrigatório por fase"
                     >
                       <ShieldCheck className="h-3.5 w-3.5" />
                     </Button>
@@ -603,12 +603,12 @@ export function CustomFieldsConfigPanel({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5" />
-              Obrigatório por etapa
+              Obrigatório por fase
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Selecione em quais etapas do fluxo o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório para o lead avançar.
+              Selecione em quais fases do fluxo o campo <strong>"{stageReqField?.field_name}"</strong> será obrigatório para o lead avançar.
             </p>
             {currentBoard && currentBoard.stages.length > 0 ? (
               <div className="space-y-1 border rounded-lg overflow-hidden">
@@ -628,12 +628,12 @@ export function CustomFieldsConfigPanel({
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
-                Nenhuma etapa configurada neste fluxo.
+                Nenhuma fase configurada neste fluxo.
               </p>
             )}
             {selectedStageIds.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                ⚠️ Ao mover um lead para essas etapas, o campo será validado como obrigatório.
+                ⚠️ Ao mover um lead para essas fases, o campo será validado como obrigatório.
               </p>
             )}
           </div>
