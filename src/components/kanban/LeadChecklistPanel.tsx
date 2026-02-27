@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckSquare, Lock, ListChecks, RefreshCw } from 'lucide-react';
-import { useChecklists, LeadChecklistInstance, ChecklistItem } from '@/hooks/useChecklists';
+import { CheckSquare, Lock, ListChecks, RefreshCw, MessageSquareText, ClipboardList } from 'lucide-react';
+import { useChecklists, LeadChecklistInstance, ChecklistItem, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { supabase } from '@/integrations/supabase/client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
@@ -196,19 +196,61 @@ function ChecklistInstanceCard({
 
         <div className="space-y-1">
           {instance.items.map(item => (
-            <label
-              key={item.id}
-              className={`flex items-center gap-2 py-0.5 text-sm ${instance.is_readonly ? 'cursor-default' : 'cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1'}`}
-            >
-              <Checkbox
-                checked={item.checked || false}
-                onCheckedChange={() => onToggleItem(item.id)}
-                disabled={instance.is_readonly}
-              />
-              <span className={item.checked ? 'line-through text-muted-foreground' : ''}>
-                {item.label}
-              </span>
-            </label>
+            <div key={item.id} className="space-y-1">
+              <label
+                className={`flex items-center gap-2 py-0.5 text-sm ${instance.is_readonly ? 'cursor-default' : 'cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1'}`}
+              >
+                <Checkbox
+                  checked={item.checked || false}
+                  onCheckedChange={() => onToggleItem(item.id)}
+                  disabled={instance.is_readonly}
+                />
+                <span className={item.checked ? 'line-through text-muted-foreground' : ''}>
+                  {item.label}
+                </span>
+                {item.script && (
+                  <MessageSquareText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                )}
+                {item.docChecklist && item.docChecklist.length > 0 && (
+                  <ClipboardList className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                )}
+              </label>
+
+              {/* Script display */}
+              {item.script && !instance.is_readonly && (
+                <div className="ml-6 p-2 rounded-md bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <MessageSquareText className="h-3 w-3 text-primary" />
+                    <span className="text-[10px] font-semibold text-primary uppercase tracking-wide">Script de Contato</span>
+                  </div>
+                  <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">{item.script}</p>
+                </div>
+              )}
+
+              {/* DocChecklist display */}
+              {item.docChecklist && item.docChecklist.length > 0 && !instance.is_readonly && (() => {
+                const checklistType = item.docChecklist[0]?.type || 'documentos';
+                const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
+                return (
+                  <div className="ml-6 p-2 rounded-md bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <ClipboardList className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+                      <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">
+                        {typeInfo.icon} {typeInfo.label}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      {item.docChecklist.map(doc => (
+                        <div key={doc.id} className="flex items-center gap-2 text-xs py-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                          {doc.label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           ))}
         </div>
       </CardContent>
