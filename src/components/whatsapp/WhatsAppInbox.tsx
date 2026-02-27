@@ -388,11 +388,11 @@ export function WhatsAppInbox() {
     }
   };
 
-  const handleContactCreated = (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
+  const handleContactCreated = async (contact: { id: string; full_name: string; phone: string | null; lead_id?: string | null }) => {
     if (selectedConversation) {
-      linkToContact(selectedConversation.phone, contact.id);
+      await linkToContact(selectedConversation.phone, contact.id);
     }
-    refetch();
+    await refetch();
   };
 
   const handleSaveLead = async (leadId: string, updates: Partial<Lead>) => {
