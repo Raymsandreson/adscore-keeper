@@ -40,9 +40,9 @@ export const RESULT_METRICS: MetricOption[] = [
 ];
 
 export const GOAL_CATEGORIES = [
-  { key: 'action' as GoalCategory, label: 'Metas de Ação', icon: '⚡', metrics: ACTION_METRICS },
-  { key: 'progress' as GoalCategory, label: 'Metas de Progresso', icon: '📈', metrics: PROGRESS_METRICS },
-  { key: 'result' as GoalCategory, label: 'Metas de Resultado', icon: '🏆', metrics: RESULT_METRICS },
+  { key: 'action' as GoalCategory, label: 'Metas de Ação', icon: '⚡', period: 'diária', metrics: ACTION_METRICS },
+  { key: 'progress' as GoalCategory, label: 'Metas de Progresso', icon: '📈', period: 'mensal', metrics: PROGRESS_METRICS },
+  { key: 'result' as GoalCategory, label: 'Metas de Resultado', icon: '🏆', period: 'mensal', metrics: RESULT_METRICS },
 ];
 
 export const PROCESS_METRIC_OPTIONS: MetricOption[] = [
