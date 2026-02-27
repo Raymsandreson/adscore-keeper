@@ -262,7 +262,7 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
 
               <div className="flex items-center gap-3">
                 <Switch checked={formMandatory} onCheckedChange={setFormMandatory} />
-                <Label>Obrigatório para avançar de etapa</Label>
+                <Label>Obrigatório para avançar de fase</Label>
               </div>
 
               <div>
@@ -326,7 +326,7 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
                 <div>
                   <Label className="flex items-center gap-2 mb-1">
                     <Layers className="h-4 w-4" />
-                    Vincular às etapas do funil
+                    Vincular às fases do funil
                   </Label>
                   <div className="border rounded-md overflow-hidden">
                     {boards.map(board => {
@@ -346,7 +346,7 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
                                 <span className="text-sm font-medium">{board.name}</span>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs text-muted-foreground">{board.stages.length} etapas</span>
+                                <span className="text-xs text-muted-foreground">{board.stages.length} fases</span>
                                 {linkedCount > 0 && (
                                   <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
                                     {linkedCount} vinc.

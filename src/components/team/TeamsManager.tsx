@@ -49,7 +49,7 @@ const ALL_METRICS = [
   { key: 'contacts', label: 'Contatos' },
   { key: 'calls', label: 'Ligações' },
   { key: 'activities', label: 'Atividades' },
-  { key: 'stage_changes', label: 'Etapas' },
+  { key: 'stage_changes', label: 'Fases' },
   { key: 'leads_closed', label: 'Fechados' },
   { key: 'checklist_items', label: 'Passos' },
 ];

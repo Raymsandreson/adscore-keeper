@@ -258,7 +258,7 @@ export const useAnalysisCriteria = () => {
       recommendations.push('Taxa de conclusão de formulário muito baixa. Simplifique o formulário (menos campos).');
       recommendations.push('Revise o copy do formulário e adicione indicadores de progresso.');
     } else if (formRate < targetForm) {
-      recommendations.push('Considere reduzir campos do formulário ou dividir em etapas.');
+      recommendations.push('Considere reduzir campos do formulário ou dividir em fases.');
     }
 
     if (whatsappRate < targetWhatsapp * 0.5) {

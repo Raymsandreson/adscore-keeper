@@ -84,10 +84,10 @@ export function ChecklistStageLinking({ boardId, stages }: ChecklistStageLinking
     <div>
       <Label className="flex items-center gap-2">
         <ListChecks className="h-4 w-4" />
-        Checklists por Etapa
+        Checklists por Fase
       </Label>
       <p className="text-xs text-muted-foreground mb-2">
-        Vincule checklists às etapas do funil
+        Vincule checklists às fases do funil
       </p>
 
       {links.length > 0 && (
@@ -122,7 +122,7 @@ export function ChecklistStageLinking({ boardId, stages }: ChecklistStageLinking
       <div className="flex gap-2">
         <Select value={selectedStage} onValueChange={setSelectedStage}>
           <SelectTrigger className="flex-1 h-8 text-xs">
-            <SelectValue placeholder="Etapa" />
+            <SelectValue placeholder="Fase" />
           </SelectTrigger>
           <SelectContent>
             {stages.map(s => (

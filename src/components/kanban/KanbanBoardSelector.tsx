@@ -196,7 +196,7 @@ function BoardCustomFieldsSection({ boardId, stages }: { boardId: string; stages
           </div>
           {isRequired && stages.length > 0 && (
             <div className="pl-1 space-y-1.5">
-              <Label className="text-xs text-muted-foreground">A partir de qual etapa é obrigatório?</Label>
+              <Label className="text-xs text-muted-foreground">A partir de qual fase é obrigatório?</Label>
               <div className="space-y-1">
                 {stages.map((stage) => (
                   <label key={stage.id} className="flex items-center gap-2 text-xs cursor-pointer">

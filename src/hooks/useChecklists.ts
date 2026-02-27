@@ -180,7 +180,7 @@ export const useChecklists = () => {
 
       if (error) {
         if (error.code === '23505') {
-          toast.info('Checklist já vinculado a esta etapa');
+          toast.info('Checklist já vinculado a esta fase');
           return;
         }
         throw error;

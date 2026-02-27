@@ -104,7 +104,7 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
     return (
       <div className="text-center py-8 text-muted-foreground space-y-3">
         <ListChecks className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Nenhum checklist vinculado a esta etapa</p>
+        <p className="text-sm">Nenhum checklist vinculado a esta fase</p>
       </div>
     );
   }
@@ -119,7 +119,7 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
         <div>
           <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
             <CheckSquare className="h-4 w-4" />
-            Etapa Atual
+            Fase Atual
           </h4>
           {currentInstances.map(instance => (
             <ChecklistInstanceCard
