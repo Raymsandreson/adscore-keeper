@@ -4773,6 +4773,39 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_conversation_shares: {
+        Row: {
+          can_reshare: boolean
+          created_at: string
+          id: string
+          identify_sender: boolean
+          instance_name: string
+          phone: string
+          shared_by: string
+          shared_with: string
+        }
+        Insert: {
+          can_reshare?: boolean
+          created_at?: string
+          id?: string
+          identify_sender?: boolean
+          instance_name: string
+          phone: string
+          shared_by: string
+          shared_with: string
+        }
+        Update: {
+          can_reshare?: boolean
+          created_at?: string
+          id?: string
+          identify_sender?: boolean
+          instance_name?: string
+          phone?: string
+          shared_by?: string
+          shared_with?: string
+        }
+        Relationships: []
+      }
       whatsapp_instance_users: {
         Row: {
           created_at: string
