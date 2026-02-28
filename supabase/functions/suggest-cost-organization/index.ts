@@ -13,16 +13,36 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
+    const { context } = await req.json();
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch current data
+    // Fetch only the essential columns and cap rows to keep the AI request fast
     const [companiesRes, productsRes, costCentersRes, nucleiRes] = await Promise.all([
-      supabase.from("companies").select("*").eq("is_active", true),
-      supabase.from("products_services").select("*"),
-      supabase.from("cost_centers").select("*"),
-      supabase.from("specialized_nuclei").select("*").eq("is_active", true),
+      supabase
+        .from("companies")
+        .select("id,name,cnpj,trading_name")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .limit(30),
+      supabase
+        .from("products_services")
+        .select("id,name,company_id,ticket_tier,product_type,strategy_focus,area")
+        .order("created_at", { ascending: false })
+        .limit(120),
+      supabase
+        .from("cost_centers")
+        .select("id,name,company_id,area,ticket_tier,strategy_focus")
+        .order("created_at", { ascending: false })
+        .limit(120),
+      supabase
+        .from("specialized_nuclei")
+        .select("id,name,prefix")
+        .eq("is_active", true)
+        .order("name", { ascending: true })
+        .limit(40),
     ]);
 
     const companies = companiesRes.data || [];
@@ -30,7 +50,43 @@ serve(async (req) => {
     const costCenters = costCentersRes.data || [];
     const nuclei = nucleiRes.data || [];
 
-    const { context } = await req.json();
+    const productsByCompany = companies.map((company) => ({
+      company_id: company.id,
+      company_name: company.name,
+      products: products
+        .filter((p) => p.company_id === company.id)
+        .slice(0, 12)
+        .map((p) => ({
+          name: p.name,
+          ticket_tier: p.ticket_tier,
+          strategy_focus: p.strategy_focus,
+          product_type: p.product_type,
+          area: p.area,
+        })),
+    }));
+
+    const costCentersByCompany = companies.map((company) => ({
+      company_id: company.id,
+      company_name: company.name,
+      cost_centers: costCenters
+        .filter((cc) => cc.company_id === company.id)
+        .slice(0, 20)
+        .map((cc) => ({
+          name: cc.name,
+          area: cc.area,
+          ticket_tier: cc.ticket_tier,
+          strategy_focus: cc.strategy_focus,
+        })),
+    }));
+
+    const compactContext = {
+      companies,
+      products_total: products.length,
+      cost_centers_total: costCenters.length,
+      nuclei,
+      products_by_company: productsByCompany,
+      cost_centers_by_company: costCentersByCompany,
+    };
 
     const systemPrompt = `Você é um consultor financeiro e estratégico especializado em estruturação de grupos empresariais brasileiros.
 
@@ -47,20 +103,18 @@ Considere sempre:
 - Posicionamento de marca e marketing por faixa de ticket
 - Engenharia de produto com foco em recorrência e escalabilidade
 
-DADOS ATUAIS DO GRUPO:
-Empresas: ${JSON.stringify(companies.map(c => ({ id: c.id, name: c.name, cnpj: c.cnpj, trading_name: c.trading_name })))}
-Produtos/Serviços: ${JSON.stringify(products.map(p => ({ id: p.id, name: p.name, company_id: p.company_id, ticket_tier: p.ticket_tier, product_type: p.product_type, strategy_focus: p.strategy_focus })))}
-Centros de Custo: ${JSON.stringify(costCenters.map(cc => ({ id: cc.id, name: cc.name, company_id: cc.company_id, area: cc.area, ticket_tier: cc.ticket_tier })))}
-Núcleos: ${JSON.stringify(nuclei.map(n => ({ id: n.id, name: n.name, prefix: n.prefix })))}`;
+DADOS ATUAIS DO GRUPO (resumidos para análise rápida):
+${JSON.stringify(compactContext)}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(30000),
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: context || "Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa." },
@@ -147,18 +201,20 @@ Núcleos: ${JSON.stringify(nuclei.map(n => ({ id: n.id, name: n.name, prefix: n.
 
     if (!response.ok) {
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ success: false, error: "Limite de uso da IA atingido. Tente novamente em instantes." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ success: false, error: "Créditos de IA insuficientes no workspace." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const t = await response.text();
       console.error("AI error:", response.status, t);
-      throw new Error("AI gateway error");
+      return new Response(JSON.stringify({ success: false, error: "Falha ao gerar sugestões de IA" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const aiResult = await response.json();
@@ -177,9 +233,16 @@ Núcleos: ${JSON.stringify(nuclei.map(n => ({ id: n.id, name: n.name, prefix: n.
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
+    const message = isTimeout
+      ? "A IA demorou mais que o esperado. Tente novamente com menos dados." 
+      : e instanceof Error
+      ? e.message
+      : "Unknown error";
+
     console.error("Error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ success: false, error: message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

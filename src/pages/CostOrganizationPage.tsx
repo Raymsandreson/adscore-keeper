@@ -35,18 +35,30 @@ export default function CostOrganizationPage() {
 
   const requestAISuggestions = async (context?: string) => {
     setAiLoading(true);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
     try {
-      const { data, error } = await supabase.functions.invoke('suggest-cost-organization', {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('A sugestão está demorando. Tente novamente.')), 35000);
+      });
+
+      const invokePromise = supabase.functions.invoke('suggest-cost-organization', {
         body: { context },
       });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
+
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      if (!data?.suggestions) throw new Error('A IA não retornou sugestões.');
+
       setSuggestions(data.suggestions);
       toast.success('Sugestões da IA geradas!');
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Erro ao gerar sugestões');
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setAiLoading(false);
     }
   };
