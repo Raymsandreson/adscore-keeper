@@ -720,6 +720,7 @@ export function WhatsAppInbox() {
             selectedPhones={bulkSelectedPhones}
             onToggleBulkPhone={handleToggleBulkPhone}
             onSelectAllFiltered={handleSelectAllFiltered}
+            privatePhones={new Set(privateConvs.map(p => `${p.phone}__${p.instance_name}`))}
           />
         </div>
 
