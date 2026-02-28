@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.parse-activity-dictation]
 verify_jwt = false
+
+[functions.suggest-cost-organization]
+verify_jwt = false
