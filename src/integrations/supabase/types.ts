@@ -2290,6 +2290,7 @@ export type Database = {
           invoice_url: string | null
           linked_account: string | null
           nature: string | null
+          nucleus_id: string | null
           payment_method: string | null
           recurrence: string | null
           reference_id: string | null
@@ -2316,6 +2317,7 @@ export type Database = {
           invoice_url?: string | null
           linked_account?: string | null
           nature?: string | null
+          nucleus_id?: string | null
           payment_method?: string | null
           recurrence?: string | null
           reference_id?: string | null
@@ -2342,6 +2344,7 @@ export type Database = {
           invoice_url?: string | null
           linked_account?: string | null
           nature?: string | null
+          nucleus_id?: string | null
           payment_method?: string | null
           recurrence?: string | null
           reference_id?: string | null
@@ -2376,6 +2379,13 @@ export type Database = {
             columns: ["cost_center_id"]
             isOneToOne: false
             referencedRelation: "cost_centers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_nucleus_id_fkey"
+            columns: ["nucleus_id"]
+            isOneToOne: false
+            referencedRelation: "specialized_nuclei"
             referencedColumns: ["id"]
           },
         ]

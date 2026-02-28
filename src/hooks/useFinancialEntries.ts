@@ -13,6 +13,7 @@ export interface FinancialEntry {
   category_id: string | null;
   nature: string | null;
   recurrence: string | null;
+  nucleus_id: string | null;
   beneficiary_id: string | null;
   description: string | null;
   cash_amount: number;
@@ -69,6 +70,7 @@ export function useFinancialEntries() {
       category_id: entry.category_id || null,
       nature: entry.nature || null,
       recurrence: entry.recurrence || null,
+      nucleus_id: entry.nucleus_id || null,
       beneficiary_id: entry.beneficiary_id || null,
       description: entry.description || null,
       cash_amount: entry.cash_amount || 0,
