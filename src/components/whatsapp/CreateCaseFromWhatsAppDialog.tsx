@@ -7,9 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useLegalCases } from '@/hooks/useLegalCases';
-import { Loader2, Scale, Sparkles } from 'lucide-react';
+import { Loader2, Scale, Sparkles, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ExtractedProcess {
   title: string;
@@ -41,6 +45,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [extractedProcesses, setExtractedProcesses] = useState<ExtractedProcess[]>([]);
+  const [closingDate, setClosingDate] = useState<Date>(new Date());
 
   useEffect(() => {
     if (open) {
@@ -49,6 +54,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setDescription('');
       setNotes('');
       setExtractedProcesses([]);
+      setClosingDate(new Date());
     }
   }, [open, leadName, contactName]);
 
@@ -160,8 +166,38 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         }
       }
 
+      // Auto-create Lead as "fechado" if no lead exists
+      let finalLeadId = leadId;
+      if (!finalLeadId) {
+        const closingDateStr = format(closingDate, 'yyyy-MM-dd');
+        const leadInsert: Record<string, any> = {
+          lead_name: title.trim(),
+          lead_phone: contactPhone || null,
+          source: 'whatsapp',
+          created_by: user?.id || null,
+          became_client_date: closingDateStr,
+        };
+        const { data: newLead, error: leadErr } = await supabase
+          .from('leads')
+          .insert(leadInsert)
+          .select('id')
+          .single();
+        if (leadErr) throw leadErr;
+        finalLeadId = newLead.id;
+        toast.success('Lead criado como fechado');
+
+        // Link contact to lead
+        if (finalContactId) {
+          await supabase.from('contact_leads').insert({
+            contact_id: finalContactId,
+            lead_id: finalLeadId,
+            relationship_to_victim: 'Vítima',
+          }).select().maybeSingle();
+        }
+      }
+
       const result = await createCase({
-        lead_id: leadId || '',
+        lead_id: finalLeadId || '',
         nucleus_id: nucleusId === 'none' ? null : nucleusId,
         title: title.trim(),
         description: description.trim() || undefined,
@@ -173,7 +209,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         for (const proc of extractedProcesses) {
           await supabase.from('lead_processes').insert({
             case_id: result.id,
-            lead_id: leadId || null,
+            lead_id: finalLeadId || null,
             title: proc.title,
             process_number: proc.process_number || null,
             process_type: proc.process_type || 'judicial',
@@ -185,16 +221,13 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         toast.success(`${extractedProcesses.length} processo(s) criado(s) automaticamente`);
       }
 
-      // Link contact as party to processes if contact exists
-      if (finalContactId && result?.id) {
-        // Link contact to lead if lead exists
-        if (leadId) {
-          await supabase.from('contact_leads').insert({
-            contact_id: finalContactId,
-            lead_id: leadId,
-            relationship_to_victim: 'Vítima',
-          }).select().maybeSingle();
-        }
+      // Link contact as party if not already linked
+      if (finalContactId && finalLeadId && leadId) {
+        await supabase.from('contact_leads').insert({
+          contact_id: finalContactId,
+          lead_id: finalLeadId,
+          relationship_to_victim: 'Vítima',
+        }).select().maybeSingle();
       }
 
       onCaseCreated?.(result);
@@ -284,9 +317,35 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             </p>
           )}
           {!leadId && (
-            <p className="text-xs text-amber-600">
-              Este caso será criado sem vínculo a um lead.
-            </p>
+            <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+              <p className="text-xs text-muted-foreground">
+                Um <strong>Lead</strong> será criado automaticamente como <strong className="text-green-600">Fechado</strong>.
+              </p>
+              <div>
+                <Label className="text-xs">Data de Fechamento</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn("w-full mt-1 justify-start text-left font-normal", !closingDate && "text-muted-foreground")}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {closingDate ? format(closingDate, "dd/MM/yyyy") : "Selecionar data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={closingDate}
+                      onSelect={(d) => d && setClosingDate(d)}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
           )}
         </div>
 
