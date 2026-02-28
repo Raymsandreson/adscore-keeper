@@ -391,24 +391,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
-      <div className="flex items-center gap-3 p-3 border-b bg-card shrink-0">
-        <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-          <User className="h-5 w-5 text-green-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
-            {conversation.contact_name || formatPhone(conversation.phone)}
-          </CopyableText>
-          <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="p">
-            {formatPhone(conversation.phone)}
-          </CopyableText>
-        </div>
-        <div className="flex items-center gap-2 overflow-x-auto shrink-0">
-          {(conversation.lead_id || conversation.contact_id) && (
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onUpdateWithAI} disabled={extractingData}>
-              {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Atualizar com IA
-            </Button>
-          )}
+      <div className="flex flex-col p-3 border-b bg-card shrink-0 gap-2">
+        {/* Top row: action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
           {conversation.lead_id ? (
             <Badge variant="outline" className="text-xs gap-1 text-blue-600">
               <Link2 className="h-3 w-3" /> Lead vinculado
@@ -455,18 +440,13 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               </DialogContent>
             </Dialog>
           )}
-          {conversation.contact_id && (
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => onViewContact?.(conversation.contact_id!)}>
-              <User className="h-3 w-3" /> Ver Contato
-            </Button>
-          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="text-xs gap-1" disabled={extractingData}>
                 {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Criar
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="start">
               {!conversation.lead_id && (
                 <DropdownMenuItem onClick={onCreateLead} className="gap-2">
                   <Plus className="h-4 w-4" /> Lead + Contato
@@ -480,6 +460,31 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {(conversation.lead_id || conversation.contact_id) && (
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onUpdateWithAI} disabled={extractingData}>
+              {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} IA
+            </Button>
+          )}
+          {conversation.contact_id && (
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => onViewContact?.(conversation.contact_id!)}>
+              <User className="h-3 w-3" /> Contato
+            </Button>
+          )}
+        </div>
+        {/* Bottom row: avatar + name/phone + utility buttons */}
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+            <User className="h-5 w-5 text-green-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
+              {conversation.contact_name || formatPhone(conversation.phone)}
+            </CopyableText>
+            <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="p">
+              {formatPhone(conversation.phone)}
+            </CopyableText>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
           <WhatsAppCallRecorder
             phone={conversation.phone}
             contactName={conversation.contact_name}
@@ -544,6 +549,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               </DialogContent>
             </Dialog>
           )}
+          </div>
         </div>
       </div>
 
