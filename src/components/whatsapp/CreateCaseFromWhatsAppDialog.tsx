@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useLegalCases } from '@/hooks/useLegalCases';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Loader2, Scale, Sparkles, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +15,7 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { findClosedStageId } from '@/utils/kanbanStageTypes';
 
 interface ExtractedProcess {
   title: string;
@@ -37,6 +39,7 @@ interface Props {
 export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, contactPhone, contactId, messages, onCaseCreated }: Props) {
   const { nuclei, loading: nucleiLoading } = useSpecializedNuclei();
   const { createCase } = useLegalCases();
+  const { boards } = useKanbanBoards();
   const [saving, setSaving] = useState(false);
   const [extracting, setExtracting] = useState(false);
 
@@ -46,6 +49,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [notes, setNotes] = useState('');
   const [extractedProcesses, setExtractedProcesses] = useState<ExtractedProcess[]>([]);
   const [closingDate, setClosingDate] = useState<Date>(new Date());
+  const [selectedBoardId, setSelectedBoardId] = useState<string>('');
 
   useEffect(() => {
     if (open) {
@@ -55,8 +59,11 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setNotes('');
       setExtractedProcesses([]);
       setClosingDate(new Date());
+      // Auto-select default board
+      const defaultBoard = boards.find(b => b.is_default) || boards[0];
+      setSelectedBoardId(defaultBoard?.id || '');
     }
-  }, [open, leadName, contactName]);
+  }, [open, leadName, contactName, boards]);
 
   const handleExtractWithAI = async () => {
     if (!messages?.length) {
@@ -97,12 +104,10 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (descParts.length > 0) setDescription(descParts.join('\n'));
       if (extracted.notes) setNotes(extracted.notes);
 
-      // Extract processes
       if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
         setExtractedProcesses(extracted.processes);
       }
 
-      // Auto-select nucleus
       if (extracted.case_type) {
         const typeMap: Record<string, string[]> = {
           'acidente_trabalho': ['AT', 'TRAB', 'ACIDENTE'],
@@ -169,6 +174,15 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       // Auto-create Lead as "fechado" if no lead exists
       let finalLeadId = leadId;
       if (!finalLeadId) {
+        if (!selectedBoardId) {
+          toast.error('Selecione um funil para o lead');
+          setSaving(false);
+          return;
+        }
+
+        const board = boards.find(b => b.id === selectedBoardId);
+        const closedStageId = board ? findClosedStageId(board.stages) : null;
+
         const closingDateStr = format(closingDate, 'yyyy-MM-dd');
         const leadInsert: Record<string, any> = {
           lead_name: title.trim(),
@@ -176,6 +190,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
           source: 'whatsapp',
           created_by: user?.id || null,
           became_client_date: closingDateStr,
+          board_id: selectedBoardId,
+          status: closedStageId || 'closed',
         };
         const { data: newLead, error: leadErr } = await supabase
           .from('leads')
@@ -317,10 +333,30 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             </p>
           )}
           {!leadId && (
-            <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+            <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
               <p className="text-xs text-muted-foreground">
                 Um <strong>Lead</strong> será criado automaticamente como <strong className="text-green-600">Fechado</strong>.
               </p>
+              
+              <div>
+                <Label className="text-xs">Funil *</Label>
+                <Select value={selectedBoardId} onValueChange={setSelectedBoardId}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Selecione o funil" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {boards.map(b => (
+                      <SelectItem key={b.id} value={b.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
+                          {b.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div>
                 <Label className="text-xs">Data de Fechamento</Label>
                 <Popover>

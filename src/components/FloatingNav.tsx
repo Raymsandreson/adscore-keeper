@@ -23,6 +23,8 @@ import {
   ChevronRight,
   Phone,
   MessageSquare as MessageSquareIcon,
+  Scale,
+  Briefcase,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { cn } from "@/lib/utils";
@@ -133,13 +135,21 @@ export function FloatingNav() {
       ],
     },
     {
+      id: "processual",
+      label: "Processual",
+      icon: <Scale className="h-4 w-4" />,
+      items: [
+        { id: "cases", label: "Casos", icon: <Briefcase className="h-3.5 w-3.5" />, path: "/cases", color: "text-primary" },
+        { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
+      ],
+    },
+    {
       id: "more",
       label: "Mais",
       icon: <TrendingUp className="h-4 w-4" />,
       items: [
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
         { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
-        { id: "workflow-progress", label: "Fluxo de Trabalho", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
         { id: "team", label: "Equipe", icon: <UsersRound className="h-3.5 w-3.5" />, path: "/team", color: "text-emerald-500" },
       ],
     },
