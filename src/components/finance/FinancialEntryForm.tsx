@@ -12,6 +12,7 @@ import { useCostCenters } from '@/hooks/useCostCenters';
 import { useBeneficiaries } from '@/hooks/useBeneficiaries';
 import { useFinancialEntries, FinancialEntry } from '@/hooks/useFinancialEntries';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import { Save, Upload, X, Plus } from 'lucide-react';
 import { format } from 'date-fns';
@@ -54,6 +55,7 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
   const { activeBeneficiaries, addBeneficiary } = useBeneficiaries();
   const { addEntry, updateEntry, uploadInvoice } = useFinancialEntries();
   const { categories } = useExpenseCategories();
+  const { nuclei } = useSpecializedNuclei();
 
   const [saving, setSaving] = useState(false);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -69,6 +71,7 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
     nature: '',
     recurrence: '',
     beneficiary_id: '',
+    nucleus_id: '',
     description: '',
     cash_amount: '',
     accrual_amount: '',
@@ -91,6 +94,7 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
         nature: editEntry.nature || '',
         recurrence: editEntry.recurrence || '',
         beneficiary_id: editEntry.beneficiary_id || '',
+        nucleus_id: editEntry.nucleus_id || '',
         description: editEntry.description || '',
         cash_amount: editEntry.cash_amount?.toString() || '',
         accrual_amount: editEntry.accrual_amount?.toString() || '',
@@ -128,6 +132,7 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
         nature: form.nature || null,
         recurrence: form.recurrence || null,
         beneficiary_id: form.beneficiary_id || null,
+        nucleus_id: form.nucleus_id || null,
         description: form.description || null,
         cash_amount: parseFloat(form.cash_amount),
         accrual_amount: form.accrual_amount ? parseFloat(form.accrual_amount) : null,
@@ -285,7 +290,25 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
               )}
             </div>
 
-            {/* Row 6: Description */}
+            {/* Row 6: Nucleus */}
+            <div>
+              <Label>Núcleo Especializado</Label>
+              <Select value={form.nucleus_id} onValueChange={v => update('nucleus_id', v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione o núcleo..." /></SelectTrigger>
+                <SelectContent>
+                  {nuclei.filter(n => n.is_active).map(n => (
+                    <SelectItem key={n.id} value={n.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: n.color }} />
+                        {n.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Row 7: Description */}
             <div>
               <Label>Descrição / Histórico</Label>
               <Textarea placeholder="Descreva o que foi este gasto..." value={form.description} onChange={e => update('description', e.target.value)} rows={2} />

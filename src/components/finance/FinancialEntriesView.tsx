@@ -11,8 +11,9 @@ import { useCompanies } from '@/hooks/useCompanies';
 import { useCostCenters } from '@/hooks/useCostCenters';
 import { useBeneficiaries } from '@/hooks/useBeneficiaries';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { FinancialEntryForm } from './FinancialEntryForm';
-import { Plus, Edit2, Trash2, ArrowDownCircle, ArrowUpCircle, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, ArrowDownCircle, ArrowUpCircle, FileText, TrendingUp, TrendingDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -30,6 +31,7 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
   const { costCenters } = useCostCenters();
   const { beneficiaries } = useBeneficiaries();
   const { categories } = useExpenseCategories();
+  const { nuclei } = useSpecializedNuclei();
 
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
@@ -54,6 +56,22 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
     const saidas = filteredEntries.filter(e => e.entry_type === 'saida').reduce((s, e) => s + e.cash_amount, 0);
     return { entradas, saidas, saldo: entradas - saidas };
   }, [filteredEntries]);
+
+  const nucleiProfitability = useMemo(() => {
+    const map = new Map<string, { name: string; color: string; entradas: number; saidas: number }>();
+    filteredEntries.forEach(e => {
+      if (!e.nucleus_id) return;
+      const nucleus = nuclei.find(n => n.id === e.nucleus_id);
+      if (!nucleus) return;
+      if (!map.has(e.nucleus_id)) {
+        map.set(e.nucleus_id, { name: nucleus.name, color: nucleus.color, entradas: 0, saidas: 0 });
+      }
+      const item = map.get(e.nucleus_id)!;
+      if (e.entry_type === 'entrada') item.entradas += e.cash_amount;
+      else item.saidas += e.cash_amount;
+    });
+    return Array.from(map.values()).sort((a, b) => (b.entradas - b.saidas) - (a.entradas - a.saidas));
+  }, [filteredEntries, nuclei]);
 
   const formatCurrency = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -87,6 +105,11 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
     if (!n) return '—';
     const map: Record<string, string> = { fixo: 'Fixo', variavel: 'Variável', semi_fixo: 'Semi-fixo' };
     return map[n] || n;
+  };
+
+  const getNucleusInfo = (id: string | null) => {
+    if (!id) return null;
+    return nuclei.find(n => n.id === id) || null;
   };
 
   const handleDelete = async (id: string) => {
@@ -141,6 +164,29 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
         </Card>
       </div>
 
+      {/* Nucleus Profitability */}
+      {nucleiProfitability.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {nucleiProfitability.map(np => {
+            const saldo = np.entradas - np.saidas;
+            return (
+              <Card key={np.name} className="border-l-4" style={{ borderLeftColor: np.color }}>
+                <CardContent className="py-2 px-3">
+                  <p className="text-xs font-medium truncate">{np.name}</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    {saldo >= 0 ? <TrendingUp className="h-3 w-3 text-green-600" /> : <TrendingDown className="h-3 w-3 text-destructive" />}
+                    <span className={`text-sm font-bold ${saldo >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                      {formatCurrency(saldo)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">+{formatCurrency(np.entradas)} / -{formatCurrency(np.saidas)}</p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filters + New button */}
       <div className="flex items-center gap-2 flex-wrap">
         <Select value={filterCompany} onValueChange={setFilterCompany}>
@@ -185,6 +231,7 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
                     <TableHead>Data</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Empresa</TableHead>
+                    <TableHead>Núcleo</TableHead>
                     <TableHead>Setor</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead>Beneficiário</TableHead>
@@ -206,6 +253,18 @@ export function FinancialEntriesView({ startDate, endDate, searchTerm, onNewEntr
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs">{getCompanyName(entry.company_id)}</TableCell>
+                      <TableCell className="text-xs">
+                        {(() => {
+                          const nuc = getNucleusInfo(entry.nucleus_id);
+                          if (!nuc) return '—';
+                          return (
+                            <Badge variant="outline" className="text-[10px] gap-1">
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: nuc.color }} />
+                              {nuc.prefix}
+                            </Badge>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell className="text-xs">{getCostCenterName(entry.cost_center_id)}</TableCell>
                       <TableCell className="text-xs">{getCategoryName(entry.category_id)}</TableCell>
                       <TableCell className="text-xs">{getBeneficiaryName(entry.beneficiary_id)}</TableCell>
