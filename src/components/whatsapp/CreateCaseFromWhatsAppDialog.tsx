@@ -7,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useLegalCases } from '@/hooks/useLegalCases';
-import { Loader2, Scale } from 'lucide-react';
+import { Loader2, Scale, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Props {
   open: boolean;
@@ -16,13 +17,15 @@ interface Props {
   leadId?: string | null;
   leadName?: string | null;
   contactName?: string | null;
+  messages?: any[];
   onCaseCreated?: (caseData: any) => void;
 }
 
-export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, onCaseCreated }: Props) {
+export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, messages, onCaseCreated }: Props) {
   const { nuclei, loading: nucleiLoading } = useSpecializedNuclei();
   const { createCase } = useLegalCases();
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const [title, setTitle] = useState('');
   const [nucleusId, setNucleusId] = useState<string>('none');
@@ -37,6 +40,71 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setNotes('');
     }
   }, [open, leadName, contactName]);
+
+  const handleExtractWithAI = async () => {
+    if (!messages?.length) {
+      toast.error('Sem mensagens para analisar');
+      return;
+    }
+    setExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
+        body: {
+          messages: messages.slice(-50).map(m => ({
+            direction: m.direction,
+            message_text: m.message_text,
+          })),
+          targetType: 'lead',
+        },
+      });
+      if (error) throw error;
+
+      const extracted = data?.data || {};
+
+      // Map extracted fields to case form
+      if (extracted.lead_name && !title) setTitle(extracted.lead_name);
+      if (extracted.lead_name && title === (leadName || contactName || '')) setTitle(extracted.lead_name);
+
+      // Build description from extracted data
+      const descParts: string[] = [];
+      if (extracted.victim_name) descParts.push(`Vítima: ${extracted.victim_name}`);
+      if (extracted.main_company) descParts.push(`Empresa: ${extracted.main_company}`);
+      if (extracted.contractor_company) descParts.push(`Contratante: ${extracted.contractor_company}`);
+      if (extracted.damage_description) descParts.push(`Dano: ${extracted.damage_description}`);
+      if (extracted.accident_date) descParts.push(`Data do acidente: ${extracted.accident_date}`);
+      if (extracted.accident_address) descParts.push(`Local: ${extracted.accident_address}`);
+      if (extracted.city) descParts.push(`Cidade: ${extracted.city}${extracted.state ? `/${extracted.state}` : ''}`);
+      if (extracted.sector) descParts.push(`Setor: ${extracted.sector}`);
+      if (extracted.case_number) descParts.push(`Processo: ${extracted.case_number}`);
+      if (extracted.liability_type) descParts.push(`Responsabilidade: ${extracted.liability_type}`);
+      if (extracted.news_link) descParts.push(`Notícia: ${extracted.news_link}`);
+
+      if (descParts.length > 0) setDescription(descParts.join('\n'));
+      if (extracted.notes) setNotes(extracted.notes);
+
+      // Try to auto-select nucleus based on case_type
+      if (extracted.case_type) {
+        const typeMap: Record<string, string[]> = {
+          'acidente_trabalho': ['AT', 'TRAB', 'ACIDENTE'],
+          'acidente_transito': ['TRANS', 'TRANSITO'],
+          'previdenciario': ['PREV'],
+          'consumidor': ['CONS'],
+        };
+        const keywords = typeMap[extracted.case_type] || [];
+        if (keywords.length > 0) {
+          const match = nuclei.find(n => n.is_active && keywords.some(k => n.prefix.toUpperCase().includes(k)));
+          if (match) setNucleusId(match.id);
+        }
+      }
+
+      toast.success('Dados extraídos da conversa!');
+    } catch (err) {
+      console.error('Extract error:', err);
+      toast.error('Erro ao extrair dados da conversa');
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -70,6 +138,19 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             Criar Caso Jurídico
           </DialogTitle>
         </DialogHeader>
+
+        {messages?.length ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExtractWithAI}
+            disabled={extracting}
+            className="w-full gap-2"
+          >
+            {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
+            {extracting ? 'Analisando conversa...' : 'Preencher com IA a partir da conversa'}
+          </Button>
+        ) : null}
 
         <div className="space-y-4 py-2">
           <div>
