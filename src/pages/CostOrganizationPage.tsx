@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +40,16 @@ export default function CostOrganizationPage() {
   const [customContext, setCustomContext] = useState(
     'Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.'
   );
+
+  const suggestionsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!suggestions) return;
+    setShowPrompt(false);
+    requestAnimationFrame(() => {
+      suggestionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [suggestions]);
 
   const requestAISuggestions = async (context?: string) => {
     setAiLoading(true);
@@ -396,25 +406,27 @@ export default function CostOrganizationPage() {
       </Tabs>
 
       {/* AI Suggestions Panel */}
-      {suggestions && (
-        <AISuggestionsPanel
-          suggestions={suggestions}
-          companies={companies}
-          onApplyProduct={async (p) => {
-            const company = companies.find(c => c.name === p.company_name);
-            await addProduct({
-              company_id: company?.id || null,
-              name: p.name,
-              description: p.description || p.rationale,
-              ticket_tier: p.ticket_tier,
-              product_type: p.product_type || 'service',
-              strategy_focus: p.strategy_focus || 'cash',
-              area: p.area || null,
-            });
-          }}
-          onDismiss={() => setSuggestions(null)}
-        />
-      )}
+      <div ref={suggestionsRef}>
+        {suggestions && (
+          <AISuggestionsPanel
+            suggestions={suggestions}
+            companies={companies}
+            onApplyProduct={async (p) => {
+              const company = companies.find(c => c.name === p.company_name);
+              await addProduct({
+                company_id: company?.id || null,
+                name: p.name,
+                description: p.description || p.rationale,
+                ticket_tier: p.ticket_tier,
+                product_type: p.product_type || 'service',
+                strategy_focus: p.strategy_focus || 'cash',
+                area: p.area || null,
+              });
+            }}
+            onDismiss={() => setSuggestions(null)}
+          />
+        )}
+      </div>
 
       <ProductFormDialog
         open={dialogOpen}
