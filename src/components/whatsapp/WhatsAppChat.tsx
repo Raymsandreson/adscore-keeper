@@ -402,7 +402,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
             {formatPhone(conversation.phone)}
           </CopyableText>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto shrink-0">
           {(conversation.lead_id || conversation.contact_id) && (
             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onUpdateWithAI} disabled={extractingData}>
               {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Atualizar com IA
