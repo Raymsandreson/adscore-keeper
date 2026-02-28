@@ -21,9 +21,8 @@ serve(async (req) => {
       });
     }
 
-    // Build conversation text (last 50 messages for context)
-    const recentMessages = messages.slice(-50);
-    const conversationText = recentMessages
+    // Use all messages for full context
+    const conversationText = messages
       .map((m: any) => {
         const dir = m.direction === 'outbound' ? 'Atendente' : 'Cliente';
         return `[${dir}]: ${m.message_text || ''}`;

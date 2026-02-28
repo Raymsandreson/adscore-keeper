@@ -50,7 +50,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     try {
       const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
         body: {
-          messages: messages.slice(-50).map(m => ({
+          messages: messages.map(m => ({
             direction: m.direction,
             message_text: m.message_text,
           })),
