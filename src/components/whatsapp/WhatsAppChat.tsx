@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale } from 'lucide-react';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
@@ -413,64 +414,72 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
               <Link2 className="h-3 w-3" /> Lead vinculado
             </Badge>
           ) : (
-            <>
-              <Dialog open={showLinkDialog} onOpenChange={(open) => { setShowLinkDialog(open); if (open) fetchLeads(); }}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="text-xs gap-1">
-                    <Link2 className="h-3 w-3" /> Vincular Lead
+            <Dialog open={showLinkDialog} onOpenChange={(open) => { setShowLinkDialog(open); if (open) fetchLeads(); }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="text-xs gap-1">
+                  <Link2 className="h-3 w-3" /> Vincular Lead
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Vincular a um Lead</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
+                    <SelectContent>
+                      {leads.map(lead => (
+                        <SelectItem key={lead.id} value={lead.id}>
+                          {lead.lead_name || 'Lead sem nome'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {conversation.contact_id && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Relação com a vítima</label>
+                      <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
+                        <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
+                        <SelectContent>
+                          {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Familiar', 'Amigo(a)', 'Colega de Trabalho', 'Advogado(a)', 'Testemunha', 'Responsável', 'Outro'].map(r => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <Button className="w-full" onClick={handleLinkLead} disabled={!selectedLeadId}>
+                    Vincular
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Vincular a um Lead</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-                      <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
-                      <SelectContent>
-                        {leads.map(lead => (
-                          <SelectItem key={lead.id} value={lead.id}>
-                            {lead.lead_name || 'Lead sem nome'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {conversation.contact_id && (
-                      <div className="space-y-1">
-                        <label className="text-xs text-muted-foreground">Relação com a vítima</label>
-                        <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
-                          <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
-                          <SelectContent>
-                            {['Vítima', 'Cônjuge', 'Pai/Mãe', 'Filho(a)', 'Irmão(ã)', 'Familiar', 'Amigo(a)', 'Colega de Trabalho', 'Advogado(a)', 'Testemunha', 'Responsável', 'Outro'].map(r => (
-                              <SelectItem key={r} value={r}>{r}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <Button className="w-full" onClick={handleLinkLead} disabled={!selectedLeadId}>
-                      Vincular
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateLead} disabled={extractingData}>
-                {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Criar Lead
-              </Button>
-            </>
+                </div>
+              </DialogContent>
+            </Dialog>
           )}
-          {conversation.contact_id ? (
+          {conversation.contact_id && (
             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => onViewContact?.(conversation.contact_id!)}>
               <User className="h-3 w-3" /> Ver Contato
             </Button>
-          ) : (
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateContact} disabled={extractingData}>
-              {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} Criar Contato
-            </Button>
           )}
-          <Button variant="outline" size="sm" className="text-xs gap-1" onClick={onCreateCase}>
-            <Scale className="h-3 w-3" /> Criar Caso
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="text-xs gap-1" disabled={extractingData}>
+                {extractingData ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} Criar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {!conversation.lead_id && (
+                <DropdownMenuItem onClick={onCreateLead} className="gap-2">
+                  <Plus className="h-4 w-4" /> Lead + Contato
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onCreateContact} className="gap-2">
+                <UserPlus className="h-4 w-4" /> Contato
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onCreateCase} className="gap-2">
+                <Scale className="h-4 w-4" /> Caso Jurídico
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <WhatsAppCallRecorder
             phone={conversation.phone}
             contactName={conversation.contact_name}

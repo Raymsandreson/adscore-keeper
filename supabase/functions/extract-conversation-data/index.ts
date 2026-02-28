@@ -21,7 +21,6 @@ serve(async (req) => {
       });
     }
 
-    // Use all messages for full context
     const conversationText = messages
       .map((m: any) => {
         const dir = m.direction === 'outbound' ? 'Atendente' : 'Cliente';
@@ -29,11 +28,10 @@ serve(async (req) => {
       })
       .join('\n');
 
-    const systemPrompt = `Você é um assistente especializado em extrair informações estruturadas de conversas de WhatsApp para um escritório de advocacia focado em acidentes de trabalho.
+    let schemaPrompt: string;
 
-Analise a conversa abaixo e extraia TODAS as informações relevantes que encontrar. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos (use null para campos não encontrados):
-
-${targetType === 'contact' ? `{
+    if (targetType === 'contact') {
+      schemaPrompt = `{
   "full_name": "nome completo da pessoa",
   "phone": "telefone adicional mencionado",
   "email": "e-mail mencionado",
@@ -43,7 +41,37 @@ ${targetType === 'contact' ? `{
   "notes": "informações importantes resumidas da conversa",
   "instagram_url": "perfil do instagram se mencionado",
   "profession": "profissão mencionada"
-}` : `{
+}`;
+    } else if (targetType === 'case') {
+      schemaPrompt = `{
+  "title": "título do caso jurídico (formato: Local/Vítima/Empresa)",
+  "victim_name": "nome da vítima",
+  "main_company": "empresa onde a vítima trabalha",
+  "contractor_company": "empresa contratante/terceirizada",
+  "damage_description": "descrição do dano/lesão",
+  "accident_date": "data do acidente (formato YYYY-MM-DD se possível)",
+  "accident_address": "endereço do acidente",
+  "city": "cidade",
+  "state": "sigla do estado",
+  "sector": "setor/área de atuação",
+  "case_number": "número do processo se mencionado",
+  "case_type": "tipo do caso (acidente_trabalho, acidente_transito, previdenciario, consumidor)",
+  "liability_type": "tipo de responsabilidade",
+  "news_link": "link de notícia mencionado",
+  "notes": "resumo das informações importantes",
+  "processes": [
+    {
+      "title": "título do processo (ex: Ação Trabalhista, Recurso, Processo Administrativo INSS)",
+      "process_number": "número do processo judicial ou administrativo se mencionado",
+      "process_type": "judicial ou administrativo",
+      "description": "descrição breve do processo"
+    }
+  ]
+}
+
+IMPORTANTE sobre "processes": Identifique TODOS os processos judiciais ou administrativos mencionados na conversa. Cada número de processo distinto deve ser um item separado. Se não houver processos mencionados, retorne "processes": [].`;
+    } else {
+      schemaPrompt = `{
   "lead_name": "nome do lead/caso (formato: Local/Vítima/Empresa)",
   "victim_name": "nome da vítima do acidente",
   "lead_phone": "telefone principal",
@@ -65,7 +93,14 @@ ${targetType === 'contact' ? `{
   "visit_address": "endereço para visita",
   "liability_type": "tipo de responsabilidade",
   "news_link": "link de notícia mencionado"
-}`}
+}`;
+    }
+
+    const systemPrompt = `Você é um assistente especializado em extrair informações estruturadas de conversas de WhatsApp para um escritório de advocacia focado em acidentes de trabalho.
+
+Analise a conversa abaixo e extraia TODAS as informações relevantes que encontrar. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos (use null para campos não encontrados):
+
+${schemaPrompt}
 
 IMPORTANTE:
 - Extraia APENAS informações explicitamente mencionadas na conversa
@@ -102,7 +137,6 @@ IMPORTANTE:
     const aiResult = await response.json();
     const content = aiResult.choices?.[0]?.message?.content || '{}';
 
-    // Parse the JSON, stripping markdown if present
     const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     let extracted: Record<string, any>;
     try {
@@ -115,7 +149,11 @@ IMPORTANTE:
     const cleaned: Record<string, any> = {};
     for (const [key, value] of Object.entries(extracted)) {
       if (value !== null && value !== undefined && value !== '') {
-        cleaned[key] = value;
+        if (Array.isArray(value)) {
+          cleaned[key] = value.filter((item: any) => item && typeof item === 'object');
+        } else {
+          cleaned[key] = value;
+        }
       }
     }
 
