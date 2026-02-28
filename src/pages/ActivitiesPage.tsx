@@ -1209,6 +1209,8 @@ const ActivitiesPage = () => {
             const timeSpent = workflowMode ? getActivityTimeSpent() : 0;
             const tempoStr = timeSpent > 0 ? `\n⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
 
+            const activityLink = selectedActivity ? `\n🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
+
             const msg = `*Boa tarde Sr(a). *
 
 *Assunto da atividade:* ${formTitle.toUpperCase()}
@@ -1221,6 +1223,7 @@ ${formAssignedToName ? `*${formAssignedToName}* voltará com mais informações 
 ${tempoStr}
 
 *Registrado por:* ${createdByName || '—'} em ${createdAtFmt}${updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : ''}
+${activityLink}
 
 Atenciosamente, ${createdByName || 'Equipe'}
 
