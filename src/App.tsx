@@ -34,6 +34,7 @@ const UserProductivityBanner = lazyRetry(() => import("@/components/UserProducti
 const IncomingCallBanner = lazyRetry(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
 const CallFieldSuggestionsBanner = lazyRetry(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
 const FloatingWhatsAppCall = lazyRetry(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
+const PWAInstallBanner = lazyRetry(() => import("@/components/PWAInstallBanner").then(m => ({ default: m.PWAInstallBanner })));
 
 // Lazy-loaded pages (with retry for stale chunks)
 const Index = lazyRetry(() => import("./pages/Index"));
@@ -90,6 +91,7 @@ function AppRoutes() {
         {/* IncomingCallBanner removido — contabilidade mantida via webhooks */}
         <CallFieldSuggestionsBanner />
         <FloatingWhatsAppCall />
+        <PWAInstallBanner />
       </Suspense>
       <FloatingNav />
       <Suspense fallback={<PageLoading />}>
