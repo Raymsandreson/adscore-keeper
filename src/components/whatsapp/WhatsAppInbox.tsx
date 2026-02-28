@@ -302,13 +302,60 @@ export function WhatsAppInbox() {
       if (error) throw error;
 
       linkToLead(selectedConversation.phone, data.id);
+
+      // Auto-create contact and link to lead
+      const contactExtracted = await extractConversationData('contact');
+      const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
+      
+      // Check if contact with same phone already exists
+      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('id, full_name')
+        .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .limit(1)
+        .maybeSingle();
+
+      let contactId: string;
+      if (existingContact) {
+        contactId = existingContact.id;
+        toast.info(`Contato "${existingContact.full_name}" já existente foi vinculado`);
+      } else {
+        const contactInsert: Record<string, any> = {
+          full_name: contactName,
+          phone: selectedConversation.phone,
+          source: 'whatsapp',
+          created_by: currentUser?.id || null,
+        };
+        if (contactExtracted.email) contactInsert.email = contactExtracted.email;
+        if (contactExtracted.city) contactInsert.city = contactExtracted.city;
+        if (contactExtracted.state) contactInsert.state = contactExtracted.state;
+        if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
+
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert([contactInsert] as any)
+          .select('id')
+          .single();
+        if (contactError) throw contactError;
+        contactId = newContact.id;
+      }
+
+      // Link contact to lead
+      await supabase.from('contact_leads').insert({
+        contact_id: contactId,
+        lead_id: data.id,
+        relationship_to_victim: 'Vítima',
+      });
+
+      // Link contact to conversation
+      await linkToContact(selectedConversation.phone, contactId);
+
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
       setShowBoardPicker(false);
       
-      if (Object.keys(extracted).length > 0) {
-        toast.success('Lead criado com dados extraídos da conversa!');
-      }
+      toast.success('Lead e contato criados com dados da conversa!');
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar lead');
@@ -809,8 +856,10 @@ export function WhatsAppInbox() {
         leadId={selectedConversation?.lead_id}
         leadName={selectedConversation?.contact_name}
         contactName={selectedConversation?.contact_name}
+        contactPhone={selectedConversation?.phone}
+        contactId={selectedConversation?.contact_id}
         messages={selectedConversation?.messages}
-        onCaseCreated={() => toast.success('Caso criado com sucesso!')}
+        onCaseCreated={() => { toast.success('Caso criado com sucesso!'); refetch(); }}
       />
 
       {/* Activity Creation Sheet */}

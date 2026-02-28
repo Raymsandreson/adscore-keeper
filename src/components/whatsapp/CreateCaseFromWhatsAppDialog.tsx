@@ -11,17 +11,26 @@ import { Loader2, Scale, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
+interface ExtractedProcess {
+  title: string;
+  process_number?: string;
+  process_type?: 'judicial' | 'administrativo';
+  description?: string;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leadId?: string | null;
   leadName?: string | null;
   contactName?: string | null;
+  contactPhone?: string | null;
+  contactId?: string | null;
   messages?: any[];
   onCaseCreated?: (caseData: any) => void;
 }
 
-export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, messages, onCaseCreated }: Props) {
+export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadName, contactName, contactPhone, contactId, messages, onCaseCreated }: Props) {
   const { nuclei, loading: nucleiLoading } = useSpecializedNuclei();
   const { createCase } = useLegalCases();
   const [saving, setSaving] = useState(false);
@@ -31,6 +40,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
   const [nucleusId, setNucleusId] = useState<string>('none');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
+  const [extractedProcesses, setExtractedProcesses] = useState<ExtractedProcess[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -38,6 +48,7 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       setNucleusId('none');
       setDescription('');
       setNotes('');
+      setExtractedProcesses([]);
     }
   }, [open, leadName, contactName]);
 
@@ -54,18 +65,16 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             direction: m.direction,
             message_text: m.message_text,
           })),
-          targetType: 'lead',
+          targetType: 'case',
         },
       });
       if (error) throw error;
 
       const extracted = data?.data || {};
 
-      // Map extracted fields to case form
-      if (extracted.lead_name && !title) setTitle(extracted.lead_name);
-      if (extracted.lead_name && title === (leadName || contactName || '')) setTitle(extracted.lead_name);
+      if (extracted.title) setTitle(extracted.title);
+      else if (extracted.lead_name && title === (leadName || contactName || '')) setTitle(extracted.lead_name);
 
-      // Build description from extracted data
       const descParts: string[] = [];
       if (extracted.victim_name) descParts.push(`Vítima: ${extracted.victim_name}`);
       if (extracted.main_company) descParts.push(`Empresa: ${extracted.main_company}`);
@@ -82,7 +91,12 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
       if (descParts.length > 0) setDescription(descParts.join('\n'));
       if (extracted.notes) setNotes(extracted.notes);
 
-      // Try to auto-select nucleus based on case_type
+      // Extract processes
+      if (extracted.processes && Array.isArray(extracted.processes) && extracted.processes.length > 0) {
+        setExtractedProcesses(extracted.processes);
+      }
+
+      // Auto-select nucleus
       if (extracted.case_type) {
         const typeMap: Record<string, string[]> = {
           'acidente_trabalho': ['AT', 'TRAB', 'ACIDENTE'],
@@ -113,6 +127,39 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
     }
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Auto-create contact if none exists
+      let finalContactId = contactId;
+      if (!finalContactId && contactPhone) {
+        const normalizedPhone = contactPhone.replace(/\D/g, '');
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id, full_name')
+          .or(`phone.eq.${contactPhone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingContact) {
+          finalContactId = existingContact.id;
+        } else {
+          const { data: newContact, error: cErr } = await supabase
+            .from('contacts')
+            .insert([{
+              full_name: contactName || 'Contato WhatsApp',
+              phone: contactPhone,
+              source: 'whatsapp',
+              created_by: user?.id || null,
+            }] as any)
+            .select('id')
+            .single();
+          if (!cErr && newContact) {
+            finalContactId = newContact.id;
+            toast.success('Contato criado automaticamente');
+          }
+        }
+      }
+
       const result = await createCase({
         lead_id: leadId || '',
         nucleus_id: nucleusId === 'none' ? null : nucleusId,
@@ -120,6 +167,36 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
         description: description.trim() || undefined,
         notes: notes.trim() || undefined,
       });
+
+      // Create extracted processes
+      if (extractedProcesses.length > 0 && result?.id) {
+        for (const proc of extractedProcesses) {
+          await supabase.from('lead_processes').insert({
+            case_id: result.id,
+            lead_id: leadId || null,
+            title: proc.title,
+            process_number: proc.process_number || null,
+            process_type: proc.process_type || 'judicial',
+            description: proc.description || null,
+            status: 'em_andamento',
+            created_by: user?.id || null,
+          } as any);
+        }
+        toast.success(`${extractedProcesses.length} processo(s) criado(s) automaticamente`);
+      }
+
+      // Link contact as party to processes if contact exists
+      if (finalContactId && result?.id) {
+        // Link contact to lead if lead exists
+        if (leadId) {
+          await supabase.from('contact_leads').insert({
+            contact_id: finalContactId,
+            lead_id: leadId,
+            relationship_to_victim: 'Vítima',
+          }).select().maybeSingle();
+        }
+      }
+
       onCaseCreated?.(result);
       onOpenChange(false);
     } catch {
@@ -187,6 +264,19 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
             <Label>Observações</Label>
             <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anotações internas..." className="mt-1" rows={2} />
           </div>
+
+          {extractedProcesses.length > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <Label className="text-xs font-semibold">Processos detectados ({extractedProcesses.length})</Label>
+              {extractedProcesses.map((proc, i) => (
+                <div key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Scale className="h-3 w-3 shrink-0" />
+                  <span>{proc.title}{proc.process_number ? ` - ${proc.process_number}` : ''}</span>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground italic">Serão criados automaticamente ao salvar</p>
+            </div>
+          )}
 
           {leadId && (
             <p className="text-xs text-muted-foreground">
