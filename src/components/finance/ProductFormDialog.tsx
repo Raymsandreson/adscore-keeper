@@ -6,6 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ProductService } from '@/hooks/useProductsServices';
 import { Company } from '@/hooks/useCompanies';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { VoiceInputButton } from '@/components/ui/voice-input-button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface Props {
   open: boolean;
@@ -27,6 +31,8 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
     price_range_min: '',
     price_range_max: '',
   });
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiRationale, setAiRationale] = useState<string | null>(null);
 
   useEffect(() => {
     if (product) {
@@ -44,6 +50,7 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
     } else {
       setForm({ name: '', description: '', company_id: '', ticket_tier: 'medium', product_type: 'service', strategy_focus: 'cash', area: 'operations', price_range_min: '', price_range_max: '' });
     }
+    setAiRationale(null);
   }, [product, open]);
 
   const handleSubmit = async () => {
@@ -57,6 +64,44 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
     } as any);
   };
 
+  const handleAiSuggest = async () => {
+    if (!form.name.trim()) {
+      toast.error('Digite o nome do produto/serviço primeiro');
+      return;
+    }
+    setAiLoading(true);
+    setAiRationale(null);
+    try {
+      const activeCompanies = companies.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }));
+      const { data, error } = await supabase.functions.invoke('suggest-product-fields', {
+        body: { name: form.name, description: form.description, companies: activeCompanies },
+      });
+
+      if (error) throw error;
+      const s = data?.suggestion;
+      if (!s) throw new Error('Sem sugestão');
+
+      setForm(prev => ({
+        ...prev,
+        ticket_tier: s.ticket_tier || prev.ticket_tier,
+        product_type: s.product_type || prev.product_type,
+        strategy_focus: s.strategy_focus || prev.strategy_focus,
+        area: s.area || prev.area,
+        price_range_min: s.price_range_min?.toString() || prev.price_range_min,
+        price_range_max: s.price_range_max?.toString() || prev.price_range_max,
+        company_id: s.company_id || prev.company_id,
+        description: prev.description || s.description_suggestion || prev.description,
+      }));
+      setAiRationale(s.rationale || null);
+      toast.success('Campos preenchidos pela IA!');
+    } catch (e: any) {
+      console.error('AI suggest error:', e);
+      toast.error('Erro ao consultar IA');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
@@ -66,12 +111,37 @@ export function ProductFormDialog({ open, onOpenChange, product, companies, onSa
         <div className="space-y-4">
           <div>
             <Label>Nome</Label>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex: Consultoria Tributária Premium" />
+            <div className="flex gap-2">
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex: Consultoria Tributária Premium" className="flex-1" />
+              <VoiceInputButton onResult={text => setForm(prev => ({ ...prev, name: prev.name ? prev.name + ' ' + text : text }))} />
+            </div>
           </div>
           <div>
             <Label>Descrição</Label>
-            <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descrição breve" />
+            <div className="flex gap-2">
+              <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descrição breve" className="flex-1" />
+              <VoiceInputButton onResult={text => setForm(prev => ({ ...prev, description: prev.description ? prev.description + ' ' + text : text }))} />
+            </div>
           </div>
+
+          {/* AI Suggest Button */}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-primary/30 text-primary hover:bg-primary/10"
+            onClick={handleAiSuggest}
+            disabled={aiLoading || !form.name.trim()}
+          >
+            {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            {aiLoading ? 'Analisando...' : 'Preencher com IA'}
+          </Button>
+
+          {aiRationale && (
+            <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 border">
+              <span className="font-medium">💡 IA:</span> {aiRationale}
+            </div>
+          )}
+
           <div>
             <Label>Empresa</Label>
             <Select value={form.company_id} onValueChange={v => setForm({ ...form, company_id: v })}>
