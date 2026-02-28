@@ -11,6 +11,7 @@ import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useProductsServices, ProductService } from '@/hooks/useProductsServices';
 import { useCostCenters } from '@/hooks/useCostCenters';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ProductFormDialog } from '@/components/finance/ProductFormDialog';
@@ -29,9 +30,10 @@ const FOCUS_CONFIG = {
 };
 
 export default function CostOrganizationPage() {
-  const { companies } = useCompanies();
+  const { companies, addCompany } = useCompanies();
   const { products, addProduct, updateProduct, deleteProduct, loading: productsLoading } = useProductsServices();
   const { costCenters } = useCostCenters();
+  const { addNucleus } = useSpecializedNuclei();
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -421,6 +423,20 @@ export default function CostOrganizationPage() {
                 product_type: p.product_type || 'service',
                 strategy_focus: p.strategy_focus || 'cash',
                 area: p.area || null,
+              });
+            }}
+            onApplyCompany={async (c) => {
+              await addCompany({
+                name: c.name,
+                trading_name: c.purpose || null,
+              });
+            }}
+            onApplyNucleus={async (n) => {
+              await addNucleus({
+                name: n.name,
+                prefix: n.prefix,
+                description: n.description || n.rationale || null,
+                is_active: true,
               });
             }}
             onDismiss={() => setSuggestions(null)}
