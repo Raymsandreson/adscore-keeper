@@ -255,6 +255,54 @@ export default function CostOrganizationPage() {
         </TabsList>
 
         <TabsContent value="by-company" className="space-y-4">
+          {/* Unlinked products */}
+          {(() => {
+            const unlinked = products.filter(p => !p.company_id);
+            if (unlinked.length === 0) return null;
+            return (
+              <Card className="border-warning/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2 text-warning">
+                    ⚠️ Produtos sem empresa vinculada
+                    <Badge variant="outline" className="ml-auto">{unlinked.length} produtos</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {unlinked.map(product => (
+                      <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{TIER_CONFIG[product.ticket_tier]?.icon}</span>
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                            <div className="flex gap-2 mt-1">
+                              <Badge variant="outline" className={TIER_CONFIG[product.ticket_tier]?.color}>
+                                {TIER_CONFIG[product.ticket_tier]?.label}
+                              </Badge>
+                              <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
+                                {FOCUS_CONFIG[product.strategy_focus]?.label}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Clique no ✏️ para vincular a uma empresa. Dica: aplique primeiro as empresas sugeridas pela IA.
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })()}
           {productsByCompany.map(({ company, products: compProducts }) => (
             <Card key={company.id}>
               <CardHeader className="pb-3">
