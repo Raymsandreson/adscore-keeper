@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -31,12 +31,13 @@ interface Props {
   selectedPhones?: Set<string>;
   onToggleBulkPhone?: (phone: string) => void;
   onSelectAllFiltered?: (phones: string[]) => void;
+  privatePhones?: Set<string>;
 }
 
 type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
 
-export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered }: Props) {
+export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [selectedBoardId, setSelectedBoardId] = useState<string>('all');
@@ -455,6 +456,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     const board = info?.board_id ? boards.find(b => b.id === info.board_id) : null;
     const stage = board?.stages.find(s => s.id === info?.current_stage);
     const isSelected = selectedPhone === conv.phone;
+    const isLocked = privatePhones?.has(`${conv.phone}__${conv.instance_name}`) || false;
 
     return (
       <div key={conv.phone} className="flex items-center">
@@ -509,6 +511,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                 {conv.last_message || '(mídia)'}
               </p>
               <div className="flex items-center gap-1 flex-shrink-0">
+                {isLocked && <Lock className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-amber-500")} />}
                 {conv.lead_id && <Link2 className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-blue-500")} />}
                 {convHasCalls && <PhoneCall className={cn("h-3 w-3", isSelected ? "text-primary-foreground/80" : "text-purple-500")} />}
                 {conv.unread_count > 0 && (
