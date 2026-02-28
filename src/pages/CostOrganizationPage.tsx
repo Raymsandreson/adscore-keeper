@@ -414,7 +414,19 @@ export default function CostOrganizationPage() {
             suggestions={suggestions}
             companies={companies}
             onApplyProduct={async (p) => {
-              const company = companies.find(c => c.name === p.company_name);
+              // Try to find existing company, or one just created
+              let company = companies.find(c => c.name === p.company_name);
+              if (!company && p.company_name) {
+                // Refetch companies in case it was just created
+                const { data: freshCompanies } = await supabase
+                  .from('companies')
+                  .select('*')
+                  .ilike('name', `%${p.company_name}%`)
+                  .limit(1);
+                if (freshCompanies && freshCompanies.length > 0) {
+                  company = freshCompanies[0] as any;
+                }
+              }
               await addProduct({
                 company_id: company?.id || null,
                 name: p.name,
@@ -424,12 +436,18 @@ export default function CostOrganizationPage() {
                 strategy_focus: p.strategy_focus || 'cash',
                 area: p.area || null,
               });
+              if (company) {
+                toast.success(`"${p.name}" cadastrado na empresa "${company.name}"`);
+              } else {
+                toast.warning(`"${p.name}" cadastrado sem empresa vinculada. Empresa "${p.company_name}" não encontrada — crie-a primeiro clicando em "Aplicar" na empresa sugerida.`);
+              }
             }}
             onApplyCompany={async (c) => {
-              await addCompany({
+              const newCompany = await addCompany({
                 name: c.name,
                 trading_name: c.purpose || null,
               });
+              toast.success(`Empresa "${c.name}" criada com sucesso! Agora você pode aplicar os produtos dela.`);
             }}
             onApplyNucleus={async (n) => {
               await addNucleus({
@@ -438,6 +456,7 @@ export default function CostOrganizationPage() {
                 description: n.description || n.rationale || null,
                 is_active: true,
               });
+              toast.success(`Núcleo "${n.name}" (${n.prefix}) criado com sucesso!`);
             }}
             onDismiss={() => setSuggestions(null)}
           />
