@@ -51,6 +51,7 @@ const CallsPage = lazyRetry(() => import("./pages/CallsPage"));
 const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"));
 const NotFound = lazyRetry(() => import("./pages/NotFound"));
 const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"));
+const InstallPage = lazyRetry(() => import("./pages/InstallPage"));
 
 const queryClient = new QueryClient();
 
@@ -108,6 +109,7 @@ function AppRoutes() {
           <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
           <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/install" element={<InstallPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
