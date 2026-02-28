@@ -3,10 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Eye } from 'lucide-react';
+import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Eye, Send, Mic } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useProductsServices, ProductService } from '@/hooks/useProductsServices';
 import { useCostCenters } from '@/hooks/useCostCenters';
@@ -117,26 +118,76 @@ export default function CostOrganizationPage() {
             <Plus className="h-4 w-4 mr-2" />
             Novo Produto
           </Button>
-          <Button variant="outline" size="icon" onClick={() => setShowPrompt(!showPrompt)} title="Ver/editar prompt da IA">
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button onClick={() => requestAISuggestions(customContext)} disabled={aiLoading}>
-            {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+          <Button
+            variant={showPrompt ? 'default' : 'outline'}
+            onClick={() => setShowPrompt(!showPrompt)}
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
             Sugerir com IA
           </Button>
         </div>
       </div>
 
-      {/* Prompt Editor */}
+      {/* AI Context & Instructions Panel */}
       <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
         <CollapsibleContent>
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex items-center justify-between">
+          <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
+            <CardContent className="pt-5 space-y-4">
+              {/* Current data summary */}
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dados que a IA já conhece</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge variant="secondary" className="text-xs">
+                    <Building2 className="h-3 w-3 mr-1" />
+                    {companies.filter(c => c.is_active).length} empresas
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    <Package className="h-3 w-3 mr-1" />
+                    {products.length} produtos
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs">
+                    <DollarSign className="h-3 w-3 mr-1" />
+                    {costCenters.length} centros de custo
+                  </Badge>
+                </div>
+                {companies.filter(c => c.is_active).length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Empresas: {companies.filter(c => c.is_active).map(c => c.trading_name || c.name).join(', ')}
+                  </p>
+                )}
+                {products.length === 0 && (
+                  <p className="text-xs text-warning mt-1">
+                    ⚠️ Nenhum produto cadastrado — a IA vai sugerir produtos do zero para suas empresas
+                  </p>
+                )}
+              </div>
+
+              {/* Instructions input */}
+              <div>
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary" />
-                  Prompt enviado à IA
+                  Suas instruções para a IA
                 </Label>
+                <div className="flex gap-2 mt-2">
+                  <Textarea
+                    value={customContext}
+                    onChange={(e) => setCustomContext(e.target.value)}
+                    rows={3}
+                    className="text-sm bg-background resize-y flex-1"
+                    placeholder="Ex: Quero focar em produtos de recorrência para gerar caixa na PrudenCred, e criar centros de custo para marketing digital na advocacia..."
+                  />
+                  <div className="flex flex-col gap-1">
+                    <VoiceInputButton
+                      onResult={(text) => setCustomContext(prev => prev ? prev + ' ' + text : text)}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Dê contexto e instruções específicas. A IA vai combinar com os dados das suas empresas, núcleos e produtos já cadastrados.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -145,17 +196,14 @@ export default function CostOrganizationPage() {
                 >
                   Restaurar padrão
                 </Button>
+                <Button
+                  onClick={() => requestAISuggestions(customContext)}
+                  disabled={aiLoading || !customContext.trim()}
+                >
+                  {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  {aiLoading ? 'Analisando...' : 'Gerar Sugestões'}
+                </Button>
               </div>
-              <Textarea
-                value={customContext}
-                onChange={(e) => setCustomContext(e.target.value)}
-                rows={4}
-                className="text-sm bg-background resize-y"
-                placeholder="Descreva o que deseja que a IA analise e sugira..."
-              />
-              <p className="text-xs text-muted-foreground">
-                💡 Personalize o prompt para direcionar a IA. Ex: "Foque em produtos de recorrência para a PrudenCred" ou "Sugira apenas centros de custo para marketing digital"
-              </p>
             </CardContent>
           </Card>
         </CollapsibleContent>
