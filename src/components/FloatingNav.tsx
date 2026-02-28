@@ -222,6 +222,7 @@ export function FloatingNav() {
           </button>
 
           {/* Quick Links */}
+          <div className="max-h-[60vh] overflow-y-auto">
           <div className="py-1.5">
             {quickLinks.map(item => (
               <button
@@ -277,6 +278,7 @@ export function FloatingNav() {
               )}
             </div>
           ))}
+          </div>
         </div>
       )}
 
