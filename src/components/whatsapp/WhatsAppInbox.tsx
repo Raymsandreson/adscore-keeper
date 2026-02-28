@@ -809,6 +809,7 @@ export function WhatsAppInbox() {
         leadId={selectedConversation?.lead_id}
         leadName={selectedConversation?.contact_name}
         contactName={selectedConversation?.contact_name}
+        messages={selectedConversation?.messages}
         onCaseCreated={() => toast.success('Caso criado com sucesso!')}
       />
 
