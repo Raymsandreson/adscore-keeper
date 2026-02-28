@@ -3,7 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb } from 'lucide-react';
+import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Eye } from 'lucide-react';
+import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useProductsServices, ProductService } from '@/hooks/useProductsServices';
 import { useCostCenters } from '@/hooks/useCostCenters';
@@ -32,6 +35,10 @@ export default function CostOrganizationPage() {
   const [suggestions, setSuggestions] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductService | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [customContext, setCustomContext] = useState(
+    'Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.'
+  );
 
   const requestAISuggestions = async (context?: string) => {
     setAiLoading(true);
@@ -110,12 +117,49 @@ export default function CostOrganizationPage() {
             <Plus className="h-4 w-4 mr-2" />
             Novo Produto
           </Button>
-          <Button onClick={() => requestAISuggestions()} disabled={aiLoading}>
+          <Button variant="outline" size="icon" onClick={() => setShowPrompt(!showPrompt)} title="Ver/editar prompt da IA">
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button onClick={() => requestAISuggestions(customContext)} disabled={aiLoading}>
             {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
             Sugerir com IA
           </Button>
         </div>
       </div>
+
+      {/* Prompt Editor */}
+      <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
+        <CollapsibleContent>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Prompt enviado à IA
+                </Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCustomContext('Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.')}
+                  className="text-xs text-muted-foreground"
+                >
+                  Restaurar padrão
+                </Button>
+              </div>
+              <Textarea
+                value={customContext}
+                onChange={(e) => setCustomContext(e.target.value)}
+                rows={4}
+                className="text-sm bg-background resize-y"
+                placeholder="Descreva o que deseja que a IA analise e sugira..."
+              />
+              <p className="text-xs text-muted-foreground">
+                💡 Personalize o prompt para direcionar a IA. Ex: "Foque em produtos de recorrência para a PrudenCred" ou "Sugira apenas centros de custo para marketing digital"
+              </p>
+            </CardContent>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Tier Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
