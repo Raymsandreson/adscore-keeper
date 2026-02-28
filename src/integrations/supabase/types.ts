@@ -1581,6 +1581,7 @@ export type Database = {
       }
       cost_centers: {
         Row: {
+          area: string | null
           company_id: string | null
           created_at: string
           description: string | null
@@ -1588,9 +1589,13 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          product_service_id: string | null
+          strategy_focus: string | null
+          ticket_tier: string | null
           updated_at: string
         }
         Insert: {
+          area?: string | null
           company_id?: string | null
           created_at?: string
           description?: string | null
@@ -1598,9 +1603,13 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          product_service_id?: string | null
+          strategy_focus?: string | null
+          ticket_tier?: string | null
           updated_at?: string
         }
         Update: {
+          area?: string | null
           company_id?: string | null
           created_at?: string
           description?: string | null
@@ -1608,6 +1617,9 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          product_service_id?: string | null
+          strategy_focus?: string | null
+          ticket_tier?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1616,6 +1628,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_centers_product_service_id_fkey"
+            columns: ["product_service_id"]
+            isOneToOne: false
+            referencedRelation: "products_services"
             referencedColumns: ["id"]
           },
         ]
@@ -2292,6 +2311,7 @@ export type Database = {
           nature: string | null
           nucleus_id: string | null
           payment_method: string | null
+          product_service_id: string | null
           recurrence: string | null
           reference_id: string | null
           source_transaction_id: string | null
@@ -2319,6 +2339,7 @@ export type Database = {
           nature?: string | null
           nucleus_id?: string | null
           payment_method?: string | null
+          product_service_id?: string | null
           recurrence?: string | null
           reference_id?: string | null
           source_transaction_id?: string | null
@@ -2346,6 +2367,7 @@ export type Database = {
           nature?: string | null
           nucleus_id?: string | null
           payment_method?: string | null
+          product_service_id?: string | null
           recurrence?: string | null
           reference_id?: string | null
           source_transaction_id?: string | null
@@ -2386,6 +2408,13 @@ export type Database = {
             columns: ["nucleus_id"]
             isOneToOne: false
             referencedRelation: "specialized_nuclei"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_product_service_id_fkey"
+            columns: ["product_service_id"]
+            isOneToOne: false
+            referencedRelation: "products_services"
             referencedColumns: ["id"]
           },
         ]
@@ -4106,6 +4135,65 @@ export type Database = {
             columns: ["process_id"]
             isOneToOne: false
             referencedRelation: "lead_processes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products_services: {
+        Row: {
+          area: string | null
+          company_id: string | null
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          price_range_max: number | null
+          price_range_min: number | null
+          product_type: string | null
+          strategy_focus: string | null
+          ticket_tier: string
+          updated_at: string
+        }
+        Insert: {
+          area?: string | null
+          company_id?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          price_range_max?: number | null
+          price_range_min?: number | null
+          product_type?: string | null
+          strategy_focus?: string | null
+          ticket_tier?: string
+          updated_at?: string
+        }
+        Update: {
+          area?: string | null
+          company_id?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_range_max?: number | null
+          price_range_min?: number | null
+          product_type?: string | null
+          strategy_focus?: string | null
+          ticket_tier?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_services_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
         ]
