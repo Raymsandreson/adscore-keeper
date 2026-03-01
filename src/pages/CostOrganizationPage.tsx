@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users } from 'lucide-react';
+import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users, Gem, Truck, HandCoins, FolderTree } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -35,7 +35,7 @@ export default function CostOrganizationPage() {
   const { companies, addCompany } = useCompanies();
   const { products, addProduct, updateProduct, deleteProduct, loading: productsLoading } = useProductsServices();
   const { costCenters } = useCostCenters();
-  const { addNucleus } = useSpecializedNuclei();
+  const { nuclei, addNucleus } = useSpecializedNuclei();
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -263,27 +263,127 @@ export default function CostOrganizationPage() {
             </CollapsibleContent>
           </Collapsible>
 
-          {/* Tier Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {tierSummary.map(t => (
-              <Card key={t.tier} className="border">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-2xl font-bold">{t.icon} {t.label}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{t.strategy}</p>
+          {/* 1. VALOR - Como criamos, entregamos e capturamos valor */}
+          <Card className="border-primary/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span className="text-lg font-bold text-primary">1.</span>
+                <Lightbulb className="h-4 w-4 text-amber-500" />
+                Valor
+                <span className="text-sm font-normal text-muted-foreground">— Como criamos, entregamos e capturamos valor</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Gem className="h-4 w-4 text-primary" />
+                    <p className="font-semibold text-sm">Criação de Valor</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {nuclei.filter(n => n.is_active).length > 0
+                      ? `${nuclei.filter(n => n.is_active).length} núcleos especializados gerando valor através de expertise`
+                      : 'Defina os núcleos especializados que criam valor para seus clientes'}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Truck className="h-4 w-4 text-blue-500" />
+                    <p className="font-semibold text-sm">Entrega de Valor</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {products.length > 0
+                      ? `${products.length} produtos/serviços em ${tierSummary.filter(t => t.count > 0).length} faixas de ticket`
+                      : 'Cadastre produtos/serviços que entregam valor ao mercado'}
+                  </p>
+                </div>
+                <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <HandCoins className="h-4 w-4 text-emerald-500" />
+                    <p className="font-semibold text-sm">Captura de Valor</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {companies.filter(c => c.is_active).length > 0
+                      ? `${companies.filter(c => c.is_active).length} empresas com eficiência tributária e proteção patrimonial`
+                      : 'Estruture empresas para capturar valor com eficiência'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 2. NÚCLEOS */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span className="text-lg font-bold text-amber-500">2.</span>
+                <FolderTree className="h-4 w-4 text-amber-500" />
+                Núcleos Especializados
+                <Badge variant="secondary" className="ml-auto">{nuclei.filter(n => n.is_active).length} núcleos</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {nuclei.filter(n => n.is_active).length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum núcleo cadastrado. Use a IA para sugerir ou cadastre manualmente.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {nuclei.filter(n => n.is_active).map(nucleus => (
+                    <div key={nucleus.id} className="p-3 rounded-lg border bg-card flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: nucleus.color }} />
+                      <div>
+                        <p className="font-medium text-sm">{nucleus.name}</p>
+                        <p className="text-xs text-muted-foreground">{nucleus.prefix}{nucleus.description ? ` · ${nucleus.description}` : ''}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-semibold">{t.count}</p>
-                      <p className="text-xs text-muted-foreground">produtos</p>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 3. PRODUTOS - Tier Summary */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span className="text-lg font-bold text-emerald-500">3.</span>
+                <Package className="h-4 w-4 text-emerald-500" />
+                Produtos & Serviços
+                <Badge variant="secondary" className="ml-auto">{products.length} produtos</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {tierSummary.map(t => (
+                  <div key={t.tier} className="p-4 rounded-lg border bg-card">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-lg font-bold">{t.icon} {t.label}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t.strategy}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold">{t.count}</p>
+                        <p className="text-xs text-muted-foreground">produtos</p>
+                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-          {/* Sub-tabs: By Company / By Tier / Matrix */}
+          {/* 4. EMPRESAS - Sub-tabs */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <span className="text-lg font-bold text-blue-500">4.</span>
+                <Building2 className="h-4 w-4 text-blue-500" />
+                Empresas
+                <Badge variant="secondary" className="ml-auto">{companies.filter(c => c.is_active).length} empresas</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
           <Tabs defaultValue="by-company" className="w-full">
             <TabsList>
               <TabsTrigger value="by-company">
@@ -475,6 +575,8 @@ export default function CostOrganizationPage() {
               </Card>
             </TabsContent>
           </Tabs>
+            </CardContent>
+          </Card>
 
           {/* AI Suggestions */}
           <div ref={suggestionsRef}>
