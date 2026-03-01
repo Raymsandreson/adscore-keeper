@@ -107,7 +107,7 @@ export function FloatingNav() {
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "finance", label: "Finanças", icon: <CreditCard className="h-4 w-4" />, path: "/finance", color: "text-green-500" },
-    { id: "cost-org", label: "Modelo de Negócios", icon: <Target className="h-4 w-4" />, path: "/cost-organization", color: "text-purple-500" },
+    { id: "cost-org", label: "Ecossistema", icon: <Target className="h-4 w-4" />, path: "/cost-organization", color: "text-purple-500" },
     
   ];
 
