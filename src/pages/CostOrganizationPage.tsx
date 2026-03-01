@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Eye, Send, Mic } from 'lucide-react';
+import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -16,6 +16,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ProductFormDialog } from '@/components/finance/ProductFormDialog';
 import { AISuggestionsPanel } from '@/components/finance/AISuggestionsPanel';
+import { BusinessModelTranslation } from '@/components/business/BusinessModelTranslation';
+import { OrganizationalStructureTab } from '@/components/business/OrganizationalStructureTab';
 
 const TIER_CONFIG = {
   low: { label: 'Low Ticket', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-200', icon: '💰', strategy: 'Geração de Caixa' },
@@ -44,6 +46,7 @@ export default function CostOrganizationPage() {
   );
   const [references, setReferences] = useState('');
   const [refining, setRefining] = useState(false);
+  const [mainTab, setMainTab] = useState('modelo');
 
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
 
@@ -111,13 +114,11 @@ export default function CostOrganizationPage() {
     setDialogOpen(true);
   };
 
-  // Group products by company
   const productsByCompany = companies.map(company => ({
     company,
     products: products.filter(p => p.company_id === company.id),
   })).filter(g => g.products.length > 0 || true);
 
-  // Calculate profitability summary by tier
   const tierSummary = (['low', 'medium', 'high'] as const).map(tier => ({
     tier,
     ...TIER_CONFIG[tier],
@@ -127,426 +128,405 @@ export default function CostOrganizationPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6 max-w-7xl">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="h-6 w-6 text-primary" />
-            Modelo de Negócios
+            Ecossistema do Grupo
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Estrutura de centros de custo, produtos e modelo de negócios por faixa de ticket
+            Modelo de Negócios + Estrutura Organizacional
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleNewProduct}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Produto
-          </Button>
-          <Button
-            variant={showPrompt ? 'default' : 'outline'}
-            onClick={() => setShowPrompt(!showPrompt)}
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Sugerir com IA
-          </Button>
+          {mainTab === 'modelo' && (
+            <>
+              <Button variant="outline" onClick={handleNewProduct}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Produto
+              </Button>
+              <Button
+                variant={showPrompt ? 'default' : 'outline'}
+                onClick={() => setShowPrompt(!showPrompt)}
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Sugerir com IA
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* AI Context & Instructions Panel */}
-      <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
-        <CollapsibleContent>
-          <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
-            <CardContent className="pt-5 space-y-4">
-              {/* Current data summary */}
-              <div>
-                <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dados que a IA já conhece</Label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge variant="secondary" className="text-xs">
-                    <Building2 className="h-3 w-3 mr-1" />
-                    {companies.filter(c => c.is_active).length} empresas
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    <Package className="h-3 w-3 mr-1" />
-                    {products.length} produtos
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    <DollarSign className="h-3 w-3 mr-1" />
-                    {costCenters.length} centros de custo
-                  </Badge>
-                </div>
-                {companies.filter(c => c.is_active).length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Empresas: {companies.filter(c => c.is_active).map(c => c.trading_name || c.name).join(', ')}
-                  </p>
-                )}
-                {products.length === 0 && (
-                  <p className="text-xs text-warning mt-1">
-                    ⚠️ Nenhum produto cadastrado — a IA vai sugerir produtos do zero para suas empresas
-                  </p>
-                )}
-              </div>
+      {/* Translation Card */}
+      <BusinessModelTranslation />
 
-              {/* Instructions input */}
-              <div>
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  Suas instruções para a IA
-                </Label>
-                <div className="flex gap-2 mt-2">
-                  <Textarea
-                    value={customContext}
-                    onChange={(e) => setCustomContext(e.target.value)}
-                    rows={3}
-                    className="text-sm bg-background resize-y flex-1"
-                    placeholder="Ex: Quero focar em produtos de recorrência para gerar caixa na PrudenCred, e criar centros de custo para marketing digital na advocacia..."
-                  />
-                  <div className="flex flex-col gap-1">
-                    <VoiceInputButton
-                      onResult={(text) => setCustomContext(prev => prev ? prev + ' ' + text : text)}
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  💡 Dê contexto e instruções específicas. A IA vai combinar com os dados das suas empresas, núcleos e produtos já cadastrados.
-                </p>
-              </div>
-
-              {/* References field */}
-              <div>
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-primary" />
-                  Referências de empresários/empresas (opcional)
-                </Label>
-                <div className="flex gap-2 mt-2">
-                  <Textarea
-                    value={references}
-                    onChange={(e) => setReferences(e.target.value)}
-                    rows={2}
-                    className="text-sm bg-background resize-y flex-1"
-                    placeholder="Ex: XP Investimentos (modelo de plataforma), G4 Educação (recorrência em educação), Havan (verticalização)..."
-                  />
-                  <VoiceInputButton onResult={(text) => setReferences(prev => prev ? prev + ' ' + text : text)} />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  💡 Deixe vazio para a IA sugerir referências automaticamente baseadas no seu setor.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between pt-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCustomContext('Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.')}
-                  className="text-xs text-muted-foreground"
-                >
-                  Restaurar padrão
-                </Button>
-                <Button
-                  onClick={() => requestAISuggestions(customContext)}
-                  disabled={aiLoading || !customContext.trim()}
-                >
-                  {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                  {aiLoading ? 'Analisando...' : 'Gerar Sugestões'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* Tier Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {tierSummary.map(t => (
-          <Card key={t.tier} className="border">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-bold">{t.icon} {t.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{t.strategy}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold">{t.count}</p>
-                  <p className="text-xs text-muted-foreground">produtos</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Tabs defaultValue="by-company" className="w-full">
-        <TabsList>
-          <TabsTrigger value="by-company">
-            <Building2 className="h-4 w-4 mr-2" /> Por Empresa
+      {/* Main Tabs: Modelo de Negócios vs Estrutura Organizacional */}
+      <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="modelo" className="gap-2">
+            <Target className="h-4 w-4" />
+            Modelo de Negócios
           </TabsTrigger>
-          <TabsTrigger value="by-tier">
-            <TrendingUp className="h-4 w-4 mr-2" /> Por Ticket
-          </TabsTrigger>
-          <TabsTrigger value="matrix">
-            <Package className="h-4 w-4 mr-2" /> Matriz
+          <TabsTrigger value="estrutura" className="gap-2">
+            <Users className="h-4 w-4" />
+            Estrutura Organizacional
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="by-company" className="space-y-4">
-          {/* Unlinked products */}
-          {(() => {
-            const unlinked = products.filter(p => !p.company_id);
-            if (unlinked.length === 0) return null;
-            return (
-              <Card className="border-warning/50">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2 text-warning">
-                    ⚠️ Produtos sem empresa vinculada
-                    <Badge variant="outline" className="ml-auto">{unlinked.length} produtos</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {unlinked.map(product => (
-                      <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xl">{TIER_CONFIG[product.ticket_tier]?.icon}</span>
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            <div className="flex gap-2 mt-1">
-                              <Badge variant="outline" className={TIER_CONFIG[product.ticket_tier]?.color}>
-                                {TIER_CONFIG[product.ticket_tier]?.label}
-                              </Badge>
-                              <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
-                                {FOCUS_CONFIG[product.strategy_focus]?.label}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-3">
-                    Clique no ✏️ para vincular a uma empresa. Dica: aplique primeiro as empresas sugeridas pela IA.
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })()}
-          {productsByCompany.map(({ company, products: compProducts }) => (
-            <Card key={company.id}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  {company.name}
-                  {company.trading_name && (
-                    <span className="text-sm text-muted-foreground font-normal">({company.trading_name})</span>
-                  )}
-                  <Badge variant="outline" className="ml-auto">{compProducts.length} produtos</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {compProducts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhum produto cadastrado para esta empresa
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {compProducts.map(product => (
-                      <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xl">{TIER_CONFIG[product.ticket_tier]?.icon}</span>
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            <div className="flex gap-2 mt-1">
-                              <Badge variant="outline" className={TIER_CONFIG[product.ticket_tier]?.color}>
-                                {TIER_CONFIG[product.ticket_tier]?.label}
-                              </Badge>
-                              <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
-                                {FOCUS_CONFIG[product.strategy_focus]?.label}
-                              </Badge>
-                              {product.product_type && (
-                                <Badge variant="secondary">{product.product_type}</Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </TabsContent>
-
-        <TabsContent value="by-tier" className="space-y-4">
-          {(['low', 'medium', 'high'] as const).map(tier => {
-            const tierProducts = products.filter(p => p.ticket_tier === tier);
-            return (
-              <Card key={tier}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    {TIER_CONFIG[tier].icon} {TIER_CONFIG[tier].label}
-                    <span className="text-sm font-normal text-muted-foreground">— {TIER_CONFIG[tier].strategy}</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {tierProducts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum produto nesta faixa</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {tierProducts.map(product => {
-                        const company = companies.find(c => c.id === product.company_id);
-                        return (
-                          <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                            <div>
-                              <p className="font-medium">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">{company?.name || 'Sem empresa'}</p>
-                            </div>
-                            <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
-                              {FOCUS_CONFIG[product.strategy_focus]?.label}
-                            </Badge>
-                          </div>
-                        );
-                      })}
+        {/* ===== MODELO DE NEGÓCIOS TAB ===== */}
+        <TabsContent value="modelo" className="space-y-6">
+          {/* AI Context Panel */}
+          <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
+            <CollapsibleContent>
+              <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
+                <CardContent className="pt-5 space-y-4">
+                  <div>
+                    <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dados que a IA já conhece</Label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <Badge variant="secondary" className="text-xs">
+                        <Building2 className="h-3 w-3 mr-1" />
+                        {companies.filter(c => c.is_active).length} empresas
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        <Package className="h-3 w-3 mr-1" />
+                        {products.length} produtos
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        {costCenters.length} centros de custo
+                      </Badge>
                     </div>
-                  )}
+                    {companies.filter(c => c.is_active).length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Empresas: {companies.filter(c => c.is_active).map(c => c.trading_name || c.name).join(', ')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      Suas instruções para a IA
+                    </Label>
+                    <div className="flex gap-2 mt-2">
+                      <Textarea
+                        value={customContext}
+                        onChange={(e) => setCustomContext(e.target.value)}
+                        rows={3}
+                        className="text-sm bg-background resize-y flex-1"
+                        placeholder="Ex: Quero focar em produtos de recorrência para gerar caixa..."
+                      />
+                      <VoiceInputButton onResult={(text) => setCustomContext(prev => prev ? prev + ' ' + text : text)} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-primary" />
+                      Referências de empresários/empresas (opcional)
+                    </Label>
+                    <div className="flex gap-2 mt-2">
+                      <Textarea
+                        value={references}
+                        onChange={(e) => setReferences(e.target.value)}
+                        rows={2}
+                        className="text-sm bg-background resize-y flex-1"
+                        placeholder="Ex: XP Investimentos, G4 Educação, Havan..."
+                      />
+                      <VoiceInputButton onResult={(text) => setReferences(prev => prev ? prev + ' ' + text : text)} />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      💡 Deixe vazio para a IA sugerir referências automaticamente.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCustomContext('Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.')}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Restaurar padrão
+                    </Button>
+                    <Button
+                      onClick={() => requestAISuggestions(customContext)}
+                      disabled={aiLoading || !customContext.trim()}
+                    >
+                      {aiLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                      {aiLoading ? 'Analisando...' : 'Gerar Sugestões'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
-            );
-          })}
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Tier Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {tierSummary.map(t => (
+              <Card key={t.tier} className="border">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold">{t.icon} {t.label}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{t.strategy}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-semibold">{t.count}</p>
+                      <p className="text-xs text-muted-foreground">produtos</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Sub-tabs: By Company / By Tier / Matrix */}
+          <Tabs defaultValue="by-company" className="w-full">
+            <TabsList>
+              <TabsTrigger value="by-company">
+                <Building2 className="h-4 w-4 mr-2" /> Por Empresa
+              </TabsTrigger>
+              <TabsTrigger value="by-tier">
+                <TrendingUp className="h-4 w-4 mr-2" /> Por Ticket
+              </TabsTrigger>
+              <TabsTrigger value="matrix">
+                <Package className="h-4 w-4 mr-2" /> Matriz
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="by-company" className="space-y-4">
+              {(() => {
+                const unlinked = products.filter(p => !p.company_id);
+                if (unlinked.length === 0) return null;
+                return (
+                  <Card className="border-warning/50">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg flex items-center gap-2 text-warning">
+                        ⚠️ Produtos sem empresa vinculada
+                        <Badge variant="outline" className="ml-auto">{unlinked.length} produtos</Badge>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {unlinked.map(product => (
+                          <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl">{TIER_CONFIG[product.ticket_tier]?.icon}</span>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <div className="flex gap-2 mt-1">
+                                  <Badge variant="outline" className={TIER_CONFIG[product.ticket_tier]?.color}>
+                                    {TIER_CONFIG[product.ticket_tier]?.label}
+                                  </Badge>
+                                  <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
+                                    {FOCUS_CONFIG[product.strategy_focus]?.label}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}><Pencil className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+              {productsByCompany.map(({ company, products: compProducts }) => (
+                <Card key={company.id}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      {company.name}
+                      {company.trading_name && <span className="text-sm text-muted-foreground font-normal">({company.trading_name})</span>}
+                      <Badge variant="outline" className="ml-auto">{compProducts.length} produtos</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {compProducts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum produto cadastrado</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {compProducts.map(product => (
+                          <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl">{TIER_CONFIG[product.ticket_tier]?.icon}</span>
+                              <div>
+                                <p className="font-medium">{product.name}</p>
+                                <div className="flex gap-2 mt-1">
+                                  <Badge variant="outline" className={TIER_CONFIG[product.ticket_tier]?.color}>{TIER_CONFIG[product.ticket_tier]?.label}</Badge>
+                                  <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>{FOCUS_CONFIG[product.strategy_focus]?.label}</Badge>
+                                  {product.product_type && <Badge variant="secondary">{product.product_type}</Badge>}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" onClick={() => handleEdit(product)}><Pencil className="h-4 w-4" /></Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </TabsContent>
+
+            <TabsContent value="by-tier" className="space-y-4">
+              {(['low', 'medium', 'high'] as const).map(tier => {
+                const tierProducts = products.filter(p => p.ticket_tier === tier);
+                return (
+                  <Card key={tier}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {TIER_CONFIG[tier].icon} {TIER_CONFIG[tier].label}
+                        <span className="text-sm font-normal text-muted-foreground">— {TIER_CONFIG[tier].strategy}</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {tierProducts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Nenhum produto nesta faixa</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {tierProducts.map(product => {
+                            const company = companies.find(c => c.id === product.company_id);
+                            return (
+                              <div key={product.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                                <div>
+                                  <p className="font-medium">{product.name}</p>
+                                  <p className="text-xs text-muted-foreground">{company?.name || 'Sem empresa'}</p>
+                                </div>
+                                <Badge variant="secondary" className={FOCUS_CONFIG[product.strategy_focus]?.color}>
+                                  {FOCUS_CONFIG[product.strategy_focus]?.label}
+                                </Badge>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </TabsContent>
+
+            <TabsContent value="matrix">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Matriz Empresa × Ticket × Modelo de Negócios</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left p-2">Empresa</th>
+                          <th className="text-center p-2">💰 Low</th>
+                          <th className="text-center p-2">📈 Medium</th>
+                          <th className="text-center p-2">🏗️ High</th>
+                          <th className="text-center p-2">Foco</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {companies.filter(c => c.is_active).map(company => {
+                          const compProducts = products.filter(p => p.company_id === company.id);
+                          const low = compProducts.filter(p => p.ticket_tier === 'low');
+                          const med = compProducts.filter(p => p.ticket_tier === 'medium');
+                          const high = compProducts.filter(p => p.ticket_tier === 'high');
+                          const focusCounts = { cash: 0, equity: 0, hybrid: 0 };
+                          compProducts.forEach(p => focusCounts[p.strategy_focus]++);
+                          const mainFocus = Object.entries(focusCounts).sort((a, b) => b[1] - a[1])[0];
+                          return (
+                            <tr key={company.id} className="border-b hover:bg-muted/50">
+                              <td className="p-2 font-medium">{company.name}</td>
+                              <td className="text-center p-2">
+                                {low.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
+                                {low.length === 0 && <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="text-center p-2">
+                                {med.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
+                                {med.length === 0 && <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="text-center p-2">
+                                {high.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
+                                {high.length === 0 && <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="text-center p-2">
+                                {mainFocus && mainFocus[1] > 0 ? (
+                                  <Badge variant="secondary" className={FOCUS_CONFIG[mainFocus[0] as keyof typeof FOCUS_CONFIG]?.color}>
+                                    {FOCUS_CONFIG[mainFocus[0] as keyof typeof FOCUS_CONFIG]?.label}
+                                  </Badge>
+                                ) : <span className="text-muted-foreground">—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          {/* AI Suggestions */}
+          <div ref={suggestionsRef}>
+            {suggestions && (
+              <AISuggestionsPanel
+                suggestions={suggestions}
+                companies={companies}
+                onApplyProduct={async (p) => {
+                  let company = companies.find(c => c.name === p.company_name);
+                  if (!company && p.company_name) {
+                    const { data: freshCompanies } = await supabase
+                      .from('companies').select('*').ilike('name', `%${p.company_name}%`).limit(1);
+                    if (freshCompanies && freshCompanies.length > 0) company = freshCompanies[0] as any;
+                  }
+                  await addProduct({
+                    company_id: company?.id || null,
+                    name: p.name,
+                    description: p.description || p.rationale,
+                    ticket_tier: p.ticket_tier,
+                    product_type: p.product_type || 'service',
+                    strategy_focus: p.strategy_focus || 'cash',
+                    area: p.area || null,
+                  });
+                  if (company) {
+                    toast.success(`"${p.name}" cadastrado em "${company.name}"`);
+                  } else {
+                    toast.warning(`"${p.name}" cadastrado sem empresa. Crie "${p.company_name}" primeiro.`);
+                  }
+                }}
+                onApplyCompany={async (c) => {
+                  await addCompany({ name: c.name, trading_name: c.purpose || null });
+                  toast.success(`Empresa "${c.name}" criada!`);
+                }}
+                onApplyNucleus={async (n) => {
+                  await addNucleus({ name: n.name, prefix: n.prefix, description: n.description || n.rationale || null, is_active: true });
+                  toast.success(`Núcleo "${n.name}" (${n.prefix}) criado!`);
+                }}
+                onDismiss={() => setSuggestions(null)}
+                onRefine={async (instruction) => {
+                  await requestAISuggestions(customContext, instruction, suggestions);
+                }}
+                refining={refining}
+              />
+            )}
+          </div>
         </TabsContent>
 
-        <TabsContent value="matrix">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Matriz Empresa × Ticket × Modelo de Negócios</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2">Empresa</th>
-                      <th className="text-center p-2">💰 Low Ticket</th>
-                      <th className="text-center p-2">📈 Medium Ticket</th>
-                      <th className="text-center p-2">🏗️ High Ticket</th>
-                      <th className="text-center p-2">Foco</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {companies.filter(c => c.is_active).map(company => {
-                      const compProducts = products.filter(p => p.company_id === company.id);
-                      const low = compProducts.filter(p => p.ticket_tier === 'low');
-                      const med = compProducts.filter(p => p.ticket_tier === 'medium');
-                      const high = compProducts.filter(p => p.ticket_tier === 'high');
-                      const focusCounts = { cash: 0, equity: 0, hybrid: 0 };
-                      compProducts.forEach(p => focusCounts[p.strategy_focus]++);
-                      const mainFocus = Object.entries(focusCounts).sort((a, b) => b[1] - a[1])[0];
-                      return (
-                        <tr key={company.id} className="border-b hover:bg-muted/50">
-                          <td className="p-2 font-medium">{company.name}</td>
-                          <td className="text-center p-2">
-                            {low.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
-                            {low.length === 0 && <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="text-center p-2">
-                            {med.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
-                            {med.length === 0 && <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="text-center p-2">
-                            {high.map(p => <div key={p.id} className="text-xs">{p.name}</div>)}
-                            {high.length === 0 && <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="text-center p-2">
-                            {mainFocus && mainFocus[1] > 0 ? (
-                              <Badge variant="secondary" className={FOCUS_CONFIG[mainFocus[0] as keyof typeof FOCUS_CONFIG]?.color}>
-                                {FOCUS_CONFIG[mainFocus[0] as keyof typeof FOCUS_CONFIG]?.label}
-                              </Badge>
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+        {/* ===== ESTRUTURA ORGANIZACIONAL TAB ===== */}
+        <TabsContent value="estrutura">
+          <OrganizationalStructureTab />
         </TabsContent>
       </Tabs>
-
-      {/* AI Suggestions Panel */}
-      <div ref={suggestionsRef}>
-        {suggestions && (
-          <AISuggestionsPanel
-            suggestions={suggestions}
-            companies={companies}
-            onApplyProduct={async (p) => {
-              // Try to find existing company, or one just created
-              let company = companies.find(c => c.name === p.company_name);
-              if (!company && p.company_name) {
-                // Refetch companies in case it was just created
-                const { data: freshCompanies } = await supabase
-                  .from('companies')
-                  .select('*')
-                  .ilike('name', `%${p.company_name}%`)
-                  .limit(1);
-                if (freshCompanies && freshCompanies.length > 0) {
-                  company = freshCompanies[0] as any;
-                }
-              }
-              await addProduct({
-                company_id: company?.id || null,
-                name: p.name,
-                description: p.description || p.rationale,
-                ticket_tier: p.ticket_tier,
-                product_type: p.product_type || 'service',
-                strategy_focus: p.strategy_focus || 'cash',
-                area: p.area || null,
-              });
-              if (company) {
-                toast.success(`"${p.name}" cadastrado na empresa "${company.name}"`);
-              } else {
-                toast.warning(`"${p.name}" cadastrado sem empresa vinculada. Empresa "${p.company_name}" não encontrada — crie-a primeiro clicando em "Aplicar" na empresa sugerida.`);
-              }
-            }}
-            onApplyCompany={async (c) => {
-              const newCompany = await addCompany({
-                name: c.name,
-                trading_name: c.purpose || null,
-              });
-              toast.success(`Empresa "${c.name}" criada com sucesso! Agora você pode aplicar os produtos dela.`);
-            }}
-            onApplyNucleus={async (n) => {
-              await addNucleus({
-                name: n.name,
-                prefix: n.prefix,
-                description: n.description || n.rationale || null,
-                is_active: true,
-              });
-              toast.success(`Núcleo "${n.name}" (${n.prefix}) criado com sucesso!`);
-            }}
-            onDismiss={() => setSuggestions(null)}
-            onRefine={async (instruction) => {
-              await requestAISuggestions(customContext, instruction, suggestions);
-            }}
-            refining={refining}
-          />
-        )}
-      </div>
 
       <ProductFormDialog
         open={dialogOpen}
