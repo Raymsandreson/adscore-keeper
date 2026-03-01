@@ -42,6 +42,8 @@ export default function CostOrganizationPage() {
   const [customContext, setCustomContext] = useState(
     'Analise a estrutura atual e sugira a melhor organização completa para o grupo, com foco em otimização tributária, construção de equity e geração de caixa.'
   );
+  const [references, setReferences] = useState('');
+  const [refining, setRefining] = useState(false);
 
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,8 +55,12 @@ export default function CostOrganizationPage() {
     });
   }, [suggestions]);
 
-  const requestAISuggestions = async (context?: string) => {
-    setAiLoading(true);
+  const requestAISuggestions = async (context?: string, refinement?: string, previousSuggestions?: any) => {
+    if (refinement) {
+      setRefining(true);
+    } else {
+      setAiLoading(true);
+    }
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     try {
@@ -63,7 +69,12 @@ export default function CostOrganizationPage() {
       });
 
       const invokePromise = supabase.functions.invoke('suggest-cost-organization', {
-        body: { context },
+        body: {
+          context,
+          references: references || undefined,
+          refinement: refinement || undefined,
+          previousSuggestions: previousSuggestions || undefined,
+        },
       });
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as Awaited<typeof invokePromise>;
@@ -73,13 +84,14 @@ export default function CostOrganizationPage() {
       if (!data?.suggestions) throw new Error('A IA não retornou sugestões.');
 
       setSuggestions(data.suggestions);
-      toast.success('Sugestões da IA geradas!');
+      toast.success(refinement ? 'Sugestões refinadas!' : 'Sugestões da IA geradas!');
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Erro ao gerar sugestões');
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
       setAiLoading(false);
+      setRefining(false);
     }
   };
 
@@ -196,6 +208,27 @@ export default function CostOrganizationPage() {
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   💡 Dê contexto e instruções específicas. A IA vai combinar com os dados das suas empresas, núcleos e produtos já cadastrados.
+                </p>
+              </div>
+
+              {/* References field */}
+              <div>
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  Referências de empresários/empresas (opcional)
+                </Label>
+                <div className="flex gap-2 mt-2">
+                  <Textarea
+                    value={references}
+                    onChange={(e) => setReferences(e.target.value)}
+                    rows={2}
+                    className="text-sm bg-background resize-y flex-1"
+                    placeholder="Ex: XP Investimentos (modelo de plataforma), G4 Educação (recorrência em educação), Havan (verticalização)..."
+                  />
+                  <VoiceInputButton onResult={(text) => setReferences(prev => prev ? prev + ' ' + text : text)} />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  💡 Deixe vazio para a IA sugerir referências automaticamente baseadas no seu setor.
                 </p>
               </div>
 
@@ -507,6 +540,10 @@ export default function CostOrganizationPage() {
               toast.success(`Núcleo "${n.name}" (${n.prefix}) criado com sucesso!`);
             }}
             onDismiss={() => setSuggestions(null)}
+            onRefine={async (instruction) => {
+              await requestAISuggestions(customContext, instruction, suggestions);
+            }}
+            refining={refining}
           />
         )}
       </div>

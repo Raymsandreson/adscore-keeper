@@ -13,7 +13,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const { context } = await req.json();
+    const { context, references, previousSuggestions, refinement } = await req.json();
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -88,6 +88,14 @@ serve(async (req) => {
       cost_centers_by_company: costCentersByCompany,
     };
 
+    const referencesBlock = references
+      ? `\n\nREFERÊNCIAS DE EMPRESÁRIOS/EMPRESAS INFORMADAS PELO USUÁRIO:\n${references}\nUse esses modelos de negócios como inspiração nas sugestões.`
+      : `\n\nSUGIRA TAMBÉM referências de empresários e empresas brasileiras conhecidas (como XP, Stone, Nubank, Havan, G4 Educação, Empiricus, WiseUp, etc.) cujos modelos de negócio podem inspirar a estruturação do grupo. Explique brevemente por que cada referência é relevante.`;
+
+    const refinementBlock = previousSuggestions && refinement
+      ? `\n\nSUGESTÕES ANTERIORES (que o usuário quer refinar/alterar):\n${JSON.stringify(previousSuggestions)}\n\nINSTRUÇÃO DE REFINAMENTO DO USUÁRIO:\n${refinement}\n\nAplique as alterações solicitadas mantendo o que não foi mencionado. Retorne a estrutura COMPLETA atualizada.`
+      : '';
+
     const systemPrompt = `Você é um consultor financeiro e estratégico especializado em estruturação de grupos empresariais brasileiros.
 
 Sua missão é analisar a estrutura atual do grupo e sugerir a MELHOR organização de:
@@ -102,6 +110,7 @@ Considere sempre:
 - Construção de equity de longo prazo vs geração de caixa imediata
 - Posicionamento de marca e marketing por faixa de ticket
 - Engenharia de produto com foco em recorrência e escalabilidade
+- Referências de modelos de negócios de empresas e empresários de sucesso${referencesBlock}${refinementBlock}
 
 DADOS ATUAIS DO GRUPO (resumidos para análise rápida):
 ${JSON.stringify(compactContext)}`;
