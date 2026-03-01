@@ -131,10 +131,10 @@ export default function CostOrganizationPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Target className="h-6 w-6 text-primary" />
-            Organização Estratégica
+            Modelo de Negócios
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Estrutura de centros de custo, produtos e estratégia por faixa de ticket
+            Estrutura de centros de custo, produtos e modelo de negócios por faixa de ticket
           </p>
         </div>
         <div className="flex gap-2">
@@ -432,7 +432,7 @@ export default function CostOrganizationPage() {
         <TabsContent value="matrix">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Matriz Empresa × Ticket × Estratégia</CardTitle>
+              <CardTitle className="text-lg">Matriz Empresa × Ticket × Modelo de Negócios</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
