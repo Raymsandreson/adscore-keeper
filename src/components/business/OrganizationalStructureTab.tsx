@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, Users, Briefcase, UserCheck, FolderTree } from 'lucide-react';
+import { Building2, Users, Briefcase, UserCheck, FolderTree, Lightbulb } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useCostCenters } from '@/hooks/useCostCenters';
+import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 
 interface JobPosition {
   id: string;
@@ -36,8 +37,8 @@ interface TeamMember {
 }
 
 const FRAMEWORK_ITEMS = [
-  { num: 5, label: 'Áreas', desc: 'Como cada empresa opera', icon: <FolderTree className="h-4 w-4" />, color: 'text-blue-500' },
-  { num: 6, label: 'Funções', desc: 'O que precisa ser feito', icon: <Briefcase className="h-4 w-4" />, color: 'text-amber-500' },
+  { num: 5, label: 'Núcleos', desc: 'Especialização e criação de valor', icon: <Lightbulb className="h-4 w-4" />, color: 'text-amber-500' },
+  { num: 6, label: 'Áreas', desc: 'Como cada empresa opera', icon: <FolderTree className="h-4 w-4" />, color: 'text-blue-500' },
   { num: 7, label: 'Cargos', desc: 'Responsabilidades formais', icon: <UserCheck className="h-4 w-4" />, color: 'text-purple-500' },
   { num: 8, label: 'Pessoas', desc: 'Quem executa', icon: <Users className="h-4 w-4" />, color: 'text-emerald-500' },
 ];
@@ -45,6 +46,7 @@ const FRAMEWORK_ITEMS = [
 export function OrganizationalStructureTab() {
   const { companies } = useCompanies();
   const { costCenters } = useCostCenters();
+  const { nuclei } = useSpecializedNuclei();
   const [positions, setPositions] = useState<JobPosition[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -110,6 +112,36 @@ export function OrganizationalStructureTab() {
           </Card>
         ))}
       </div>
+
+      {/* Núcleos Especializados */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-amber-500" />
+            Núcleos Especializados
+            <Badge variant="secondary" className="ml-auto">{nuclei.filter(n => n.is_active).length} núcleos</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {nuclei.filter(n => n.is_active).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Nenhum núcleo cadastrado.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {nuclei.filter(n => n.is_active).map(nucleus => (
+                <div key={nucleus.id} className="p-3 rounded-lg border bg-card flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: nucleus.color }} />
+                  <div>
+                    <p className="font-medium text-sm">{nucleus.name}</p>
+                    <p className="text-xs text-muted-foreground">{nucleus.prefix}{nucleus.description ? ` · ${nucleus.description}` : ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Áreas / Cost Centers by Company */}
       <Card>
