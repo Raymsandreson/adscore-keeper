@@ -797,7 +797,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
         contactName={conversation.contact_name || undefined}
         contactId={conversation.contact_id || undefined}
         leadId={conversation.lead_id || undefined}
-        messages={conversation.messages.map(m => ({ direction: m.direction, message_text: m.message_text }))}
+        messages={conversation.messages.map(m => ({ direction: m.direction, message_text: m.message_text, media_url: m.media_url, media_type: m.media_type }))}
         onSendMessage={async (msg) => {
           return await onSendMessage(
             conversation.phone, msg,
