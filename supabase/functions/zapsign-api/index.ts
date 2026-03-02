@@ -74,10 +74,10 @@ Deno.serve(async (req) => {
         ...(signer_phone && { signer_phone }),
       }
 
-      // Add template data (de/para pairs)
-      if (templateData && Array.isArray(templateData) && templateData.length > 0) {
-        createBody.data = templateData
-      }
+      // Add template data (de/para pairs) - ZapSign requires this field
+      createBody.data = (templateData && Array.isArray(templateData) && templateData.length > 0) 
+        ? templateData 
+        : [{ de: '{{_}}', para: ' ' }]
 
       console.log('Creating ZapSign document:', JSON.stringify(createBody))
 
