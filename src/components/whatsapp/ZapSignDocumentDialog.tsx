@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, FileSignature, Sparkles, Send, Copy, Check, ExternalLink } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Copy, Check, ExternalLink, Pencil, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -17,6 +17,13 @@ interface ZapSignTemplate {
   name: string;
   description?: string;
   fields?: string[];
+}
+
+interface ExtractedField {
+  de: string;
+  para: string;
+  editing?: boolean;
+  source?: 'ai' | 'crm' | 'manual';
 }
 
 interface Props {
@@ -38,14 +45,15 @@ export function ZapSignDocumentDialog({
   messages = [], leadData, contactData, onSendMessage
 }: Props) {
   const { user } = useAuthContext();
-  const [step, setStep] = useState<'select' | 'fill' | 'done'>('select');
+  const [step, setStep] = useState<'select' | 'review' | 'fill' | 'done'>('select');
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<ZapSignTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [signerName, setSignerName] = useState(contactName || '');
   const [signerEmail, setSignerEmail] = useState('');
   const [signerPhone, setSignerPhone] = useState(phone || '');
-  const [templateFields, setTemplateFields] = useState<Array<{ de: string; para: string }>>([]);
+  const [templateFields, setTemplateFields] = useState<Array<ExtractedField>>([]);
+  const [extractedFields, setExtractedFields] = useState<Array<ExtractedField>>([]);
   const [extracting, setExtracting] = useState(false);
   const [signUrl, setSignUrl] = useState('');
   const [copied, setCopied] = useState(false);
@@ -58,6 +66,7 @@ export function ZapSignDocumentDialog({
       setSignerName(contactName || '');
       setSignerPhone(phone || '');
       setTemplateFields([]);
+      setExtractedFields([]);
       setSignUrl('');
     }
   }, [open]);
@@ -84,8 +93,6 @@ export function ZapSignDocumentDialog({
   const handleSelectTemplate = () => {
     if (!selectedTemplate) return;
     setStep('fill');
-    // Auto-extract data with AI
-    extractDataWithAI();
   };
 
   const extractDataWithAI = async () => {
@@ -102,25 +109,60 @@ export function ZapSignDocumentDialog({
       });
 
       if (data?.success && Array.isArray(data.extracted_data)) {
-        setTemplateFields(prev => {
-          const merged = [...prev];
-          data.extracted_data.forEach((item: { de: string; para: string }) => {
-            const idx = merged.findIndex(f => f.de === item.de);
-            if (idx >= 0) {
-              merged[idx].para = item.para || merged[idx].para;
-            } else if (item.de && item.para) {
-              merged.push(item);
-            }
-          });
-          return merged;
-        });
-        toast.success('Dados extraídos pela IA!');
+        const extracted: ExtractedField[] = data.extracted_data
+          .filter((item: any) => item.de && item.para)
+          .map((item: any) => ({
+            de: item.de,
+            para: item.para,
+            editing: false,
+            source: 'ai' as const,
+          }));
+        
+        if (extracted.length > 0) {
+          setExtractedFields(extracted);
+          setStep('review');
+          toast.success(`${extracted.length} campo(s) extraído(s) pela IA!`);
+        } else {
+          toast.info('A IA não conseguiu extrair dados. Preencha manualmente.');
+        }
+      } else {
+        toast.info('Nenhum dado extraído. Preencha manualmente.');
       }
     } catch (err) {
       console.error('AI extraction error:', err);
+      toast.error('Erro ao extrair dados com IA');
     } finally {
       setExtracting(false);
     }
+  };
+
+  const handleConfirmExtracted = () => {
+    setTemplateFields(prev => {
+      const merged = [...prev];
+      extractedFields.forEach(item => {
+        const idx = merged.findIndex(f => f.de === item.de);
+        if (idx >= 0) {
+          merged[idx].para = item.para;
+        } else {
+          merged.push({ de: item.de, para: item.para });
+        }
+      });
+      return merged;
+    });
+    setStep('fill');
+    toast.success('Dados confirmados e aplicados!');
+  };
+
+  const updateExtractedField = (index: number, value: string) => {
+    setExtractedFields(prev => prev.map((f, i) => i === index ? { ...f, para: value } : f));
+  };
+
+  const toggleEditExtracted = (index: number) => {
+    setExtractedFields(prev => prev.map((f, i) => i === index ? { ...f, editing: !f.editing } : f));
+  };
+
+  const removeExtractedField = (index: number) => {
+    setExtractedFields(prev => prev.filter((_, i) => i !== index));
   };
 
   const addField = () => {
@@ -213,6 +255,13 @@ export function ZapSignDocumentDialog({
     }
   };
 
+  const formatFieldLabel = (field: string) => {
+    return field.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ');
+  };
+
+  const filledCount = extractedFields.filter(f => f.para.trim()).length;
+  const emptyCount = extractedFields.filter(f => !f.para.trim()).length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
@@ -220,6 +269,7 @@ export function ZapSignDocumentDialog({
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" />
             {step === 'select' && 'Gerar Procuração (ZapSign)'}
+            {step === 'review' && 'Confirmar Dados Extraídos'}
             {step === 'fill' && 'Preencher Dados'}
             {step === 'done' && 'Documento Criado!'}
           </DialogTitle>
@@ -277,7 +327,106 @@ export function ZapSignDocumentDialog({
           </div>
         )}
 
-        {/* Step 2: Fill template data */}
+        {/* Step 2: Review AI-extracted data */}
+        {step === 'review' && (
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary" className="gap-1">
+                <Sparkles className="h-3 w-3" />
+                IA extraiu {extractedFields.length} campo(s)
+              </Badge>
+              {filledCount > 0 && (
+                <Badge variant="outline" className="gap-1 text-green-600 border-green-200 bg-green-50">
+                  <CheckCircle2 className="h-3 w-3" />
+                  {filledCount} preenchido(s)
+                </Badge>
+              )}
+              {emptyCount > 0 && (
+                <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-3 w-3" />
+                  {emptyCount} vazio(s)
+                </Badge>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Revise os dados abaixo. Clique no <Pencil className="h-3 w-3 inline" /> para editar um valor antes de confirmar.
+            </p>
+
+            <ScrollArea className="flex-1 max-h-[320px] pr-2">
+              <div className="space-y-2">
+                {extractedFields.map((field, i) => (
+                  <div key={i} className="rounded-lg border p-3 space-y-1.5 bg-card">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {formatFieldLabel(field.de)}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => toggleEditExtracted(i)}
+                          title={field.editing ? 'Salvar' : 'Editar'}
+                        >
+                          {field.editing ? <Check className="h-3 w-3 text-primary" /> : <Pencil className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-destructive/60 hover:text-destructive"
+                          onClick={() => removeExtractedField(i)}
+                          title="Remover"
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    </div>
+
+                    {field.editing ? (
+                      <Input
+                        className="text-sm"
+                        value={field.para}
+                        onChange={e => updateExtractedField(i, e.target.value)}
+                        autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') toggleEditExtracted(i); }}
+                      />
+                    ) : (
+                      <p className={`text-sm ${field.para.trim() ? 'text-foreground' : 'text-muted-foreground italic'}`}>
+                        {field.para.trim() || '(vazio - clique para editar)'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            {emptyCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const missing = extractedFields.filter(f => !f.para.trim());
+                  const fieldNames = missing.map(f => formatFieldLabel(f.de)).join('\n• ');
+                  const message = `Olá ${signerName || ''}! 👋\n\nPara dar andamento à sua procuração, preciso que me envie os seguintes dados:\n\n• ${fieldNames}\n\nPor favor, envie as informações aqui pelo chat. Obrigado! 🙏`;
+                  if (onSendMessage) {
+                    const sent = await onSendMessage(message);
+                    if (sent) toast.success('Mensagem enviada pedindo os dados faltantes!');
+                  } else {
+                    await navigator.clipboard.writeText(message);
+                    toast.success('Mensagem copiada!');
+                  }
+                }}
+                className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/5"
+              >
+                <Send className="h-3 w-3" />
+                Pedir dados faltantes via WhatsApp
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Fill template data (manual) */}
         {step === 'fill' && (
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between">
@@ -329,7 +478,7 @@ export function ZapSignDocumentDialog({
           </div>
         )}
 
-        {/* Step 3: Done */}
+        {/* Step 4: Done */}
         {step === 'done' && (
           <div className="space-y-4">
             <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
@@ -363,6 +512,17 @@ export function ZapSignDocumentDialog({
               Próximo
             </Button>
           )}
+          {step === 'review' && (
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" onClick={() => setStep('fill')}>
+                Editar manualmente
+              </Button>
+              <Button className="flex-1 gap-1" onClick={handleConfirmExtracted}>
+                <CheckCircle2 className="h-4 w-4" />
+                Confirmar e continuar
+              </Button>
+            </div>
+          )}
           {step === 'fill' && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
@@ -373,7 +533,7 @@ export function ZapSignDocumentDialog({
             </div>
           )}
           {step === 'done' && (
-            <Button variant="ghost" onClick={() => { setStep('select'); setSelectedTemplate(''); setTemplateFields([]); setSignUrl(''); }}>
+            <Button variant="ghost" onClick={() => { setStep('select'); setSelectedTemplate(''); setTemplateFields([]); setExtractedFields([]); setSignUrl(''); }}>
               Criar outro documento
             </Button>
           )}
