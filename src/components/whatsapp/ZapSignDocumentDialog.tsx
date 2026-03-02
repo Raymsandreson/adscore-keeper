@@ -296,8 +296,8 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const filledFields = templateFields.filter(f => f.para.trim());
-  const emptyFields = templateFields.filter(f => f.de && !f.para.trim());
+  const filledFields = templateFields.filter(f => f.para.trim() && !f.editing);
+  const emptyFields = templateFields.filter(f => f.de && (!f.para.trim() || f.editing));
 
   const renderFieldCard = (field: ExtractedField, globalIndex: number) => (
     <div key={globalIndex} className="rounded-lg border p-3 space-y-1.5 bg-card">
