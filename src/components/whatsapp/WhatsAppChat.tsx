@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature } from 'lucide-react';
+import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -85,6 +86,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const [showZapSign, setShowZapSign] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const messages = [...conversation.messages].sort(
@@ -445,6 +447,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                 {isPrivate ? <LockOpen className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
                 {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
+                <FileSignature className="h-4 w-4" /> Gerar Procuração (ZapSign)
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <WhatsAppCallRecorder
@@ -785,6 +790,23 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
           </Button>
         </div>
       </div>
+      <ZapSignDocumentDialog
+        open={showZapSign}
+        onOpenChange={setShowZapSign}
+        phone={conversation.phone}
+        contactName={conversation.contact_name || undefined}
+        contactId={conversation.contact_id || undefined}
+        leadId={conversation.lead_id || undefined}
+        messages={conversation.messages.map(m => ({ direction: m.direction, message_text: m.message_text }))}
+        onSendMessage={async (msg) => {
+          return await onSendMessage(
+            conversation.phone, msg,
+            conversation.contact_id || undefined,
+            conversation.lead_id || undefined,
+            conversation.instance_name
+          );
+        }}
+      />
     </div>
   );
 }
