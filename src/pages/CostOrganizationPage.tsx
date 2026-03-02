@@ -320,6 +320,7 @@ export default function CostOrganizationPage() {
               </Card>
             </CollapsibleContent>
           </Collapsible>
+          </div>
 
           {/* 1. VALOR - Como criamos, entregamos e capturamos valor */}
           <Card className="border-primary/20">
