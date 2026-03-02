@@ -135,6 +135,25 @@ export function ZapSignDocumentDialog({
     setTemplateFields(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleRequestMissingData = async () => {
+    const missing = templateFields.filter(f => f.de && !f.para.trim());
+    if (missing.length === 0) {
+      toast.info('Todos os campos já estão preenchidos!');
+      return;
+    }
+    const fieldNames = missing.map(f => f.de.replace(/\{\{|\}\}/g, '').replace(/_/g, ' ')).join('\n• ');
+    const message = `Olá ${signerName || ''}! 👋\n\nPara dar andamento à sua procuração, preciso que me envie os seguintes dados:\n\n• ${fieldNames}\n\nPor favor, envie as informações aqui pelo chat. Obrigado! 🙏`;
+    if (onSendMessage) {
+      const sent = await onSendMessage(message);
+      if (sent) {
+        toast.success('Mensagem enviada pedindo os dados faltantes!');
+      }
+    } else {
+      await navigator.clipboard.writeText(message);
+      toast.success('Mensagem copiada para a área de transferência!');
+    }
+  };
+
   const handleCreateDocument = async () => {
     if (!selectedTemplate || !signerName) {
       toast.error('Preencha o nome do signatário');
@@ -296,9 +315,17 @@ export function ZapSignDocumentDialog({
               </div>
             </ScrollArea>
 
-            <Button variant="outline" size="sm" onClick={addField} className="w-full">
-              + Adicionar campo
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={addField} className="flex-1">
+                + Adicionar campo
+              </Button>
+              {templateFields.some(f => f.de && !f.para.trim()) && (
+                <Button variant="outline" size="sm" onClick={handleRequestMissingData} className="flex-1 gap-1 text-destructive border-destructive/30 hover:bg-destructive/5">
+                  <Send className="h-3 w-3" />
+                  Pedir dados faltantes
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
