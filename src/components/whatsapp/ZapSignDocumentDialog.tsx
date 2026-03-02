@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -434,54 +435,50 @@ export function ZapSignDocumentDialog({
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {filledFields.length > 0 && (
-                    <Badge variant="outline" className="gap-1 text-green-600 border-green-200 bg-green-50">
-                      <CheckCircle2 className="h-3 w-3" />
-                      {filledFields.length} preenchido(s)
-                    </Badge>
-                  )}
-                  {emptyFields.length > 0 && (
-                    <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 bg-amber-50">
-                      <AlertCircle className="h-3 w-3" />
-                      {emptyFields.length} faltante(s)
-                    </Badge>
-                  )}
                   <Button variant="ghost" size="sm" onClick={() => { setExtracting(true); extractDataWithAI().finally(() => setExtracting(false)); }} className="ml-auto gap-1 h-7 text-xs">
                     <Sparkles className="h-3 w-3" />
                     Re-extrair com IA
                   </Button>
                 </div>
 
-                <ScrollArea className="flex-1 max-h-[350px] pr-2">
-                  <div className="space-y-3">
-                    {filledFields.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                          <span className="text-xs font-semibold text-green-700 uppercase tracking-wider">Dados preenchidos</span>
-                        </div>
-                        {filledFields.map(field => {
-                          const globalIdx = templateFields.indexOf(field);
-                          return renderFieldCard(field, globalIdx);
-                        })}
-                      </div>
-                    )}
+                <Tabs defaultValue="filled" className="flex-1 overflow-hidden flex flex-col">
+                  <TabsList className="w-full grid grid-cols-2 shrink-0">
+                    <TabsTrigger value="filled" className="gap-1.5 text-xs">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Preenchidos ({filledFields.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="missing" className="gap-1.5 text-xs">
+                      <AlertCircle className="h-3 w-3" />
+                      Faltantes ({emptyFields.length})
+                    </TabsTrigger>
+                  </TabsList>
 
-                    {emptyFields.length > 0 && (
+                  <TabsContent value="filled" className="flex-1 overflow-auto mt-2">
+                    <ScrollArea className="h-[300px] pr-2">
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                          <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Dados faltantes</span>
-                          <span className="text-[10px] text-muted-foreground">(o signatário poderá preencher)</span>
-                        </div>
-                        {emptyFields.map(field => {
+                        {filledFields.length > 0 ? filledFields.map(field => {
                           const globalIdx = templateFields.indexOf(field);
                           return renderFieldCard(field, globalIdx);
-                        })}
+                        }) : (
+                          <p className="text-sm text-muted-foreground text-center py-6">Nenhum campo preenchido ainda.</p>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="missing" className="flex-1 overflow-auto mt-2">
+                    <ScrollArea className="h-[300px] pr-2">
+                      <div className="space-y-2">
+                        {emptyFields.length > 0 ? emptyFields.map(field => {
+                          const globalIdx = templateFields.indexOf(field);
+                          return renderFieldCard(field, globalIdx);
+                        }) : (
+                          <p className="text-sm text-muted-foreground text-center py-6">Todos os campos estão preenchidos! ✅</p>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                </Tabs>
 
                 <div className="flex gap-2">
                   {emptyFields.length > 0 && (
