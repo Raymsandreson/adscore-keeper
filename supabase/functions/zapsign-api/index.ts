@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
     // EXTRACT DATA FROM CONVERSATION (AI)
     // ========================
     if (action === 'extract_data') {
-      const { messages, template_fields, lead_data, contact_data } = body
+      const { messages, template_fields, lead_data, contact_data, uploaded_documents } = body
 
       const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
       if (!LOVABLE_API_KEY) {
@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      // Build multimodal content - include images from conversation
+      // Build multimodal content - include images from conversation and uploaded docs
       const imageUrls: string[] = []
       const textMessages: string[] = []
       
@@ -255,6 +255,16 @@ Deno.serve(async (req) => {
         }
         if (m.media_url && (m.media_type?.startsWith('image') || m.message_type === 'image')) {
           imageUrls.push(m.media_url)
+        }
+      }
+
+      // Add uploaded documents (base64 data URLs)
+      const uploadedImageUrls: string[] = []
+      if (Array.isArray(uploaded_documents)) {
+        for (const doc of uploaded_documents) {
+          if (doc.dataUrl && (doc.type?.startsWith('image') || doc.type === 'application/pdf')) {
+            uploadedImageUrls.push(doc.dataUrl)
+          }
         }
       }
 
@@ -282,15 +292,25 @@ Responda APENAS o JSON, sem markdown.`
       // Build multimodal user content
       const userContent: any[] = [{ type: 'text', text: prompt }]
       
-      // Add up to 5 images for analysis
-      for (const imgUrl of imageUrls.slice(-5)) {
+      // Add uploaded documents first (higher priority)
+      for (const docUrl of uploadedImageUrls.slice(0, 5)) {
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: docUrl }
+        })
+      }
+
+      // Add conversation images (remaining slots)
+      const remainingSlots = Math.max(0, 5 - uploadedImageUrls.length)
+      for (const imgUrl of imageUrls.slice(-remainingSlots)) {
         userContent.push({
           type: 'image_url',
           image_url: { url: imgUrl }
         })
       }
 
-      console.log(`Extracting data with ${imageUrls.length} images and ${textMessages.length} text messages`)
+      const totalImages = Math.min(uploadedImageUrls.length, 5) + Math.min(imageUrls.length, remainingSlots)
+      console.log(`Extracting data with ${totalImages} images (${uploadedImageUrls.length} uploaded, ${imageUrls.length} from chat) and ${textMessages.length} text messages`)
 
       try {
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {

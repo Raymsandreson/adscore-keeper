@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -24,6 +24,12 @@ interface ExtractedField {
   para: string;
   editing?: boolean;
   source?: 'ai' | 'crm' | 'manual';
+}
+
+interface UploadedDoc {
+  name: string;
+  type: string;
+  dataUrl: string;
 }
 
 interface Props {
@@ -52,6 +58,8 @@ export function ZapSignDocumentDialog({
   const [templateFields, setTemplateFields] = useState<Array<ExtractedField>>([]);
   const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -59,6 +67,7 @@ export function ZapSignDocumentDialog({
       setStep('select');
       setTemplateFields([]);
       setSelectedTemplate('');
+      setUploadedDocs([]);
     }
   }, [open]);
 
@@ -81,6 +90,29 @@ export function ZapSignDocumentDialog({
     }
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setUploadedDocs(prev => [...prev, {
+          name: file.name,
+          type: file.type,
+          dataUrl: reader.result as string,
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeDoc = (index: number) => {
+    setUploadedDocs(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSelectTemplate = async () => {
     if (!selectedTemplate) return;
     
@@ -101,7 +133,6 @@ export function ZapSignDocumentDialog({
           para: '',
           source: 'manual' as const,
         }));
-        // Auto-fill date fields with current date
         const today = format(new Date(), 'dd/MM/yyyy');
         fields.forEach(f => {
           const lower = f.de.toLowerCase();
@@ -134,6 +165,7 @@ export function ZapSignDocumentDialog({
           template_fields: vars.length > 0 ? vars : undefined,
           lead_data: leadData || {},
           contact_data: contactData || {},
+          uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
         },
       });
 
@@ -213,9 +245,8 @@ export function ZapSignDocumentDialog({
       const signerPhone = phone || contactData?.phone || leadData?.phone || '';
       const signerEmail = contactData?.email || leadData?.email || '';
 
-      // Send all fields - filled ones as data, empty ones will be fillable by signer
-      const filledFields = templateFields.filter(f => f.de && f.para.trim());
-      const emptyFields = templateFields.filter(f => f.de && !f.para.trim());
+      const filledFieldsData = templateFields.filter(f => f.de && f.para.trim());
+      const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
@@ -224,7 +255,7 @@ export function ZapSignDocumentDialog({
           signer_name: signerName,
           signer_email: signerEmail || undefined,
           signer_phone: signerPhone || undefined,
-          data: filledFields,
+          data: filledFieldsData,
           document_name: template?.name || 'Documento',
           lead_id: leadId || null,
           contact_id: contactId || null,
@@ -241,11 +272,11 @@ export function ZapSignDocumentDialog({
       const url = data.sign_url;
       
       if (onSendMessage && url) {
-        const missingList = emptyFields.length > 0
-          ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFields.map(f => `• ${formatFieldLabel(f.de)}`).join('\n')}`
+        const missingList = emptyFieldsList.length > 0
+          ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFieldsList.map(f => `• ${formatFieldLabel(f.de)}`).join('\n')}`
           : '';
         
-        const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${url}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFields.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
+        const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${url}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
         const sent = await onSendMessage(message);
         if (sent) {
           toast.success('Documento criado e link enviado pelo WhatsApp!');
@@ -312,7 +343,7 @@ export function ZapSignDocumentDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Step 1: Select template */}
+        {/* Step 1: Select template + upload docs */}
         {step === 'select' && (
           <div className="space-y-4 flex-1">
             {loading ? (
@@ -321,26 +352,72 @@ export function ZapSignDocumentDialog({
                 <span className="ml-2 text-sm text-muted-foreground">Carregando templates...</span>
               </div>
             ) : (
-              <div>
-                <Label>Template / Modelo</Label>
-                <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t.token} value={t.token}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {templates.length === 0 && !loading && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Nenhum modelo encontrado. Crie um modelo DOCX na plataforma ZapSign primeiro.
+              <>
+                <div>
+                  <Label>Template / Modelo</Label>
+                  <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um modelo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map(t => (
+                        <SelectItem key={t.token} value={t.token}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {templates.length === 0 && !loading && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Nenhum modelo encontrado. Crie um modelo na plataforma ZapSign primeiro.
+                    </p>
+                  )}
+                </div>
+
+                {/* Document upload area */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Upload className="h-3.5 w-3.5" />
+                    Documentos para extração (opcional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Envie RG, CPF, comprovante de endereço, etc. A IA irá extrair os dados automaticamente.
                   </p>
-                )}
-              </div>
+                  
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-dashed"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Fazer upload de documentos
+                  </Button>
+
+                  {uploadedDocs.length > 0 && (
+                    <div className="space-y-1.5">
+                      {uploadedDocs.map((doc, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-md border p-2 text-sm bg-muted/50">
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="truncate flex-1">{doc.name}</span>
+                          <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => removeDoc(i)}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -352,7 +429,7 @@ export function ZapSignDocumentDialog({
               <div className="flex flex-col items-center justify-center py-8 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 <span className="text-sm text-muted-foreground">Extraindo dados com IA...</span>
-                <span className="text-xs text-muted-foreground">Analisando conversa e imagens</span>
+                <span className="text-xs text-muted-foreground">Analisando conversa, imagens e documentos</span>
               </div>
             ) : (
               <>
@@ -377,7 +454,6 @@ export function ZapSignDocumentDialog({
 
                 <ScrollArea className="flex-1 max-h-[350px] pr-2">
                   <div className="space-y-3">
-                    {/* Section: Filled fields */}
                     {filledFields.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -391,7 +467,6 @@ export function ZapSignDocumentDialog({
                       </div>
                     )}
 
-                    {/* Section: Empty fields */}
                     {emptyFields.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">

@@ -448,7 +448,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                 {isPrivate ? 'Tornar pública' : 'Trancar conversa'}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setShowZapSign(true)} className="gap-2">
-                <FileSignature className="h-4 w-4" /> Gerar Procuração (ZapSign)
+                <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
