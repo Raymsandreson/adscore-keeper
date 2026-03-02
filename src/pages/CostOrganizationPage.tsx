@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users, Gem, Truck, HandCoins, FolderTree } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sparkles, Building2, Package, Target, TrendingUp, Loader2, Plus, Pencil, Trash2, DollarSign, Shield, Lightbulb, Send, Users, Gem, Truck, HandCoins, FolderTree, Settings2 } from 'lucide-react';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ProductFormDialog } from '@/components/finance/ProductFormDialog';
 import { AISuggestionsPanel } from '@/components/finance/AISuggestionsPanel';
+import { FinancialConfigManager } from '@/components/finance/FinancialConfigManager';
 import { BusinessModelTranslation, TranslationAction } from '@/components/business/BusinessModelTranslation';
 import { OrganizationalStructureTab } from '@/components/business/OrganizationalStructureTab';
 import { useNavigate } from 'react-router-dom';
@@ -40,6 +42,7 @@ export default function CostOrganizationPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductService | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [customContext, setCustomContext] = useState(
@@ -51,24 +54,45 @@ export default function CostOrganizationPage() {
   const navigate = useNavigate();
 
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
+  const promptPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const openAIPanel = useCallback(() => {
+    setMainTab('modelo');
+    setShowPrompt(true);
+    requestAnimationFrame(() => {
+      promptPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const handleTranslationAction = useCallback((action: TranslationAction) => {
-    switch (action.type) {
-      case 'tab':
-        setMainTab(action.tab);
-        break;
-      case 'route':
-        navigate(action.route);
-        break;
-      case 'dialog':
-        if (action.dialog === 'newProduct') {
-          setMainTab('modelo');
+    try {
+      switch (action.type) {
+        case 'tab':
+          setMainTab(action.tab);
+          break;
+        case 'route': {
+          const previousPath = window.location.pathname;
+          navigate(action.route);
           setTimeout(() => {
-            setEditingProduct(null);
-            setDialogOpen(true);
-          }, 100);
+            if (window.location.pathname === previousPath) {
+              window.location.assign(action.route);
+            }
+          }, 250);
+          break;
         }
-        break;
+        case 'dialog':
+          if (action.dialog === 'newProduct') {
+            setMainTab('modelo');
+            setTimeout(() => {
+              setEditingProduct(null);
+              setDialogOpen(true);
+            }, 100);
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Erro ao executar ação:', error);
+      toast.error('Não foi possível executar essa ação agora.');
     }
   }, [navigate]);
 
@@ -162,6 +186,10 @@ export default function CostOrganizationPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setConfigDialogOpen(true)}>
+            <Settings2 className="h-4 w-4 mr-2" />
+            Gerenciar Estrutura
+          </Button>
           {mainTab === 'modelo' && (
             <>
               <Button variant="outline" onClick={handleNewProduct}>
@@ -170,12 +198,19 @@ export default function CostOrganizationPage() {
               </Button>
               <Button
                 variant={showPrompt ? 'default' : 'outline'}
-                onClick={() => setShowPrompt(!showPrompt)}
+                onClick={openAIPanel}
+                disabled={aiLoading}
               >
                 <Sparkles className="h-4 w-4 mr-2" />
                 Sugerir com IA
               </Button>
             </>
+          )}
+          {mainTab === 'estrutura' && (
+            <Button variant="outline" onClick={openAIPanel}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Sugerir com IA
+            </Button>
           )}
         </div>
       </div>
@@ -199,7 +234,8 @@ export default function CostOrganizationPage() {
         {/* ===== MODELO DE NEGÓCIOS TAB ===== */}
         <TabsContent value="modelo" className="space-y-6">
           {/* AI Context Panel */}
-          <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
+          <div ref={promptPanelRef}>
+            <Collapsible open={showPrompt} onOpenChange={setShowPrompt}>
             <CollapsibleContent>
               <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10">
                 <CardContent className="pt-5 space-y-4">
