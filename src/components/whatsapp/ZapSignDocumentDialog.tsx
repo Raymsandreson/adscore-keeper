@@ -58,6 +58,7 @@ export function ZapSignDocumentDialog({
   const [signUrl, setSignUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [loadingFields, setLoadingFields] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -92,19 +93,47 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const handleSelectTemplate = () => {
+  const handleSelectTemplate = async () => {
     if (!selectedTemplate) return;
+    
+    // Fetch template details to get fields
+    setLoadingFields(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: { action: 'get_template', template_token: selectedTemplate },
+      });
+      
+      if (data?.success && Array.isArray(data.fields) && data.fields.length > 0) {
+        const fields: ExtractedField[] = data.fields.map((f: any) => ({
+          de: f.variable || '',
+          para: '',
+          source: 'manual' as const,
+        }));
+        setTemplateFields(fields);
+        toast.success(`${fields.length} campo(s) do modelo carregados!`);
+      }
+    } catch (err) {
+      console.error('Error fetching template fields:', err);
+    } finally {
+      setLoadingFields(false);
+    }
+    
     setStep('fill');
+    // Auto-extract data with AI
+    extractDataWithAI();
   };
 
   const extractDataWithAI = async () => {
     setExtracting(true);
     try {
+      // Use current templateFields to tell AI which fields to extract
+      const fieldVars = templateFields.map(f => f.de).filter(Boolean);
+      
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'extract_data',
           messages: messages.slice(-50),
-          template_fields: templateFields.map(f => f.de),
+          template_fields: fieldVars.length > 0 ? fieldVars : undefined,
           lead_data: leadData || {},
           contact_data: contactData || {},
         },
@@ -112,10 +141,10 @@ export function ZapSignDocumentDialog({
 
       if (data?.success && Array.isArray(data.extracted_data)) {
         const extracted: ExtractedField[] = data.extracted_data
-          .filter((item: any) => item.de && item.para)
+          .filter((item: any) => item.de)
           .map((item: any) => ({
             de: item.de,
-            para: item.para,
+            para: item.para || '',
             editing: false,
             source: 'ai' as const,
           }));
@@ -510,8 +539,8 @@ export function ZapSignDocumentDialog({
 
         <DialogFooter className="mt-2">
           {step === 'select' && (
-            <Button onClick={handleSelectTemplate} disabled={!selectedTemplate || !signerName.trim()}>
-              Próximo
+            <Button onClick={handleSelectTemplate} disabled={!selectedTemplate || !signerName.trim() || loadingFields}>
+              {loadingFields ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Carregando campos...</> : 'Próximo'}
             </Button>
           )}
           {step === 'review' && (

@@ -54,6 +54,54 @@ Deno.serve(async (req) => {
     }
 
     // ========================
+    // GET TEMPLATE DETAILS (fields/inputs)
+    // ========================
+    if (action === 'get_template') {
+      const { template_token } = body
+
+      if (!template_token) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'template_token is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const response = await fetch(`${ZAPSIGN_API_URL}/templates/${template_token}/`, {
+        headers: zapsignHeaders,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`ZapSign get template error: ${response.status} - ${errorText}`)
+      }
+
+      const templateData = await response.json()
+      console.log('ZapSign template details:', JSON.stringify(templateData))
+
+      // Extract input fields (variables) from template
+      const fields = (templateData.inputs || []).map((input: any) => ({
+        variable: input.variable || '',
+        label: input.label || '',
+        required: input.required || false,
+        input_type: input.input_type || 'input',
+        order: input.order || 0,
+      }))
+
+      // Extract signer info
+      const signerTemplate = templateData.signers?.[0]
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          template: templateData,
+          fields,
+          signer_template: signerTemplate || null,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========================
     // CREATE DOCUMENT FROM TEMPLATE
     // ========================
     if (action === 'create_doc') {
@@ -188,8 +236,16 @@ Deno.serve(async (req) => {
     if (action === 'extract_data') {
       const { messages, template_fields, lead_data, contact_data } = body
 
-      // Use Gemini to extract data from conversation
-      const prompt = `Você é um assistente jurídico. Analise a conversa de WhatsApp abaixo e extraia os dados necessários para preencher uma procuração.
+      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
+      if (!LOVABLE_API_KEY) {
+        console.error('LOVABLE_API_KEY not configured')
+        return new Response(
+          JSON.stringify({ success: true, extracted_data: [], source: 'no_api_key' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const prompt = `Você é um assistente jurídico. Analise a conversa de WhatsApp abaixo e extraia os dados necessários para preencher um documento.
 
 CAMPOS DO TEMPLATE A PREENCHER:
 ${JSON.stringify(template_fields || [], null, 2)}
@@ -204,46 +260,56 @@ ${(messages || []).slice(-50).map((m: any) => `[${m.direction}] ${m.message_text
 Retorne um JSON com os campos preenchidos no formato:
 [{"de": "{{CAMPO}}", "para": "valor extraído"}]
 
-Use os dados do CRM como prioridade, complementando com dados da conversa. Formate datas no padrão DD/MM/AAAA. Se não encontrar um dado, deixe vazio.
+Use os dados do CRM como prioridade, complementando com dados da conversa. Formate datas no padrão DD/MM/AAAA. Se não encontrar um dado, deixe o campo "para" como string vazia "".
+Retorne TODOS os campos do template, mesmo os vazios.
 Responda APENAS o JSON, sem markdown.`
 
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`,
-        {
+      try {
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
             'Content-Type': 'application/json',
-            'x-goog-api-key': Deno.env.get('GEMINI_API_KEY') || '',
           },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              { role: 'system', content: 'Você é um assistente que extrai dados de conversas para preencher documentos jurídicos. Responda apenas JSON válido.' },
+              { role: 'user', content: prompt }
+            ],
           }),
-        }
-      )
+        })
 
-      if (!geminiResponse.ok) {
-        // Fallback: just use CRM data
-        console.error('Gemini API error, falling back to CRM data')
+        if (!aiResponse.ok) {
+          const errorText = await aiResponse.text()
+          console.error('Lovable AI error:', aiResponse.status, errorText)
+          return new Response(
+            JSON.stringify({ success: true, extracted_data: [], source: 'ai_error' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const aiData = await aiResponse.json()
+        const responseText = aiData.choices?.[0]?.message?.content || '[]'
+        
+        let extractedData = []
+        try {
+          extractedData = JSON.parse(responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+        } catch {
+          console.error('Failed to parse AI response:', responseText)
+        }
+
         return new Response(
-          JSON.stringify({ success: true, extracted_data: [], source: 'crm_only' }),
+          JSON.stringify({ success: true, extracted_data: extractedData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (aiErr) {
+        console.error('AI extraction error:', aiErr)
+        return new Response(
+          JSON.stringify({ success: true, extracted_data: [], source: 'ai_exception' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-
-      const geminiData = await geminiResponse.json()
-      const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-      
-      let extractedData = []
-      try {
-        extractedData = JSON.parse(responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
-      } catch {
-        console.error('Failed to parse AI response:', responseText)
-      }
-
-      return new Response(
-        JSON.stringify({ success: true, extracted_data: extractedData }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
     }
 
     return new Response(
