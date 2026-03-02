@@ -35,7 +35,7 @@ const TRANSLATION_ROWS: TranslationRow[] = [
         'Valide se o núcleo tem expertise comprovada nessa dor',
       ],
       action: 'Cadastrar Núcleos Especializados →',
-      onAction: { type: 'tab', tab: 'modelo' },
+      onAction: { type: 'route', route: '/nuclei' },
     },
   },
   {
@@ -51,7 +51,7 @@ const TRANSLATION_ROWS: TranslationRow[] = [
         'Vincule cada canal a um centro de custo para medir ROI',
       ],
       action: 'Ir para CRM & Pipelines →',
-      onAction: { type: 'route', route: '/crm' },
+      onAction: { type: 'route', route: '/leads' },
     },
   },
   {
