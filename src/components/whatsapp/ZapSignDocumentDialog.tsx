@@ -503,9 +503,9 @@ export function ZapSignDocumentDialog({
           {step === 'fill' && !extracting && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
-              <Button className="flex-1 gap-2" onClick={handleCreateAndSend} disabled={creating}>
+              <Button className="flex-1 gap-2" onClick={handleCreateAndSend} disabled={creating || emptyFields.length > 0}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {emptyFields.length > 0 ? 'Gerar e enviar (signatário completa)' : 'Gerar e enviar pelo WhatsApp'}
+                {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar e enviar pelo WhatsApp'}
               </Button>
             </div>
           )}
