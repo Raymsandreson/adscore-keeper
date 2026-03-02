@@ -60,6 +60,7 @@ export function ZapSignDocumentDialog({
   const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [extractionSource, setExtractionSource] = useState<'upload_only' | 'upload_and_chat'>('upload_and_chat');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export function ZapSignDocumentDialog({
       setTemplateFields([]);
       setSelectedTemplate('');
       setUploadedDocs([]);
+      setExtractionSource('upload_and_chat');
     }
   }, [open]);
 
@@ -162,11 +164,12 @@ export function ZapSignDocumentDialog({
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'extract_data',
-          messages: messages.slice(-50),
+          messages: extractionSource === 'upload_only' ? [] : messages.slice(-50),
           template_fields: vars.length > 0 ? vars : undefined,
           lead_data: leadData || {},
           contact_data: contactData || {},
           uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
+          extraction_source: extractionSource,
         },
       });
 
@@ -417,6 +420,25 @@ export function ZapSignDocumentDialog({
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Extraction source selector */}
+                <div className="space-y-2">
+                  <Label>Fonte de extração da IA</Label>
+                  <Select value={extractionSource} onValueChange={(v: 'upload_only' | 'upload_and_chat') => setExtractionSource(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="upload_and_chat">📄 Uploads + 💬 Conversa do chat</SelectItem>
+                      <SelectItem value="upload_only">📄 Somente uploads</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {extractionSource === 'upload_only'
+                      ? 'A IA extrairá dados apenas dos documentos enviados acima.'
+                      : 'A IA extrairá dados dos uploads e também do histórico da conversa.'}
+                  </p>
                 </div>
               </>
             )}
