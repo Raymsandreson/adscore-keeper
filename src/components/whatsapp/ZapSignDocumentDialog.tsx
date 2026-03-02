@@ -6,11 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 interface ZapSignTemplate {
   token: string;
@@ -87,7 +87,6 @@ export function ZapSignDocumentDialog({
     setStep('fill');
     setExtracting(true);
 
-    // Fetch template fields and extract data in parallel
     try {
       const [templateRes] = await Promise.all([
         supabase.functions.invoke('zapsign-api', {
@@ -102,11 +101,19 @@ export function ZapSignDocumentDialog({
           para: '',
           source: 'manual' as const,
         }));
+        // Auto-fill date fields with current date
+        const today = format(new Date(), 'dd/MM/yyyy');
+        fields.forEach(f => {
+          const lower = f.de.toLowerCase();
+          if (lower.includes('data') && (lower.includes('assinatura') || lower.includes('hoje') || lower.includes('atual'))) {
+            f.para = today;
+            f.source = 'crm';
+          }
+        });
         setTemplateFields(fields);
         fieldVars = fields.map(f => f.de).filter(Boolean);
       }
 
-      // Now extract data with AI using the template fields
       await extractDataWithAI(fieldVars);
     } catch (err) {
       console.error('Error loading template:', err);
@@ -146,16 +153,16 @@ export function ZapSignDocumentDialog({
             const merged = [...prev];
             extracted.forEach(item => {
               const idx = merged.findIndex(f => f.de === item.de);
-              if (idx >= 0) {
+              if (idx >= 0 && !merged[idx].para.trim()) {
                 merged[idx].para = item.para;
                 merged[idx].source = 'ai';
-              } else {
+              } else if (idx < 0) {
                 merged.push(item);
               }
             });
             return merged;
           });
-          toast.success(`${extracted.length} campo(s) extraído(s) pela IA!`);
+          toast.success(`${extracted.filter(e => e.para.trim()).length} campo(s) extraído(s) pela IA!`);
         } else {
           toast.info('A IA não conseguiu extrair dados. Preencha manualmente.');
         }
@@ -172,14 +179,6 @@ export function ZapSignDocumentDialog({
 
   const updateFieldValue = (index: number, value: string) => {
     setTemplateFields(prev => prev.map((f, i) => i === index ? { ...f, para: value } : f));
-  };
-
-  const addField = () => {
-    setTemplateFields(prev => [...prev, { de: '', para: '', source: 'manual' }]);
-  };
-
-  const removeField = (index: number) => {
-    setTemplateFields(prev => prev.filter((_, i) => i !== index));
   };
 
   const formatFieldLabel = (field: string) => {
@@ -214,6 +213,10 @@ export function ZapSignDocumentDialog({
       const signerPhone = phone || contactData?.phone || leadData?.phone || '';
       const signerEmail = contactData?.email || leadData?.email || '';
 
+      // Send all fields - filled ones as data, empty ones will be fillable by signer
+      const filledFields = templateFields.filter(f => f.de && f.para.trim());
+      const emptyFields = templateFields.filter(f => f.de && !f.para.trim());
+
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'create_doc',
@@ -221,7 +224,7 @@ export function ZapSignDocumentDialog({
           signer_name: signerName,
           signer_email: signerEmail || undefined,
           signer_phone: signerPhone || undefined,
-          data: templateFields.filter(f => f.de && f.para),
+          data: filledFields,
           document_name: template?.name || 'Documento',
           lead_id: leadId || null,
           contact_id: contactId || null,
@@ -237,9 +240,12 @@ export function ZapSignDocumentDialog({
 
       const url = data.sign_url;
       
-      // Auto-send via WhatsApp
       if (onSendMessage && url) {
-        const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${url}\n\n*Instruções:*\n1. Clique no link acima\n2. Confira seus dados\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
+        const missingList = emptyFields.length > 0
+          ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFields.map(f => `• ${formatFieldLabel(f.de)}`).join('\n')}`
+          : '';
+        
+        const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${url}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFields.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
         const sent = await onSendMessage(message);
         if (sent) {
           toast.success('Documento criado e link enviado pelo WhatsApp!');
@@ -258,8 +264,41 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const filledCount = templateFields.filter(f => f.para.trim()).length;
-  const emptyCount = templateFields.filter(f => f.de && !f.para.trim()).length;
+  const filledFields = templateFields.filter(f => f.para.trim());
+  const emptyFields = templateFields.filter(f => f.de && !f.para.trim());
+
+  const renderFieldCard = (field: ExtractedField, globalIndex: number) => (
+    <div key={globalIndex} className="rounded-lg border p-3 space-y-1.5 bg-card">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {formatFieldLabel(field.de)}
+        </span>
+        <div className="flex items-center gap-1">
+          {field.source === 'ai' && (
+            <Badge variant="secondary" className="h-5 text-[10px] px-1.5 gap-0.5">
+              <Sparkles className="h-2.5 w-2.5" /> IA
+            </Badge>
+          )}
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggleEditField(globalIndex)}>
+            {field.editing ? <Check className="h-3 w-3 text-primary" /> : <Pencil className="h-3 w-3" />}
+          </Button>
+        </div>
+      </div>
+      {field.editing ? (
+        <Input
+          className="text-sm"
+          value={field.para}
+          onChange={e => updateFieldValue(globalIndex, e.target.value)}
+          autoFocus
+          onKeyDown={e => { if (e.key === 'Enter') toggleEditField(globalIndex); }}
+        />
+      ) : (
+        <p className={`text-sm cursor-pointer ${field.para.trim() ? 'text-foreground' : 'text-muted-foreground italic'}`} onClick={() => toggleEditField(globalIndex)}>
+          {field.para.trim() || '(vazio - clique para editar)'}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -318,16 +357,16 @@ export function ZapSignDocumentDialog({
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {filledCount > 0 && (
+                  {filledFields.length > 0 && (
                     <Badge variant="outline" className="gap-1 text-green-600 border-green-200 bg-green-50">
                       <CheckCircle2 className="h-3 w-3" />
-                      {filledCount} preenchido(s)
+                      {filledFields.length} preenchido(s)
                     </Badge>
                   )}
-                  {emptyCount > 0 && (
+                  {emptyFields.length > 0 && (
                     <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 bg-amber-50">
                       <AlertCircle className="h-3 w-3" />
-                      {emptyCount} vazio(s)
+                      {emptyFields.length} faltante(s)
                     </Badge>
                   )}
                   <Button variant="ghost" size="sm" onClick={() => { setExtracting(true); extractDataWithAI().finally(() => setExtracting(false)); }} className="ml-auto gap-1 h-7 text-xs">
@@ -337,50 +376,40 @@ export function ZapSignDocumentDialog({
                 </div>
 
                 <ScrollArea className="flex-1 max-h-[350px] pr-2">
-                  <div className="space-y-2">
-                    {templateFields.map((field, i) => (
-                      <div key={i} className="rounded-lg border p-3 space-y-1.5 bg-card">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {formatFieldLabel(field.de)}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {field.source === 'ai' && (
-                              <Badge variant="secondary" className="h-5 text-[10px] px-1.5 gap-0.5">
-                                <Sparkles className="h-2.5 w-2.5" /> IA
-                              </Badge>
-                            )}
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggleEditField(i)}>
-                              {field.editing ? <Check className="h-3 w-3 text-primary" /> : <Pencil className="h-3 w-3" />}
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/60 hover:text-destructive" onClick={() => removeField(i)}>
-                              ×
-                            </Button>
-                          </div>
+                  <div className="space-y-3">
+                    {/* Section: Filled fields */}
+                    {filledFields.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                          <span className="text-xs font-semibold text-green-700 uppercase tracking-wider">Dados preenchidos</span>
                         </div>
-                        {field.editing ? (
-                          <Input
-                            className="text-sm"
-                            value={field.para}
-                            onChange={e => updateFieldValue(i, e.target.value)}
-                            autoFocus
-                            onKeyDown={e => { if (e.key === 'Enter') toggleEditField(i); }}
-                          />
-                        ) : (
-                          <p className={`text-sm cursor-pointer ${field.para.trim() ? 'text-foreground' : 'text-muted-foreground italic'}`} onClick={() => toggleEditField(i)}>
-                            {field.para.trim() || '(vazio - clique para editar)'}
-                          </p>
-                        )}
+                        {filledFields.map(field => {
+                          const globalIdx = templateFields.indexOf(field);
+                          return renderFieldCard(field, globalIdx);
+                        })}
                       </div>
-                    ))}
+                    )}
+
+                    {/* Section: Empty fields */}
+                    {emptyFields.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Dados faltantes</span>
+                          <span className="text-[10px] text-muted-foreground">(o signatário poderá preencher)</span>
+                        </div>
+                        {emptyFields.map(field => {
+                          const globalIdx = templateFields.indexOf(field);
+                          return renderFieldCard(field, globalIdx);
+                        })}
+                      </div>
+                    )}
                   </div>
                 </ScrollArea>
 
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={addField} className="text-xs">
-                    + Campo
-                  </Button>
-                  {emptyCount > 0 && (
+                  {emptyFields.length > 0 && (
                     <Button variant="outline" size="sm" onClick={handleRequestMissingData} className="gap-1 text-xs text-amber-600 border-amber-200 hover:bg-amber-50">
                       <Send className="h-3 w-3" />
                       Pedir dados faltantes
@@ -404,7 +433,7 @@ export function ZapSignDocumentDialog({
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
               <Button className="flex-1 gap-2" onClick={handleCreateAndSend} disabled={creating}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Gerar e enviar pelo WhatsApp
+                {emptyFields.length > 0 ? 'Gerar e enviar (signatário completa)' : 'Gerar e enviar pelo WhatsApp'}
               </Button>
             </div>
           )}
