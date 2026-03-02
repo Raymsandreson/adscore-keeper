@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FolderTree, Users, UserCheck, Building2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { FolderTree, Users, UserCheck, Building2, Plus, Settings2, ExternalLink } from 'lucide-react';
 import { Company } from '@/hooks/useCompanies';
 import { CostCenter } from '@/hooks/useCostCenters';
 import { ValueFlowSection } from './ValueFlowSection';
+import { useNavigate } from 'react-router-dom';
 
 interface JobPosition {
   id: string;
@@ -42,6 +44,7 @@ interface DeliverValueSectionProps {
 }
 
 export function DeliverValueSection({ companies, costCenters, positions, teams, teamMembers, profiles }: DeliverValueSectionProps) {
+  const navigate = useNavigate();
   const activeCostCenters = costCenters.filter(cc => cc.is_active);
   const departments = [...new Set(positions.filter(p => p.department).map(p => p.department!))];
 
@@ -65,35 +68,61 @@ export function DeliverValueSection({ companies, costCenters, positions, teams, 
             Áreas & Centros de Custo
             <Badge variant="secondary" className="ml-auto">{activeCostCenters.length} centros</Badge>
           </CardTitle>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={() => navigate('/cost-organization', { state: { openTab: 'modelo', openConfig: 'cost_centers' } })}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Gerenciar Áreas
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Garantem que a experiência de marca seja uniforme em toda a operação.
           </p>
-          {areasByCompany.map(({ company, ccs }) => (
-            <div key={company.id}>
-              <p className="text-sm font-semibold flex items-center gap-2 mb-2">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                {company.name}
-                <Badge variant="outline" className="text-xs">{ccs.length}</Badge>
-              </p>
-              {ccs.length === 0 ? (
-                <p className="text-xs text-muted-foreground ml-6 italic">Nenhum centro de custo</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 ml-6">
-                  {ccs.map(cc => (
-                    <div key={cc.id} className="p-2.5 rounded-md border bg-card text-sm">
-                      <p className="font-medium">{cc.name}</p>
-                      <div className="flex gap-1.5 mt-1 flex-wrap">
-                        {(cc as any).area && <Badge variant="outline" className="text-xs">{(cc as any).area}</Badge>}
-                        {(cc as any).ticket_tier && <Badge variant="secondary" className="text-xs">{(cc as any).ticket_tier}</Badge>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {areasByCompany.length === 0 && activeCostCenters.length === 0 ? (
+            <div className="text-center py-6 space-y-2">
+              <p className="text-sm text-muted-foreground">Nenhuma área cadastrada ainda</p>
+              <Button
+                size="sm"
+                variant="default"
+                className="gap-1.5"
+                onClick={() => navigate('/cost-organization', { state: { openTab: 'modelo', openConfig: 'cost_centers' } })}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Criar Primeiro Centro de Custo
+              </Button>
             </div>
-          ))}
+          ) : (
+            areasByCompany.map(({ company, ccs }) => (
+              <div key={company.id}>
+                <p className="text-sm font-semibold flex items-center gap-2 mb-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  {company.name}
+                  <Badge variant="outline" className="text-xs">{ccs.length}</Badge>
+                </p>
+                {ccs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground ml-6 italic">Nenhum centro de custo</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 ml-6">
+                    {ccs.map(cc => (
+                      <div key={cc.id} className="p-2.5 rounded-md border bg-card text-sm">
+                        <p className="font-medium">{cc.name}</p>
+                        <div className="flex gap-1.5 mt-1 flex-wrap">
+                          {(cc as any).area && <Badge variant="outline" className="text-xs">{(cc as any).area}</Badge>}
+                          {(cc as any).ticket_tier && <Badge variant="secondary" className="text-xs">{(cc as any).ticket_tier}</Badge>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 
@@ -105,13 +134,35 @@ export function DeliverValueSection({ companies, costCenters, positions, teams, 
             Times
             <Badge variant="secondary" className="ml-auto">{teams.length} times</Badge>
           </CardTitle>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={() => navigate('/team', { state: { tab: 'teams' } })}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Gerenciar Times
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-3">
             Executam com o padrão da marca — o sistema replica a experiência sem depender de heróis.
           </p>
           {teams.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-3 italic">Nenhum time cadastrado</p>
+            <div className="text-center py-6 space-y-2">
+              <p className="text-sm text-muted-foreground">Nenhum time cadastrado ainda</p>
+              <Button
+                size="sm"
+                variant="default"
+                className="gap-1.5"
+                onClick={() => navigate('/team', { state: { tab: 'teams' } })}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Criar Primeiro Time
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               {teams.map(team => {
@@ -150,13 +201,35 @@ export function DeliverValueSection({ companies, costCenters, positions, teams, 
             Cargos & Funções
             <Badge variant="secondary" className="ml-auto">{positions.length} cargos</Badge>
           </CardTitle>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={() => navigate('/team', { state: { tab: 'career' } })}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Gerenciar Cargos
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-3">
             Responsabilidades formais que garantem que o sistema escala independente de indivíduos.
           </p>
           {positions.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-3 italic">Nenhum cargo cadastrado</p>
+            <div className="text-center py-6 space-y-2">
+              <p className="text-sm text-muted-foreground">Nenhum cargo cadastrado ainda</p>
+              <Button
+                size="sm"
+                variant="default"
+                className="gap-1.5"
+                onClick={() => navigate('/team', { state: { tab: 'career' } })}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Criar Primeiro Cargo
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
               {departments.length > 0 ? departments.map(dept => {
