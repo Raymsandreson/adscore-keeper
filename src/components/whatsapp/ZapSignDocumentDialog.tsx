@@ -63,8 +63,10 @@ export function ZapSignDocumentDialog({
     if (open) {
       loadTemplates();
       setStep('select');
-      setSignerName(contactName || '');
-      setSignerPhone(phone || '');
+      // Auto-fill signer info from contact/lead data
+      setSignerName(contactName || contactData?.full_name || leadData?.lead_name || '');
+      setSignerEmail(contactData?.email || leadData?.email || '');
+      setSignerPhone(phone || contactData?.phone || leadData?.phone || '');
       setTemplateFields([]);
       setExtractedFields([]);
       setSignUrl('');
@@ -268,7 +270,7 @@ export function ZapSignDocumentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" />
-            {step === 'select' && 'Gerar Procuração (ZapSign)'}
+            {step === 'select' && 'Gerar Documento para Assinatura'}
             {step === 'review' && 'Confirmar Dados Extraídos'}
             {step === 'fill' && 'Preencher Dados'}
             {step === 'done' && 'Documento Criado!'}
