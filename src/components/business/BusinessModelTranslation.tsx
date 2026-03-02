@@ -1,10 +1,27 @@
-import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Target, Building2, Package, Lightbulb, Briefcase, Network, ChevronRight, ArrowRight } from 'lucide-react';
+import { Target, Building2, Package, Lightbulb, Briefcase, Network, ChevronRight, ArrowRight, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const TRANSLATION_ROWS = [
+export type TranslationAction =
+  | { type: 'tab'; tab: 'modelo' | 'estrutura' }
+  | { type: 'route'; route: string }
+  | { type: 'dialog'; dialog: 'newProduct' };
+
+interface TranslationRow {
+  question: string;
+  structure: string;
+  icon: React.ReactNode;
+  color: string;
+  detail: {
+    explanation: string;
+    steps: string[];
+    action: string;
+    onAction: TranslationAction;
+  };
+}
+
+const TRANSLATION_ROWS: TranslationRow[] = [
   {
     question: 'Quem é o cliente?',
     structure: 'Núcleos',
@@ -17,7 +34,8 @@ const TRANSLATION_ROWS = [
         'Mapeie a dor principal que ele busca resolver',
         'Valide se o núcleo tem expertise comprovada nessa dor',
       ],
-      action: 'Cadastre seus Núcleos Especializados na aba Modelo de Negócios',
+      action: 'Cadastrar Núcleos Especializados →',
+      onAction: { type: 'tab', tab: 'modelo' },
     },
   },
   {
@@ -32,7 +50,8 @@ const TRANSLATION_ROWS = [
         'Crie processos comerciais replicáveis (scripts, workflows)',
         'Vincule cada canal a um centro de custo para medir ROI',
       ],
-      action: 'Configure seus pipelines e workflows no módulo CRM',
+      action: 'Ir para CRM & Pipelines →',
+      onAction: { type: 'route', route: '/crm' },
     },
   },
   {
@@ -47,7 +66,8 @@ const TRANSLATION_ROWS = [
         'Defina os cargos e funções responsáveis por cada etapa',
         'Crie checklists e SLAs para garantir consistência',
       ],
-      action: 'Organize suas Áreas e Times na aba Estrutura Organizacional',
+      action: 'Organizar Áreas e Times →',
+      onAction: { type: 'tab', tab: 'estrutura' },
     },
   },
   {
@@ -62,7 +82,8 @@ const TRANSLATION_ROWS = [
         'Defina o foco estratégico: gera caixa ou constrói equity?',
         'Vincule produtos aos núcleos que os sustentam',
       ],
-      action: 'Cadastre seus Produtos na aba Modelo de Negócios',
+      action: 'Cadastrar Produtos →',
+      onAction: { type: 'dialog', dialog: 'newProduct' },
     },
   },
   {
@@ -77,7 +98,8 @@ const TRANSLATION_ROWS = [
         'Crie planos de carreira para reter talentos-chave',
         'Estruture empresas como veículos de equity independentes',
       ],
-      action: 'Revise sua Estrutura Organizacional e planos de carreira',
+      action: 'Ver Estrutura Organizacional →',
+      onAction: { type: 'tab', tab: 'estrutura' },
     },
   },
 ];
@@ -125,7 +147,15 @@ const ECOSYSTEM_PURPOSES = [
   },
 ];
 
-export function BusinessModelTranslation() {
+interface BusinessModelTranslationProps {
+  onAction?: (action: TranslationAction) => void;
+}
+
+export function BusinessModelTranslation({ onAction }: BusinessModelTranslationProps) {
+  const handleAction = (action: TranslationAction) => {
+    onAction?.(action);
+  };
+
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
       <CardContent className="p-4">
@@ -159,10 +189,13 @@ export function BusinessModelTranslation() {
                           </div>
                         ))}
                       </div>
-                      <div className="flex items-center gap-2 p-2 rounded-md bg-primary/5 border border-primary/20 text-xs">
-                        <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />
-                        <span className="text-primary font-medium">{row.detail.action}</span>
-                      </div>
+                      <button
+                        onClick={() => handleAction(row.detail.onAction)}
+                        className="flex items-center gap-2 w-full p-2.5 rounded-md bg-primary/10 hover:bg-primary/20 border border-primary/20 hover:border-primary/40 text-xs transition-all cursor-pointer group"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 text-primary shrink-0 group-hover:scale-110 transition-transform" />
+                        <span className="text-primary font-semibold">{row.detail.action}</span>
+                      </button>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
@@ -204,20 +237,26 @@ export function BusinessModelTranslation() {
 
             {/* Compact definition cards */}
             <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs">
+              <button
+                onClick={() => handleAction({ type: 'tab', tab: 'modelo' })}
+                className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs hover:bg-muted/50 transition-colors cursor-pointer text-left"
+              >
                 <span className="text-base">👉</span>
                 <div>
                   <p className="font-semibold text-primary leading-tight">Modelo de Negócios</p>
                   <p className="text-muted-foreground text-[10px]">Como criamos, entregamos e capturamos valor.</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs">
+              </button>
+              <button
+                onClick={() => handleAction({ type: 'tab', tab: 'estrutura' })}
+                className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs hover:bg-muted/50 transition-colors cursor-pointer text-left"
+              >
                 <span className="text-base">👉</span>
                 <div>
                   <p className="font-semibold text-primary leading-tight">Estrutura</p>
                   <p className="text-muted-foreground text-[10px]">Quem executa cada parte desse valor.</p>
                 </div>
-              </div>
+              </button>
             </div>
           </div>
         </div>

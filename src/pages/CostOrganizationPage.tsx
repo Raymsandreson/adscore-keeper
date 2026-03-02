@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,8 +16,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ProductFormDialog } from '@/components/finance/ProductFormDialog';
 import { AISuggestionsPanel } from '@/components/finance/AISuggestionsPanel';
-import { BusinessModelTranslation } from '@/components/business/BusinessModelTranslation';
+import { BusinessModelTranslation, TranslationAction } from '@/components/business/BusinessModelTranslation';
 import { OrganizationalStructureTab } from '@/components/business/OrganizationalStructureTab';
+import { useNavigate } from 'react-router-dom';
 
 const TIER_CONFIG = {
   low: { label: 'Low Ticket', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-200', icon: '💰', strategy: 'Geração de Caixa' },
@@ -47,8 +48,29 @@ export default function CostOrganizationPage() {
   const [references, setReferences] = useState('');
   const [refining, setRefining] = useState(false);
   const [mainTab, setMainTab] = useState('modelo');
+  const navigate = useNavigate();
 
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
+
+  const handleTranslationAction = useCallback((action: TranslationAction) => {
+    switch (action.type) {
+      case 'tab':
+        setMainTab(action.tab);
+        break;
+      case 'route':
+        navigate(action.route);
+        break;
+      case 'dialog':
+        if (action.dialog === 'newProduct') {
+          setMainTab('modelo');
+          setTimeout(() => {
+            setEditingProduct(null);
+            setDialogOpen(true);
+          }, 100);
+        }
+        break;
+    }
+  }, [navigate]);
 
   useEffect(() => {
     if (!suggestions) return;
@@ -159,7 +181,7 @@ export default function CostOrganizationPage() {
       </div>
 
       {/* Translation Card */}
-      <BusinessModelTranslation />
+      <BusinessModelTranslation onAction={handleTranslationAction} />
 
       {/* Main Tabs: Modelo de Negócios vs Estrutura Organizacional */}
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
