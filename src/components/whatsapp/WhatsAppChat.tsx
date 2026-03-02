@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download } from 'lucide-react';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
@@ -627,37 +627,62 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                 })()}
                 {/* Media rendering */}
                 {msg.message_type === 'audio' && msg.media_url && (
-                  <audio controls className="max-w-full mb-1" preload="none">
-                    <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
-                    Áudio não suportado
-                  </audio>
+                  <div className="mb-1">
+                    <audio controls className="max-w-full" preload="none">
+                      <source src={msg.media_url} type={msg.media_type || 'audio/ogg'} />
+                      Áudio não suportado
+                    </audio>
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
+                      <Download className="h-3 w-3" /> Baixar áudio
+                    </a>
+                  </div>
                 )}
                 {msg.message_type === 'image' && msg.media_url && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-                    <img 
-                      src={msg.media_url} 
-                      alt="Imagem" 
-                      className="max-w-full rounded-lg mb-1 max-h-[300px] object-cover cursor-pointer"
-                      loading="lazy"
-                    />
-                  </a>
+                  <div className="mb-1 relative group">
+                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                      <img 
+                        src={msg.media_url} 
+                        alt="Imagem" 
+                        className="max-w-full rounded-lg max-h-[300px] object-cover cursor-pointer"
+                        loading="lazy"
+                      />
+                    </a>
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Download className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 )}
                 {msg.message_type === 'video' && msg.media_url && (
-                  <video controls className="max-w-full rounded-lg mb-1 max-h-[300px]" preload="none">
-                    <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
-                    Vídeo não suportado
-                  </video>
+                  <div className="mb-1">
+                    <video controls className="max-w-full rounded-lg max-h-[300px]" preload="none">
+                      <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
+                      Vídeo não suportado
+                    </video>
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
+                      <Download className="h-3 w-3" /> Baixar vídeo
+                    </a>
+                  </div>
                 )}
                 {msg.message_type === 'document' && msg.media_url && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
-                    <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
-                  </a>
+                  <div className="flex items-center gap-2 mb-1">
+                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
+                      <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Documento'}
+                    </a>
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
+                      <Download className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 )}
                 {/* Fallback for media without proper type */}
                 {msg.media_url && msg.message_type === 'text' && (
-                  <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline mb-1">
-                    <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
-                  </a>
+                  <div className="flex items-center gap-2 mb-1">
+                    <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
+                      <ExternalLink className="h-3 w-3" /> {msg.media_type || 'Mídia'}
+                    </a>
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="opacity-70 hover:opacity-100">
+                      <Download className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
                 )}
                 {msg.message_text && <p className="whitespace-pre-wrap">{msg.message_text}</p>}
                 {!msg.message_text && !msg.media_url && msg.message_type !== 'text' && (
