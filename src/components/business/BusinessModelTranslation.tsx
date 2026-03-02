@@ -1,108 +1,221 @@
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Target, Users, Building2, Package, Lightbulb, Briefcase, UserCheck, Network } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Target, Building2, Package, Lightbulb, Briefcase, Network, ChevronRight, ArrowRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const TRANSLATION_ROWS = [
   {
     question: 'Quem é o cliente?',
     structure: 'Núcleos',
     icon: <Lightbulb className="h-4 w-4 text-amber-500" />,
-    structureIcon: <Lightbulb className="h-4 w-4 text-amber-500" />,
+    color: 'border-l-amber-500',
+    detail: {
+      explanation: 'O cliente é definido pelo problema que ele tem — e o Núcleo Especializado é a unidade que domina esse problema.',
+      steps: [
+        'Identifique o perfil do cliente ideal (ICP) para cada núcleo',
+        'Mapeie a dor principal que ele busca resolver',
+        'Valide se o núcleo tem expertise comprovada nessa dor',
+      ],
+      action: 'Cadastre seus Núcleos Especializados na aba Modelo de Negócios',
+    },
   },
   {
     question: 'Como ele chega?',
     structure: 'Marketing + Comercial',
     icon: <Target className="h-4 w-4 text-blue-500" />,
-    structureIcon: <Target className="h-4 w-4 text-blue-500" />,
+    color: 'border-l-blue-500',
+    detail: {
+      explanation: 'O canal de aquisição conecta a marca ao cliente. Marketing gera demanda, Comercial converte.',
+      steps: [
+        'Defina os canais de aquisição (orgânico, pago, indicação, parcerias)',
+        'Crie processos comerciais replicáveis (scripts, workflows)',
+        'Vincule cada canal a um centro de custo para medir ROI',
+      ],
+      action: 'Configure seus pipelines e workflows no módulo CRM',
+    },
   },
   {
     question: 'Como entregamos?',
     structure: 'Jurídico + Operações',
     icon: <Briefcase className="h-4 w-4 text-green-500" />,
-    structureIcon: <Briefcase className="h-4 w-4 text-green-500" />,
+    color: 'border-l-green-500',
+    detail: {
+      explanation: 'A entrega é onde a promessa da marca se materializa. Precisa de sistemas, não de heróis.',
+      steps: [
+        'Documente o processo de entrega ponta a ponta',
+        'Defina os cargos e funções responsáveis por cada etapa',
+        'Crie checklists e SLAs para garantir consistência',
+      ],
+      action: 'Organize suas Áreas e Times na aba Estrutura Organizacional',
+    },
   },
   {
     question: 'Como ganhamos dinheiro?',
     structure: 'Financeiro + Produtos',
     icon: <Package className="h-4 w-4 text-emerald-500" />,
-    structureIcon: <Package className="h-4 w-4 text-emerald-500" />,
+    color: 'border-l-emerald-500',
+    detail: {
+      explanation: 'O modelo de receita define como o valor criado é capturado. Cada produto é uma expressão monetizável da marca.',
+      steps: [
+        'Cadastre cada produto/serviço com ticket e faixa de preço',
+        'Defina o foco estratégico: gera caixa ou constrói equity?',
+        'Vincule produtos aos núcleos que os sustentam',
+      ],
+      action: 'Cadastre seus Produtos na aba Modelo de Negócios',
+    },
   },
   {
     question: 'Como escalamos?',
     structure: 'Tecnologia + Processos',
     icon: <Network className="h-4 w-4 text-purple-500" />,
-    structureIcon: <Network className="h-4 w-4 text-purple-500" />,
+    color: 'border-l-purple-500',
+    detail: {
+      explanation: 'Escalar = replicar a experiência da marca sem depender de indivíduos. Sistema > pessoa.',
+      steps: [
+        'Automatize processos repetitivos com tecnologia',
+        'Crie planos de carreira para reter talentos-chave',
+        'Estruture empresas como veículos de equity independentes',
+      ],
+      action: 'Revise sua Estrutura Organizacional e planos de carreira',
+    },
   },
 ];
 
 const ECOSYSTEM_PURPOSES = [
-  { icon: '✔', text: 'Eficiência tributária' },
-  { icon: '✔', text: 'Especialização operacional' },
-  { icon: '✔', text: 'Proteção patrimonial' },
-  { icon: '✔', text: 'Escalabilidade' },
-  { icon: '✔', text: 'Redução de riscos' },
+  {
+    text: 'Eficiência tributária',
+    color: 'border-l-emerald-500',
+    detail: {
+      how: 'Cada empresa do ecossistema pode optar pelo regime tributário mais vantajoso (Simples, Lucro Presumido, Real) conforme sua atividade e faturamento.',
+      example: 'Uma holding patrimonial em Lucro Presumido paga ~11% sobre aluguéis, vs. até 27,5% como PF.',
+    },
+  },
+  {
+    text: 'Especialização operacional',
+    color: 'border-l-blue-500',
+    detail: {
+      how: 'Separar atividades em empresas distintas permite que cada uma tenha processos, equipe e métricas específicas.',
+      example: 'A empresa de marketing foca em CAC e ROAS. A operacional foca em SLA e NPS. Métricas claras = decisões melhores.',
+    },
+  },
+  {
+    text: 'Proteção patrimonial',
+    color: 'border-l-amber-500',
+    detail: {
+      how: 'Isolar ativos em holdings e SPEs protege o patrimônio pessoal e separa riscos operacionais.',
+      example: 'Se a empresa operacional tiver um passivo trabalhista, os imóveis na holding estão protegidos.',
+    },
+  },
+  {
+    text: 'Escalabilidade',
+    color: 'border-l-purple-500',
+    detail: {
+      how: 'Cada unidade pode escalar independentemente, receber investimento ou ser vendida sem impactar as demais.',
+      example: 'Vender 30% de uma empresa de tecnologia do grupo sem afetar a operação jurídica.',
+    },
+  },
+  {
+    text: 'Redução de riscos',
+    color: 'border-l-red-500',
+    detail: {
+      how: 'Riscos ficam compartimentalizados. Um problema em uma empresa não contamina todo o ecossistema.',
+      example: 'Uma crise regulatória no setor X só afeta a empresa X, preservando fluxo de caixa das demais.',
+    },
+  },
 ];
 
 export function BusinessModelTranslation() {
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-      <CardContent className="p-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Translation Table */}
+      <CardContent className="p-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Translation - Clickable */}
           <div>
-            <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
-              <Target className="h-4 w-4 text-primary" />
+            <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
+              <Target className="h-3.5 w-3.5 text-primary" />
               Tradução Direta
+              <span className="text-[10px] font-normal text-muted-foreground/60">· clique para explorar</span>
             </h3>
-            <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50">
-                    <th className="text-left p-2.5 font-semibold text-foreground">Modelo de Negócios</th>
-                    <th className="text-left p-2.5 font-semibold text-foreground">Estrutura responde</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TRANSLATION_ROWS.map((row, i) => (
-                    <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
-                      <td className="p-2.5 flex items-center gap-2">
-                        {row.icon}
-                        <span>{row.question}</span>
-                      </td>
-                      <td className="p-2.5 text-muted-foreground">{row.structure}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Accordion type="single" collapsible className="space-y-1">
+              {TRANSLATION_ROWS.map((row, i) => (
+                <AccordionItem key={i} value={`q-${i}`} className={cn("border rounded-lg px-3 border-l-4", row.color, "data-[state=open]:bg-muted/30")}>
+                  <AccordionTrigger className="py-2.5 text-sm hover:no-underline gap-2">
+                    <div className="flex items-center gap-2 flex-1 text-left">
+                      {row.icon}
+                      <span className="font-medium">{row.question}</span>
+                      <ArrowRight className="h-3 w-3 text-muted-foreground mx-1" />
+                      <span className="text-muted-foreground text-xs">{row.structure}</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-3">
+                    <div className="space-y-2.5 pl-6">
+                      <p className="text-sm text-foreground/80">{row.detail.explanation}</p>
+                      <div className="space-y-1">
+                        {row.detail.steps.map((step, j) => (
+                          <div key={j} className="flex items-start gap-2 text-xs text-muted-foreground">
+                            <span className="font-bold text-primary mt-0.5">{j + 1}.</span>
+                            <span>{step}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 p-2 rounded-md bg-primary/5 border border-primary/20 text-xs">
+                        <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="text-primary font-medium">{row.detail.action}</span>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
 
-          {/* Ecosystem Purposes */}
+          {/* Ecosystem - Clickable */}
           <div>
-            <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" />
-              Por que um ecossistema de empresas?
+            <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-2">
+              <Building2 className="h-3.5 w-3.5 text-primary" />
+              Por que um ecossistema?
+              <span className="text-[10px] font-normal text-muted-foreground/60">· clique para ver como</span>
             </h3>
-            <div className="space-y-2">
+            <Accordion type="single" collapsible className="space-y-1">
               {ECOSYSTEM_PURPOSES.map((p, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md bg-muted/30">
-                  <span className="text-emerald-500 font-bold">{p.icon}</span>
-                  <span>{p.text}</span>
-                </div>
+                <AccordionItem key={i} value={`e-${i}`} className={cn("border rounded-lg px-3 border-l-4", p.color, "data-[state=open]:bg-muted/30")}>
+                  <AccordionTrigger className="py-2.5 text-sm hover:no-underline gap-2">
+                    <div className="flex items-center gap-2 flex-1 text-left">
+                      <span className="text-emerald-500 font-bold text-xs">✔</span>
+                      <span className="font-medium">{p.text}</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-3">
+                    <div className="space-y-2 pl-6">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Como funciona</p>
+                        <p className="text-sm text-foreground/80">{p.detail.how}</p>
+                      </div>
+                      <div className="p-2 rounded-md bg-muted/50 border">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Exemplo prático</p>
+                        <p className="text-xs text-muted-foreground">{p.detail.example}</p>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </div>
-            <div className="mt-4 space-y-2">
-              <div className="flex items-start gap-2 p-2.5 rounded-lg border bg-card">
-                <span className="text-lg">👉</span>
+            </Accordion>
+
+            {/* Compact definition cards */}
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs">
+                <span className="text-base">👉</span>
                 <div>
-                  <p className="text-xs font-semibold text-primary">Modelo de Negócios</p>
-                  <p className="text-xs text-muted-foreground">Como criamos, entregamos e capturamos valor.</p>
+                  <p className="font-semibold text-primary leading-tight">Modelo de Negócios</p>
+                  <p className="text-muted-foreground text-[10px]">Como criamos, entregamos e capturamos valor.</p>
                 </div>
               </div>
-              <div className="flex items-start gap-2 p-2.5 rounded-lg border bg-card">
-                <span className="text-lg">👉</span>
+              <div className="flex items-center gap-2 p-2 rounded-lg border bg-card text-xs">
+                <span className="text-base">👉</span>
                 <div>
-                  <p className="text-xs font-semibold text-primary">Estrutura Organizacional</p>
-                  <p className="text-xs text-muted-foreground">Quem executa cada parte desse valor.</p>
+                  <p className="font-semibold text-primary leading-tight">Estrutura</p>
+                  <p className="text-muted-foreground text-[10px]">Quem executa cada parte desse valor.</p>
                 </div>
               </div>
             </div>
