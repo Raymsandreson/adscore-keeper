@@ -34,7 +34,7 @@ interface Props {
   contactId?: string;
   leadId?: string;
   legalCaseId?: string;
-  messages?: Array<{ direction: string; message_text: string | null }>;
+  messages?: Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null }>;
   leadData?: Record<string, any>;
   contactData?: Record<string, any>;
   onSendMessage?: (message: string) => Promise<boolean>;

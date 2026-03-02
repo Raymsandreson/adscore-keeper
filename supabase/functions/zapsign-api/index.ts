@@ -245,7 +245,20 @@ Deno.serve(async (req) => {
         )
       }
 
-      const prompt = `Você é um assistente jurídico. Analise a conversa de WhatsApp abaixo e extraia os dados necessários para preencher um documento.
+      // Build multimodal content - include images from conversation
+      const imageUrls: string[] = []
+      const textMessages: string[] = []
+      
+      for (const m of (messages || []).slice(-50)) {
+        if (m.message_text) {
+          textMessages.push(`[${m.direction}] ${m.message_text}`)
+        }
+        if (m.media_url && (m.media_type?.startsWith('image') || m.message_type === 'image')) {
+          imageUrls.push(m.media_url)
+        }
+      }
+
+      const prompt = `Você é um assistente jurídico. Analise a conversa de WhatsApp abaixo, incluindo as IMAGENS enviadas (procurações, documentos, comprovantes), e extraia os dados necessários para preencher um documento.
 
 CAMPOS DO TEMPLATE A PREENCHER:
 ${JSON.stringify(template_fields || [], null, 2)}
@@ -255,14 +268,29 @@ Lead: ${JSON.stringify(lead_data || {}, null, 2)}
 Contato: ${JSON.stringify(contact_data || {}, null, 2)}
 
 CONVERSA DO WHATSAPP (últimas mensagens):
-${(messages || []).slice(-50).map((m: any) => `[${m.direction}] ${m.message_text || ''}`).join('\n')}
+${textMessages.join('\n')}
+
+IMPORTANTE: Analise TODAS as imagens anexadas. Elas podem conter documentos como RG, CPF, comprovante de endereço, procurações, etc. Extraia TODOS os dados visíveis nas imagens.
 
 Retorne um JSON com os campos preenchidos no formato:
 [{"de": "{{CAMPO}}", "para": "valor extraído"}]
 
-Use os dados do CRM como prioridade, complementando com dados da conversa. Formate datas no padrão DD/MM/AAAA. Se não encontrar um dado, deixe o campo "para" como string vazia "".
+Use os dados do CRM como prioridade, complementando com dados da conversa e das imagens. Formate datas no padrão DD/MM/AAAA. Se não encontrar um dado, deixe o campo "para" como string vazia "".
 Retorne TODOS os campos do template, mesmo os vazios.
 Responda APENAS o JSON, sem markdown.`
+
+      // Build multimodal user content
+      const userContent: any[] = [{ type: 'text', text: prompt }]
+      
+      // Add up to 5 images for analysis
+      for (const imgUrl of imageUrls.slice(-5)) {
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: imgUrl }
+        })
+      }
+
+      console.log(`Extracting data with ${imageUrls.length} images and ${textMessages.length} text messages`)
 
       try {
         const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -274,8 +302,8 @@ Responda APENAS o JSON, sem markdown.`
           body: JSON.stringify({
             model: 'google/gemini-2.5-flash',
             messages: [
-              { role: 'system', content: 'Você é um assistente que extrai dados de conversas para preencher documentos jurídicos. Responda apenas JSON válido.' },
-              { role: 'user', content: prompt }
+              { role: 'system', content: 'Você é um assistente que extrai dados de conversas e imagens de documentos para preencher documentos jurídicos. Analise cuidadosamente as imagens enviadas. Responda apenas JSON válido.' },
+              { role: 'user', content: userContent }
             ],
           }),
         })
