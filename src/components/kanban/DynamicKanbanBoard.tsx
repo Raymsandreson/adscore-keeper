@@ -575,7 +575,7 @@ export function DynamicKanbanBoard({
                                             <MoreVertical className="h-4 w-4 text-muted-foreground" />
                                           </Button>
                                         </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
+                                      <DropdownMenuContent align="end" className="max-h-[70vh] overflow-y-auto">
                                         <DropdownMenuItem onClick={() => onEditLead?.(lead)}>
                                           <Edit2 className="h-3 w-3 mr-2" />
                                           Editar
