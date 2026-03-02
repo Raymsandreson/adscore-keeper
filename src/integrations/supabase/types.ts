@@ -5568,6 +5568,109 @@ export type Database = {
         }
         Relationships: []
       }
+      zapsign_documents: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          doc_token: string
+          document_name: string
+          id: string
+          lead_id: string | null
+          legal_case_id: string | null
+          original_file_url: string | null
+          sent_via_whatsapp: boolean | null
+          sign_url: string | null
+          signed_at: string | null
+          signed_file_url: string | null
+          signer_email: string | null
+          signer_name: string | null
+          signer_phone: string | null
+          signer_status: string | null
+          signer_token: string | null
+          status: string
+          template_data: Json | null
+          template_id: string | null
+          template_name: string | null
+          updated_at: string
+          whatsapp_phone: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_token: string
+          document_name: string
+          id?: string
+          lead_id?: string | null
+          legal_case_id?: string | null
+          original_file_url?: string | null
+          sent_via_whatsapp?: boolean | null
+          sign_url?: string | null
+          signed_at?: string | null
+          signed_file_url?: string | null
+          signer_email?: string | null
+          signer_name?: string | null
+          signer_phone?: string | null
+          signer_status?: string | null
+          signer_token?: string | null
+          status?: string
+          template_data?: Json | null
+          template_id?: string | null
+          template_name?: string | null
+          updated_at?: string
+          whatsapp_phone?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          doc_token?: string
+          document_name?: string
+          id?: string
+          lead_id?: string | null
+          legal_case_id?: string | null
+          original_file_url?: string | null
+          sent_via_whatsapp?: boolean | null
+          sign_url?: string | null
+          signed_at?: string | null
+          signed_file_url?: string | null
+          signer_email?: string | null
+          signer_name?: string | null
+          signer_phone?: string | null
+          signer_status?: string | null
+          signer_token?: string | null
+          status?: string
+          template_data?: Json | null
+          template_id?: string | null
+          template_name?: string | null
+          updated_at?: string
+          whatsapp_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zapsign_documents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zapsign_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "zapsign_documents_legal_case_id_fkey"
+            columns: ["legal_case_id"]
+            isOneToOne: false
+            referencedRelation: "legal_cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

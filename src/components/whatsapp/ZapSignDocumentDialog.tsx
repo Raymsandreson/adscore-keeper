@@ -1,0 +1,357 @@
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Loader2, FileSignature, Sparkles, Send, Copy, Check, ExternalLink } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
+
+interface ZapSignTemplate {
+  token: string;
+  name: string;
+  description?: string;
+  fields?: string[];
+}
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  phone: string;
+  contactName?: string;
+  contactId?: string;
+  leadId?: string;
+  legalCaseId?: string;
+  messages?: Array<{ direction: string; message_text: string | null }>;
+  leadData?: Record<string, any>;
+  contactData?: Record<string, any>;
+  onSendMessage?: (message: string) => Promise<boolean>;
+}
+
+export function ZapSignDocumentDialog({
+  open, onOpenChange, phone, contactName, contactId, leadId, legalCaseId,
+  messages = [], leadData, contactData, onSendMessage
+}: Props) {
+  const { user } = useAuthContext();
+  const [step, setStep] = useState<'select' | 'fill' | 'done'>('select');
+  const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<ZapSignTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [signerName, setSignerName] = useState(contactName || '');
+  const [signerEmail, setSignerEmail] = useState('');
+  const [signerPhone, setSignerPhone] = useState(phone || '');
+  const [templateFields, setTemplateFields] = useState<Array<{ de: string; para: string }>>([]);
+  const [extracting, setExtracting] = useState(false);
+  const [signUrl, setSignUrl] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      loadTemplates();
+      setStep('select');
+      setSignerName(contactName || '');
+      setSignerPhone(phone || '');
+      setTemplateFields([]);
+      setSignUrl('');
+    }
+  }, [open]);
+
+  const loadTemplates = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: { action: 'list_templates' },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setTemplates(Array.isArray(data.templates) ? data.templates : data.templates?.results || []);
+      } else {
+        throw new Error(data?.error || 'Erro ao listar templates');
+      }
+    } catch (err: any) {
+      toast.error('Erro ao carregar templates: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectTemplate = () => {
+    if (!selectedTemplate) return;
+    setStep('fill');
+    // Auto-extract data with AI
+    extractDataWithAI();
+  };
+
+  const extractDataWithAI = async () => {
+    setExtracting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: {
+          action: 'extract_data',
+          messages: messages.slice(-50),
+          template_fields: templateFields.map(f => f.de),
+          lead_data: leadData || {},
+          contact_data: contactData || {},
+        },
+      });
+
+      if (data?.success && Array.isArray(data.extracted_data)) {
+        setTemplateFields(prev => {
+          const merged = [...prev];
+          data.extracted_data.forEach((item: { de: string; para: string }) => {
+            const idx = merged.findIndex(f => f.de === item.de);
+            if (idx >= 0) {
+              merged[idx].para = item.para || merged[idx].para;
+            } else if (item.de && item.para) {
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+        toast.success('Dados extraídos pela IA!');
+      }
+    } catch (err) {
+      console.error('AI extraction error:', err);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const addField = () => {
+    setTemplateFields(prev => [...prev, { de: '', para: '' }]);
+  };
+
+  const updateField = (index: number, key: 'de' | 'para', value: string) => {
+    setTemplateFields(prev => prev.map((f, i) => i === index ? { ...f, [key]: value } : f));
+  };
+
+  const removeField = (index: number) => {
+    setTemplateFields(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCreateDocument = async () => {
+    if (!selectedTemplate || !signerName) {
+      toast.error('Preencha o nome do signatário');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const template = templates.find(t => t.token === selectedTemplate);
+      
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: {
+          action: 'create_doc',
+          template_id: selectedTemplate,
+          signer_name: signerName,
+          signer_email: signerEmail || undefined,
+          signer_phone: signerPhone || undefined,
+          data: templateFields.filter(f => f.de && f.para),
+          document_name: template?.name || 'Procuração',
+          lead_id: leadId || null,
+          contact_id: contactId || null,
+          legal_case_id: legalCaseId || null,
+          created_by: user?.id || null,
+          send_via_whatsapp: true,
+          whatsapp_phone: phone,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao criar documento');
+
+      const url = data.sign_url;
+      setSignUrl(url);
+      setStep('done');
+      toast.success('Documento criado com sucesso!');
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    await navigator.clipboard.writeText(signUrl);
+    setCopied(true);
+    toast.success('Link copiado!');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSendViaWhatsApp = async () => {
+    if (!onSendMessage || !signUrl) return;
+    const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}, segue o link para assinar o documento:\n\n${signUrl}\n\nPor favor, clique no link acima para assinar digitalmente.`;
+    const sent = await onSendMessage(message);
+    if (sent) {
+      toast.success('Link enviado pelo WhatsApp!');
+      onOpenChange(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileSignature className="h-5 w-5 text-primary" />
+            {step === 'select' && 'Gerar Procuração (ZapSign)'}
+            {step === 'fill' && 'Preencher Dados'}
+            {step === 'done' && 'Documento Criado!'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Step 1: Select template */}
+        {step === 'select' && (
+          <div className="space-y-4 flex-1">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Carregando templates...</span>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label>Template / Modelo</Label>
+                  <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um modelo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map(t => (
+                        <SelectItem key={t.token} value={t.token}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {templates.length === 0 && !loading && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Nenhum modelo encontrado. Crie um modelo DOCX na plataforma ZapSign primeiro.
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <Label>Nome do Signatário *</Label>
+                  <Input value={signerName} onChange={e => setSignerName(e.target.value)} placeholder="Nome completo" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Email (opcional)</Label>
+                    <Input value={signerEmail} onChange={e => setSignerEmail(e.target.value)} placeholder="email@exemplo.com" type="email" />
+                  </div>
+                  <div>
+                    <Label>Telefone</Label>
+                    <Input value={signerPhone} onChange={e => setSignerPhone(e.target.value)} placeholder="5511999999999" />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Step 2: Fill template data */}
+        {step === 'fill' && (
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Preencha os campos do modelo. Use <code className="text-xs">{`{{CAMPO}}`}</code> no "De".
+              </p>
+              <Button variant="outline" size="sm" onClick={extractDataWithAI} disabled={extracting} className="gap-1">
+                {extracting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Preencher com IA
+              </Button>
+            </div>
+
+            <ScrollArea className="flex-1 max-h-[300px] pr-2">
+              <div className="space-y-2">
+                {templateFields.map((field, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      className="flex-1 text-xs"
+                      placeholder="{{NOME_COMPLETO}}"
+                      value={field.de}
+                      onChange={e => updateField(i, 'de', e.target.value)}
+                    />
+                    <span className="text-muted-foreground text-xs">→</span>
+                    <Input
+                      className="flex-1 text-xs"
+                      placeholder="Valor"
+                      value={field.para}
+                      onChange={e => updateField(i, 'para', e.target.value)}
+                    />
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeField(i)}>
+                      ×
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            <Button variant="outline" size="sm" onClick={addField} className="w-full">
+              + Adicionar campo
+            </Button>
+          </div>
+        )}
+
+        {/* Step 3: Done */}
+        {step === 'done' && (
+          <div className="space-y-4">
+            <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+              <p className="text-sm font-medium text-primary mb-2">✅ Documento criado com sucesso!</p>
+              <p className="text-xs text-muted-foreground mb-2">Link de assinatura:</p>
+              <p className="text-xs font-mono break-all bg-background p-2 rounded border">{signUrl}</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 gap-1" onClick={handleCopyLink}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? 'Copiado!' : 'Copiar'}
+              </Button>
+              <Button variant="outline" className="gap-1" onClick={() => window.open(signUrl, '_blank')}>
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {onSendMessage && (
+              <Button className="w-full gap-2" onClick={handleSendViaWhatsApp}>
+                <Send className="h-4 w-4" />
+                Enviar link pelo WhatsApp
+              </Button>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="mt-2">
+          {step === 'select' && (
+            <Button onClick={handleSelectTemplate} disabled={!selectedTemplate || !signerName.trim()}>
+              Próximo
+            </Button>
+          )}
+          {step === 'fill' && (
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
+              <Button className="flex-1" onClick={handleCreateDocument} disabled={creating}>
+                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileSignature className="h-4 w-4 mr-2" />}
+                Criar Documento
+              </Button>
+            </div>
+          )}
+          {step === 'done' && (
+            <Button variant="ghost" onClick={() => { setStep('select'); setSelectedTemplate(''); setTemplateFields([]); setSignUrl(''); }}>
+              Criar outro documento
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
