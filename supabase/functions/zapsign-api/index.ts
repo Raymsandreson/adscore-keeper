@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
     // CREATE DOCUMENT FROM TEMPLATE
     // ========================
     if (action === 'create_doc') {
-      const { template_id, signer_name, signer_email, signer_phone, data: templateData, document_name, lead_id, contact_id, legal_case_id, created_by, send_via_whatsapp, whatsapp_phone } = body
+      const { template_id, signer_name, signer_email, signer_phone, signers: additionalSigners, data: templateData, document_name, lead_id, contact_id, legal_case_id, created_by, send_via_whatsapp, whatsapp_phone } = body
 
       if (!template_id || !signer_name) {
         return new Response(
@@ -143,9 +143,53 @@ Deno.serve(async (req) => {
       const docData = await response.json()
       console.log('ZapSign document created:', JSON.stringify(docData))
 
+      // If there are additional signers (witnesses), add them via API
+      if (Array.isArray(additionalSigners) && additionalSigners.length > 1) {
+        for (let i = 1; i < additionalSigners.length; i++) {
+          const extraSigner = additionalSigners[i]
+          if (!extraSigner.name) continue
+          
+          try {
+            const addSignerRes = await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/add-signer/`, {
+              method: 'POST',
+              headers: zapsignHeaders,
+              body: JSON.stringify({
+                name: extraSigner.name,
+                email: extraSigner.email || undefined,
+                phone_country: '55',
+                phone_number: extraSigner.phone || undefined,
+                auth_mode: 'assinaturaTela',
+                send_automatic_email: false,
+                send_automatic_whatsapp: false,
+              }),
+            })
+            
+            if (addSignerRes.ok) {
+              const addedSigner = await addSignerRes.json()
+              console.log(`Added extra signer ${extraSigner.name}:`, addedSigner.token)
+              // Push to docData.signers for URL generation
+              if (!docData.signers) docData.signers = []
+              docData.signers.push(addedSigner)
+            } else {
+              const errText = await addSignerRes.text()
+              console.error(`Failed to add signer ${extraSigner.name}:`, errText)
+            }
+          } catch (signerErr) {
+            console.error(`Error adding signer ${extraSigner.name}:`, signerErr)
+          }
+        }
+      }
+
       // Extract signer info
       const signer = docData.signers?.[0]
       const signUrl = signer ? `https://app.zapsign.co/verificar/${signer.token}` : null
+      
+      // Build all sign URLs
+      const allSignUrls = (docData.signers || []).map((s: any, idx: number) => ({
+        name: s.name || additionalSigners?.[idx]?.name || `Signatário ${idx + 1}`,
+        url: `https://app.zapsign.co/verificar/${s.token}`,
+        token: s.token,
+      }))
 
       // Save to database
       const { data: savedDoc, error: saveError } = await supabase
@@ -182,6 +226,7 @@ Deno.serve(async (req) => {
           success: true, 
           document: docData, 
           sign_url: signUrl,
+          all_sign_urls: allSignUrls,
           saved_doc: savedDoc,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
