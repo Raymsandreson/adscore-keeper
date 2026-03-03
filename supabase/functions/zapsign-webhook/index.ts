@@ -19,9 +19,6 @@ Deno.serve(async (req) => {
     const body = await req.json()
     console.log('ZapSign webhook received:', JSON.stringify(body))
 
-    // ZapSign sends different event types
-    // doc_status_changed: when document status changes (e.g., signed)
-    // signer_status_changed: when a signer signs
     const eventType = body.event_type || body.type
     const docToken = body.doc?.token || body.token || body.doc_token
     const signerToken = body.signer?.token || body.signer_token
@@ -52,6 +49,9 @@ Deno.serve(async (req) => {
     const signer = docData.signers?.[0]
     const signedFileUrl = docData.signed_file || null
 
+    // Determine if document is signed BEFORE using it
+    const isDocSigned = docData.status === 'signed' || signer?.status === 'signed'
+
     // Update local database
     const { data: localDoc } = await supabase
       .from('zapsign_documents')
@@ -70,7 +70,6 @@ Deno.serve(async (req) => {
     // Save signed document as an activity attachment linked to the lead
     if (isDocSigned && signedFileUrl && localDoc?.lead_id) {
       try {
-        // Create a lead activity for the signed document
         const { data: activity } = await supabase
           .from('lead_activities')
           .insert({
@@ -105,8 +104,6 @@ Deno.serve(async (req) => {
     }
 
     // If document is signed and we have a signed PDF, send it via WhatsApp
-    const isDocSigned = docData.status === 'signed' || signer?.status === 'signed'
-    
     if (isDocSigned && signedFileUrl && localDoc?.whatsapp_phone) {
       console.log('Document signed! Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone)
 
@@ -123,38 +120,59 @@ Deno.serve(async (req) => {
         const signerName = localDoc.signer_name || 'Cliente'
         const docName = localDoc.document_name || 'Documento'
 
-        // Send the signed PDF as a document via UazAPI
+        // First send a text confirmation message
+        const confirmUrl = `${baseUrl}/send/text`
+        await fetch(confirmUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+          body: JSON.stringify({
+            number: localDoc.whatsapp_phone,
+            text: `✅ *Assinatura confirmada!*\n\n📄 *${docName}*\nAssinado por: ${signerName}\nData: ${new Date().toLocaleDateString('pt-BR')}\n\nSua assinatura foi registrada com sucesso. Segue abaixo o PDF do documento assinado para seus registros. 👇`,
+          }),
+        })
+
+        // Then send the signed PDF as a document
         const sendDocUrl = `${baseUrl}/send/link`
         const uazResponse = await fetch(sendDocUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'token': instance.instance_token,
-          },
+          headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
           body: JSON.stringify({
             number: localDoc.whatsapp_phone,
             link: signedFileUrl,
-            caption: `✅ *Documento Assinado*\n\n📄 *${docName}*\nAssinado por: ${signerName}\nData: ${new Date().toLocaleDateString('pt-BR')}\n\nSegue em anexo o PDF do documento assinado. Guarde este arquivo para seus registros.`,
+            caption: `📎 ${docName} - Assinado`,
           }),
         })
 
         if (uazResponse.ok) {
           console.log('Signed PDF sent via WhatsApp successfully')
 
-          // Save message to DB
-          await supabase.from('whatsapp_messages').insert({
-            phone: localDoc.whatsapp_phone,
-            message_text: `✅ Documento assinado: ${docName} - PDF enviado`,
-            message_type: 'document',
-            direction: 'outbound',
-            status: 'sent',
-            contact_id: localDoc.contact_id || null,
-            lead_id: localDoc.lead_id || null,
-            instance_name: instance.instance_name,
-            instance_token: instance.instance_token,
-            media_url: signedFileUrl,
-            media_type: 'application/pdf',
-          })
+          // Save both messages to DB
+          await supabase.from('whatsapp_messages').insert([
+            {
+              phone: localDoc.whatsapp_phone,
+              message_text: `✅ Assinatura confirmada! Documento: ${docName} - Assinado por ${signerName}`,
+              message_type: 'text',
+              direction: 'outbound',
+              status: 'sent',
+              contact_id: localDoc.contact_id || null,
+              lead_id: localDoc.lead_id || null,
+              instance_name: instance.instance_name,
+              instance_token: instance.instance_token,
+            },
+            {
+              phone: localDoc.whatsapp_phone,
+              message_text: `📎 ${docName} - PDF assinado enviado`,
+              message_type: 'document',
+              direction: 'outbound',
+              status: 'sent',
+              contact_id: localDoc.contact_id || null,
+              lead_id: localDoc.lead_id || null,
+              instance_name: instance.instance_name,
+              instance_token: instance.instance_token,
+              media_url: signedFileUrl,
+              media_type: 'application/pdf',
+            },
+          ])
         } else {
           const errText = await uazResponse.text()
           console.error('Failed to send signed PDF via WhatsApp:', errText)

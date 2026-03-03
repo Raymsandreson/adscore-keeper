@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -33,6 +33,13 @@ interface UploadedDoc {
   dataUrl: string;
 }
 
+interface SignerInfo {
+  name: string;
+  email: string;
+  phone: string;
+  role: 'sign' | 'witness' | 'approve';
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,7 +59,7 @@ export function ZapSignDocumentDialog({
   messages = [], leadData, contactData, onSendMessage
 }: Props) {
   const { user } = useAuthContext();
-  const [step, setStep] = useState<'select' | 'fill' | 'creating'>('select');
+  const [step, setStep] = useState<'select' | 'signers' | 'fill' | 'creating'>('select');
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<ZapSignTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
@@ -70,7 +77,9 @@ export function ZapSignDocumentDialog({
   const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch contact and lead data from DB when dialog opens
+  // Signers state
+  const [signers, setSigners] = useState<SignerInfo[]>([]);
+
   const fetchCrmData = async () => {
     if (contactId) {
       try {
@@ -100,6 +109,11 @@ export function ZapSignDocumentDialog({
       setPendingSignUrl(null);
       setPendingDocData(null);
       setSendingLink(false);
+      // Initialize with default signer from contact/lead
+      const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
+      const defaultEmail = contactData?.email || leadData?.email || '';
+      const defaultPhone = phone || contactData?.phone || leadData?.phone || '';
+      setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign' }]);
     }
   }, [open]);
 
@@ -125,19 +139,13 @@ export function ZapSignDocumentDialog({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
-        setUploadedDocs(prev => [...prev, {
-          name: file.name,
-          type: file.type,
-          dataUrl: reader.result as string,
-        }]);
+        setUploadedDocs(prev => [...prev, { name: file.name, type: file.type, dataUrl: reader.result as string }]);
       };
       reader.readAsDataURL(file);
     });
-
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -145,9 +153,39 @@ export function ZapSignDocumentDialog({
     setUploadedDocs(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSelectTemplate = async () => {
+  // Signer management
+  const addSigner = () => {
+    setSigners(prev => [...prev, { name: '', email: '', phone: '', role: 'witness' }]);
+  };
+
+  const removeSigner = (index: number) => {
+    if (signers.length <= 1) return;
+    setSigners(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateSigner = (index: number, field: keyof SignerInfo, value: string) => {
+    setSigners(prev => prev.map((s, i) => i === index ? { ...s, [field]: value } : s));
+  };
+
+  const roleLabels: Record<string, string> = {
+    sign: 'Assinar',
+    witness: 'Testemunha',
+    approve: 'Aprovar',
+  };
+
+  // After selecting template, go to signers step
+  const handleSelectTemplate = () => {
     if (!selectedTemplate) return;
-    
+    setStep('signers');
+  };
+
+  // After configuring signers, proceed to fill fields
+  const handleConfirmSigners = async () => {
+    const mainSigner = signers[0];
+    if (!mainSigner?.name.trim()) {
+      toast.error('Informe o nome do signatário principal.');
+      return;
+    }
     setStep('fill');
     setExtracting(true);
 
@@ -189,7 +227,6 @@ export function ZapSignDocumentDialog({
   const extractDataWithAI = async (fieldVars?: string[]) => {
     try {
       const vars = fieldVars || templateFields.map(f => f.de).filter(Boolean);
-      
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'extract_data',
@@ -201,17 +238,10 @@ export function ZapSignDocumentDialog({
           extraction_source: extractionSource,
         },
       });
-
       if (data?.success && Array.isArray(data.extracted_data)) {
         const extracted: ExtractedField[] = data.extracted_data
           .filter((item: any) => item.de)
-          .map((item: any) => ({
-            de: item.de,
-            para: item.para || '',
-            editing: false,
-            source: 'ai' as const,
-          }));
-        
+          .map((item: any) => ({ de: item.de, para: item.para || '', editing: false, source: 'ai' as const }));
         if (extracted.length > 0) {
           setTemplateFields(prev => {
             if (prev.length === 0) return extracted;
@@ -252,12 +282,9 @@ export function ZapSignDocumentDialog({
 
   const handleRequestMissingData = async () => {
     const missing = templateFields.filter(f => f.de && !f.para.trim());
-    if (missing.length === 0) {
-      toast.info('Todos os campos já estão preenchidos!');
-      return;
-    }
+    if (missing.length === 0) { toast.info('Todos os campos já estão preenchidos!'); return; }
     const fieldNames = missing.map(f => formatFieldLabel(f.de)).join('\n• ');
-    const name = contactName || contactData?.full_name || leadData?.lead_name || '';
+    const name = signers[0]?.name || contactName || '';
     const message = `Olá ${name}! 👋\n\nPara dar andamento ao seu documento, preciso que me envie os seguintes dados:\n\n• ${fieldNames}\n\nPor favor, envie as informações aqui pelo chat. Obrigado! 🙏`;
     if (onSendMessage) {
       const sent = await onSendMessage(message);
@@ -270,23 +297,28 @@ export function ZapSignDocumentDialog({
 
   const handleCreateDocument = async () => {
     if (!selectedTemplate) return;
-
     setCreating(true);
     try {
       const template = templates.find(t => t.token === selectedTemplate);
-      const signerName = contactName || contactData?.full_name || leadData?.lead_name || 'Signatário';
-      const signerPhone = phone || contactData?.phone || leadData?.phone || '';
-      const signerEmail = contactData?.email || leadData?.email || '';
-
+      const mainSigner = signers[0];
       const filledFieldsData = templateFields.filter(f => f.de && f.para.trim());
+
+      // Build signers array for the API
+      const signersPayload = signers.map(s => ({
+        name: s.name,
+        email: s.email || undefined,
+        phone: s.phone || undefined,
+        role: s.role,
+      }));
 
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'create_doc',
           template_id: selectedTemplate,
-          signer_name: signerName,
-          signer_email: signerEmail || undefined,
-          signer_phone: signerPhone || undefined,
+          signer_name: mainSigner.name,
+          signer_email: mainSigner.email || undefined,
+          signer_phone: mainSigner.phone || undefined,
+          signers: signersPayload,
           data: filledFieldsData,
           document_name: template?.name || 'Documento',
           lead_id: leadId || null,
@@ -306,11 +338,9 @@ export function ZapSignDocumentDialog({
       const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       setPendingSignUrl(url);
-      setPendingDocData({ template, signerName, emptyFieldsList });
+      setPendingDocData({ template, signerName: mainSigner.name, emptyFieldsList, allSignUrls: data.all_sign_urls || [] });
 
-      if (originalPdfUrl) {
-        setPreviewPdfUrl(originalPdfUrl);
-      }
+      if (originalPdfUrl) setPreviewPdfUrl(originalPdfUrl);
       setShowPreview(true);
       toast.success('Documento gerado! Confira o PDF antes de enviar.');
     } catch (err: any) {
@@ -322,7 +352,6 @@ export function ZapSignDocumentDialog({
 
   const handleSendSigningLink = async () => {
     if (!pendingSignUrl || !onSendMessage) return;
-
     setSendingLink(true);
     try {
       const { template, signerName, emptyFieldsList } = pendingDocData || {};
@@ -390,6 +419,7 @@ export function ZapSignDocumentDialog({
             <FileSignature className="h-5 w-5 text-primary" />
             {showPreview && 'Conferir Documento Gerado'}
             {!showPreview && step === 'select' && 'Gerar Documento para Assinatura'}
+            {!showPreview && step === 'signers' && 'Configurar Signatários'}
             {!showPreview && step === 'fill' && 'Revisar e Preencher Campos'}
             {!showPreview && step === 'creating' && 'Criando documento...'}
           </DialogTitle>
@@ -408,25 +438,18 @@ export function ZapSignDocumentDialog({
                 <div>
                   <Label>Template / Modelo</Label>
                   <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um modelo" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione um modelo" /></SelectTrigger>
                     <SelectContent>
                       {templates.map(t => (
-                        <SelectItem key={t.token} value={t.token}>
-                          {t.name}
-                        </SelectItem>
+                        <SelectItem key={t.token} value={t.token}>{t.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   {templates.length === 0 && !loading && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Nenhum modelo encontrado. Crie um modelo na plataforma ZapSign primeiro.
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Nenhum modelo encontrado.</p>
                   )}
                 </div>
 
-                {/* Document upload area */}
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5">
                     <Upload className="h-3.5 w-3.5" />
@@ -435,26 +458,11 @@ export function ZapSignDocumentDialog({
                   <p className="text-xs text-muted-foreground">
                     Envie RG, CPF, comprovante de endereço, etc. A IA irá extrair os dados automaticamente.
                   </p>
-                  
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full gap-2 border-dashed"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
+                  <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf" onChange={handleFileUpload} className="hidden" />
+                  <Button variant="outline" size="sm" className="w-full gap-2 border-dashed" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-4 w-4" />
                     Fazer upload de documentos
                   </Button>
-
                   {uploadedDocs.length > 0 && (
                     <div className="space-y-1.5">
                       {uploadedDocs.map((doc, i) => (
@@ -470,26 +478,96 @@ export function ZapSignDocumentDialog({
                   )}
                 </div>
 
-                {/* Extraction source selector */}
                 <div className="space-y-2">
                   <Label>Fonte de extração da IA</Label>
                   <Select value={extractionSource} onValueChange={(v: 'upload_only' | 'upload_and_chat') => setExtractionSource(v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="upload_and_chat">📄 Uploads + 💬 Conversa do chat</SelectItem>
                       <SelectItem value="upload_only">📄 Somente uploads</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {extractionSource === 'upload_only'
-                      ? 'A IA extrairá dados apenas dos documentos enviados acima.'
-                      : 'A IA extrairá dados dos uploads e também do histórico da conversa.'}
-                  </p>
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* Step 2: Configure signers */}
+        {step === 'signers' && !showPreview && (
+          <div className="space-y-4 flex-1 overflow-auto">
+            <p className="text-sm text-muted-foreground">
+              Defina quem vai assinar o documento. Você pode adicionar testemunhas também.
+            </p>
+
+            <ScrollArea className="max-h-[350px] pr-2">
+              <div className="space-y-4">
+                {signers.map((signer, idx) => (
+                  <div key={idx} className="rounded-lg border p-3 space-y-3 bg-card">
+                    <div className="flex items-center justify-between">
+                      <Badge variant={idx === 0 ? 'default' : 'secondary'} className="text-xs">
+                        {idx === 0 ? '📝 Signatário principal' : `👁️ ${roleLabels[signer.role] || 'Testemunha'} ${idx}`}
+                      </Badge>
+                      {idx > 0 && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeSigner(idx)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <Label className="text-xs">Nome *</Label>
+                        <Input
+                          placeholder="Nome completo"
+                          value={signer.name}
+                          onChange={e => updateSigner(idx, 'name', e.target.value)}
+                          className="text-sm"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">E-mail</Label>
+                          <Input
+                            placeholder="email@exemplo.com"
+                            value={signer.email}
+                            onChange={e => updateSigner(idx, 'email', e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Celular</Label>
+                          <Input
+                            placeholder="(00) 00000-0000"
+                            value={signer.phone}
+                            onChange={e => updateSigner(idx, 'phone', e.target.value)}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                      {idx > 0 && (
+                        <div>
+                          <Label className="text-xs">Função</Label>
+                          <Select value={signer.role} onValueChange={(v) => updateSigner(idx, 'role', v)}>
+                            <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sign">Assinar</SelectItem>
+                              <SelectItem value="witness">Testemunha</SelectItem>
+                              <SelectItem value="approve">Aprovar</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            <Button variant="outline" size="sm" className="w-full gap-2 border-dashed" onClick={addSigner}>
+              <UserPlus className="h-4 w-4" />
+              Adicionar testemunha / signatário
+            </Button>
           </div>
         )}
 
@@ -502,21 +580,11 @@ export function ZapSignDocumentDialog({
             </div>
             {previewPdfUrl ? (
               <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30 flex flex-col items-center justify-center p-4 min-h-[200px]">
-                <object
-                  data={previewPdfUrl}
-                  type="application/pdf"
-                  className="w-full h-[400px] rounded-lg"
-                >
+                <object data={previewPdfUrl} type="application/pdf" className="w-full h-[400px] rounded-lg">
                   <div className="flex flex-col items-center justify-center gap-3 py-8">
-                    <p className="text-sm text-muted-foreground text-center">
-                      Não foi possível carregar a pré-visualização do PDF no navegador.
-                    </p>
-                    <a
-                      href={previewPdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
-                    >
+                    <p className="text-sm text-muted-foreground text-center">Não foi possível carregar a pré-visualização.</p>
+                    <a href={previewPdfUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition">
                       Abrir PDF em nova aba
                     </a>
                   </div>
@@ -524,7 +592,7 @@ export function ZapSignDocumentDialog({
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center py-8">
-                <p className="text-sm text-muted-foreground">Pré-visualização não disponível. Você pode enviar o link diretamente.</p>
+                <p className="text-sm text-muted-foreground">Pré-visualização não disponível.</p>
               </div>
             )}
             <p className="text-xs text-muted-foreground text-center">
@@ -533,36 +601,31 @@ export function ZapSignDocumentDialog({
           </div>
         )}
 
-        {/* Step 2: Review fields and send */}
+        {/* Step 3: Review fields and send */}
         {step === 'fill' && !showPreview && (
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             {extracting ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 <span className="text-sm text-muted-foreground">Extraindo dados com IA...</span>
-                <span className="text-xs text-muted-foreground">Analisando conversa, imagens e documentos</span>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button variant="ghost" size="sm" onClick={() => { setExtracting(true); extractDataWithAI().finally(() => setExtracting(false)); }} className="ml-auto gap-1 h-7 text-xs">
-                    <Sparkles className="h-3 w-3" />
-                    Re-extrair com IA
+                    <Sparkles className="h-3 w-3" /> Re-extrair com IA
                   </Button>
                 </div>
 
                 <Tabs defaultValue="filled" className="flex-1 overflow-hidden flex flex-col">
                   <TabsList className="w-full grid grid-cols-2 shrink-0">
                     <TabsTrigger value="filled" className="gap-1.5 text-xs">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Preenchidos ({filledFields.length})
+                      <CheckCircle2 className="h-3 w-3" /> Preenchidos ({filledFields.length})
                     </TabsTrigger>
                     <TabsTrigger value="missing" className="gap-1.5 text-xs">
-                      <AlertCircle className="h-3 w-3" />
-                      Faltantes ({emptyFields.length})
+                      <AlertCircle className="h-3 w-3" /> Faltantes ({emptyFields.length})
                     </TabsTrigger>
                   </TabsList>
-
                   <TabsContent value="filled" className="flex-1 overflow-auto mt-2">
                     <ScrollArea className="h-[300px] pr-2">
                       <div className="space-y-2">
@@ -575,7 +638,6 @@ export function ZapSignDocumentDialog({
                       </div>
                     </ScrollArea>
                   </TabsContent>
-
                   <TabsContent value="missing" className="flex-1 overflow-auto mt-2">
                     <ScrollArea className="h-[300px] pr-2">
                       <div className="space-y-2">
@@ -593,8 +655,7 @@ export function ZapSignDocumentDialog({
                 <div className="flex gap-2">
                   {emptyFields.length > 0 && (
                     <Button variant="outline" size="sm" onClick={handleRequestMissingData} className="gap-1 text-xs text-amber-600 border-amber-200 hover:bg-amber-50">
-                      <Send className="h-3 w-3" />
-                      Pedir dados faltantes
+                      <Send className="h-3 w-3" /> Pedir dados faltantes
                     </Button>
                   )}
                 </div>
@@ -606,9 +667,7 @@ export function ZapSignDocumentDialog({
         <DialogFooter className="mt-2">
           {showPreview && (
             <div className="flex gap-2 w-full">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Fechar
-              </Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
               <Button className="flex-1 gap-2" onClick={handleSendSigningLink} disabled={sendingLink}>
                 {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 Enviar link de assinatura
@@ -617,13 +676,20 @@ export function ZapSignDocumentDialog({
           )}
           {step === 'select' && !showPreview && (
             <Button onClick={handleSelectTemplate} disabled={!selectedTemplate}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Extrair dados e preencher
+              <Sparkles className="h-4 w-4 mr-2" /> Próximo: Signatários
             </Button>
+          )}
+          {step === 'signers' && !showPreview && (
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
+              <Button className="flex-1 gap-2" onClick={handleConfirmSigners} disabled={!signers[0]?.name.trim()}>
+                <Sparkles className="h-4 w-4" /> Extrair dados e preencher
+              </Button>
+            </div>
           )}
           {step === 'fill' && !extracting && !showPreview && (
             <div className="flex gap-2 w-full">
-              <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
+              <Button variant="outline" onClick={() => setStep('signers')}>Voltar</Button>
               <Button className="flex-1 gap-2" onClick={handleCreateDocument} disabled={creating || emptyFields.length > 0}>
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
                 {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar documento'}
