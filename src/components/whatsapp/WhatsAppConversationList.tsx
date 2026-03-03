@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ interface Props {
 
 type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
+type DirectionFilter = 'all' | 'inbound' | 'outbound';
 
 export function WhatsAppConversationList({ conversations, loading, selectedPhone, onSelect, boards, selectedInstanceId, bulkMode, selectedPhones, onToggleBulkPhone, onSelectAllFiltered, privatePhones }: Props) {
   const [search, setSearch] = useState('');
@@ -46,6 +47,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('alpha');
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
@@ -146,6 +148,10 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
 
+    // Direction filter: only show conversations that have messages in the selected direction
+    if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
+    if (directionFilter === 'outbound' && !c.messages.some(m => m.direction === 'outbound')) return false;
+
     if (selectedBoardId !== 'all') {
       const info = getLeadInfo(c);
       if (!info || info.board_id !== selectedBoardId) return false;
@@ -167,7 +173,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     }
 
     return true;
-  }), [conversations, search, quickFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
+  }), [conversations, search, quickFilter, directionFilter, selectedBoardId, selectedStageId, selectedChecklistIds, leadInfoMap, phonesWithCalls]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -285,6 +291,26 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
             )}>
               {counts[f.key]}
             </span>
+          </button>
+        ))}
+        {/* Direction filter chips */}
+        {[
+          { key: 'all' as DirectionFilter, label: 'Todas', icon: null },
+          { key: 'inbound' as DirectionFilter, label: 'Recebidas', icon: <ArrowDownToLine className="h-3 w-3" /> },
+          { key: 'outbound' as DirectionFilter, label: 'Enviadas', icon: <ArrowUpFromLine className="h-3 w-3" /> },
+        ].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setDirectionFilter(f.key)}
+            className={cn(
+              "inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium transition-colors",
+              directionFilter === f.key
+                ? "bg-secondary text-secondary-foreground"
+                : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+          >
+            {f.icon}
+            {f.label}
           </button>
         ))}
       </div>
