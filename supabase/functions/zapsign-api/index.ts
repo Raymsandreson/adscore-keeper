@@ -268,25 +268,53 @@ Deno.serve(async (req) => {
         }
       }
 
-      const prompt = `Você é um assistente jurídico. Analise a conversa de WhatsApp abaixo, incluindo as IMAGENS enviadas (procurações, documentos, comprovantes), e extraia os dados necessários para preencher um documento.
+      // Build address from CRM data
+      const contactAddr = contact_data || {}
+      const leadAddr = lead_data || {}
+      const fullAddress = [contactAddr.street, contactAddr.neighborhood, contactAddr.city, contactAddr.state].filter(Boolean).join(', ')
+      const crmMappingHints = `
+MAPEAMENTO DE DADOS DO CRM PARA CAMPOS COMUNS:
+- Nome completo: "${contactAddr.full_name || leadAddr.lead_name || ''}"
+- Telefone/WhatsApp: "${contactAddr.phone || leadAddr.phone || ''}"
+- Email: "${contactAddr.email || leadAddr.email || ''}"
+- Endereço completo: "${fullAddress}"
+- Rua: "${contactAddr.street || ''}"
+- Bairro: "${contactAddr.neighborhood || ''}"
+- Cidade: "${contactAddr.city || ''}"
+- Estado/UF: "${contactAddr.state || ''}"
+- CEP: "${contactAddr.cep || ''}"
+- Profissão: "${contactAddr.profession || ''}"
+- CPF: "${leadAddr.cpf || contactAddr.cpf || ''}"
+`
+
+      const prompt = `Você é um assistente jurídico especializado em extrair dados para preencher documentos. Analise TODAS as fontes disponíveis: dados do CRM, conversa do WhatsApp e IMAGENS de documentos.
 
 CAMPOS DO TEMPLATE A PREENCHER:
 ${JSON.stringify(template_fields || [], null, 2)}
 
-DADOS JÁ DISPONÍVEIS NO CRM:
+${crmMappingHints}
+
+DADOS COMPLETOS DO CRM:
 Lead: ${JSON.stringify(lead_data || {}, null, 2)}
 Contato: ${JSON.stringify(contact_data || {}, null, 2)}
 
 CONVERSA DO WHATSAPP (últimas mensagens):
 ${textMessages.join('\n')}
 
-IMPORTANTE: Analise TODAS as imagens anexadas. Elas podem conter documentos como RG, CPF, comprovante de endereço, procurações, etc. Extraia TODOS os dados visíveis nas imagens.
+INSTRUÇÕES CRÍTICAS:
+1. Analise TODAS as imagens anexadas minuciosamente. Elas podem conter RG, CPF, comprovante de endereço, procurações, certidões, etc.
+2. Para campos como NACIONALIDADE: se a pessoa tem CPF brasileiro ou o documento é brasileiro, use "brasileiro(a)".
+3. Para ESTADO_CIVIL: procure essa informação nas imagens de documentos (RG, certidões) ou na conversa. Valores comuns: solteiro(a), casado(a), divorciado(a), viúvo(a), união estável.
+4. Para ENDERECO_COMPLETO: combine rua + número + bairro + cidade + estado dos dados do CRM ou documentos.
+5. Para WHATSAPP: use o telefone do contato/lead.
+6. Use os dados do CRM como base, complementando com dados da conversa e das imagens.
+7. Formate datas no padrão DD/MM/AAAA.
+8. Se não encontrar um dado, deixe "para" como string vazia "".
+9. Retorne TODOS os campos do template, mesmo os vazios.
 
-Retorne um JSON com os campos preenchidos no formato:
+Retorne um JSON no formato:
 [{"de": "{{CAMPO}}", "para": "valor extraído"}]
 
-Use os dados do CRM como prioridade, complementando com dados da conversa e das imagens. Formate datas no padrão DD/MM/AAAA. Se não encontrar um dado, deixe o campo "para" como string vazia "".
-Retorne TODOS os campos do template, mesmo os vazios.
 Responda APENAS o JSON, sem markdown.`
 
       // Build multimodal user content
@@ -320,9 +348,9 @@ Responda APENAS o JSON, sem markdown.`
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
+            model: 'google/gemini-2.5-pro',
             messages: [
-              { role: 'system', content: 'Você é um assistente que extrai dados de conversas e imagens de documentos para preencher documentos jurídicos. Analise cuidadosamente as imagens enviadas. Responda apenas JSON válido.' },
+              { role: 'system', content: 'Você é um assistente especializado em extrair dados de conversas, imagens e documentos para preencher documentos jurídicos. Analise cuidadosamente TODAS as imagens enviadas, incluindo documentos de identidade, comprovantes e certidões. Extraia nacionalidade, estado civil, endereço e todos os dados visíveis. Responda apenas JSON válido.' },
               { role: 'user', content: userContent }
             ],
           }),
