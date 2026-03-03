@@ -2144,7 +2144,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                               )}
                               {cellActivities.map((cell, ci) => {
                                 const tc = cell.typeConfig || { header: 'bg-muted-foreground', dot: 'bg-muted-foreground', label: 'Outro', value: 'outro', bg: '', border: '' };
-                                return (
+                                return cell.items.length === 1 ? (
                                   <div
                                     key={ci}
                                     className={cn(
@@ -2152,15 +2152,54 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                       tc.header,
                                       cell.isDefault && 'opacity-60 border-2 border-dashed border-white/40'
                                     )}
-                                    onClick={() => handleOpenEdit(cell.items[0])}
-                                    title={cell.items.map(a => a.title).join('\n')}
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(cell.items[0]); }}
                                   >
                                     <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
-                                    <div className="text-sm font-bold leading-none">{cell.items.length}</div>
-                                    {cell.items.length === 1 && (
-                                      <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
-                                    )}
+                                    <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
                                   </div>
+                                ) : (
+                                  <Popover key={ci}>
+                                    <PopoverTrigger asChild>
+                                      <div
+                                        className={cn(
+                                          'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
+                                          tc.header,
+                                          cell.isDefault && 'opacity-60 border-2 border-dashed border-white/40'
+                                        )}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
+                                        <div className="text-sm font-bold leading-none">{cell.items.length}</div>
+                                      </div>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-72 p-0" align="start" side="bottom">
+                                      <div className="px-3 py-2 border-b bg-muted/30">
+                                        <p className="text-xs font-bold">{tc.label} — {cell.items.length} atividade{cell.items.length > 1 ? 's' : ''}</p>
+                                      </div>
+                                      <ScrollArea className="max-h-56">
+                                        <div className="divide-y">
+                                          {cell.items.map(a => (
+                                            <div
+                                              key={a.id}
+                                              className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
+                                              onClick={() => handleOpenEdit(a)}
+                                            >
+                                              <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', tc.dot || tc.header)} />
+                                              <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-medium truncate">{a.title}</p>
+                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                  {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{a.lead_name}</span>}
+                                                  <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
+                                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                                  </Badge>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </ScrollArea>
+                                    </PopoverContent>
+                                  </Popover>
                                 );
                               })}
                             </div>
