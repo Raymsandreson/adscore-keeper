@@ -953,24 +953,100 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             />
           )}
         </div>
-        <div className="flex gap-2">
-          <Textarea
-            placeholder="Digite uma mensagem..."
-            value={newMessage}
-            onChange={e => setNewMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="min-h-[44px] max-h-[120px] resize-none text-sm"
-            rows={1}
-          />
-          <Button
-            size="icon"
-            className="h-11 w-11 shrink-0 bg-green-600 hover:bg-green-700"
-            onClick={handleSend}
-            disabled={!newMessage.trim() || sending}
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* Recording UI */}
+        {isRecording ? (
+          <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2">
+            <div className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
+            <span className="text-sm font-medium text-destructive flex-1">
+              Gravando... {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+            </span>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={cancelRecording}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button size="icon" className="h-8 w-8 bg-green-600 hover:bg-green-700" onClick={stopRecording}>
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-1 items-end">
+            {/* Attach menu */}
+            <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                  {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem onClick={() => { mediaInputRef.current?.click(); }} className="gap-2">
+                  <Image className="h-4 w-4" /> Foto / Vídeo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { 
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip';
+                  input.onchange = (e: any) => handleMediaUpload(e);
+                  input.click();
+                }} className="gap-2">
+                  <FileUp className="h-4 w-4" /> Documento
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <MapPin className="h-4 w-4" /> Localização
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+            <Textarea
+              placeholder="Digite uma mensagem..."
+              value={newMessage}
+              onChange={e => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="min-h-[44px] max-h-[120px] resize-none text-sm flex-1"
+              rows={1}
+            />
+            {newMessage.trim() ? (
+              <Button
+                size="icon"
+                className="h-10 w-10 shrink-0 bg-green-600 hover:bg-green-700"
+                onClick={handleSend}
+                disabled={sending}
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 shrink-0 text-muted-foreground hover:text-green-600"
+                onClick={startRecording}
+                disabled={uploadingMedia}
+              >
+                <Mic className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        )}
+        {/* Location Dialog */}
+        <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Enviar Localização</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Button variant="outline" className="w-full gap-2" onClick={handleGetCurrentLocation}>
+                <MapPin className="h-4 w-4" /> Usar minha localização atual
+              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label className="text-xs">Latitude</Label><Input value={locationLat} onChange={e => setLocationLat(e.target.value)} placeholder="-23.5505" className="h-8 text-sm" /></div>
+                <div><Label className="text-xs">Longitude</Label><Input value={locationLng} onChange={e => setLocationLng(e.target.value)} placeholder="-46.6333" className="h-8 text-sm" /></div>
+              </div>
+              <div><Label className="text-xs">Nome do local (opcional)</Label><Input value={locationName} onChange={e => setLocationName(e.target.value)} placeholder="Escritório" className="h-8 text-sm" /></div>
+              <div><Label className="text-xs">Endereço (opcional)</Label><Input value={locationAddress} onChange={e => setLocationAddress(e.target.value)} placeholder="Rua..." className="h-8 text-sm" /></div>
+              <Button className="w-full bg-green-600 hover:bg-green-700 gap-2" onClick={handleSendLocation} disabled={!locationLat || !locationLng}>
+                <Send className="h-4 w-4" /> Enviar localização
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
       <ZapSignDocumentDialog
         open={showZapSign}
