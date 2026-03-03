@@ -69,6 +69,7 @@ export function ZapSignDocumentDialog({
   const [extracting, setExtracting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [pastedText, setPastedText] = useState('');
   const [extractionSource, setExtractionSource] = useState<'upload_only' | 'upload_and_chat'>('upload_and_chat');
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -148,6 +149,7 @@ export function ZapSignDocumentDialog({
       setTemplateFields([]);
       setSelectedTemplate('');
       setUploadedDocs([]);
+      setPastedText('');
       setExtractionSource('upload_and_chat');
       setMessagePeriod('7d');
       setPreviewPdfUrl(null);
@@ -231,7 +233,7 @@ export function ZapSignDocumentDialog({
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'extract_signers',
-          messages: extractionSource === 'upload_only' ? [] : filteredMessages.slice(-50),
+          messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
           contact_data: contactData || fetchedContactData || {},
           lead_data: leadData || fetchedLeadData || {},
           uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
@@ -319,7 +321,7 @@ export function ZapSignDocumentDialog({
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
           action: 'extract_data',
-          messages: extractionSource === 'upload_only' ? [] : filteredMessages.slice(-50),
+          messages: extractionSource === 'upload_only' ? (pastedText ? [{ direction: 'inbound', message_text: pastedText }] : []) : [...filteredMessages.slice(-50), ...(pastedText ? [{ direction: 'inbound', message_text: pastedText }] : [])],
           template_fields: vars.length > 0 ? vars : undefined,
           lead_data: leadData || fetchedLeadData || {},
           contact_data: contactData || fetchedContactData || {},
@@ -517,7 +519,7 @@ export function ZapSignDocumentDialog({
 
         {/* Step 1: Select template + upload docs */}
         {step === 'select' && (
-          <div className="space-y-4 flex-1">
+          <div className="space-y-4 flex-1 overflow-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -569,6 +571,22 @@ export function ZapSignDocumentDialog({
                 </div>
 
                 <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5" />
+                    Texto para extração (opcional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Cole aqui informações do cliente (nome, CPF, endereço, etc.) para a IA extrair automaticamente.
+                  </p>
+                  <textarea
+                    className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                    placeholder="Ex: João da Silva, CPF 123.456.789-00, RG 1234567, Rua das Flores 123, Bairro Centro, Teresina-PI, CEP 64000-000..."
+                    value={pastedText}
+                    onChange={e => setPastedText(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label>Fonte de extração da IA</Label>
                   <Select value={extractionSource} onValueChange={(v: 'upload_only' | 'upload_and_chat') => setExtractionSource(v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -605,7 +623,7 @@ export function ZapSignDocumentDialog({
 
         {/* Step 2: Configure signers */}
         {step === 'signers' && !showPreview && (
-          <div className="space-y-4 flex-1 overflow-auto">
+          <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
             {extractingSigners ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -617,8 +635,8 @@ export function ZapSignDocumentDialog({
               A IA identificou os signatários abaixo. Você pode editar ou adicionar testemunhas.
             </p>
 
-            <ScrollArea className="max-h-[350px] pr-2">
-              <div className="space-y-4">
+            <ScrollArea className="flex-1 min-h-0 pr-2">
+              <div className="space-y-4 pb-2">
                 {signers.map((signer, idx) => (
                   <div key={idx} className="rounded-lg border p-3 space-y-3 bg-card">
                     <div className="flex items-center justify-between">
