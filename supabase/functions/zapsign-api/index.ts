@@ -378,10 +378,9 @@ Responda APENAS o JSON, sem markdown.`
           console.error('Failed to parse AI response:', responseText)
         }
 
-        // Apply default values for specific templates (e.g., Procuração Auxílio Maternidade)
-        const docName = (document_name || '').toLowerCase()
-        const templateFieldNames = (template_fields || []).map((f: any) => (f.de || f.variable || '').toUpperCase())
-        const isMaternidade = docName.includes('maternidade') || docName.includes('procura')
+        // Apply default values for EMAIL and WHATSAPP fields
+        const docName = (body.document_name || '').toLowerCase()
+        
         
         if (Array.isArray(extractedData)) {
           for (const field of extractedData) {
