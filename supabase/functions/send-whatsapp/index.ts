@@ -91,25 +91,22 @@ Deno.serve(async (req) => {
       const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
       const targetNumber = chat_id?.trim() || phone
 
-      // UazAPI v2: use /send/link for images/videos (by URL), /send/audio for audio, /send/document for docs
-      let endpoint = '/send/link'
-      let sendBody: any = { number: targetNumber, url: media_url, caption: caption || '' }
+      // UazAPI v2: unified /send/media endpoint with type field
+      let endpoint = '/send/media'
       let messageType = 'image'
+      let sendBody: any = { number: targetNumber, file: media_url, text: caption || '' }
 
       if (media_type?.startsWith('audio')) {
-        endpoint = '/send/audio'
-        sendBody = { number: targetNumber, url: media_url }
+        sendBody.type = 'audio'
         messageType = 'audio'
       } else if (media_type?.startsWith('video')) {
-        endpoint = '/send/link'
-        sendBody = { number: targetNumber, url: media_url, caption: caption || '' }
+        sendBody.type = 'video'
         messageType = 'video'
       } else if (media_type?.startsWith('image')) {
-        endpoint = '/send/link'
-        sendBody = { number: targetNumber, url: media_url, caption: caption || '' }
+        sendBody.type = 'image'
       } else {
-        endpoint = '/send/document'
-        sendBody = { number: targetNumber, url: media_url, fileName: file_name || 'documento' }
+        sendBody.type = 'document'
+        if (file_name) sendBody.docName = file_name
         messageType = 'document'
       }
 
