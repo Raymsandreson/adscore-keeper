@@ -46,7 +46,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   // Multi-select passos
   const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>('alpha');
+  const [sortMode, setSortMode] = useState<SortMode>('last_received');
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
@@ -178,10 +178,9 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
     if (sortMode === 'last_received') {
+      // Sort by most recent message (any direction) — like WhatsApp
       return [...filtered].sort((a, b) => {
-        const aTime = a.messages.filter(m => m.direction === 'inbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
-        const bTime = b.messages.filter(m => m.direction === 'inbound').sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0]?.created_at || '0';
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
+        return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
       });
     }
     if (sortMode === 'last_sent') {
