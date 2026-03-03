@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
                 email: extraSigner.email || undefined,
                 phone_country: '55',
                 phone_number: extraSigner.phone || undefined,
-                auth_mode: 'assinaturaTela',
+                auth_mode: extraSigner.auth_mode || 'assinaturaTela',
                 send_automatic_email: false,
                 send_automatic_whatsapp: false,
               }),
