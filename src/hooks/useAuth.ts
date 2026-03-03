@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
+import { cacheSet, cacheGet, CACHE_TTL } from '@/lib/offlineCache';
 
 interface Profile {
   id: string;
@@ -17,18 +18,33 @@ export const useAuth = () => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   const initialize = () => {
     setLoading(true);
     setConnectionError(null);
+    setIsOfflineMode(false);
 
     let settled = false;
     const settle = (error?: string) => {
       if (!settled) {
         settled = true;
         if (error) {
-          setConnectionError(error);
-          console.error('[AUTH] ❌ Falha na conexão com backend:', error);
+          // Try to restore from cache before showing error
+          const cachedSession = cacheGet<{ user: User; session: Session }>('auth_session');
+          const cachedProfile = cacheGet<Profile>('auth_profile');
+
+          if (cachedSession?.data) {
+            console.log('[AUTH] ⚡ Restaurando sessão do cache offline');
+            setUser(cachedSession.data.user);
+            setSession(cachedSession.data.session);
+            if (cachedProfile?.data) setProfile(cachedProfile.data);
+            setIsOfflineMode(true);
+            setConnectionError(null);
+          } else {
+            setConnectionError(error);
+            console.error('[AUTH] ❌ Falha na conexão com backend:', error);
+          }
         } else {
           setConnectionError(null);
           console.log('[AUTH] ✅ Conexão com backend OK');
@@ -49,6 +65,9 @@ export const useAuth = () => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // Cache the session
+          cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
+          
           setTimeout(async () => {
             const { data } = await supabase
               .from('profiles')
@@ -56,10 +75,12 @@ export const useAuth = () => {
               .eq('user_id', session.user.id)
               .single();
             setProfile(data);
+            if (data) cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
           }, 0);
         } else {
           setProfile(null);
         }
+        setIsOfflineMode(false);
         settle();
       }
     );
@@ -70,12 +91,17 @@ export const useAuth = () => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        cacheSet('auth_session', { user: session.user, session }, CACHE_TTL.SESSION);
+        
         supabase
           .from('profiles')
           .select('*')
           .eq('user_id', session.user.id)
           .single()
-          .then(({ data }) => setProfile(data));
+          .then(({ data }) => {
+            setProfile(data);
+            if (data) cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
+          });
       }
       settle();
     }).catch((err) => {
@@ -130,11 +156,15 @@ export const useAuth = () => {
       .select()
       .single();
     
-    if (data) setProfile(data);
+    if (data) {
+      setProfile(data);
+      cacheSet('auth_profile', data, CACHE_TTL.PROFILE);
+    }
     return { data, error };
   };
 
   const retry = () => {
+    setIsOfflineMode(false);
     initialize();
   };
 
@@ -144,6 +174,7 @@ export const useAuth = () => {
     profile,
     loading,
     connectionError,
+    isOfflineMode,
     signUp,
     signIn,
     signOut,
