@@ -95,5 +95,11 @@ export function useGoogleIntegration() {
     return data;
   }, []);
 
-  return { isConnected, loading, connecting, connect, saveContact, createCalendarEvent, checkConnection };
+  const importContacts = useCallback(async () => {
+    const { data, error } = await supabase.functions.invoke('google-import-contacts');
+    if (error || data?.error) throw new Error(data?.error || error?.message);
+    return data as { total: number; imported: number; skipped: number };
+  }, []);
+
+  return { isConnected, loading, connecting, connect, saveContact, createCalendarEvent, importContacts, checkConnection };
 }
