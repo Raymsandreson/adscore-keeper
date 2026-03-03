@@ -61,6 +61,8 @@ export function ZapSignDocumentDialog({
   const [creating, setCreating] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const [extractionSource, setExtractionSource] = useState<'upload_only' | 'upload_and_chat'>('upload_and_chat');
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -71,6 +73,8 @@ export function ZapSignDocumentDialog({
       setSelectedTemplate('');
       setUploadedDocs([]);
       setExtractionSource('upload_and_chat');
+      setPreviewPdfUrl(null);
+      setShowPreview(false);
     }
   }, [open]);
 
@@ -274,6 +278,7 @@ export function ZapSignDocumentDialog({
       if (!data?.success) throw new Error(data?.error || 'Erro ao criar documento');
 
       const url = data.sign_url;
+      const originalPdfUrl = data.document?.original_file || null;
       
       if (onSendMessage && url) {
         const missingList = emptyFieldsList.length > 0
@@ -291,7 +296,14 @@ export function ZapSignDocumentDialog({
         toast.success('Documento criado! Link: ' + url);
       }
 
-      onOpenChange(false);
+      // Show PDF preview if available
+      if (originalPdfUrl) {
+        setPreviewPdfUrl(originalPdfUrl);
+        setShowPreview(true);
+        setStep('fill'); // Keep dialog open for preview
+      } else {
+        onOpenChange(false);
+      }
     } catch (err: any) {
       toast.error('Erro: ' + err.message);
     } finally {
@@ -445,8 +457,28 @@ export function ZapSignDocumentDialog({
           </div>
         )}
 
+        {/* PDF Preview after creation */}
+        {showPreview && previewPdfUrl && (
+          <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CheckCircle2 className="h-4 w-4 text-green-500" />
+              <span>Documento gerado e link enviado com sucesso!</span>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30">
+              <iframe
+                src={previewPdfUrl}
+                className="w-full h-[400px] rounded-lg"
+                title="Pré-visualização do documento"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              📄 Pré-visualização do documento gerado. Quando o cliente assinar, o PDF assinado será enviado automaticamente pelo WhatsApp.
+            </p>
+          </div>
+        )}
+
         {/* Step 2: Review fields and send */}
-        {step === 'fill' && (
+        {step === 'fill' && !showPreview && (
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             {extracting ? (
               <div className="flex flex-col items-center justify-center py-8 gap-2">
@@ -516,13 +548,19 @@ export function ZapSignDocumentDialog({
         )}
 
         <DialogFooter className="mt-2">
-          {step === 'select' && (
+          {showPreview && (
+            <Button onClick={() => onOpenChange(false)} className="w-full">
+              <Check className="h-4 w-4 mr-2" />
+              Fechar
+            </Button>
+          )}
+          {step === 'select' && !showPreview && (
             <Button onClick={handleSelectTemplate} disabled={!selectedTemplate}>
               <Sparkles className="h-4 w-4 mr-2" />
               Extrair dados e preencher
             </Button>
           )}
-          {step === 'fill' && !extracting && (
+          {step === 'fill' && !extracting && !showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
               <Button className="flex-1 gap-2" onClick={handleCreateAndSend} disabled={creating || emptyFields.length > 0}>

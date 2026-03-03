@@ -122,3 +122,6 @@ verify_jwt = false
 
 [functions.suggest-product-fields]
 verify_jwt = false
+
+[functions.zapsign-webhook]
+verify_jwt = false
