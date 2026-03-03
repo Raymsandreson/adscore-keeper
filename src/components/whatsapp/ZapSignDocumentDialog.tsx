@@ -63,6 +63,9 @@ export function ZapSignDocumentDialog({
   const [extractionSource, setExtractionSource] = useState<'upload_only' | 'upload_and_chat'>('upload_and_chat');
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [pendingSignUrl, setPendingSignUrl] = useState<string | null>(null);
+  const [pendingDocData, setPendingDocData] = useState<any>(null);
+  const [sendingLink, setSendingLink] = useState(false);
   const [fetchedContactData, setFetchedContactData] = useState<Record<string, any>>({});
   const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +97,9 @@ export function ZapSignDocumentDialog({
       setExtractionSource('upload_and_chat');
       setPreviewPdfUrl(null);
       setShowPreview(false);
+      setPendingSignUrl(null);
+      setPendingDocData(null);
+      setSendingLink(false);
     }
   }, [open]);
 
@@ -262,7 +268,7 @@ export function ZapSignDocumentDialog({
     }
   };
 
-  const handleCreateAndSend = async () => {
+  const handleCreateDocument = async () => {
     if (!selectedTemplate) return;
 
     setCreating(true);
@@ -273,7 +279,6 @@ export function ZapSignDocumentDialog({
       const signerEmail = contactData?.email || leadData?.email || '';
 
       const filledFieldsData = templateFields.filter(f => f.de && f.para.trim());
-      const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
         body: {
@@ -288,7 +293,7 @@ export function ZapSignDocumentDialog({
           contact_id: contactId || null,
           legal_case_id: legalCaseId || null,
           created_by: user?.id || null,
-          send_via_whatsapp: true,
+          send_via_whatsapp: false,
           whatsapp_phone: phone,
         },
       });
@@ -298,35 +303,46 @@ export function ZapSignDocumentDialog({
 
       const url = data.sign_url;
       const originalPdfUrl = data.document?.original_file || null;
-      
-      if (onSendMessage && url) {
-        const missingList = emptyFieldsList.length > 0
-          ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFieldsList.map(f => `• ${formatFieldLabel(f.de)}`).join('\n')}`
-          : '';
-        
-        const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${url}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
-        const sent = await onSendMessage(message);
-        if (sent) {
-          toast.success('Documento criado e link enviado pelo WhatsApp!');
-        } else {
-          toast.success('Documento criado! Link: ' + url);
-        }
-      } else {
-        toast.success('Documento criado! Link: ' + url);
-      }
+      const emptyFieldsList = templateFields.filter(f => f.de && !f.para.trim());
 
-      // Show PDF preview if available
+      setPendingSignUrl(url);
+      setPendingDocData({ template, signerName, emptyFieldsList });
+
       if (originalPdfUrl) {
         setPreviewPdfUrl(originalPdfUrl);
-        setShowPreview(true);
-        setStep('fill'); // Keep dialog open for preview
-      } else {
-        onOpenChange(false);
       }
+      setShowPreview(true);
+      toast.success('Documento gerado! Confira o PDF antes de enviar.');
     } catch (err: any) {
       toast.error('Erro: ' + err.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleSendSigningLink = async () => {
+    if (!pendingSignUrl || !onSendMessage) return;
+
+    setSendingLink(true);
+    try {
+      const { template, signerName, emptyFieldsList } = pendingDocData || {};
+      const missingList = emptyFieldsList?.length > 0
+        ? `\n\n⚠️ *Campos para você preencher:*\n${emptyFieldsList.map((f: any) => `• ${formatFieldLabel(f.de)}`).join('\n')}`
+        : '';
+
+      const message = `📝 *Documento para assinatura*\n\nOlá ${signerName}! Segue o link para assinar o documento *${template?.name || 'Documento'}*:\n\n👉 ${pendingSignUrl}${missingList}\n\n*Instruções:*\n1. Clique no link acima\n2. ${emptyFieldsList?.length > 0 ? 'Preencha os campos indicados' : 'Confira seus dados'}\n3. Assine digitalmente no local indicado\n4. Pronto! Você receberá uma cópia por email.\n\nQualquer dúvida, estou à disposição! 🙏`;
+
+      const sent = await onSendMessage(message);
+      if (sent) {
+        toast.success('Link de assinatura enviado pelo WhatsApp!');
+        onOpenChange(false);
+      } else {
+        toast.error('Não foi possível enviar a mensagem.');
+      }
+    } catch (err: any) {
+      toast.error('Erro ao enviar: ' + err.message);
+    } finally {
+      setSendingLink(false);
     }
   };
 
@@ -372,9 +388,10 @@ export function ZapSignDocumentDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSignature className="h-5 w-5 text-primary" />
-            {step === 'select' && 'Gerar Documento para Assinatura'}
-            {step === 'fill' && 'Revisar e Enviar Documento'}
-            {step === 'creating' && 'Criando documento...'}
+            {showPreview && 'Conferir Documento Gerado'}
+            {!showPreview && step === 'select' && 'Gerar Documento para Assinatura'}
+            {!showPreview && step === 'fill' && 'Revisar e Preencher Campos'}
+            {!showPreview && step === 'creating' && 'Criando documento...'}
           </DialogTitle>
         </DialogHeader>
 
@@ -477,35 +494,41 @@ export function ZapSignDocumentDialog({
         )}
 
         {/* PDF Preview after creation */}
-        {showPreview && previewPdfUrl && (
+        {showPreview && (
           <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <CheckCircle2 className="h-4 w-4 text-green-500" />
-              <span>Documento gerado e link enviado com sucesso!</span>
+              <span>Documento gerado! Confira o PDF abaixo antes de enviar o link.</span>
             </div>
-            <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30 flex flex-col items-center justify-center p-4 min-h-[200px]">
-              <object
-                data={previewPdfUrl}
-                type="application/pdf"
-                className="w-full h-[400px] rounded-lg"
-              >
-                <div className="flex flex-col items-center justify-center gap-3 py-8">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Não foi possível carregar a pré-visualização do PDF no navegador.
-                  </p>
-                  <a
-                    href={previewPdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
-                  >
-                    Abrir PDF em nova aba
-                  </a>
-                </div>
-              </object>
-            </div>
+            {previewPdfUrl ? (
+              <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30 flex flex-col items-center justify-center p-4 min-h-[200px]">
+                <object
+                  data={previewPdfUrl}
+                  type="application/pdf"
+                  className="w-full h-[400px] rounded-lg"
+                >
+                  <div className="flex flex-col items-center justify-center gap-3 py-8">
+                    <p className="text-sm text-muted-foreground text-center">
+                      Não foi possível carregar a pré-visualização do PDF no navegador.
+                    </p>
+                    <a
+                      href={previewPdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
+                    >
+                      Abrir PDF em nova aba
+                    </a>
+                  </div>
+                </object>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center py-8">
+                <p className="text-sm text-muted-foreground">Pré-visualização não disponível. Você pode enviar o link diretamente.</p>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground text-center">
-              📄 Pré-visualização do documento gerado. Quando o cliente assinar, o PDF assinado será enviado automaticamente pelo WhatsApp.
+              📄 Confira se o documento está correto. Clique em "Enviar link de assinatura" para enviar ao cliente.
             </p>
           </div>
         )}
@@ -582,10 +605,15 @@ export function ZapSignDocumentDialog({
 
         <DialogFooter className="mt-2">
           {showPreview && (
-            <Button onClick={() => onOpenChange(false)} className="w-full">
-              <Check className="h-4 w-4 mr-2" />
-              Fechar
-            </Button>
+            <div className="flex gap-2 w-full">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
+              <Button className="flex-1 gap-2" onClick={handleSendSigningLink} disabled={sendingLink}>
+                {sendingLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Enviar link de assinatura
+              </Button>
+            </div>
           )}
           {step === 'select' && !showPreview && (
             <Button onClick={handleSelectTemplate} disabled={!selectedTemplate}>
@@ -596,9 +624,9 @@ export function ZapSignDocumentDialog({
           {step === 'fill' && !extracting && !showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
-              <Button className="flex-1 gap-2" onClick={handleCreateAndSend} disabled={creating || emptyFields.length > 0}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar e enviar pelo WhatsApp'}
+              <Button className="flex-1 gap-2" onClick={handleCreateDocument} disabled={creating || emptyFields.length > 0}>
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
+                {emptyFields.length > 0 ? `Preencha ${emptyFields.length} campo(s) faltante(s)` : 'Gerar documento'}
               </Button>
             </div>
           )}
