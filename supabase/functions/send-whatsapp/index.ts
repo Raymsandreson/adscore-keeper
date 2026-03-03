@@ -91,10 +91,10 @@ Deno.serve(async (req) => {
       const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
       const targetNumber = chat_id?.trim() || phone
 
-      // UazAPI v2: unified /send/media endpoint with type field
-      let endpoint = '/send/media'
+      // UazAPI v2: unified /send/media endpoint
+      const endpoint = '/send/media'
       let messageType = 'image'
-      let sendBody: any = { number: targetNumber, file: media_url, text: caption || '' }
+      const sendBody: any = { number: targetNumber, file: media_url }
 
       if (media_type?.startsWith('audio')) {
         sendBody.type = 'audio'
@@ -106,11 +106,15 @@ Deno.serve(async (req) => {
         sendBody.type = 'image'
       } else {
         sendBody.type = 'document'
-        if (file_name) sendBody.docName = file_name
         messageType = 'document'
       }
 
-      console.log(`Sending ${messageType} via UazAPI:`, endpoint, 'to:', phone)
+      // caption field for text, only for non-audio
+      if (caption && sendBody.type !== 'audio') {
+        sendBody.caption = caption
+      }
+
+      console.log(`Sending ${messageType} via UazAPI:`, endpoint, 'to:', phone, 'body keys:', Object.keys(sendBody))
 
       const uazResponse = await fetch(`${baseUrl}${endpoint}`, {
         method: 'POST',
@@ -122,6 +126,9 @@ Deno.serve(async (req) => {
         const errorText = await uazResponse.text()
         throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
       }
+
+      const uazData = await uazResponse.json().catch(() => ({}))
+      const externalId = uazData?.key?.id || uazData?.id || null
 
       // Save to database
       const { data: savedMessage, error } = await supabase
@@ -138,6 +145,7 @@ Deno.serve(async (req) => {
           lead_id: lead_id || null,
           instance_name: instance.instance_name,
           instance_token: instance.instance_token,
+          external_message_id: externalId,
         })
         .select()
         .single()
@@ -259,7 +267,9 @@ Deno.serve(async (req) => {
       throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
     }
     
-    console.log('UazAPI response status:', uazResponse.status)
+    const uazData = await uazResponse.json().catch(() => ({}))
+    const externalId = uazData?.key?.id || uazData?.id || null
+    console.log('UazAPI response status:', uazResponse.status, 'externalId:', externalId)
 
     const { data: savedMessage, error } = await supabase
       .from('whatsapp_messages')
@@ -273,6 +283,7 @@ Deno.serve(async (req) => {
         lead_id: lead_id || null,
         instance_name: instance.instance_name,
         instance_token: instance.instance_token,
+        external_message_id: externalId,
       })
       .select()
       .single()
