@@ -7,15 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, CalendarIcon } from 'lucide-react';
+import { Loader2, FileSignature, Sparkles, Send, Pencil, Check, CheckCircle2, AlertCircle, Upload, FileText, X, Plus, Trash2, UserPlus, MessageSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, subDays, subHours, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
 
 interface ZapSignTemplate {
   token: string;
@@ -83,18 +80,49 @@ export function ZapSignDocumentDialog({
 
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
-  const [messagesFromDate, setMessagesFromDate] = useState<Date | undefined>(undefined);
+  const [messagePeriod, setMessagePeriod] = useState<string>('7d');
 
-  // Filter messages by date
+  // Filter messages by period
   const filteredMessages = useMemo(() => {
-    if (!messagesFromDate) return messages;
-    const fromTs = messagesFromDate.getTime();
+    if (messagePeriod === 'all') return messages;
+    const now = new Date();
+    let cutoff: Date;
+    switch (messagePeriod) {
+      case 'today': cutoff = startOfDay(now); break;
+      case '3d': cutoff = subDays(now, 3); break;
+      case '7d': cutoff = subDays(now, 7); break;
+      case '15d': cutoff = subDays(now, 15); break;
+      case '30d': cutoff = subDays(now, 30); break;
+      default: cutoff = subDays(now, 7);
+    }
+    const cutoffTs = cutoff.getTime();
     return messages.filter(m => {
       const ts = (m as any).created_at || (m as any).timestamp;
       if (!ts) return true;
-      return new Date(ts).getTime() >= fromTs;
+      return new Date(ts).getTime() >= cutoffTs;
     });
-  }, [messages, messagesFromDate]);
+  }, [messages, messagePeriod]);
+
+  const messageCountByPeriod = useMemo(() => {
+    const now = new Date();
+    const countFor = (days: number | 'today' | 'all') => {
+      if (days === 'all') return messages.length;
+      const cutoff = days === 'today' ? startOfDay(now) : subDays(now, days as number);
+      return messages.filter(m => {
+        const ts = (m as any).created_at || (m as any).timestamp;
+        if (!ts) return true;
+        return new Date(ts).getTime() >= cutoff.getTime();
+      }).length;
+    };
+    return {
+      today: countFor('today'),
+      '3d': countFor(3),
+      '7d': countFor(7),
+      '15d': countFor(15),
+      '30d': countFor(30),
+      all: countFor('all'),
+    };
+  }, [messages]);
 
   const fetchCrmData = async () => {
     if (contactId) {
@@ -120,7 +148,7 @@ export function ZapSignDocumentDialog({
       setSelectedTemplate('');
       setUploadedDocs([]);
       setExtractionSource('upload_and_chat');
-      setMessagesFromDate(undefined);
+      setMessagePeriod('7d');
       setPreviewPdfUrl(null);
       setShowPreview(false);
       setPendingSignUrl(null);
@@ -551,41 +579,20 @@ export function ZapSignDocumentDialog({
                 {extractionSource === 'upload_and_chat' && (
                   <div className="space-y-2">
                     <Label className="flex items-center gap-1.5">
-                      <CalendarIcon className="h-3.5 w-3.5" />
-                      Extrair conversa a partir de
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      Período da conversa ({filteredMessages.length} mensagens)
                     </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Selecione uma data para limitar as mensagens enviadas à IA. Sem data = últimas 50 mensagens.
-                    </p>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal text-sm",
-                            !messagesFromDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {messagesFromDate ? format(messagesFromDate, "dd/MM/yyyy", { locale: ptBR }) : "Todas as mensagens recentes"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={messagesFromDate}
-                          onSelect={setMessagesFromDate}
-                          initialFocus
-                          className={cn("p-3 pointer-events-auto")}
-                          locale={ptBR}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {messagesFromDate && (
-                      <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setMessagesFromDate(undefined)}>
-                        ✕ Limpar filtro de data
-                      </Button>
-                    )}
+                    <Select value={messagePeriod} onValueChange={setMessagePeriod}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="today">Hoje ({messageCountByPeriod.today} msgs)</SelectItem>
+                        <SelectItem value="3d">Últimos 3 dias ({messageCountByPeriod['3d']} msgs)</SelectItem>
+                        <SelectItem value="7d">Últimos 7 dias ({messageCountByPeriod['7d']} msgs)</SelectItem>
+                        <SelectItem value="15d">Últimos 15 dias ({messageCountByPeriod['15d']} msgs)</SelectItem>
+                        <SelectItem value="30d">Últimos 30 dias ({messageCountByPeriod['30d']} msgs)</SelectItem>
+                        <SelectItem value="all">Todas ({messageCountByPeriod.all} msgs)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </>
