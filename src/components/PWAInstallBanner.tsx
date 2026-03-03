@@ -22,14 +22,10 @@ export function PWAInstallBanner() {
       (navigator as any).standalone === true
     );
 
-    // Check if user already dismissed
-    const dismissedAt = localStorage.getItem('pwa_banner_dismissed');
-    if (dismissedAt) {
-      const hoursSince = (Date.now() - Number(dismissedAt)) / (1000 * 60 * 60);
-      if (hoursSince < 24) {
-        setDismissed(true);
-        return;
-      }
+    // Check if user permanently dismissed
+    if (localStorage.getItem('pwa_banner_dismissed_forever') === 'true') {
+      setDismissed(true);
+      return;
     }
 
     const handler = (e: Event) => {
@@ -52,7 +48,7 @@ export function PWAInstallBanner() {
 
   const handleDismiss = () => {
     setDismissed(true);
-    localStorage.setItem('pwa_banner_dismissed', String(Date.now()));
+    localStorage.setItem('pwa_banner_dismissed_forever', 'true');
   };
 
   // Don't show if already installed, dismissed, or in standalone mode
@@ -63,50 +59,58 @@ export function PWAInstallBanner() {
 
   return (
     <>
-      {/* Main install banner */}
-      <div className="fixed bottom-20 left-3 right-3 z-40 animate-in slide-in-from-bottom-4 duration-500">
-        <div className="bg-card border border-border rounded-2xl shadow-xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-              <Download className="h-6 w-6 text-primary" />
+      {/* Overlay backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={() => {}} />
+      
+      {/* Popup central */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="bg-card border border-border rounded-2xl shadow-2xl p-6 w-full max-w-sm animate-in zoom-in-95 slide-in-from-bottom-4 duration-500">
+          <div className="flex flex-col items-center text-center gap-4">
+            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Download className="h-8 w-8 text-primary" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm text-foreground">Instalar ABRACI.IA</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Acesse como app direto da tela inicial
+            
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Instale o ABRACI.IA</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Adicione à tela inicial do seu celular e acesse como um app nativo, mais rápido e prático!
               </p>
             </div>
-            <button onClick={handleDismiss} className="text-muted-foreground hover:text-foreground p-1">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
 
-          <div className="mt-3">
-            {deferredPrompt ? (
-              <Button onClick={handleInstall} size="sm" className="w-full gap-2">
-                <Download className="h-4 w-4" /> Instalar agora
-              </Button>
-            ) : isIOS ? (
-              <Button 
-                onClick={() => setShowIOSGuide(true)} 
-                size="sm" 
-                className="w-full gap-2"
+            <div className="w-full space-y-2">
+              {deferredPrompt ? (
+                <Button onClick={handleInstall} size="lg" className="w-full gap-2">
+                  <Download className="h-5 w-5" /> Instalar agora
+                </Button>
+              ) : isIOS ? (
+                <Button 
+                  onClick={() => setShowIOSGuide(true)} 
+                  size="lg" 
+                  className="w-full gap-2"
+                >
+                  <Share className="h-5 w-5" /> Ver como instalar
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+                  <MoreVertical className="h-5 w-5 shrink-0" />
+                  <span>Toque no menu <strong>⋮</strong> do navegador → <strong>"Instalar app"</strong></span>
+                </div>
+              )}
+
+              <button 
+                onClick={handleDismiss} 
+                className="w-full text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
               >
-                <Share className="h-4 w-4" /> Ver como instalar
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg p-2.5">
-                <MoreVertical className="h-4 w-4 shrink-0" />
-                <span>Toque no menu <strong>⋮</strong> do navegador → <strong>"Instalar app"</strong></span>
-              </div>
-            )}
+                Não mostrar novamente
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* iOS guide overlay */}
       {showIOSGuide && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end justify-center p-4">
+        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-end justify-center p-4">
           <div className="bg-card border border-border rounded-2xl shadow-2xl p-5 w-full max-w-sm animate-in slide-in-from-bottom-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-foreground">Como instalar no iPhone</h3>
