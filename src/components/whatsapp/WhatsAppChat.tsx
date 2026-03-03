@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle } from 'lucide-react';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
@@ -54,6 +54,15 @@ interface Props {
     nameFormatOverride?: string,
     nicknameOverride?: string | null
   ) => Promise<boolean>;
+  onSendMedia: (
+    phone: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string,
+    contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string
+  ) => Promise<boolean>;
+  onSendLocation: (
+    phone: string, latitude: number, longitude: number, name?: string, address?: string,
+    contactId?: string, leadId?: string, conversationInstanceName?: string | null, chatId?: string
+  ) => Promise<boolean>;
+  onDeleteMessage: (messageId: string, instanceName?: string | null, externalMessageId?: string | null) => Promise<boolean>;
   onLinkToLead: (phone: string, leadId: string) => void;
   onLinkToContact: (phone: string, contactId: string) => void;
   onCreateLead: () => void;
@@ -68,7 +77,7 @@ interface Props {
   onUpdateWithAI?: () => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -87,7 +96,21 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [showZapSign, setShowZapSign] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [showLocationDialog, setShowLocationDialog] = useState(false);
+  const [locationName, setLocationName] = useState('');
+  const [locationAddress, setLocationAddress] = useState('');
+  const [locationLat, setLocationLat] = useState('');
+  const [locationLng, setLocationLng] = useState('');
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -334,6 +357,137 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const conversationChatId =
+    conversation.messages.find((msg) => typeof msg.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
+    conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
+
+  // Media upload handler
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMedia(true);
+    setShowAttachMenu(false);
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `outbound/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+
+      await onSendMedia(
+        conversation.phone, publicUrl, file.type, '', file.name,
+        conversation.contact_id || undefined, conversation.lead_id || undefined,
+        conversation.instance_name, conversationChatId
+      );
+    } catch (err: any) {
+      toast.error('Erro ao enviar mídia: ' + err.message);
+    } finally {
+      setUploadingMedia(false);
+      if (mediaInputRef.current) mediaInputRef.current.value = '';
+    }
+  };
+
+  // Audio recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+        setRecordingTime(0);
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (blob.size < 100) return;
+        setUploadingMedia(true);
+        try {
+          const path = `outbound/audio_${Date.now()}.webm`;
+          const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, blob);
+          if (uploadError) throw uploadError;
+          const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+          await onSendMedia(
+            conversation.phone, publicUrl, 'audio/webm', undefined, undefined,
+            conversation.contact_id || undefined, conversation.lead_id || undefined,
+            conversation.instance_name, conversationChatId
+          );
+        } catch (err: any) {
+          toast.error('Erro ao enviar áudio: ' + err.message);
+        } finally {
+          setUploadingMedia(false);
+        }
+      };
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      recordingIntervalRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error('Não foi possível acessar o microfone');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    setIsRecording(false);
+    setRecordingTime(0);
+  };
+
+  // Location send
+  const handleSendLocation = async () => {
+    const lat = parseFloat(locationLat);
+    const lng = parseFloat(locationLng);
+    if (isNaN(lat) || isNaN(lng)) {
+      toast.error('Informe latitude e longitude válidos');
+      return;
+    }
+    await onSendLocation(
+      conversation.phone, lat, lng, locationName || undefined, locationAddress || undefined,
+      conversation.contact_id || undefined, conversation.lead_id || undefined,
+      conversation.instance_name, conversationChatId
+    );
+    setShowLocationDialog(false);
+    setLocationName(''); setLocationAddress(''); setLocationLat(''); setLocationLng('');
+  };
+
+  const handleGetCurrentLocation = () => {
+    if (!navigator.geolocation) { toast.error('Geolocalização não suportada'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocationLat(pos.coords.latitude.toString());
+        setLocationLng(pos.coords.longitude.toString());
+        toast.success('Localização obtida!');
+      },
+      () => toast.error('Não foi possível obter sua localização')
+    );
+  };
+
+  // Delete message
+  const handleDeleteMessage = async (msg: any) => {
+    if (deletingMessageId) return;
+    setDeletingMessageId(msg.id);
+    try {
+      await onDeleteMessage(msg.id, msg.instance_name || conversation.instance_name, msg.external_message_id);
+    } finally {
+      setDeletingMessageId(null);
     }
   };
 
@@ -600,13 +754,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
             <div
               key={msg.id}
               className={cn(
-                "flex",
+                "flex group",
                 msg.direction === 'outbound' ? "justify-end" : "justify-start"
               )}
             >
+              {msg.direction === 'outbound' && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteMessage(msg)} disabled={deletingMessageId === msg.id}>
+                  {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                </Button>
+              )}
               <div
                 className={cn(
-                  "max-w-[70%] rounded-2xl px-4 py-2 text-sm",
+                  "max-w-[70%] rounded-2xl px-4 py-2 text-sm relative",
                   msg.direction === 'outbound'
                     ? "bg-green-600 text-white rounded-br-sm"
                     : "bg-card border rounded-bl-sm"
@@ -638,16 +797,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   </div>
                 )}
                 {msg.message_type === 'image' && msg.media_url && (
-                  <div className="mb-1 relative group">
+                  <div className="mb-1 relative group/img">
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
-                      <img 
-                        src={msg.media_url} 
-                        alt="Imagem" 
-                        className="max-w-full rounded-lg max-h-[300px] object-cover cursor-pointer"
-                        loading="lazy"
-                      />
+                      <img src={msg.media_url} alt="Imagem" className="max-w-full rounded-lg max-h-[300px] object-cover cursor-pointer" loading="lazy" />
                     </a>
-                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity">
                       <Download className="h-3.5 w-3.5" />
                     </a>
                   </div>
@@ -656,7 +810,6 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   <div className="mb-1">
                     <video controls className="max-w-full rounded-lg max-h-[300px]" preload="none">
                       <source src={msg.media_url} type={msg.media_type || 'video/mp4'} />
-                      Vídeo não suportado
                     </video>
                     <a href={msg.media_url} download target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] mt-1 opacity-70 hover:opacity-100">
                       <Download className="h-3 w-3" /> Baixar vídeo
@@ -673,7 +826,6 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                     </a>
                   </div>
                 )}
-                {/* Fallback for media without proper type */}
                 {msg.media_url && msg.message_type === 'text' && (
                   <div className="flex items-center gap-2 mb-1">
                     <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs underline">
@@ -695,6 +847,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onLinkToLead, onLink
                   {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
                 </p>
               </div>
+              {msg.direction === 'inbound' && (
+                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center ml-1 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteMessage(msg)} disabled={deletingMessageId === msg.id}>
+                  {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                </Button>
+              )}
             </div>
           );
         })}

@@ -321,6 +321,153 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   };
 
+  const sendMedia = async (
+    phone: string,
+    mediaUrl: string,
+    mediaType: string,
+    caption?: string,
+    fileName?: string,
+    contactId?: string,
+    leadId?: string,
+    conversationInstanceName?: string | null,
+    chatId?: string
+  ) => {
+    try {
+      let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
+      if (conversationInstanceName) {
+        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        if (data?.id) targetInstanceId = data.id;
+      }
+      if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone,
+          chat_id: chatId,
+          media_url: mediaUrl,
+          media_type: mediaType,
+          caption: caption || undefined,
+          file_name: fileName || undefined,
+          contact_id: contactId,
+          lead_id: leadId,
+          instance_id: targetInstanceId,
+        },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      toast.success('Mídia enviada!');
+
+      const msgType = mediaType?.startsWith('audio') ? 'audio' : mediaType?.startsWith('image') ? 'image' : mediaType?.startsWith('video') ? 'video' : 'document';
+      const optimisticMsg: WhatsAppMessage = {
+        id: data.message_id || crypto.randomUUID(),
+        phone, contact_name: null, message_text: caption || null,
+        message_type: msgType, media_url: mediaUrl, media_type: mediaType,
+        direction: 'outbound', status: 'sent',
+        contact_id: contactId || null, lead_id: leadId || null,
+        external_message_id: null, metadata: null,
+        created_at: new Date().toISOString(), read_at: null,
+        instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
+      };
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setConversations(prev => prev.map(c =>
+        c.phone === phone ? { ...c, last_message: caption || `📎 ${msgType}`, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] } : c
+      ));
+      return true;
+    } catch (error: any) {
+      console.error('Error sending media:', error);
+      toast.error('Erro ao enviar mídia: ' + (error.message || 'Erro desconhecido'));
+      return false;
+    }
+  };
+
+  const sendLocation = async (
+    phone: string,
+    latitude: number,
+    longitude: number,
+    name?: string,
+    address?: string,
+    contactId?: string,
+    leadId?: string,
+    conversationInstanceName?: string | null,
+    chatId?: string
+  ) => {
+    try {
+      let targetInstanceId = selectedInstanceId && selectedInstanceId !== 'all' ? selectedInstanceId : undefined;
+      if (conversationInstanceName) {
+        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', conversationInstanceName).eq('is_active', true).maybeSingle();
+        if (data?.id) targetInstanceId = data.id;
+      }
+      if (!targetInstanceId && instances.length > 0) targetInstanceId = instances[0].id;
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_location',
+          phone, chat_id: chatId, latitude, longitude, name, address,
+          contact_id: contactId, lead_id: leadId, instance_id: targetInstanceId,
+        },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      toast.success('Localização enviada!');
+
+      const locationText = `📍 ${name || 'Localização'}${address ? `\n${address}` : ''}`;
+      const optimisticMsg: WhatsAppMessage = {
+        id: data.message_id || crypto.randomUUID(),
+        phone, contact_name: null, message_text: locationText,
+        message_type: 'location', media_url: null, media_type: null,
+        direction: 'outbound', status: 'sent',
+        contact_id: contactId || null, lead_id: leadId || null,
+        external_message_id: null, metadata: { latitude, longitude, name, address },
+        created_at: new Date().toISOString(), read_at: null,
+        instance_name: data.instance_name || conversationInstanceName || null, instance_token: null,
+      };
+      setMessages(prev => [optimisticMsg, ...prev]);
+      setConversations(prev => prev.map(c =>
+        c.phone === phone ? { ...c, last_message: locationText, last_message_at: optimisticMsg.created_at, messages: [...c.messages, optimisticMsg] } : c
+      ));
+      return true;
+    } catch (error: any) {
+      console.error('Error sending location:', error);
+      toast.error('Erro ao enviar localização: ' + (error.message || 'Erro desconhecido'));
+      return false;
+    }
+  };
+
+  const deleteMessage = async (messageId: string, instanceName?: string | null, externalMessageId?: string | null) => {
+    try {
+      let instanceId: string | undefined;
+      if (instanceName) {
+        const { data } = await supabase.from('whatsapp_instances').select('id').eq('instance_name', instanceName).eq('is_active', true).maybeSingle();
+        if (data?.id) instanceId = data.id;
+      }
+
+      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
+        body: {
+          action: 'delete_message',
+          message_id: messageId,
+          instance_id: instanceId,
+          external_message_id: externalMessageId || undefined,
+        },
+      });
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+      
+      // Remove from local state
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      setConversations(prev => prev.map(c => ({
+        ...c,
+        messages: c.messages.filter(m => m.id !== messageId),
+      })));
+      toast.success('Mensagem apagada!');
+      return true;
+    } catch (error: any) {
+      console.error('Error deleting message:', error);
+      toast.error('Erro ao apagar mensagem: ' + (error.message || 'Erro desconhecido'));
+      return false;
+    }
+  };
+
   const markAsRead = async (phone: string) => {
     try {
       const { error } = await supabase
@@ -411,6 +558,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     statsLoading,
     hasLoaded,
     sendMessage,
+    sendMedia,
+    sendLocation,
+    deleteMessage,
     markAsRead,
     linkToLead,
     linkToContact,

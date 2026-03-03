@@ -55,7 +55,7 @@ interface ConvShare {
 
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
-  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
+  const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const { boards } = useKanbanBoards();
@@ -761,6 +761,9 @@ export function WhatsAppInbox() {
                 return sendMessage;
               })()}
               shareInfo={sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name) || null}
+              onSendMedia={sendMedia}
+              onSendLocation={sendLocation}
+              onDeleteMessage={deleteMessage}
               onLinkToLead={linkToLead}
               onLinkToContact={linkToContact}
               onCreateLead={handleCreateLead}
