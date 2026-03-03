@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -23,8 +23,7 @@ serve(async (req) => {
 
     if (error) throw error;
 
-    // UazAPI /status endpoint is a server health check that round-robins instances.
-    // Each call checks ONE random instance. We collect all results and map them back.
+    // Check status with a short timeout per instance
     const rawResults = await Promise.all(
       (instances || []).map(async (inst) => {
         if (!inst.instance_token) {
@@ -33,8 +32,11 @@ serve(async (req) => {
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
           const resp = await fetch(`${baseUrl}/status?token=${inst.instance_token}`, {
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(5000),
           });
+          if (!resp.ok) {
+            return { id: inst.id, instance_name: inst.instance_name, checked_name: null, checked_status: null };
+          }
           const data = await resp.json();
           const ci = data?.status?.checked_instance || data?.checked_instance;
           return {
@@ -49,7 +51,6 @@ serve(async (req) => {
       })
     );
 
-    // Build map: instance_name → connection_status from round-robin results
     const statusMap: Record<string, string> = {};
     for (const r of rawResults) {
       if (r.checked_name && r.checked_status) {
