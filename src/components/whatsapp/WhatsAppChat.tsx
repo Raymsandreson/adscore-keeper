@@ -106,6 +106,8 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [locationLat, setLocationLat] = useState('');
   const [locationLng, setLocationLng] = useState('');
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [pastedImage, setPastedImage] = useState<{ file: File; previewUrl: string } | null>(null);
+  const [pastedCaption, setPastedCaption] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -356,8 +358,58 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (pastedImage) {
+        handleSendPastedImage();
+      } else {
+        handleSend();
+      }
     }
+  };
+
+  // Handle paste from clipboard (screenshots / print screen)
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (!file) return;
+        const previewUrl = URL.createObjectURL(file);
+        setPastedImage({ file, previewUrl });
+        setPastedCaption(newMessage);
+        return;
+      }
+    }
+  };
+
+  const handleSendPastedImage = async () => {
+    if (!pastedImage) return;
+    setUploadingMedia(true);
+    try {
+      const ext = pastedImage.file.type.split('/')[1] || 'png';
+      const path = `outbound/${Date.now()}_paste.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('whatsapp-media').upload(path, pastedImage.file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
+      await onSendMedia(
+        conversation.phone, publicUrl, pastedImage.file.type, pastedCaption || undefined, `screenshot.${ext}`,
+        conversation.contact_id || undefined, conversation.lead_id || undefined,
+        conversation.instance_name, conversationChatId
+      );
+      handleCancelPastedImage();
+      setNewMessage('');
+    } catch (err: any) {
+      toast.error('Erro ao enviar imagem: ' + err.message);
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleCancelPastedImage = () => {
+    if (pastedImage) URL.revokeObjectURL(pastedImage.previewUrl);
+    setPastedImage(null);
+    setPastedCaption('');
   };
 
   const conversationChatId =
@@ -953,6 +1005,31 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             />
           )}
         </div>
+        {/* Pasted image preview */}
+        {pastedImage && (
+          <div className="flex items-start gap-3 p-2 bg-muted/50 rounded-lg border">
+            <img src={pastedImage.previewUrl} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Imagem colada da área de transferência</p>
+              <Input
+                placeholder="Legenda (opcional)..."
+                value={pastedCaption}
+                onChange={e => setPastedCaption(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="h-8 text-sm"
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <Button size="icon" className="h-8 w-8 bg-green-600 hover:bg-green-700" onClick={handleSendPastedImage} disabled={uploadingMedia}>
+                {uploadingMedia ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={handleCancelPastedImage}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+        )}
         {/* Recording UI */}
         {isRecording ? (
           <div className="flex items-center gap-2 bg-destructive/10 rounded-lg px-3 py-2">
@@ -967,7 +1044,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               <Send className="h-4 w-4" />
             </Button>
           </div>
-        ) : (
+        ) : !pastedImage && (
           <div className="flex gap-1 items-end">
             {/* Attach menu */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
@@ -1000,6 +1077,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               className="min-h-[44px] max-h-[120px] resize-none text-sm flex-1"
               rows={1}
             />
