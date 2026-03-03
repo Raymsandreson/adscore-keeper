@@ -763,6 +763,20 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 
                 return (
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground mb-4">
+                    {/* Current stage badge */}
+                    {(() => {
+                      const board = boards.find(b => b.id === lead.board_id);
+                      const stage = board?.stages?.find((s: any) => s.id === lead.status || s.name === lead.status);
+                      if (board) {
+                        return (
+                          <Badge variant="default" className="gap-1 bg-primary/10 text-primary border-primary/20">
+                            <Briefcase className="h-3 w-3" />
+                            {board.name}{stage ? ` › ${stage.name}` : ''}
+                          </Badge>
+                        );
+                      }
+                      return null;
+                    })()}
                     <Badge variant="outline" className="gap-1">
                       <Calendar className="h-3 w-3" />
                       Criado: {format(new Date(lead.created_at), "dd/MM/yyyy", { locale: ptBR })}
