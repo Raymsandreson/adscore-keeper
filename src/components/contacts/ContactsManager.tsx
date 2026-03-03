@@ -90,7 +90,9 @@ import {
   Link,
   MessageSquare,
 } from 'lucide-react';
+import { Chrome } from 'lucide-react';
 import { useContacts, Contact, ContactClassification, FollowerStatus } from '@/hooks/useContacts';
+import { useGoogleIntegration } from '@/hooks/useGoogleIntegration';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { useContactColumnVisibility } from '@/hooks/useContactColumnVisibility';
 import { useContactClassifications, classificationColors } from '@/hooks/useContactClassifications';
@@ -346,6 +348,8 @@ export const ContactsManager: React.FC = () => {
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   const { classifications, addClassification } = useContactClassifications();
+  const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
+  const [importingGoogle, setImportingGoogle] = useState(false);
   
   // Fetch kanban boards for conversion dialog
   const { boards: kanbanBoards, loading: loadingBoards } = useKanbanBoards();
@@ -1442,6 +1446,28 @@ export const ContactsManager: React.FC = () => {
                   <Instagram className="h-4 w-4 mr-1 text-pink-500" />
                   Meta Export
                 </Button>
+                {googleConnected && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={importingGoogle}
+                    onClick={async () => {
+                      setImportingGoogle(true);
+                      try {
+                        const result = await googleImportContacts();
+                        toast.success(`Google: ${result.imported} novos, ${result.skipped} já existentes`);
+                        fetchContacts();
+                      } catch {
+                        toast.error('Erro ao importar do Google');
+                      } finally {
+                        setImportingGoogle(false);
+                      }
+                    }}
+                  >
+                    <Chrome className="h-4 w-4 mr-1" />
+                    {importingGoogle ? 'Importando...' : 'Google Contacts'}
+                  </Button>
+                )}
               </div>
             </div>
             
