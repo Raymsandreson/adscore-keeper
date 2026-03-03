@@ -283,10 +283,33 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
       started_at: startedAt || null,
       notes: processNotes || null,
     };
+    let savedProcess: LeadProcess | undefined;
     if (editingProcess) {
       await updateProcess(editingProcess.id, payload);
     } else {
-      await addProcess(payload);
+      savedProcess = await addProcess(payload);
+      
+      // Auto-create "Dar andamento" activity for the new process
+      if (savedProcess) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          await supabase.from('lead_activities').insert({
+            lead_id: legalCase.lead_id,
+            lead_name: processTitle.trim(),
+            title: 'Dar andamento',
+            description: `Atividade criada automaticamente para o processo: ${processTitle.trim()}${processNumber ? ` (Nº ${processNumber})` : ''}`,
+            activity_type: 'tarefa',
+            status: 'pendente',
+            priority: 'normal',
+            assigned_to: user?.id,
+            created_by: user?.id,
+            deadline: new Date().toISOString().slice(0, 10),
+          } as any);
+          toast.success('Atividade "Dar andamento" criada automaticamente');
+        } catch (actErr) {
+          console.error('Error auto-creating activity for process:', actErr);
+        }
+      }
     }
     setShowProcessDialog(false);
     resetProcessForm();

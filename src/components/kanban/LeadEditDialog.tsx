@@ -212,6 +212,7 @@ export function LeadEditDialog({
   const [fieldValues, setFieldValues] = useState<Record<string, CustomFieldValue>>({});
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('basic');
   
   // New classification creation
   const [isAddingClassification, setIsAddingClassification] = useState(false);
@@ -232,6 +233,8 @@ export function LeadEditDialog({
     if (lead && open) {
       const leadAny = lead as any;
       
+      // Reset tab
+      setActiveTab('basic');
       // Basic fields
       setLeadName(lead.lead_name || '');
       setLeadPhone(lead.lead_phone || '');
@@ -609,7 +612,11 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                 created_by: user?.id,
               } as any);
             
-            toast.success(`Caso ${generatedNumber} criado automaticamente`);
+            toast.success(`Caso ${generatedNumber} criado automaticamente! Cadastre os processos na aba Casos.`);
+            // Switch to Casos tab so user can add processes
+            setActiveTab('casos');
+            setSaving(false);
+            return; // Keep dialog open for process registration
           }
         } catch (caseErr) {
           console.error('Error auto-creating case:', caseErr);
@@ -685,7 +692,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
           }}
         />
 
-        <Tabs defaultValue="basic" className="flex-1 min-h-0 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
               <TabsTrigger value="basic" className="text-xs py-1.5 px-2.5">
