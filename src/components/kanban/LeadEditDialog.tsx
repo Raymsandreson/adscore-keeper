@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { LeadLinkedContacts } from '@/components/leads/LeadLinkedContacts';
 import { LeadLinkedComments } from '@/components/leads/LeadLinkedComments';
@@ -170,6 +171,7 @@ export function LeadEditDialog({
   const [source, setSource] = useState('manual');
   const [notes, setNotes] = useState('');
   const [acolhedor, setAcolhedor] = useState('');
+  const profiles = useProfilesList();
   const [groupLink, setGroupLink] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
@@ -806,11 +808,19 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
 
                 <div>
                   <Label>Acolhedor</Label>
-                  <Input
-                    value={acolhedor}
-                    onChange={(e) => setAcolhedor(e.target.value)}
-                    placeholder="Nome do acolhedor"
-                  />
+                  <Select value={acolhedor || '__none__'} onValueChange={(v) => setAcolhedor(v === '__none__' ? '' : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o acolhedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhum</SelectItem>
+                      {profiles.map((p) => (
+                        <SelectItem key={p.id} value={p.full_name || p.email || p.id}>
+                          {p.full_name || p.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="col-span-2">
