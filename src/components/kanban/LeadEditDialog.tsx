@@ -175,7 +175,7 @@ export function LeadEditDialog({
   const [groupLink, setGroupLink] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused'>('');
+  const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [caseNumber, setCaseNumber] = useState('');
   
@@ -255,6 +255,9 @@ export function LeadEditDialog({
       } else if (leadAny.classification_date) {
         setLeadOutcome('refused');
         setLeadOutcomeDate(leadAny.classification_date || '');
+      } else if (leadAny.in_progress_date) {
+        setLeadOutcome('in_progress');
+        setLeadOutcomeDate(leadAny.in_progress_date || '');
       } else {
         setLeadOutcome('');
         setLeadOutcomeDate('');
@@ -580,6 +583,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         expected_birth_date: expectedBirthDate || null,
         became_client_date: leadOutcome === 'closed' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
+        in_progress_date: leadOutcome === 'in_progress' ? (leadOutcomeDate || new Date().toISOString().slice(0, 10)) : null,
         case_number: caseNumber || null,
       } as Partial<Lead>);
 
@@ -960,9 +964,27 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   <div className="flex gap-2">
                     <Button
                       type="button"
+                      variant={leadOutcome === 'in_progress' ? 'default' : 'outline'}
+                      size="sm"
+                      className={`flex-1 ${leadOutcome === 'in_progress' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                      onClick={() => {
+                        if (leadOutcome === 'in_progress') {
+                          setLeadOutcome('');
+                          setLeadOutcomeDate('');
+                        } else {
+                          setLeadOutcome('in_progress');
+                          if (!leadOutcomeDate) setLeadOutcomeDate(new Date().toISOString().slice(0, 10));
+                        }
+                      }}
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      Em Andamento
+                    </Button>
+                    <Button
+                      type="button"
                       variant={leadOutcome === 'closed' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                      className={`flex-1 ${leadOutcome === 'closed' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
                       onClick={() => {
                         if (leadOutcome === 'closed') {
                           setLeadOutcome('');
@@ -980,7 +1002,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                       type="button"
                       variant={leadOutcome === 'refused' ? 'default' : 'outline'}
                       size="sm"
-                      className={`flex-1 ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90' : ''}`}
+                      className={`flex-1 ${leadOutcome === 'refused' ? 'bg-destructive hover:bg-destructive/90 text-white' : ''}`}
                       onClick={() => {
                         if (leadOutcome === 'refused') {
                           setLeadOutcome('');
@@ -997,7 +1019,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   </div>
                   {leadOutcome && (
                     <div>
-                      <Label className="text-xs">{leadOutcome === 'closed' ? 'Data de Fechamento' : 'Data da Recusa'}</Label>
+                      <Label className="text-xs">{leadOutcome === 'closed' ? 'Data de Fechamento' : leadOutcome === 'refused' ? 'Data da Recusa' : 'Data de Início'}</Label>
                       <Input
                         type="date"
                         value={leadOutcomeDate}

@@ -69,6 +69,7 @@ interface Props {
   onCreateContact: () => void;
   onCreateCase?: () => void;
   extractingData?: boolean;
+  extractionStep?: string;
   onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
@@ -77,7 +78,7 @@ interface Props {
   onUpdateWithAI?: () => void;
 }
 
-export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
+export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI }: Props) {
   const { profile } = useAuthContext();
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -709,7 +710,20 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
         </div>
       </div>
 
-      {/* Link Lead Dialog (opened from menu) */}
+      {/* AI Extraction Progress Banner */}
+      {extractingData && extractionStep && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b text-sm shrink-0">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />
+          <Sparkles className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+          <span className="text-primary truncate">{extractionStep}</span>
+          <div className="ml-auto flex gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '300ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" style={{ animationDelay: '600ms' }} />
+          </div>
+        </div>
+      )}
+
       <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
         <DialogContent>
           <DialogHeader>
