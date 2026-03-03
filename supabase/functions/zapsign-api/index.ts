@@ -453,6 +453,119 @@ Responda APENAS o JSON, sem markdown.`
       }
     }
 
+    // ========================
+    // EXTRACT SIGNERS FROM CONVERSATION
+    // ========================
+    if (action === 'extract_signers') {
+      const { messages: convMessages, contact_data: ctData, lead_data: ldData, uploaded_documents: upDocs } = body
+
+      const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
+      if (!LOVABLE_API_KEY) {
+        return new Response(
+          JSON.stringify({ success: true, signers: [], source: 'no_api_key' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const textMsgs: string[] = []
+      const imgUrls: string[] = []
+      for (const m of (convMessages || []).slice(-50)) {
+        if (m.message_text) textMsgs.push(`[${m.direction}] ${m.message_text}`)
+        if (m.media_url && (m.media_type?.startsWith('image') || m.message_type === 'image')) {
+          imgUrls.push(m.media_url)
+        }
+      }
+
+      const uploadImgUrls: string[] = []
+      if (Array.isArray(upDocs)) {
+        for (const doc of upDocs) {
+          if (doc.dataUrl && (doc.type?.startsWith('image') || doc.type === 'application/pdf')) {
+            uploadImgUrls.push(doc.dataUrl)
+          }
+        }
+      }
+
+      const contact = ctData || {}
+      const lead = ldData || {}
+
+      const signerPrompt = `Você é um assistente jurídico. Analise a conversa do WhatsApp, imagens de documentos e dados do CRM para identificar QUEM vai assinar o documento e se há TESTEMUNHAS mencionadas.
+
+DADOS DO CRM:
+- Nome do contato: "${contact.full_name || ''}"
+- Telefone: "${contact.phone || lead.phone || ''}"
+- Email: "${contact.email || lead.email || ''}"
+- Nome do lead: "${lead.lead_name || ''}"
+
+CONVERSA DO WHATSAPP:
+${textMsgs.length > 0 ? textMsgs.join('\n') : '(nenhuma mensagem)'}
+
+INSTRUÇÕES:
+1. Identifique o SIGNATÁRIO PRINCIPAL - geralmente é o cliente/contato. Use o nome do CRM como base, mas se na conversa o cliente informou o nome completo, use esse.
+2. Verifique se na conversa foi mencionado TESTEMUNHAS. Procure por palavras como: "testemunha", "testemunho", "quem vai ser testemunha", dados de testemunha, nomes de outras pessoas que vão assinar.
+3. Se encontrar dados de testemunhas (nome, CPF, telefone, email), extraia-os.
+4. Para cada pessoa identificada, retorne: name, email, phone, role ("sign" para signatário, "witness" para testemunha).
+
+Retorne um JSON no formato:
+[{"name": "Nome Completo", "email": "email@ex.com", "phone": "(00)00000-0000", "role": "sign"}, ...]
+
+O primeiro item DEVE ser o signatário principal.
+Se não encontrar testemunhas, retorne apenas o signatário principal.
+Responda APENAS o JSON, sem markdown.`
+
+      const userContent: any[] = [{ type: 'text', text: signerPrompt }]
+      for (const docUrl of uploadImgUrls.slice(0, 3)) {
+        userContent.push({ type: 'image_url', image_url: { url: docUrl } })
+      }
+      for (const imgUrl of imgUrls.slice(-2)) {
+        userContent.push({ type: 'image_url', image_url: { url: imgUrl } })
+      }
+
+      try {
+        const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              { role: 'system', content: 'Você extrai informações de signatários e testemunhas de conversas e documentos. Responda apenas JSON válido.' },
+              { role: 'user', content: userContent }
+            ],
+          }),
+        })
+
+        if (!aiRes.ok) {
+          console.error('AI signer extraction error:', aiRes.status)
+          return new Response(
+            JSON.stringify({ success: true, signers: [], source: 'ai_error' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const aiData = await aiRes.json()
+        const respText = aiData.choices?.[0]?.message?.content || '[]'
+        let extractedSigners = []
+        try {
+          extractedSigners = JSON.parse(respText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+        } catch {
+          console.error('Failed to parse signer extraction:', respText)
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, signers: Array.isArray(extractedSigners) ? extractedSigners : [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (err) {
+        console.error('Signer extraction error:', err)
+        return new Response(
+          JSON.stringify({ success: true, signers: [], source: 'exception' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: `Unknown action: ${action}` }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

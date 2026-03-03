@@ -173,10 +173,52 @@ export function ZapSignDocumentDialog({
     approve: 'Aprovar',
   };
 
-  // After selecting template, go to signers step
-  const handleSelectTemplate = () => {
+  const [extractingSigners, setExtractingSigners] = useState(false);
+
+  // After selecting template, extract signers with AI then go to signers step
+  const handleSelectTemplate = async () => {
     if (!selectedTemplate) return;
     setStep('signers');
+    setExtractingSigners(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: {
+          action: 'extract_signers',
+          messages: extractionSource === 'upload_only' ? [] : messages.slice(-50),
+          contact_data: contactData || fetchedContactData || {},
+          lead_data: leadData || fetchedLeadData || {},
+          uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
+        },
+      });
+
+      if (data?.success && Array.isArray(data.signers) && data.signers.length > 0) {
+        const extracted: SignerInfo[] = data.signers.map((s: any, idx: number) => ({
+          name: s.name || '',
+          email: s.email || '',
+          phone: s.phone || '',
+          role: idx === 0 ? 'sign' : (s.role === 'witness' ? 'witness' : s.role || 'witness'),
+        }));
+        // Merge: keep defaults for empty fields on main signer
+        const defaultSigner = signers[0];
+        if (extracted[0]) {
+          if (!extracted[0].email && defaultSigner?.email) extracted[0].email = defaultSigner.email;
+          if (!extracted[0].phone && defaultSigner?.phone) extracted[0].phone = defaultSigner.phone;
+          if (!extracted[0].name && defaultSigner?.name) extracted[0].name = defaultSigner.name;
+        }
+        setSigners(extracted);
+        const witnessCount = extracted.length - 1;
+        if (witnessCount > 0) {
+          toast.success(`IA identificou ${witnessCount} testemunha(s) na conversa!`);
+        } else {
+          toast.info('IA extraiu o nome do signatário. Você pode editar ou adicionar testemunhas.');
+        }
+      }
+    } catch (err) {
+      console.error('Error extracting signers:', err);
+    } finally {
+      setExtractingSigners(false);
+    }
   };
 
   // After configuring signers, proceed to fill fields
@@ -496,8 +538,15 @@ export function ZapSignDocumentDialog({
         {/* Step 2: Configure signers */}
         {step === 'signers' && !showPreview && (
           <div className="space-y-4 flex-1 overflow-auto">
+            {extractingSigners ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">IA analisando conversa para identificar signatários e testemunhas...</span>
+              </div>
+            ) : (
+            <>
             <p className="text-sm text-muted-foreground">
-              Defina quem vai assinar o documento. Você pode adicionar testemunhas também.
+              A IA identificou os signatários abaixo. Você pode editar ou adicionar testemunhas.
             </p>
 
             <ScrollArea className="max-h-[350px] pr-2">
@@ -568,6 +617,8 @@ export function ZapSignDocumentDialog({
               <UserPlus className="h-4 w-4" />
               Adicionar testemunha / signatário
             </Button>
+            </>
+            )}
           </div>
         )}
 
@@ -682,8 +733,9 @@ export function ZapSignDocumentDialog({
           {step === 'signers' && !showPreview && (
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={() => setStep('select')}>Voltar</Button>
-              <Button className="flex-1 gap-2" onClick={handleConfirmSigners} disabled={!signers[0]?.name.trim()}>
-                <Sparkles className="h-4 w-4" /> Extrair dados e preencher
+              <Button className="flex-1 gap-2" onClick={handleConfirmSigners} disabled={!signers[0]?.name.trim() || extractingSigners}>
+                {extractingSigners ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Extrair dados e preencher
               </Button>
             </div>
           )}
