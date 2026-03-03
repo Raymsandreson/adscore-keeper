@@ -483,12 +483,26 @@ export function ZapSignDocumentDialog({
               <CheckCircle2 className="h-4 w-4 text-green-500" />
               <span>Documento gerado e link enviado com sucesso!</span>
             </div>
-            <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30">
-              <iframe
-                src={previewPdfUrl}
+            <div className="flex-1 overflow-hidden rounded-lg border bg-muted/30 flex flex-col items-center justify-center p-4 min-h-[200px]">
+              <object
+                data={previewPdfUrl}
+                type="application/pdf"
                 className="w-full h-[400px] rounded-lg"
-                title="Pré-visualização do documento"
-              />
+              >
+                <div className="flex flex-col items-center justify-center gap-3 py-8">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Não foi possível carregar a pré-visualização do PDF no navegador.
+                  </p>
+                  <a
+                    href={previewPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition"
+                  >
+                    Abrir PDF em nova aba
+                  </a>
+                </div>
+              </object>
             </div>
             <p className="text-xs text-muted-foreground text-center">
               📄 Pré-visualização do documento gerado. Quando o cliente assinar, o PDF assinado será enviado automaticamente pelo WhatsApp.
