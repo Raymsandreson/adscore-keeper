@@ -231,13 +231,14 @@ export function WhatsAppInbox() {
   };
 
   const [extracting, setExtracting] = useState(false);
+  const [extractionStep, setExtractionStep] = useState('');
   const [contactDefaults, setContactDefaults] = useState<Record<string, string>>({});
 
   const extractConversationData = async (targetType: 'lead' | 'contact') => {
     if (!selectedConversation?.messages?.length) return {};
     try {
       setExtracting(true);
-      toast.info('Extraindo informações da conversa...', { duration: 2000 });
+      setExtractionStep(targetType === 'lead' ? 'Extraindo dados do lead...' : 'Extraindo dados do contato...');
       const { data, error } = await supabase.functions.invoke('extract-conversation-data', {
         body: {
           messages: selectedConversation.messages.slice(-50).map(m => ({
@@ -248,9 +249,11 @@ export function WhatsAppInbox() {
         },
       });
       if (error) throw error;
+      setExtractionStep('Dados extraídos!');
       return data?.data || {};
     } catch (e) {
       console.error('Extraction error:', e);
+      setExtractionStep('');
       return {};
     } finally {
       setExtracting(false);
@@ -379,6 +382,7 @@ export function WhatsAppInbox() {
       const contactFields: Record<string, string> = {};
 
       if (selectedConversation.lead_id) {
+        setExtractionStep('Analisando conversa para o lead...');
         const extracted = await extractConversationData('lead');
         const allowedLeadFields = [
           'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',
@@ -392,6 +396,7 @@ export function WhatsAppInbox() {
       }
 
       if (selectedConversation.contact_id) {
+        setExtractionStep('Analisando conversa para o contato...');
         const extracted = await extractConversationData('contact');
         const allowedContactFields = [
           'full_name', 'phone', 'email', 'city', 'state', 'neighborhood',
@@ -401,6 +406,8 @@ export function WhatsAppInbox() {
           if (extracted[field]) contactFields[field] = extracted[field];
         }
       }
+
+      setExtractionStep('');
 
       if (Object.keys(leadFields).length === 0 && Object.keys(contactFields).length === 0) {
         toast.info('Nenhuma informação nova encontrada na conversa.');
@@ -412,6 +419,7 @@ export function WhatsAppInbox() {
     } catch (e) {
       console.error('Update with AI error:', e);
       toast.error('Erro ao extrair dados com IA');
+      setExtractionStep('');
     }
   };
 
@@ -770,6 +778,7 @@ export function WhatsAppInbox() {
               onCreateContact={handleCreateContact}
               onCreateCase={() => setShowCreateCaseDialog(true)}
               extractingData={extracting}
+              extractionStep={extractionStep}
               onUpdateWithAI={handleUpdateWithAI}
               onCreateActivity={handleCreateActivity}
               onNavigateToLead={handleNavigateToLead}

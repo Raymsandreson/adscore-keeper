@@ -3561,6 +3561,7 @@ export type Database = {
           followup_count: number | null
           group_link: string | null
           id: string
+          in_progress_date: string | null
           instagram_comment_id: string | null
           instagram_username: string | null
           is_follower: boolean | null
@@ -3626,6 +3627,7 @@ export type Database = {
           followup_count?: number | null
           group_link?: string | null
           id?: string
+          in_progress_date?: string | null
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
@@ -3691,6 +3693,7 @@ export type Database = {
           followup_count?: number | null
           group_link?: string | null
           id?: string
+          in_progress_date?: string | null
           instagram_comment_id?: string | null
           instagram_username?: string | null
           is_follower?: boolean | null
