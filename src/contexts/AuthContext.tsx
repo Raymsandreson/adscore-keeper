@@ -16,11 +16,13 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  connectionError: string | null;
   isAuthenticated: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<any>;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<any>;
   updateProfile: (updates: Partial<Profile>) => Promise<any>;
+  retry: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

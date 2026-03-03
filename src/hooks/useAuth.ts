@@ -16,13 +16,31 @@ export const useAuth = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const initialize = () => {
+    setLoading(true);
+    setConnectionError(null);
+
     let settled = false;
-    const settle = () => { if (!settled) { settled = true; setLoading(false); } };
+    const settle = (error?: string) => {
+      if (!settled) {
+        settled = true;
+        if (error) {
+          setConnectionError(error);
+          console.error('[AUTH] ❌ Falha na conexão com backend:', error);
+        } else {
+          setConnectionError(null);
+          console.log('[AUTH] ✅ Conexão com backend OK');
+        }
+        setLoading(false);
+      }
+    };
 
     // Safety timeout: if backend is unreachable, stop loading after 8s
-    const timeout = setTimeout(settle, 8000);
+    const timeout = setTimeout(() => {
+      settle('Tempo limite excedido ao conectar com o servidor. O servidor pode estar sobrecarregado.');
+    }, 8000);
 
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -31,7 +49,6 @@ export const useAuth = () => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Fetch profile with setTimeout to avoid race condition
           setTimeout(async () => {
             const { data } = await supabase
               .from('profiles')
@@ -61,14 +78,19 @@ export const useAuth = () => {
           .then(({ data }) => setProfile(data));
       }
       settle();
-    }).catch(() => {
-      settle();
+    }).catch((err) => {
+      settle(`Erro ao obter sessão: ${err?.message || 'desconhecido'}`);
     });
 
     return () => {
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
+  };
+
+  useEffect(() => {
+    const cleanup = initialize();
+    return cleanup;
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
@@ -112,15 +134,21 @@ export const useAuth = () => {
     return { data, error };
   };
 
+  const retry = () => {
+    initialize();
+  };
+
   return {
     user,
     session,
     profile,
     loading,
+    connectionError,
     signUp,
     signIn,
     signOut,
     updateProfile,
+    retry,
     isAuthenticated: !!user,
   };
 };
