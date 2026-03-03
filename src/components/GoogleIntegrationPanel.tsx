@@ -17,13 +17,15 @@ import {
   MessageCircle,
   Phone,
   ExternalLink,
+  Download,
 } from 'lucide-react';
 
 export function GoogleIntegrationPanel() {
-  const { isConnected, loading, connecting, connect, saveContact, createCalendarEvent } = useGoogleIntegration();
+  const { isConnected, loading, connecting, connect, saveContact, createCalendarEvent, importContacts } = useGoogleIntegration();
 
   const [contactForm, setContactForm] = useState({ name: '', phone: '', email: '', instagram_username: '', notes: '' });
   const [savingContact, setSavingContact] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const [scheduleForm, setScheduleForm] = useState({
     action_type: 'whatsapp_message' as 'whatsapp_message' | 'call',
@@ -79,6 +81,23 @@ export function GoogleIntegrationPanel() {
     }
   };
 
+  const handleImportContacts = async () => {
+    setImporting(true);
+    try {
+      const result = await importContacts();
+      toast.success(`Importação concluída! ${result.imported} novos contatos, ${result.skipped} já existentes.`);
+    } catch (e: any) {
+      if (e.message === 'google_not_connected') {
+        toast.error('Conecte sua conta Google primeiro');
+      } else {
+        toast.error('Erro ao importar contatos');
+        console.error(e);
+      }
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -123,6 +142,25 @@ export function GoogleIntegrationPanel() {
 
       {isConnected && (
         <>
+          {/* Import Contacts */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Download className="h-4 w-4 text-primary" />
+                Importar Contatos do Google
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-3">
+                Puxe todos os contatos salvos na sua conta Google para o CRM. Contatos duplicados (mesmo telefone ou e-mail) serão ignorados.
+              </p>
+              <Button onClick={handleImportContacts} disabled={importing} className="w-full gap-2">
+                {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {importing ? 'Importando contatos...' : 'Importar do Google Contacts'}
+              </Button>
+            </CardContent>
+          </Card>
+
           {/* Save Contact */}
           <Card>
             <CardHeader>
