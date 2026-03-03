@@ -192,24 +192,26 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
           break;
         }
         case 'leadsCreated': {
-          const { data } = await supabase.from('leads').select('id, lead_name, status, created_at')
+          const { data } = await supabase.from('leads').select('id, lead_name, status, board_id, created_at')
             .eq('created_by', userId).gte('created_at', startDate).lte('created_at', endDate)
             .order('created_at', { ascending: false });
           result = (data || []).map(l => ({
             id: l.id, title: l.lead_name || 'Sem nome', subtitle: l.status || undefined,
-            badge: format(new Date(l.created_at), 'HH:mm'), navigateTo: '/leads',
+            badge: format(new Date(l.created_at), 'HH:mm'),
+            navigateTo: l.board_id ? `/leads?board=${l.board_id}&openLead=${l.id}` : `/leads?openLead=${l.id}`,
             date: format(new Date(l.created_at), 'yyyy-MM-dd'),
           }));
           break;
         }
         case 'leadsClosed': {
-          const { data } = await supabase.from('leads').select('id, lead_name, status, created_at')
+          const { data } = await supabase.from('leads').select('id, lead_name, status, board_id, created_at')
             .eq('created_by', userId).gte('created_at', startDate).lte('created_at', endDate)
             .in('status', ['converted', 'won', 'closed', 'fechado', 'done'])
             .order('created_at', { ascending: false });
           result = (data || []).map(l => ({
             id: l.id, title: l.lead_name || 'Sem nome',
-            badge: '✓ Fechado', badgeVariant: 'default' as const, navigateTo: '/leads',
+            badge: '✓ Fechado', badgeVariant: 'default' as const,
+            navigateTo: l.board_id ? `/leads?board=${l.board_id}&openLead=${l.id}` : `/leads?openLead=${l.id}`,
             date: format(new Date(l.created_at), 'yyyy-MM-dd'),
           }));
           break;
@@ -256,7 +258,7 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             id: s.id, title: leadNames[s.lead_id] || 'Lead',
             subtitle: `${s.from_stage || '?'} → ${s.to_stage || '?'}`,
             badge: s.changed_at ? format(new Date(s.changed_at), 'HH:mm') : undefined,
-            navigateTo: '/leads',
+            navigateTo: `/leads?openLead=${s.lead_id}`,
             date: s.changed_at ? format(new Date(s.changed_at), 'yyyy-MM-dd') : undefined,
           }));
           break;
@@ -268,9 +270,10 @@ export function MetricDetailSheet({ open, onOpenChange, metricKey, targetUserId,
             .order('changed_at', { ascending: false });
           const uniqueLeadIds = [...new Set((data || []).map(s => s.lead_id))];
           if (uniqueLeadIds.length > 0) {
-            const { data: leads } = await supabase.from('leads').select('id, lead_name, status').in('id', uniqueLeadIds);
+            const { data: leads } = await supabase.from('leads').select('id, lead_name, status, board_id').in('id', uniqueLeadIds);
             result = (leads || []).map(l => ({
-              id: l.id, title: l.lead_name || 'Sem nome', subtitle: l.status || undefined, navigateTo: '/leads',
+              id: l.id, title: l.lead_name || 'Sem nome', subtitle: l.status || undefined,
+              navigateTo: l.board_id ? `/leads?board=${l.board_id}&openLead=${l.id}` : `/leads?openLead=${l.id}`,
             }));
           }
           break;
