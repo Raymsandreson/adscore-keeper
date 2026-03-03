@@ -375,6 +375,24 @@ Responda APENAS o JSON, sem markdown.`
           console.error('Failed to parse AI response:', responseText)
         }
 
+        // Apply default values for specific templates (e.g., Procuração Auxílio Maternidade)
+        const docName = (document_name || '').toLowerCase()
+        const templateFieldNames = (template_fields || []).map((f: any) => (f.de || f.variable || '').toUpperCase())
+        const isMaternidade = docName.includes('maternidade') || docName.includes('procura')
+        
+        if (Array.isArray(extractedData)) {
+          for (const field of extractedData) {
+            const fieldName = (field.de || '').replace(/\{\{|\}\}/g, '').toUpperCase().trim()
+            // Set default EMAIL and WHATSAPP for procuração documents
+            if ((fieldName === 'EMAIL' || fieldName.includes('EMAIL')) && !field.para) {
+              field.para = 'contato@prudencioadv.com'
+            }
+            if ((fieldName === 'WHATSAPP' || fieldName.includes('WHATSAPP')) && !field.para) {
+              field.para = '(86)99447-3226'
+            }
+          }
+        }
+
         return new Response(
           JSON.stringify({ success: true, extracted_data: extractedData }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
