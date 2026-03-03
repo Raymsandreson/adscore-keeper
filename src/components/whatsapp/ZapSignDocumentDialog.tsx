@@ -63,11 +63,30 @@ export function ZapSignDocumentDialog({
   const [extractionSource, setExtractionSource] = useState<'upload_only' | 'upload_and_chat'>('upload_and_chat');
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [fetchedContactData, setFetchedContactData] = useState<Record<string, any>>({});
+  const [fetchedLeadData, setFetchedLeadData] = useState<Record<string, any>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch contact and lead data from DB when dialog opens
+  const fetchCrmData = async () => {
+    if (contactId) {
+      try {
+        const { data } = await supabase.from('contacts').select('*').eq('id', contactId).single();
+        if (data) setFetchedContactData(data);
+      } catch {}
+    }
+    if (leadId) {
+      try {
+        const { data } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        if (data) setFetchedLeadData(data);
+      } catch {}
+    }
+  };
 
   useEffect(() => {
     if (open) {
       loadTemplates();
+      fetchCrmData();
       setStep('select');
       setTemplateFields([]);
       setSelectedTemplate('');
@@ -170,8 +189,8 @@ export function ZapSignDocumentDialog({
           action: 'extract_data',
           messages: extractionSource === 'upload_only' ? [] : messages.slice(-50),
           template_fields: vars.length > 0 ? vars : undefined,
-          lead_data: leadData || {},
-          contact_data: contactData || {},
+          lead_data: leadData || fetchedLeadData || {},
+          contact_data: contactData || fetchedContactData || {},
           uploaded_documents: uploadedDocs.map(d => ({ name: d.name, type: d.type, dataUrl: d.dataUrl })),
           extraction_source: extractionSource,
         },
