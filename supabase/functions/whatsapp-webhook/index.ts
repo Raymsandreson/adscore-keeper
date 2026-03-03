@@ -488,10 +488,45 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const body = await req.json()
+
+    // ========== EARLY FILTERS (no DB queries) ==========
+    const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
+
+    // 1) Skip non-message EventTypes that don't need processing (read receipts, status updates, presence)
+    const eventType = body.EventType || ''
+    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
+    if (skippableEvents.includes(eventType)) {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 2) Skip group messages (chatid contains @g.us or wa_isGroup=true) — biggest volume reducer
+    const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
+    const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
+    const isCallEvent = eventType === 'call' || body.event === 'call' || body.type === 'call' 
+      || eventType === 'call_log' || body.type === 'CallState' || eventType === 'calls'
+    
+    if (isGroup && !isCallEvent) {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 3) Skip reaction messages (emoji reactions on existing messages)
+    const msgType = (body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
+    if (msgType === 'reactionmessage' || msgType === 'protocolmessage') {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: 'reaction_or_protocol_filtered' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
 
     // ========== PAUSE CHECK ==========
-    const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
     if (webhookInstanceName) {
       const { data: inst } = await supabase
         .from('whatsapp_instances')
@@ -508,10 +543,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== CALL EVENT HANDLING ==========
-    const isCallEvent = body.EventType === 'call' || body.event === 'call' || body.type === 'call' 
-      || (body.EventType === 'call_log') || (body.type === 'CallState')
-      || (body.EventType === 'calls');
+    // ========== CALL EVENT HANDLING (isCallEvent computed in early filters) ==========
     if (isCallEvent) {
       console.log('Detected CALL event, processing...')
       const callRecord = await handleCallEvent(supabase, body);
