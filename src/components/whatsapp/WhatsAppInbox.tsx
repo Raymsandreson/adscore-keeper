@@ -8,6 +8,7 @@ import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
+import { useGoogleIntegration } from '@/hooks/useGoogleIntegration';
 import { CreateContactDialog } from '@/components/contacts/CreateContactDialog';
 import { CreateCaseFromWhatsAppDialog } from './CreateCaseFromWhatsAppDialog';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download } from 'lucide-react';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -60,6 +61,8 @@ export function WhatsAppInbox() {
   const { boards } = useKanbanBoards();
   const { canView } = useModulePermissions();
   const { user } = useAuthContext();
+  const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
+  const [importingGoogle, setImportingGoogle] = useState(false);
 
   // Auto-select default instance on mount
   const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
@@ -623,6 +626,27 @@ export function WhatsAppInbox() {
           <Button variant="ghost" size="icon" onClick={() => setShowGooglePanel(true)} title="Google Workspace">
             <Chrome className="h-4 w-4" />
           </Button>
+          {googleConnected && (
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={importingGoogle}
+              title="Importar Contatos do Google"
+              onClick={async () => {
+                setImportingGoogle(true);
+                try {
+                  const result = await googleImportContacts();
+                  toast.success(`Google: ${result.imported} novos, ${result.skipped} já existentes`);
+                } catch {
+                  toast.error('Erro ao importar do Google');
+                } finally {
+                  setImportingGoogle(false);
+                }
+              }}
+            >
+              {importingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
           </Button>
