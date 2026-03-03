@@ -299,18 +299,21 @@ Lead: ${JSON.stringify(lead_data || {}, null, 2)}
 Contato: ${JSON.stringify(contact_data || {}, null, 2)}
 
 CONVERSA DO WHATSAPP (últimas mensagens):
-${textMessages.join('\n')}
+${textMessages.length > 0 ? textMessages.join('\n') : '(nenhuma mensagem disponível)'}
 
 INSTRUÇÕES CRÍTICAS:
-1. Analise TODAS as imagens anexadas minuciosamente. Elas podem conter RG, CPF, comprovante de endereço, procurações, certidões, etc.
-2. Para campos como NACIONALIDADE: se a pessoa tem CPF brasileiro ou o documento é brasileiro, use "brasileiro(a)".
-3. Para ESTADO_CIVIL: procure essa informação nas imagens de documentos (RG, certidões) ou na conversa. Valores comuns: solteiro(a), casado(a), divorciado(a), viúvo(a), união estável.
-4. Para ENDERECO_COMPLETO: combine rua + número + bairro + cidade + estado dos dados do CRM ou documentos.
-5. Para WHATSAPP: use o telefone do contato/lead.
-6. Use os dados do CRM como base, complementando com dados da conversa e das imagens.
-7. Formate datas no padrão DD/MM/AAAA.
-8. Se não encontrar um dado, deixe "para" como string vazia "".
-9. Retorne TODOS os campos do template, mesmo os vazios.
+1. PRIORIDADE MÁXIMA: Extraia dados da CONVERSA DO WHATSAPP. O cliente frequentemente envia nome completo, CPF, RG, endereço, cidade, UF, CEP, data de nascimento, estado civil, profissão, email e outros dados diretamente nas mensagens de texto. LEIA CADA MENSAGEM com atenção.
+2. Analise TODAS as imagens anexadas minuciosamente. Elas podem conter RG, CPF, comprovante de endereço, procurações, certidões, etc.
+3. Use os dados do CRM (lead e contato) para complementar - campos como phone, email, city, state, cep, street, neighborhood, full_name já podem estar preenchidos.
+4. Para NACIONALIDADE: se a pessoa tem CPF brasileiro ou o documento é brasileiro, use "brasileiro(a)".
+5. Para ESTADO_CIVIL: procure na conversa ou imagens. Valores: solteiro(a), casado(a), divorciado(a), viúvo(a), união estável.
+6. Para campos de ENDEREÇO (CIDADE, UF, CEP, BAIRRO, RUA, ENDERECO): verifique o CRM (city, state, cep, neighborhood, street) E a conversa.
+7. Para WHATSAPP: use o telefone do contato/lead.
+8. Para EMAIL: use o email do contato/lead.
+9. Formate datas no padrão DD/MM/AAAA.
+10. Se não encontrar um dado, deixe "para" como string vazia "".
+11. Retorne TODOS os campos do template, mesmo os vazios.
+12. IMPORTANTE: O campo "de" deve manter o formato exato do template (ex: "{{NOME_COMPLETO}}").
 
 Retorne um JSON no formato:
 [{"de": "{{CAMPO}}", "para": "valor extraído"}]
