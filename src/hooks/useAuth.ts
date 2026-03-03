@@ -18,6 +18,12 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let settled = false;
+    const settle = () => { if (!settled) { settled = true; setLoading(false); } };
+
+    // Safety timeout: if backend is unreachable, stop loading after 8s
+    const timeout = setTimeout(settle, 8000);
+
     // Set up auth state listener BEFORE getting session
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -37,7 +43,7 @@ export const useAuth = () => {
         } else {
           setProfile(null);
         }
-        setLoading(false);
+        settle();
       }
     );
 
@@ -54,10 +60,15 @@ export const useAuth = () => {
           .single()
           .then(({ data }) => setProfile(data));
       }
-      setLoading(false);
+      settle();
+    }).catch(() => {
+      settle();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
