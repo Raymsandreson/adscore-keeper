@@ -5295,6 +5295,7 @@ export type Database = {
           instance_name: string
           instance_token: string
           is_active: boolean | null
+          is_paused: boolean
           owner_phone: string | null
           receive_leads: boolean | null
           updated_at: string
@@ -5309,6 +5310,7 @@ export type Database = {
           instance_name: string
           instance_token: string
           is_active?: boolean | null
+          is_paused?: boolean
           owner_phone?: string | null
           receive_leads?: boolean | null
           updated_at?: string
@@ -5323,6 +5325,7 @@ export type Database = {
           instance_name?: string
           instance_token?: string
           is_active?: boolean | null
+          is_paused?: boolean
           owner_phone?: string | null
           receive_leads?: boolean | null
           updated_at?: string

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Megaphone, Phone, Save } from 'lucide-react';
+import { Megaphone, Phone, Save, PauseCircle, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface InstanceAdConfig {
@@ -16,6 +16,7 @@ interface InstanceAdConfig {
   receive_leads: boolean;
   ad_account_id: string | null;
   ad_account_name: string | null;
+  is_paused: boolean;
 }
 
 export function WhatsAppAdLinkSettings() {
@@ -26,7 +27,7 @@ export function WhatsAppAdLinkSettings() {
   const fetchInstances = async () => {
     const { data, error } = await supabase
       .from('whatsapp_instances')
-      .select('id, instance_name, owner_phone, receive_leads, ad_account_id, ad_account_name')
+      .select('id, instance_name, owner_phone, receive_leads, ad_account_id, ad_account_name, is_paused')
       .eq('is_active', true)
       .order('instance_name');
 
@@ -42,6 +43,22 @@ export function WhatsAppAdLinkSettings() {
 
   const handleToggleReceiveLeads = async (instanceId: string, value: boolean) => {
     setInstances(prev => prev.map(i => i.id === instanceId ? { ...i, receive_leads: value } : i));
+  };
+
+  const handleTogglePause = async (instance: InstanceAdConfig) => {
+    const newPaused = !instance.is_paused;
+    setInstances(prev => prev.map(i => i.id === instance.id ? { ...i, is_paused: newPaused } : i));
+    try {
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .update({ is_paused: newPaused } as any)
+        .eq('id', instance.id);
+      if (error) throw error;
+      toast.success(newPaused ? `"${instance.instance_name}" pausada — webhooks ignorados` : `"${instance.instance_name}" reativada`);
+    } catch {
+      setInstances(prev => prev.map(i => i.id === instance.id ? { ...i, is_paused: !newPaused } : i));
+      toast.error('Erro ao alterar estado da instância');
+    }
   };
 
   const handleFieldChange = (instanceId: string, field: keyof InstanceAdConfig, value: string) => {
@@ -87,7 +104,7 @@ export function WhatsAppAdLinkSettings() {
       </CardHeader>
       <CardContent className="space-y-4">
         {instances.map(instance => (
-          <div key={instance.id} className="border rounded-lg p-4 space-y-3">
+          <div key={instance.id} className={`border rounded-lg p-4 space-y-3 ${instance.is_paused ? 'opacity-60 border-destructive/30 bg-destructive/5' : ''}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-muted-foreground" />
@@ -95,16 +112,30 @@ export function WhatsAppAdLinkSettings() {
                 {instance.owner_phone && (
                   <Badge variant="outline" className="text-xs">{instance.owner_phone}</Badge>
                 )}
+                {instance.is_paused && (
+                  <Badge variant="destructive" className="text-xs">Pausada</Badge>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Label htmlFor={`receive-${instance.id}`} className="text-xs text-muted-foreground">
-                  Recebe Leads
-                </Label>
-                <Switch
-                  id={`receive-${instance.id}`}
-                  checked={instance.receive_leads}
-                  onCheckedChange={(v) => handleToggleReceiveLeads(instance.id, v)}
-                />
+              <div className="flex items-center gap-4">
+                <Button
+                  size="sm"
+                  variant={instance.is_paused ? 'default' : 'outline'}
+                  onClick={() => handleTogglePause(instance)}
+                  className="h-7 text-xs gap-1"
+                >
+                  {instance.is_paused ? <PlayCircle className="h-3 w-3" /> : <PauseCircle className="h-3 w-3" />}
+                  {instance.is_paused ? 'Reativar' : 'Pausar'}
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={`receive-${instance.id}`} className="text-xs text-muted-foreground">
+                    Recebe Leads
+                  </Label>
+                  <Switch
+                    id={`receive-${instance.id}`}
+                    checked={instance.receive_leads}
+                    onCheckedChange={(v) => handleToggleReceiveLeads(instance.id, v)}
+                  />
+                </div>
               </div>
             </div>
 

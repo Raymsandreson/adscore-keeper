@@ -490,6 +490,24 @@ Deno.serve(async (req) => {
     const body = await req.json()
     console.log('WhatsApp webhook payload:', JSON.stringify(body).substring(0, 2000))
 
+    // ========== PAUSE CHECK ==========
+    const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
+    if (webhookInstanceName) {
+      const { data: inst } = await supabase
+        .from('whatsapp_instances')
+        .select('is_paused')
+        .eq('instance_name', webhookInstanceName)
+        .limit(1)
+        .maybeSingle()
+      if (inst?.is_paused) {
+        console.log(`Instance "${webhookInstanceName}" is PAUSED. Ignoring webhook.`)
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: 'instance_paused' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // ========== CALL EVENT HANDLING ==========
     const isCallEvent = body.EventType === 'call' || body.event === 'call' || body.type === 'call' 
       || (body.EventType === 'call_log') || (body.type === 'CallState')
