@@ -39,6 +39,7 @@ interface SignerInfo {
   email: string;
   phone: string;
   role: 'sign' | 'witness' | 'approve';
+  auth_mode: string;
 }
 
 interface Props {
@@ -49,7 +50,7 @@ interface Props {
   contactId?: string;
   leadId?: string;
   legalCaseId?: string;
-  messages?: Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null }>;
+  messages?: Array<{ direction: string; message_text: string | null; media_url?: string | null; media_type?: string | null; created_at?: string; timestamp?: string }>;
   leadData?: Record<string, any>;
   contactData?: Record<string, any>;
   onSendMessage?: (message: string) => Promise<boolean>;
@@ -158,7 +159,7 @@ export function ZapSignDocumentDialog({
       const defaultName = contactName || contactData?.full_name || leadData?.lead_name || '';
       const defaultEmail = contactData?.email || leadData?.email || '';
       const defaultPhone = phone || contactData?.phone || leadData?.phone || '';
-      setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign' }]);
+      setSigners([{ name: defaultName, email: defaultEmail, phone: defaultPhone, role: 'sign', auth_mode: 'assinaturaTela' }]);
     }
   }, [open]);
 
@@ -200,7 +201,7 @@ export function ZapSignDocumentDialog({
 
   // Signer management
   const addSigner = () => {
-    setSigners(prev => [...prev, { name: '', email: '', phone: '', role: 'witness' }]);
+    setSigners(prev => [...prev, { name: '', email: '', phone: '', role: 'witness', auth_mode: 'assinaturaTela' }]);
   };
 
   const removeSigner = (index: number) => {
@@ -243,6 +244,7 @@ export function ZapSignDocumentDialog({
           email: s.email || '',
           phone: s.phone || '',
           role: idx === 0 ? 'sign' : (s.role === 'witness' ? 'witness' : s.role || 'witness'),
+          auth_mode: 'assinaturaTela',
         }));
         // Merge: keep defaults for empty fields on main signer
         const defaultSigner = signers[0];
@@ -396,6 +398,7 @@ export function ZapSignDocumentDialog({
         email: s.email || undefined,
         phone: s.phone || undefined,
         role: s.role,
+        auth_mode: s.auth_mode || 'assinaturaTela',
       }));
 
       const { data, error } = await supabase.functions.invoke('zapsign-api', {
@@ -672,6 +675,18 @@ export function ZapSignDocumentDialog({
                           </Select>
                         </div>
                       )}
+                      <div>
+                        <Label className="text-xs">Modo de autenticação</Label>
+                        <Select value={signer.auth_mode} onValueChange={(v) => updateSigner(idx, 'auth_mode', v)}>
+                          <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="assinaturaTela">✍️ Assinatura em tela</SelectItem>
+                            <SelectItem value="tokenEmail">📧 Token por e-mail</SelectItem>
+                            <SelectItem value="tokenSms">📱 Token por SMS</SelectItem>
+                            <SelectItem value="assinaturaImagem">🖼️ Assinatura por imagem</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                 ))}
