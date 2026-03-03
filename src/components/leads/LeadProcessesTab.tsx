@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +23,7 @@ import {
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface LeadProcessesTabProps {
   leadId: string;
@@ -87,7 +89,29 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
     if (editingProcess) {
       await updateProcess(editingProcess.id, payload);
     } else {
-      await addProcess(payload);
+      const savedProcess = await addProcess(payload);
+      
+      // Auto-create "Dar andamento" activity for the new process
+      if (savedProcess) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          await supabase.from('lead_activities').insert({
+            lead_id: leadId,
+            lead_name: title.trim(),
+            title: 'Dar andamento',
+            description: `Atividade criada automaticamente para o processo: ${title.trim()}${processNumber ? ` (Nº ${processNumber})` : ''}`,
+            activity_type: 'tarefa',
+            status: 'pendente',
+            priority: 'normal',
+            assigned_to: user?.id,
+            created_by: user?.id,
+            deadline: new Date().toISOString().slice(0, 10),
+          } as any);
+          toast.success('Atividade "Dar andamento" criada automaticamente');
+        } catch (actErr) {
+          console.error('Error auto-creating activity for process:', actErr);
+        }
+      }
     }
     setShowAddDialog(false);
     resetForm();

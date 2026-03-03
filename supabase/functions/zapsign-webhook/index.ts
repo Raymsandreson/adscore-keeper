@@ -67,6 +67,43 @@ Deno.serve(async (req) => {
 
     console.log('Updated local doc:', localDoc?.id, 'status:', docData.status)
 
+    // Save signed document as an activity attachment linked to the lead
+    if (isDocSigned && signedFileUrl && localDoc?.lead_id) {
+      try {
+        // Create a lead activity for the signed document
+        const { data: activity } = await supabase
+          .from('lead_activities')
+          .insert({
+            lead_id: localDoc.lead_id,
+            lead_name: localDoc.signer_name || 'Documento',
+            title: `Procuração assinada: ${localDoc.document_name || 'Documento'}`,
+            description: `Documento "${localDoc.document_name}" assinado por ${localDoc.signer_name} em ${new Date().toLocaleDateString('pt-BR')}.`,
+            activity_type: 'documento',
+            status: 'concluida',
+            priority: 'normal',
+            created_by: localDoc.created_by || null,
+            deadline: new Date().toISOString().slice(0, 10),
+            completed_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single()
+
+        if (activity?.id) {
+          await supabase.from('activity_attachments').insert({
+            activity_id: activity.id,
+            file_name: `${localDoc.document_name || 'Documento'}_assinado.pdf`,
+            file_type: 'application/pdf',
+            file_url: signedFileUrl,
+            attachment_type: 'file',
+            created_by: localDoc.created_by || null,
+          })
+          console.log('Signed document saved as activity attachment for lead:', localDoc.lead_id)
+        }
+      } catch (attachErr) {
+        console.error('Error saving signed doc as attachment:', attachErr)
+      }
+    }
+
     // If document is signed and we have a signed PDF, send it via WhatsApp
     const isDocSigned = docData.status === 'signed' || signer?.status === 'signed'
     
