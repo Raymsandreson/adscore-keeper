@@ -324,7 +324,6 @@ export function WhatsAppInbox() {
         const contactInsert: Record<string, any> = {
           full_name: contactName,
           phone: selectedConversation.phone,
-          source: 'whatsapp',
           created_by: currentUser?.id || null,
         };
         if (contactExtracted.email) contactInsert.email = contactExtracted.email;
