@@ -16,6 +16,213 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const body = await req.json()
+    const { action } = body
+
+    // ========================
+    // DELETE MESSAGE
+    // ========================
+    if (action === 'delete_message') {
+      const { message_id, instance_id, external_message_id, phone } = body
+
+      if (!message_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'message_id is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Try to delete from WhatsApp via UazAPI if we have the external ID
+      if (external_message_id && instance_id) {
+        try {
+          const { data: instance } = await supabase
+            .from('whatsapp_instances')
+            .select('*')
+            .eq('id', instance_id)
+            .single()
+
+          if (instance) {
+            const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+            await fetch(`${baseUrl}/message/delete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+              body: JSON.stringify({ id: external_message_id }),
+            })
+          }
+        } catch (e) {
+          console.error('Error deleting from WhatsApp:', e)
+        }
+      }
+
+      // Delete from database
+      const { error } = await supabase
+        .from('whatsapp_messages')
+        .delete()
+        .eq('id', message_id)
+
+      if (error) throw error
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========================
+    // SEND MEDIA (image, audio, document, video)
+    // ========================
+    if (action === 'send_media') {
+      const { phone, chat_id, media_url, media_type, caption, contact_id, lead_id, instance_id, file_name } = body
+
+      if (!phone || !media_url) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'phone and media_url are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const instance = await getInstance(supabase, instance_id)
+      if (!instance) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+      const targetNumber = chat_id?.trim() || phone
+
+      // Determine endpoint based on media type
+      let endpoint = '/send/image'
+      let sendBody: any = { number: targetNumber, url: media_url }
+      let messageType = 'image'
+
+      if (media_type?.startsWith('audio')) {
+        endpoint = '/send/audio'
+        sendBody = { number: targetNumber, url: media_url }
+        messageType = 'audio'
+      } else if (media_type?.startsWith('video')) {
+        endpoint = '/send/image' // UazAPI uses /send/image for video too with proper mime
+        sendBody = { number: targetNumber, url: media_url, caption: caption || '' }
+        messageType = 'video'
+      } else if (media_type?.startsWith('image')) {
+        sendBody.caption = caption || ''
+      } else {
+        endpoint = '/send/document'
+        sendBody = { number: targetNumber, url: media_url, fileName: file_name || 'documento' }
+        messageType = 'document'
+      }
+
+      console.log(`Sending ${messageType} via UazAPI:`, endpoint, 'to:', phone)
+
+      const uazResponse = await fetch(`${baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+        body: JSON.stringify(sendBody),
+      })
+
+      if (!uazResponse.ok) {
+        const errorText = await uazResponse.text()
+        throw new Error(`UazAPI error: ${uazResponse.status} - ${errorText}`)
+      }
+
+      // Save to database
+      const { data: savedMessage, error } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          phone,
+          message_text: caption || null,
+          message_type: messageType,
+          media_url,
+          media_type: media_type || null,
+          direction: 'outbound',
+          status: 'sent',
+          contact_id: contact_id || null,
+          lead_id: lead_id || null,
+          instance_name: instance.instance_name,
+          instance_token: instance.instance_token,
+        })
+        .select()
+        .single()
+
+      if (error) console.error('Error saving media message:', error)
+
+      return new Response(
+        JSON.stringify({ success: true, message_id: savedMessage?.id, instance_name: instance.instance_name }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========================
+    // SEND LOCATION
+    // ========================
+    if (action === 'send_location') {
+      const { phone, chat_id, latitude, longitude, name, address, contact_id, lead_id, instance_id } = body
+
+      if (!phone || latitude === undefined || longitude === undefined) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'phone, latitude and longitude are required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const instance = await getInstance(supabase, instance_id)
+      if (!instance) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+      const targetNumber = chat_id?.trim() || phone
+
+      const uazResponse = await fetch(`${baseUrl}/send/location`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+        body: JSON.stringify({
+          number: targetNumber,
+          lat: latitude,
+          lng: longitude,
+          title: name || '',
+          address: address || '',
+        }),
+      })
+
+      if (!uazResponse.ok) {
+        const errorText = await uazResponse.text()
+        throw new Error(`UazAPI location error: ${uazResponse.status} - ${errorText}`)
+      }
+
+      const locationText = `📍 ${name || 'Localização'}${address ? `\n${address}` : ''}`
+
+      const { data: savedMessage, error } = await supabase
+        .from('whatsapp_messages')
+        .insert({
+          phone,
+          message_text: locationText,
+          message_type: 'location',
+          direction: 'outbound',
+          status: 'sent',
+          contact_id: contact_id || null,
+          lead_id: lead_id || null,
+          instance_name: instance.instance_name,
+          instance_token: instance.instance_token,
+          metadata: { latitude, longitude, name, address },
+        })
+        .select()
+        .single()
+
+      if (error) console.error('Error saving location message:', error)
+
+      return new Response(
+        JSON.stringify({ success: true, message_id: savedMessage?.id, instance_name: instance.instance_name }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // ========================
+    // SEND TEXT (default / legacy)
+    // ========================
     const { phone, chat_id, message, contact_id, lead_id, instance_id } = body
 
     if (!phone || !message) {
@@ -25,28 +232,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Get instance info - either from instance_id or use first active instance
-    let instance: any = null
-    if (instance_id) {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('id', instance_id)
-        .eq('is_active', true)
-        .single()
-      instance = data
-    }
-    
-    if (!instance) {
-      const { data } = await supabase
-        .from('whatsapp_instances')
-        .select('*')
-        .eq('is_active', true)
-        .limit(1)
-        .single()
-      instance = data
-    }
-
+    const instance = await getInstance(supabase, instance_id)
     if (!instance) {
       return new Response(
         JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
@@ -54,7 +240,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Send directly to UazAPI with instance token in the header
     const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
     const sendUrl = `${baseUrl}/send/text`
     
@@ -78,7 +263,6 @@ Deno.serve(async (req) => {
     
     console.log('UazAPI response status:', uazResponse.status)
 
-    // Save outbound message to database
     const { data: savedMessage, error } = await supabase
       .from('whatsapp_messages')
       .insert({
@@ -113,3 +297,23 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+async function getInstance(supabase: any, instance_id?: string) {
+  if (instance_id) {
+    const { data } = await supabase
+      .from('whatsapp_instances')
+      .select('*')
+      .eq('id', instance_id)
+      .eq('is_active', true)
+      .single()
+    if (data) return data
+  }
+  
+  const { data } = await supabase
+    .from('whatsapp_instances')
+    .select('*')
+    .eq('is_active', true)
+    .limit(1)
+    .single()
+  return data
+}
