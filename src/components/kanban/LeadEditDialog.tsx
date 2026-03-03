@@ -583,6 +583,38 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         await saveAllFieldValues(lead.id, localFieldValues);
       }
 
+      // Auto-create legal case when lead is newly marked as closed
+      const wasAlreadyClosed = !!(lead as any).became_client_date;
+      if (leadOutcome === 'closed' && !wasAlreadyClosed) {
+        try {
+          const { data: existingCases } = await supabase
+            .from('legal_cases')
+            .select('id')
+            .eq('lead_id', lead.id)
+            .limit(1);
+          
+          if (!existingCases || existingCases.length === 0) {
+            const { data: { user } } = await supabase.auth.getUser();
+            const { data: generatedNumber } = await supabase
+              .rpc('generate_case_number', { p_nucleus_id: null });
+            
+            await supabase
+              .from('legal_cases')
+              .insert({
+                lead_id: lead.id,
+                case_number: generatedNumber || 'CASO-0001',
+                title: leadName.trim() || lead.lead_name || 'Novo Caso',
+                created_by: user?.id,
+              } as any);
+            
+            toast.success(`Caso ${generatedNumber} criado automaticamente`);
+          }
+        } catch (caseErr) {
+          console.error('Error auto-creating case:', caseErr);
+          // Don't block the save
+        }
+      }
+
       toast.success('Lead atualizado com sucesso!');
       onOpenChange(false);
     } catch (error) {
