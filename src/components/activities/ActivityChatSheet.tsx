@@ -896,6 +896,39 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
     if (isAI) {
       const rawSuggestion = msg.ai_suggestion as any;
+      
+      // Special: activity created confirmation with open button
+      if (rawSuggestion?.created_activity_id) {
+        return (
+          <div key={msg.id} className="flex justify-start mb-2">
+            <div className="max-w-[85%]">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl rounded-bl-md px-3 py-2 space-y-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-600 mb-1">
+                  <Sparkles className="h-3 w-3" /> Assistente IA
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                {rawSuggestion.created_activity_id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1.5 border-emerald-500/30 text-emerald-700 hover:bg-emerald-500/10"
+                    onClick={() => {
+                      window.location.href = `${window.location.origin}/?openActivity=${rawSuggestion.created_activity_id}`;
+                    }}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Abrir atividade
+                  </Button>
+                )}
+                <div className="text-[10px] text-muted-foreground">
+                  {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
       // Detect new assistant format (has activity_fields/lead_fields/contact_fields/new_activity)
       const isAssistantResponse = rawSuggestion && ('activity_fields' in rawSuggestion || 'lead_fields' in rawSuggestion || 'contact_fields' in rawSuggestion || 'new_activity' in rawSuggestion);
       // Old format: direct AISuggestion with what_was_done etc
@@ -1734,12 +1767,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 
                 // Send follow-up message asking if user wants to open it
                 const scope = getConversationScope();
-                const linkText = createdId ? `\n\n🔗 [Abrir atividade](${window.location.origin}/?openActivity=${createdId})` : '';
                 await supabase.from('activity_chat_messages').insert({
                   activity_id: scope.activity_id,
                   lead_id: scope.lead_id,
-                  message_type: 'text',
-                  content: `✅ **Atividade criada com sucesso!**\n\n📋 *${confirmNewActivity.title}*${linkText}`,
+                  message_type: 'ai_suggestion',
+                  content: `✅ Atividade criada com sucesso!\n\n📋 ${confirmNewActivity.title}`,
+                  ai_suggestion: { created_activity_id: createdId, created_activity_title: confirmNewActivity.title },
                   sender_id: null,
                   sender_name: 'Assistente IA',
                 });
