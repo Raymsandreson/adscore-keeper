@@ -19,11 +19,12 @@ import {
 } from '@/components/ui/collapsible';
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
-  Gavel, FileText, Users, ArrowLeft, ExternalLink,
+  Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
 } from 'lucide-react';
 import { LegalCase } from '@/hooks/useLegalCases';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
+import AddProcessDialog from '@/components/cases/AddProcessDialog';
 
 const statusColors: Record<string, string> = {
   aberto: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -174,8 +175,9 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
   const [processes, setProcesses] = useState<any[]>([]);
   const [leadInfo, setLeadInfo] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showAddProcess, setShowAddProcess] = useState(false);
 
-  useEffect(() => {
+  const loadDetails = useCallback(() => {
     if (!expanded) return;
     setLoadingDetails(true);
     Promise.all([
@@ -188,6 +190,10 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
       setLeadInfo(leadRes.data || null);
     }).finally(() => setLoadingDetails(false));
   }, [expanded, legalCase.id, legalCase.lead_id]);
+
+  useEffect(() => {
+    loadDetails();
+  }, [loadDetails]);
 
   return (
     <Card className="overflow-hidden">
@@ -234,11 +240,22 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
               </div>
             )}
 
-            {/* Processes */}
             <div>
-              <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
-                <Scale className="h-3.5 w-3.5" /> Processos ({processes.length})
-              </h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                  <Scale className="h-3.5 w-3.5" /> Processos ({processes.length})
+                </h4>
+                {legalCase.lead_id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-[10px] gap-1"
+                    onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
+                  >
+                    <Plus className="h-3 w-3" /> Cadastrar Processo
+                  </Button>
+                )}
+              </div>
               {processes.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-2">Nenhum processo neste caso.</p>
               )}
@@ -269,6 +286,16 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
                 ))}
               </div>
             </div>
+
+            {legalCase.lead_id && (
+              <AddProcessDialog
+                open={showAddProcess}
+                onOpenChange={setShowAddProcess}
+                caseId={legalCase.id}
+                leadId={legalCase.lead_id}
+                onProcessAdded={loadDetails}
+              />
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

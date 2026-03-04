@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.meta-daily-sync]
 verify_jwt = false
+
+[functions.search-escavador]
+verify_jwt = false
