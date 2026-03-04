@@ -1,0 +1,1 @@
+UPDATE lead_activities SET deadline = '2026-03-08', notification_date = '2026-03-07' WHERE id = '7a8262cc-dc3c-42bc-b27e-e104daaad948';

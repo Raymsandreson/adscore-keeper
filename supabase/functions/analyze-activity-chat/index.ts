@@ -367,12 +367,14 @@ MATRIZ DE EISENHOWER:
 - delegate (🤝 Delegue): Urgente + Pouco importante — tarefas administrativas urgentes
 - eliminate (🗑️ Retire): Não urgente + Pouco importante — tarefas que podem ser eliminadas
 
+DATA ATUAL: ${new Date().toISOString().split('T')[0]} (use esta data como referência para todas as datas — NUNCA use anos anteriores como 2024 ou 2025)
+
 IMPORTANTE:
 - Seja conciso e objetivo (máximo 3-4 parágrafos)
 - Use linguagem profissional mas acessível
 - Quando identificar informações que podem preencher campos, use a ferramenta disponível
 - Sempre que criar uma nova atividade, inclua o quadrante da matriz de Eisenhower (matrix_quadrant)
-- SEMPRE inclua deadline e notification_date ao criar atividades
+- SEMPRE inclua deadline e notification_date ao criar atividades — use o ANO ATUAL (${new Date().getFullYear()})
 - Sugira datas realistas considerando a carga de trabalho atual
 - Responda em português do Brasil
 
