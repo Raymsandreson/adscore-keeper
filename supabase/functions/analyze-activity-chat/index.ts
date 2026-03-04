@@ -349,7 +349,16 @@ IMPORTANTE:
 - Sempre que criar uma nova atividade, inclua o quadrante da matriz de Eisenhower (matrix_quadrant)
 - SEMPRE inclua deadline e notification_date ao criar atividades
 - Sugira datas realistas considerando a carga de trabalho atual
-- Responda em português do Brasil`;
+- Responda em português do Brasil
+
+SUGESTÕES DE CONTINUAÇÃO (OBRIGATÓRIO):
+- SEMPRE inclua 2-4 sugestões de continuação no campo "follow_up_suggestions" da ferramenta
+- Cada sugestão tem "label" (texto curto do botão, max 25 chars, com emoji) e "message" (texto completo que o usuário enviaria)
+- As sugestões devem ser frases completas e autossuficientes — ao ser enviada, você deve conseguir agir sem pedir mais informações
+- Cubra cenários como: detalhes faltantes, próximos passos, criação de atividades com campos completos, atualização de status
+- Sempre que possível, inclua dados concretos (datas, tipos, prioridades, matriz) nas sugestões para preencher todos os campos automaticamente
+- Exemplo: label="📅 Agendar para amanhã", message="Agende reunião com o cliente para amanhã às 14h, prioridade normal, tipo reunião, matriz Agende"
+- Adapte as sugestões ao contexto atual da conversa e da atividade`;
 
       // Build conversation for AI
       const aiMessages: any[] = [
@@ -485,8 +494,23 @@ IMPORTANTE:
                   required: ["title", "matrix_quadrant", "deadline", "notification_date"],
                   additionalProperties: false,
                 },
+                follow_up_suggestions: {
+                  type: "array",
+                  description: "OBRIGATÓRIO: 2-4 sugestões de continuação da conversa. Cada sugestão é um botão clicável que preenche o campo de texto do usuário.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string", description: "Texto curto do botão (max 25 chars, com emoji). Ex: '📅 Agendar para amanhã'" },
+                      message: { type: "string", description: "Texto completo que será enviado como mensagem do usuário ao clicar. Deve ser autossuficiente." },
+                    },
+                    required: ["label", "message"],
+                    additionalProperties: false,
+                  },
+                  minItems: 2,
+                  maxItems: 4,
+                },
               },
-              required: ["response_text"],
+              required: ["response_text", "follow_up_suggestions"],
               additionalProperties: false,
             },
           },
@@ -538,6 +562,7 @@ IMPORTANTE:
           lead_fields: parsed.lead_fields || null,
           contact_fields: parsed.contact_fields || null,
           new_activity: parsed.new_activity || null,
+          follow_up_suggestions: parsed.follow_up_suggestions || null,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -550,6 +575,7 @@ IMPORTANTE:
         lead_fields: null,
         contact_fields: null,
         new_activity: null,
+        follow_up_suggestions: null,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

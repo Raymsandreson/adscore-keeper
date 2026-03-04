@@ -43,6 +43,11 @@ interface AISuggestion {
   notes: string;
 }
 
+interface FollowUpSuggestion {
+  label: string;
+  message: string;
+}
+
 interface AIAssistantResponse {
   response_text: string;
   activity_fields: Record<string, string> | null;
@@ -58,6 +63,7 @@ interface AIAssistantResponse {
     notes?: string;
     deadline?: string;
   } | null;
+  follow_up_suggestions: FollowUpSuggestion[] | null;
 }
 
 interface ActivityChatSheetProps {
@@ -432,9 +438,13 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         lead_id: scope.lead_id,
         message_type: 'ai_suggestion',
         content: response.response_text,
-        ai_suggestion: response.activity_fields || response.lead_fields || response.contact_fields || response.new_activity
-          ? { activity_fields: response.activity_fields, lead_fields: response.lead_fields, contact_fields: response.contact_fields, new_activity: response.new_activity }
-          : null,
+        ai_suggestion: {
+          ...(response.activity_fields ? { activity_fields: response.activity_fields } : {}),
+          ...(response.lead_fields ? { lead_fields: response.lead_fields } : {}),
+          ...(response.contact_fields ? { contact_fields: response.contact_fields } : {}),
+          ...(response.new_activity ? { new_activity: response.new_activity } : {}),
+          ...(response.follow_up_suggestions?.length ? { follow_up_suggestions: response.follow_up_suggestions } : {}),
+        },
         sender_id: null,
         sender_name: 'IA Abraci',
       } as any);
@@ -951,6 +961,22 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Follow-up suggestion chips - only on last AI message */}
+              {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).at(-1)?.id && (
+                <div className="flex flex-wrap gap-1.5 pl-1">
+                  {rawSuggestion.follow_up_suggestions.map((s: FollowUpSuggestion, i: number) => (
+                    <button
+                      key={i}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors text-[11px] font-medium text-primary"
+                      onClick={() => setInputText(s.message)}
+                    >
+                      <ArrowRight className="h-3 w-3 shrink-0" />
+                      {s.label}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
