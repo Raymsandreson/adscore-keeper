@@ -25,6 +25,10 @@ export interface UserProductivity {
   sessionMinutes: number;
   pageVisits: number;
   totalActions: number;
+  // Meta traffic metrics
+  metaLeadsReceived: number;
+  metaLeadsQualified: number;
+  metaCreativesUploaded: number;
 }
 
 interface ActivityLogEntry {
@@ -112,6 +116,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         catContactsRes,
         completedActivitiesRes,
         overdueActivitiesRes,
+        metaDailyRes,
       ] = await Promise.all([
         // Contacts created (has created_by)
         supabase.from('contacts').select('id, created_by, created_at')
@@ -158,6 +163,10 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
           .eq('status', 'pendente')
           .lt('deadline', format(new Date(), 'yyyy-MM-dd'))
           .not('deadline', 'is', null),
+        // Meta daily metrics for traffic productivity
+        supabase.from('meta_daily_metrics').select('*')
+          .gte('metric_date', format(dateRange.start, 'yyyy-MM-dd'))
+          .lte('metric_date', format(dateRange.end, 'yyyy-MM-dd')),
       ]);
 
       const contacts = contactsRes.data || [];
@@ -172,6 +181,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       const catContacts = catContactsRes.data || [];
       const completedActivities = completedActivitiesRes.data || [];
       const overdueActivities = overdueActivitiesRes.data || [];
+      const metaDailyMetrics = (metaDailyRes.data as any[]) || [];
 
       // Gather all user IDs
       const allUserIds = new Set<string>();
@@ -185,6 +195,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
       stageHistory.forEach(s => (s as any).changed_by && allUserIds.add((s as any).changed_by));
       completedActivities.forEach(a => a.completed_by && allUserIds.add(a.completed_by));
       overdueActivities.forEach(a => a.assigned_to && allUserIds.add(a.assigned_to));
+      metaDailyMetrics.forEach(m => m.user_id && allUserIds.add(m.user_id));
 
       // Fetch profiles
       let profileMap = new Map<string, { full_name: string | null; email: string | null }>();
@@ -208,6 +219,7 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
             followupsCreated: 0, followupsDone: 0, leadsCreated: 0, leadsClosed: 0,
             checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
             sessionMinutes: 0, pageVisits: 0, totalActions: 0,
+            metaLeadsReceived: 0, metaLeadsQualified: 0, metaCreativesUploaded: 0,
           });
         }
         return userMap.get(userId)!;
@@ -339,12 +351,23 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
+      // Meta daily metrics per user
+      metaDailyMetrics.forEach(m => {
+        if (m.user_id) {
+          const u = getUser(m.user_id);
+          u.metaLeadsReceived += m.leads_received || 0;
+          u.metaLeadsQualified += m.leads_qualified || 0;
+          u.metaCreativesUploaded += (m.manual_creatives_uploaded || 0) + (m.creatives_active || 0);
+        }
+      });
+
       // Compute total actions for each user (completed adds, overdue subtracts)
       userMap.forEach(u => {
         u.totalActions = u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
           u.commentReplies + u.callsMade + u.leadsCreated + u.leadsClosed +
           u.followupsCreated + u.followupsDone + u.checklistItemsChecked +
-          u.activitiesCompleted - u.activitiesOverdue;
+          u.activitiesCompleted - u.activitiesOverdue +
+          u.metaLeadsReceived + u.metaLeadsQualified + u.metaCreativesUploaded;
       });
 
       const productivityList = Array.from(userMap.values())
