@@ -1,73 +1,56 @@
 
 
-## Plano: Integração Meta BM com Rotina de Tráfego Pago e Produtividade
+## Plano: Sugestões de Continuação Inteligentes no Chat IA
 
-### Contexto
-Você quer que os dados da Meta Business Manager (leads qualificados, leads chegados, criativos subidos) sejam puxados diariamente e contabilizados como métricas de produtividade dentro da rotina de tráfego pago. Além disso, quer uma aba editável para registrar o que foi feito e o que está dando certo.
+### O que muda
 
-### Arquitetura
+Toda resposta da IA no chat virá acompanhada de 2-4 "chips" clicáveis de sugestão de próximo passo. O usuário clica, o texto vai para o campo de input (editável), e basta enviar. A IA também deve preencher todos os campos relevantes (data, notificação, matriz, tipo) proativamente nas suas respostas.
+
+### Implementação
+
+**1. Backend: Adicionar `follow_up_suggestions` ao tool calling da IA**
+
+No `supabase/functions/analyze-activity-chat/index.ts`, modo `assistant`:
+- Adicionar campo `follow_up_suggestions` ao schema da tool `suggest_field_updates`
+- Array de 2-4 objetos com `{ label: string, message: string }` onde `label` é texto curto do chip e `message` é o texto completo que será enviado como mensagem
+- Atualizar o system prompt para instruir a IA a SEMPRE gerar sugestões de continuação contextuais (ex: "Definir próximo passo", "Criar atividade de acompanhamento", "Atualizar status do lead")
+- Incluir no prompt que as sugestões devem cobrir cenários como: perguntar detalhes faltantes, criar atividades com campos completos, atualizar status, definir prioridades
+
+**2. Frontend: Renderizar chips de sugestão após cada mensagem da IA**
+
+No `ActivityChatSheet.tsx`:
+- Salvar `follow_up_suggestions` no campo `ai_suggestion` da mensagem (já existe o campo JSON)
+- No `renderMessage` para mensagens AI, renderizar os chips como botões horizontais scrolláveis abaixo do texto
+- Ao clicar no chip, preencher `inputText` com o `message` da sugestão para o usuário revisar/editar antes de enviar
+- Estilizar como badges/chips compactos com ícone de seta
+
+**3. Atualizar o system prompt**
+
+Adicionar instruções:
+- "SEMPRE inclua 2-4 sugestões de continuação no campo follow_up_suggestions"
+- "As sugestões devem ser frases completas que o usuário enviaria, cobrindo: detalhes faltantes, próximos passos, criação de atividades, atualização de campos"
+- "Cada sugestão deve ser autossuficiente — ao ser enviada, a IA deve conseguir agir sem pedir mais informações"
+- "Sempre que possível, as sugestões devem incluir dados concretos (datas, tipos, prioridades) para que a IA preencha todos os campos automaticamente"
+
+### Exemplo de fluxo
 
 ```text
-┌─────────────────────────────────────────────┐
-│         Edge Function (CRON diário)         │
-│  meta-daily-sync                            │
-│  - Puxa dados da Meta API (server-side)     │
-│  - Salva em tabela: meta_daily_metrics      │
-│  - Métricas: leads, leads qualificados,     │
-│    criativos ativos                         │
-└───────────────┬─────────────────────────────┘
-                │
-┌───────────────▼─────────────────────────────┐
-│       Tabela: meta_daily_metrics            │
-│  user_id, date, leads_received,             │
-│  leads_qualified, creatives_uploaded,        │
-│  notes, what_worked, next_actions           │
-└───────────────┬─────────────────────────────┘
-                │
-┌───────────────▼─────────────────────────────┐
-│  Integração na Produtividade                │
-│  - Novas métricas no useTeamProductivity    │
-│  - Visível no Dashboard + Banner            │
-│  - Conta na % de produtividade da rotina    │
-└─────────────────────────────────────────────┘
+Usuário: "Preciso agendar uma reunião com o cliente João"
+
+IA: "Entendido! Posso criar a atividade de reunião com João. 
+     Quando seria a melhor data?"
+
+Chips:
+[📅 Amanhã às 14h] → "Agende a reunião com João para amanhã às 14h, prioridade normal, matriz Agende"
+[📅 Próxima segunda 10h] → "Agende a reunião com João para próxima segunda às 10h, prioridade normal"  
+[📋 Me ajude a definir] → "Quais horários estão disponíveis considerando minhas atividades pendentes?"
+[➕ Criar agora sem data] → "Crie a atividade de reunião com João como pendente para eu definir a data depois"
 ```
 
-### Etapas de Implementação
+### Detalhes técnicos
 
-**1. Tabela `meta_daily_metrics`**
-- `id`, `user_id`, `date`, `account_id`
-- Métricas automáticas: `leads_received`, `leads_qualified`, `creatives_active`, `spend`, `impressions`, `clicks`
-- Campos editáveis: `notes` (o que fiz), `what_worked` (o que deu certo), `next_actions` (próximos passos), `manual_creatives_uploaded`
-- RLS: usuário vê seus próprios dados, admin vê todos
-
-**2. Edge Function `meta-daily-sync`**
-- Executa via CRON diário (pg_cron)
-- Busca config da Meta (token + account_id) da tabela existente ou secrets
-- Chama a Graph API server-side (sem CORS)
-- Calcula leads recebidos (action_type = lead), leads qualificados (filtro por conversões), criativos ativos
-- Insere/atualiza `meta_daily_metrics` para o dia
-
-**3. Novo componente `TrafficActivityPanel`**
-- Aba dentro da página de Atividades ou Dashboard de Tráfego Pago
-- Exibe métricas diárias (automáticas da Meta)
-- Campos editáveis: "O que fiz hoje", "O que está dando certo", "Criativos subidos manualmente"
-- Histórico por data com possibilidade de edição
-
-**4. Integração com Produtividade**
-- Adicionar métricas `leadsReceived`, `leadsQualified`, `creativesUploaded` ao `useTeamProductivity`
-- Registrar como `activity_log` entries para contar na % de produtividade
-- Vincular ao tipo de atividade "tráfego pago" na rotina do membro
-- Aparece no banner de produtividade e no dashboard da equipe
-
-**5. Configuração de Metas (CommissionGoals)**
-- Adicionar metas de ação diária: leads recebidos, leads qualificados, criativos subidos
-- Permitir definir targets por membro
-
-### Detalhes Técnicos
-
-- A Edge Function usa os secrets `META_ACCESS_TOKEN` já configurados
-- Precisará de uma tabela `meta_account_configs` para mapear qual account_id pertence a qual user_id (caso múltiplos gestores)
-- O CRON roda 1x/dia às 23:00 para capturar dados do dia
-- Os campos editáveis são salvos via update direto na tabela pelo frontend
-- As métricas automáticas da Meta são read-only no frontend
+- O campo `ai_suggestion` (JSONB) já existe na tabela `activity_chat_messages` — basta incluir `follow_up_suggestions` dentro dele
+- Nenhuma migration necessária
+- A resposta da tool `suggest_field_updates` passa a retornar `follow_up_suggestions` junto com os outros campos
+- No frontend, os chips são renderizados apenas na última mensagem da IA (para não poluir o histórico)
 
