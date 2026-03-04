@@ -3935,6 +3935,63 @@ export type Database = {
           },
         ]
       }
+      meta_daily_metrics: {
+        Row: {
+          account_id: string | null
+          clicks: number | null
+          created_at: string
+          creatives_active: number
+          id: string
+          impressions: number | null
+          leads_qualified: number
+          leads_received: number
+          manual_creatives_uploaded: number
+          metric_date: string
+          next_actions: string | null
+          notes: string | null
+          spend: number | null
+          updated_at: string
+          user_id: string
+          what_worked: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          clicks?: number | null
+          created_at?: string
+          creatives_active?: number
+          id?: string
+          impressions?: number | null
+          leads_qualified?: number
+          leads_received?: number
+          manual_creatives_uploaded?: number
+          metric_date?: string
+          next_actions?: string | null
+          notes?: string | null
+          spend?: number | null
+          updated_at?: string
+          user_id: string
+          what_worked?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          clicks?: number | null
+          created_at?: string
+          creatives_active?: number
+          id?: string
+          impressions?: number | null
+          leads_qualified?: number
+          leads_received?: number
+          manual_creatives_uploaded?: number
+          metric_date?: string
+          next_actions?: string | null
+          notes?: string | null
+          spend?: number | null
+          updated_at?: string
+          user_id?: string
+          what_worked?: string | null
+        }
+        Relationships: []
+      }
       n8n_automation_logs: {
         Row: {
           action_type: string

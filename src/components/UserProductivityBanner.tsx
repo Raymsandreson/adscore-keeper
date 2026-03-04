@@ -111,6 +111,9 @@ export function UserProductivityBanner() {
       followupsCreated: 0,
       followupsDone: 0,
       pageVisits: 0,
+      metaLeadsReceived: 0,
+      metaLeadsQualified: 0,
+      metaCreativesUploaded: 0,
     };
   }, [user, profile, data]);
 

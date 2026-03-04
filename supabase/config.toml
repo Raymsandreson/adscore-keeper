@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.zapsign-webhook]
 verify_jwt = false
+
+[functions.meta-daily-sync]
+verify_jwt = false
