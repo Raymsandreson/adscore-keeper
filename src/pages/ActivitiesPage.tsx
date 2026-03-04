@@ -2824,8 +2824,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               priority: activityData.priority || 'normal',
               lead_id: activityData.lead_id || formLeadId || null,
               lead_name: activityData.lead_name || formLeadName || null,
-              assigned_to: formAssignedTo || null,
-              assigned_to_name: formAssignedToName || null,
+              assigned_to: activityData.assigned_to || formAssignedTo || null,
+              assigned_to_name: activityData.assigned_to_name || formAssignedToName || null,
               notes: activityData.notes || null,
               contact_id: activityData.contact_id || formContactId || null,
               contact_name: activityData.contact_name || formContactName || null,
@@ -2839,8 +2839,10 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               setSelectedActivityId(createdActivity.id);
               setSheetMode('edit');
               fetchActivities(getFilterParams());
+              return createdActivity;
             }
           } catch { /* error toasted */ }
+          return null;
         }}
       />
 
