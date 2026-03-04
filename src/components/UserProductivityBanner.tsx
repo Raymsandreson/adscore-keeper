@@ -44,6 +44,9 @@ import {
   Eye,
   Circle,
   FileText,
+  DollarSign,
+  MousePointer,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 const METRICS = [
@@ -242,6 +245,7 @@ export function UserProductivityBanner() {
     leads: number; contacts: number; dms: number; comments: number;
     stageChanges: number; checklistItems: number; activitiesCompleted: number;
     leadNames: string[];
+    trafficLeads: number; trafficSpend: number; trafficCreatives: number; trafficClicks: number; trafficImpressions: number;
   }>>({});
   // Logged-in user's block expansion state
   const [expandedMyBlocks, setExpandedMyBlocks] = useState<Set<string>>(new Set());
@@ -355,7 +359,9 @@ export function UserProductivityBanner() {
     const bStart = blockStart.toISOString();
     const bEnd = blockEnd.toISOString();
 
-    const [activitiesRes, callsRes, leadsRes, contactsRes, dmsRes, commentsRes, stageRes, checklistRes, completedRes] = await Promise.all([
+    const todayDateStr = new Date().toISOString().split('T')[0];
+
+    const [activitiesRes, callsRes, leadsRes, contactsRes, dmsRes, commentsRes, stageRes, checklistRes, completedRes, trafficRes] = await Promise.all([
       supabase.from('lead_activities').select('title, status, lead_name')
         .eq('assigned_to', userId).eq('activity_type', activityType)
         .gte('created_at', todayStart).lte('created_at', todayEnd)
@@ -379,6 +385,8 @@ export function UserProductivityBanner() {
       supabase.from('lead_activities').select('id')
         .eq('status', 'concluida').eq('completed_by', userId)
         .gte('completed_at', bStart).lte('completed_at', bEnd),
+      supabase.from('meta_daily_metrics').select('leads_received, leads_qualified, creatives_active, spend, clicks, impressions')
+        .eq('user_id', userId).eq('metric_date', todayDateStr),
     ]);
 
     const calls = callsRes.data || [];
@@ -387,6 +395,14 @@ export function UserProductivityBanner() {
       [key]: (activitiesRes.data || []).map(d => ({ title: d.title, status: d.status, leadName: d.lead_name })),
     }));
     const leadsData = leadsRes.data || [];
+    const trafficData = (trafficRes.data as any[]) || [];
+    const trafficTotals = trafficData.reduce((acc, m) => ({
+      leads: acc.leads + (m.leads_received || 0),
+      spend: acc.spend + Number(m.spend || 0),
+      creatives: acc.creatives + (m.creatives_active || 0),
+      clicks: acc.clicks + (m.clicks || 0),
+      impressions: acc.impressions + (m.impressions || 0),
+    }), { leads: 0, spend: 0, creatives: 0, clicks: 0, impressions: 0 });
     setWatchedBlockMetrics(prev => ({
       ...prev,
       [key]: {
@@ -401,6 +417,11 @@ export function UserProductivityBanner() {
         checklistItems: (checklistRes.data || []).length,
         activitiesCompleted: (completedRes.data || []).length,
         leadNames: leadsData.map((l: any) => l.lead_name || 'Sem nome').filter(Boolean),
+        trafficLeads: trafficTotals.leads,
+        trafficSpend: trafficTotals.spend,
+        trafficCreatives: trafficTotals.creatives,
+        trafficClicks: trafficTotals.clicks,
+        trafficImpressions: trafficTotals.impressions,
       },
     }));
   }, []);
@@ -593,14 +614,30 @@ export function UserProductivityBanner() {
                                   { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
                                   { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
                                 ];
+                                // Add traffic-specific metrics
+                                const trafficBadges: { val: number; icon: React.ElementType; color: string; label: string }[] = [
+                                  { val: metrics.trafficLeads, icon: Users, color: 'text-blue-500', label: ' leads Meta' },
+                                  { val: metrics.trafficCreatives, icon: ImageIcon, color: 'text-purple-500', label: ' criativos' },
+                                  { val: metrics.trafficClicks, icon: MousePointer, color: 'text-orange-500', label: ' cliques' },
+                                  { val: metrics.trafficImpressions, icon: Eye, color: 'text-cyan-500', label: ` imp.` },
+                                ];
+                                const spendBadge = metrics.trafficSpend > 0 ? [{ val: 1, icon: DollarSign, color: 'text-amber-500', label: ` R$ ${metrics.trafficSpend.toFixed(2)}` }] : [];
                                 const visibleBadges = badgeItems.filter(b => b.val > 0);
-                                if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
-                                return visibleBadges.map(b => (
-                                  <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
-                                    onClick={(e) => { e.stopPropagation(); openSheet(b.key); }}>
-                                    <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
-                                  </Badge>
-                                ));
+                                const visibleTraffic = [...trafficBadges.filter(b => b.val > 0), ...spendBadge];
+                                if (visibleBadges.length === 0 && visibleTraffic.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
+                                return (<>
+                                  {visibleBadges.map(b => (
+                                    <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
+                                      onClick={(e) => { e.stopPropagation(); openSheet(b.key); }}>
+                                      <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
+                                    </Badge>
+                                  ))}
+                                  {visibleTraffic.map((b, i) => (
+                                    <Badge key={`traffic_${i}`} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                      <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val > 1 ? b.val : ''}{b.label}
+                                    </Badge>
+                                  ))}
+                                </>);
                               })()}
                             </div>
                           ) : (
@@ -876,14 +913,29 @@ export function UserProductivityBanner() {
                                       { key: 'checklistItemsChecked', val: metrics.checklistItems, icon: ListChecks, color: 'text-cyan-500' },
                                       { key: 'activitiesCompleted', val: metrics.activitiesCompleted, icon: CheckCircle2, color: 'text-emerald-500' },
                                     ];
+                                    const trafficBadges2: { val: number; icon: React.ElementType; color: string; label: string }[] = [
+                                      { val: metrics.trafficLeads, icon: Users, color: 'text-blue-500', label: ' leads Meta' },
+                                      { val: metrics.trafficCreatives, icon: ImageIcon, color: 'text-purple-500', label: ' criativos' },
+                                      { val: metrics.trafficClicks, icon: MousePointer, color: 'text-orange-500', label: ' cliques' },
+                                      { val: metrics.trafficImpressions, icon: Eye, color: 'text-cyan-500', label: ` imp.` },
+                                    ];
+                                    const spendBadge2 = metrics.trafficSpend > 0 ? [{ val: 1, icon: DollarSign, color: 'text-amber-500', label: ` R$ ${metrics.trafficSpend.toFixed(2)}` }] : [];
                                     const visibleBadges = badgeItems.filter(b => b.val > 0);
-                                    if (visibleBadges.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
-                                    return visibleBadges.map(b => (
-                                      <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
-                                        onClick={() => openSheet(b.key)}>
-                                        <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
-                                      </Badge>
-                                    ));
+                                    const visibleTraffic2 = [...trafficBadges2.filter(b => b.val > 0), ...spendBadge2];
+                                    if (visibleBadges.length === 0 && visibleTraffic2.length === 0) return <span className="text-[10px] text-muted-foreground italic">Sem métricas neste bloco</span>;
+                                    return (<>
+                                      {visibleBadges.map(b => (
+                                        <Badge key={b.key} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5 cursor-pointer hover:bg-muted transition-colors"
+                                          onClick={() => openSheet(b.key)}>
+                                          <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val}{b.label || ''}
+                                        </Badge>
+                                      ))}
+                                      {visibleTraffic2.map((b, i) => (
+                                        <Badge key={`traffic_${i}`} variant="outline" className="text-[9px] h-4 px-1.5 gap-0.5">
+                                          <b.icon className={`h-2.5 w-2.5 ${b.color}`} /> {b.val > 1 ? b.val : ''}{b.label}
+                                        </Badge>
+                                      ))}
+                                    </>);
                                   })()}
                                 </div>
                               ) : (
