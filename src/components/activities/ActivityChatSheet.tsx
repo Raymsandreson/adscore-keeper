@@ -102,6 +102,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [aiResponding, setAiResponding] = useState(false);
   const [pendingAiActions, setPendingAiActions] = useState<AIAssistantResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [confirmNewActivity, setConfirmNewActivity] = useState<any | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -904,18 +905,13 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                     <button
                       className="w-full flex items-center gap-2 p-2 rounded-lg border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 transition-colors text-left"
                       onClick={() => {
-                        if (onCreateActivity) {
-                          onCreateActivity({
-                            ...rawSuggestion.new_activity,
-                            lead_id: contextData.lead?.id || null,
-                            lead_name: contextData.lead?.lead_name || null,
-                            contact_id: contextData.contact?.id || null,
-                            contact_name: contextData.contact?.full_name || null,
-                          });
-                          toast.success('Nova atividade criada!');
-                        } else {
-                          toast.info('Funcionalidade de criação não disponível neste contexto');
-                        }
+                        setConfirmNewActivity({
+                          ...rawSuggestion.new_activity,
+                          lead_id: contextData.lead?.id || leadId || null,
+                          lead_name: contextData.lead?.lead_name || null,
+                          contact_id: contextData.contact?.id || null,
+                          contact_name: contextData.contact?.full_name || null,
+                        });
                       }}
                     >
                       <div className="shrink-0 w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -924,7 +920,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Criar nova atividade</div>
                         <div className="text-[10px] text-muted-foreground truncate">
-                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''} {rawSuggestion.new_activity.matrix_quadrant ? `• ${{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[rawSuggestion.new_activity.matrix_quadrant] || ''}` : ''}
+                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''} {rawSuggestion.new_activity.matrix_quadrant ? `• ${{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[rawSuggestion.new_activity.matrix_quadrant as string] || ''}` : ''}
                         </div>
                       </div>
                       <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
@@ -1413,6 +1409,90 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
             onClick={() => deleteConfirmId && handleDeleteMessage(deleteConfirmId)}
           >
             Apagar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Confirm new activity dialog */}
+    <AlertDialog open={!!confirmNewActivity} onOpenChange={(open) => !open && setConfirmNewActivity(null)}>
+      <AlertDialogContent className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <Plus className="h-4 w-4 text-primary" />
+            Confirmar criação de atividade
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 mt-2">
+              <p className="text-sm text-muted-foreground">A IA preencheu os seguintes campos. Confirme para criar:</p>
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
+                {confirmNewActivity?.title && (
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium text-foreground">Título</span>
+                    <span className="text-right text-muted-foreground">{confirmNewActivity.title}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.activity_type && (
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium text-foreground">Tipo</span>
+                    <span className="text-right text-muted-foreground">{confirmNewActivity.activity_type}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.priority && (
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium text-foreground">Prioridade</span>
+                    <span className="text-right text-muted-foreground">{confirmNewActivity.priority}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.deadline && (
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium text-foreground">Prazo</span>
+                    <span className="text-right text-muted-foreground">{confirmNewActivity.deadline}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.matrix_quadrant && (
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium text-foreground">Eisenhower</span>
+                    <span className="text-right text-muted-foreground">
+                      {{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[confirmNewActivity.matrix_quadrant as string] || confirmNewActivity.matrix_quadrant}
+                    </span>
+                  </div>
+                )}
+                {confirmNewActivity?.notes && (
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">Descrição</span>
+                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.notes}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.what_was_done && (
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">O que foi feito</span>
+                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.what_was_done}</span>
+                  </div>
+                )}
+                {confirmNewActivity?.next_steps && (
+                  <div className="flex flex-col gap-1">
+                    <span className="font-medium text-foreground">Próximos passos</span>
+                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.next_steps}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (onCreateActivity && confirmNewActivity) {
+                onCreateActivity(confirmNewActivity);
+                toast.success('Atividade criada!');
+              }
+              setConfirmNewActivity(null);
+            }}
+          >
+            <Check className="h-3.5 w-3.5 mr-1" />
+            Confirmar e Criar
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
