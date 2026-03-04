@@ -332,6 +332,9 @@ SEU PAPEL:
 6. Analise a carga de trabalho atual (atividades pendentes/em andamento) e sugira datas adequadas para novas atividades, evitando sobrecarga
 7. Se houver muitas atividades pendentes, alerte o assessor e sugira priorização
 8. Se o assessor iniciar uma conversa sem atividade vinculada, pergunte sobre o que precisa ser feito e crie a atividade com todos os campos preenchidos
+9. TODA atividade DEVE ter prazo (deadline) e data de notificação (notification_date). A notificação geralmente é 1 dia antes do prazo. Use formato YYYY-MM-DDTHH:mm.
+10. Sugira leads e contatos para vincular à atividade quando o contexto indicar (suggested_lead_name, suggested_contact_name)
+11. Preencha TODOS os campos possíveis: descrição (notes), o que foi feito (what_was_done), observações (current_status_notes) e próximos passos (next_steps)
 
 MATRIZ DE EISENHOWER:
 - do_now (🔥 Faça Agora): Urgente + Importante — prazos judiciais próximos, audiências iminentes
@@ -344,6 +347,7 @@ IMPORTANTE:
 - Use linguagem profissional mas acessível
 - Quando identificar informações que podem preencher campos, use a ferramenta disponível
 - Sempre que criar uma nova atividade, inclua o quadrante da matriz de Eisenhower (matrix_quadrant)
+- SEMPRE inclua deadline e notification_date ao criar atividades
 - Sugira datas realistas considerando a carga de trabalho atual
 - Responda em português do Brasil`;
 
@@ -463,7 +467,7 @@ IMPORTANTE:
                 },
                 new_activity: {
                   type: "object",
-                  description: "Sugere criação de uma nova atividade. Use quando o assessor mencionar uma tarefa futura ou quando estiver criando uma atividade via chat. SEMPRE inclua matrix_quadrant.",
+                  description: "Sugere criação de uma nova atividade. Use quando o assessor mencionar uma tarefa futura ou quando estiver criando uma atividade via chat. SEMPRE inclua matrix_quadrant. SEMPRE inclua deadline (prazo da atividade) e notification_date (data de notificação/lembrete, geralmente 1 dia antes do deadline). Sugira lead_name e contact_name quando o contexto indicar.",
                   properties: {
                     title: { type: "string" },
                     activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
@@ -472,10 +476,13 @@ IMPORTANTE:
                     current_status_notes: { type: "string" },
                     next_steps: { type: "string" },
                     notes: { type: "string" },
-                    deadline: { type: "string", description: "Data no formato YYYY-MM-DD" },
+                    deadline: { type: "string", description: "Prazo da atividade no formato YYYY-MM-DDTHH:mm. OBRIGATÓRIO." },
+                    notification_date: { type: "string", description: "Data de notificação/lembrete no formato YYYY-MM-DDTHH:mm. Geralmente 1 dia antes do deadline." },
                     matrix_quadrant: { type: "string", enum: ["do_now", "schedule", "delegate", "eliminate"], description: "Quadrante da Matriz de Eisenhower" },
+                    suggested_lead_name: { type: "string", description: "Nome do lead sugerido para vincular, se mencionado no contexto" },
+                    suggested_contact_name: { type: "string", description: "Nome do contato sugerido para vincular, se mencionado no contexto" },
                   },
-                  required: ["title", "matrix_quadrant"],
+                  required: ["title", "matrix_quadrant", "deadline", "notification_date"],
                   additionalProperties: false,
                 },
               },

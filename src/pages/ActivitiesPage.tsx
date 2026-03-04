@@ -2810,7 +2810,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               contact_id: activityData.contact_id || formContactId || null,
               contact_name: activityData.contact_name || formContactName || null,
               deadline: activityData.deadline || null,
-              notification_date: null,
+              notification_date: activityData.notification_date || null,
               matrix_quadrant: activityData.matrix_quadrant || null,
             });
             if (result) {

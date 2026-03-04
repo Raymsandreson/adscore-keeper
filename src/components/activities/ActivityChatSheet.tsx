@@ -920,7 +920,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Criar nova atividade</div>
                         <div className="text-[10px] text-muted-foreground truncate">
-                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''} {rawSuggestion.new_activity.matrix_quadrant ? `• ${{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[rawSuggestion.new_activity.matrix_quadrant as string] || ''}` : ''}
+                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• 📅 ${rawSuggestion.new_activity.deadline}` : ''} {rawSuggestion.new_activity.notification_date ? `• 🔔 ${rawSuggestion.new_activity.notification_date}` : ''} {rawSuggestion.new_activity.matrix_quadrant ? `• ${{'do_now':'🔥','schedule':'📅','delegate':'🤝','eliminate':'🗑️'}[rawSuggestion.new_activity.matrix_quadrant as string] || ''}` : ''}
                         </div>
                       </div>
                       <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
@@ -1416,71 +1416,159 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
     {/* Confirm new activity dialog */}
     <AlertDialog open={!!confirmNewActivity} onOpenChange={(open) => !open && setConfirmNewActivity(null)}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
+      <AlertDialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <AlertDialogHeader className="shrink-0">
           <AlertDialogTitle className="flex items-center gap-2">
             <Plus className="h-4 w-4 text-primary" />
             Confirmar criação de atividade
           </AlertDialogTitle>
-          <AlertDialogDescription asChild>
-            <div className="space-y-3 mt-2">
-              <p className="text-sm text-muted-foreground">A IA preencheu os seguintes campos. Confirme para criar:</p>
-              <div className="rounded-lg border bg-muted/30 p-3 space-y-2 text-sm">
-                {confirmNewActivity?.title && (
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium text-foreground">Título</span>
-                    <span className="text-right text-muted-foreground">{confirmNewActivity.title}</span>
+        </AlertDialogHeader>
+        <ScrollArea className="flex-1 pr-2">
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">A IA preencheu os campos abaixo. Edite se necessário e confirme:</p>
+            
+            {/* Title - editable */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Título *</label>
+              <Input
+                value={confirmNewActivity?.title || ''}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, title: e.target.value } : prev)}
+                className="h-8 text-sm"
+              />
+            </div>
+
+            {/* Type and Priority row */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Tipo</label>
+                <select
+                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                  value={confirmNewActivity?.activity_type || 'tarefa'}
+                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, activity_type: e.target.value } : prev)}
+                >
+                  <option value="tarefa">Tarefa</option>
+                  <option value="audiencia">Audiência</option>
+                  <option value="prazo">Prazo</option>
+                  <option value="acompanhamento">Acompanhamento</option>
+                  <option value="reuniao">Reunião</option>
+                  <option value="diligencia">Diligência</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Prioridade</label>
+                <select
+                  className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                  value={confirmNewActivity?.priority || 'normal'}
+                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, priority: e.target.value } : prev)}
+                >
+                  <option value="baixa">Baixa</option>
+                  <option value="normal">Normal</option>
+                  <option value="alta">Alta</option>
+                  <option value="urgente">Urgente</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Deadline and Notification date */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">📅 Prazo *</label>
+                <Input
+                  type="datetime-local"
+                  value={confirmNewActivity?.deadline || ''}
+                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, deadline: e.target.value } : prev)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">🔔 Notificação</label>
+                <Input
+                  type="datetime-local"
+                  value={confirmNewActivity?.notification_date || ''}
+                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, notification_date: e.target.value } : prev)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Eisenhower */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Eisenhower</label>
+              <select
+                className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                value={confirmNewActivity?.matrix_quadrant || 'schedule'}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, matrix_quadrant: e.target.value } : prev)}
+              >
+                <option value="do_now">🔥 Faça Agora</option>
+                <option value="schedule">📅 Agende</option>
+                <option value="delegate">🤝 Delegue</option>
+                <option value="eliminate">🗑️ Retire</option>
+              </select>
+            </div>
+
+            {/* Suggested lead/contact */}
+            {(confirmNewActivity?.suggested_lead_name || confirmNewActivity?.suggested_contact_name) && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/30 p-2 space-y-1">
+                <span className="text-xs font-medium text-foreground">Sugestões de vínculo</span>
+                {confirmNewActivity?.suggested_lead_name && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Briefcase className="h-3 w-3" /> Lead: {confirmNewActivity.suggested_lead_name}
                   </div>
                 )}
-                {confirmNewActivity?.activity_type && (
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium text-foreground">Tipo</span>
-                    <span className="text-right text-muted-foreground">{confirmNewActivity.activity_type}</span>
-                  </div>
-                )}
-                {confirmNewActivity?.priority && (
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium text-foreground">Prioridade</span>
-                    <span className="text-right text-muted-foreground">{confirmNewActivity.priority}</span>
-                  </div>
-                )}
-                {confirmNewActivity?.deadline && (
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium text-foreground">Prazo</span>
-                    <span className="text-right text-muted-foreground">{confirmNewActivity.deadline}</span>
-                  </div>
-                )}
-                {confirmNewActivity?.matrix_quadrant && (
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium text-foreground">Eisenhower</span>
-                    <span className="text-right text-muted-foreground">
-                      {{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[confirmNewActivity.matrix_quadrant as string] || confirmNewActivity.matrix_quadrant}
-                    </span>
-                  </div>
-                )}
-                {confirmNewActivity?.notes && (
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">Descrição</span>
-                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.notes}</span>
-                  </div>
-                )}
-                {confirmNewActivity?.what_was_done && (
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">O que foi feito</span>
-                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.what_was_done}</span>
-                  </div>
-                )}
-                {confirmNewActivity?.next_steps && (
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium text-foreground">Próximos passos</span>
-                    <span className="text-muted-foreground text-xs whitespace-pre-wrap">{confirmNewActivity.next_steps}</span>
+                {confirmNewActivity?.suggested_contact_name && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <User className="h-3 w-3" /> Contato: {confirmNewActivity.suggested_contact_name}
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Description */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Descrição</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[60px] resize-none"
+                value={confirmNewActivity?.notes || ''}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, notes: e.target.value } : prev)}
+                placeholder="Descrição da atividade..."
+              />
             </div>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
+
+            {/* What was done */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">O que foi feito</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[50px] resize-none"
+                value={confirmNewActivity?.what_was_done || ''}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, what_was_done: e.target.value } : prev)}
+                placeholder="O que já foi realizado..."
+              />
+            </div>
+
+            {/* Current status */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Observações</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[50px] resize-none"
+                value={confirmNewActivity?.current_status_notes || ''}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, current_status_notes: e.target.value } : prev)}
+                placeholder="Situação atual..."
+              />
+            </div>
+
+            {/* Next steps */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Próximos passos</label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[50px] resize-none"
+                value={confirmNewActivity?.next_steps || ''}
+                onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, next_steps: e.target.value } : prev)}
+                placeholder="O que precisa ser feito..."
+              />
+            </div>
+          </div>
+        </ScrollArea>
+        <AlertDialogFooter className="shrink-0 pt-2 border-t">
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
@@ -1490,6 +1578,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
               }
               setConfirmNewActivity(null);
             }}
+            disabled={!confirmNewActivity?.title?.trim() || !confirmNewActivity?.deadline}
           >
             <Check className="h-3.5 w-3.5 mr-1" />
             Confirmar e Criar
