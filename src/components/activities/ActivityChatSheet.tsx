@@ -305,7 +305,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
     const stableActivityId = activityId || contextData.activity?.id || null;
     const stableLeadId = leadId || contextData.lead?.id || null;
-    if (!stableActivityId && !stableLeadId) return;
+    console.log('[Chat] sendMessage IDs:', { activityId, leadId, stableActivityId, stableLeadId, contextActivity: contextData.activity?.id });
+    if (!stableActivityId && !stableLeadId) {
+      console.error('[Chat] Cannot send: no activityId or leadId available');
+      toast.error('Erro: atividade não identificada. Reabra o chat.');
+      return;
+    }
     setSending(true);
     try {
       const { error } = await supabase.from('activity_chat_messages').insert({
