@@ -124,6 +124,17 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     return sorted.length > 0 && sorted[0].direction === 'inbound';
   };
 
+  const isGroupConversation = (conv: WhatsAppConversation) => {
+    if (conv.phone.includes('@g.us')) return true;
+    return conv.messages.some(msg => {
+      const meta = msg.metadata;
+      if (!meta) return false;
+      return meta?.chat?.wa_isGroup === true
+        || meta?.message?.isGroup === true
+        || (meta?.chat?.wa_chatid || '').includes('@g.us');
+    });
+  };
+
   const getLastInboundAt = (conv: WhatsAppConversation) => {
     const sorted = [...conv.messages].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -147,7 +158,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     if (quickFilter === 'no_lead' && c.lead_id) return false;
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
-    if (quickFilter === 'groups' && !c.phone.includes('@g.us')) return false;
+    if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
@@ -246,7 +257,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     no_lead: conversations.filter(c => !c.lead_id).length,
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
-    groups: conversations.filter(c => c.phone.includes('@g.us')).length,
+    groups: conversations.filter(c => isGroupConversation(c)).length,
   };
 
   if (loading) {
