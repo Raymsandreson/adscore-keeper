@@ -16,6 +16,7 @@ import { CommissionGoals } from '@/components/team/CommissionGoals';
 import { MemberRoutineManager } from '@/components/team/MemberRoutineManager';
 import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstancePermissions';
 import { CareerPlanManager } from '@/components/team/CareerPlanManager';
+import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import {
   Users,
   BarChart3,
@@ -31,6 +32,7 @@ import {
   CalendarClock,
   MessageSquare,
   GraduationCap,
+  TrendingUp,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -61,7 +63,7 @@ export default function TeamPage() {
 
   // All authenticated users can access - admin-only tabs are filtered below
   const availableTabs = isAdmin
-    ? ['productivity', 'commission', 'evaluations', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
+    ? ['productivity', 'commission', 'evaluations', 'traffic', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
     : ['productivity', 'members', 'teams'];
 
   return (
@@ -97,6 +99,12 @@ export default function TeamPage() {
               <TabsTrigger value="evaluations" className="gap-2 shrink-0">
                 <Star className="h-4 w-4" />
                 <span className="hidden sm:inline">Avaliações</span>
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="traffic" className="gap-2 shrink-0">
+                <TrendingUp className="h-4 w-4" />
+                <span className="hidden sm:inline">Tráfego</span>
               </TabsTrigger>
             )}
             <TabsTrigger value="members" className="gap-2 shrink-0">
@@ -155,6 +163,10 @@ export default function TeamPage() {
 
           <TabsContent value="evaluations">
             <WeeklyEvaluations />
+          </TabsContent>
+
+          <TabsContent value="traffic">
+            <TrafficActivityPanel />
           </TabsContent>
 
           <TabsContent value="members">
