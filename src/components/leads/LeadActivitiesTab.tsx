@@ -187,6 +187,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
         status: 'pendente',
         priority: activityData.priority || 'normal',
         deadline: activityData.deadline || null,
+        notification_date: activityData.notification_date || null,
         description: activityData.notes || null,
         what_was_done: activityData.what_was_done || null,
         current_status_notes: activityData.current_status_notes || null,
