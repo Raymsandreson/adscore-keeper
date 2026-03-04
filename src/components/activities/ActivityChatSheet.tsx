@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   Send, Mic, MicOff, Paperclip, Image, FileText, Sparkles, Loader2, Play, Pause, X, Check, Download, Phone, PhoneOff,
   Info, User, Briefcase, MapPin, Calendar, ArrowRight, PhoneCall, FileSearch, CalendarCheck, Mail, CheckCircle, Search,
-  RefreshCw, Settings2, Trash2, Ban, Plus, MessageCircle,
+  RefreshCw, Settings2, Trash2, Ban, Plus, MessageCircle, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -803,6 +803,33 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     toast.success('Sugestão aplicada nos campos!');
   };
 
+  const getEntityLink = (type: 'activity' | 'lead' | 'contact', id: string | null | undefined) => {
+    if (!id) return null;
+    const base = window.location.origin;
+    switch (type) {
+      case 'activity': return `${base}/?openActivity=${id}`;
+      case 'lead': return `${base}/leads?openLead=${id}`;
+      case 'contact': return `${base}/leads?tab=contacts&openContact=${id}`;
+    }
+  };
+
+  const EntityLinkButton = ({ type, id, label }: { type: 'activity' | 'lead' | 'contact'; id: string | null | undefined; label: string }) => {
+    const link = getEntityLink(type, id);
+    if (!link) return null;
+    return (
+      <a
+        href={link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 hover:underline font-medium"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ExternalLink className="h-2.5 w-2.5" />
+        {label}
+      </a>
+    );
+  };
+
   const getActionIcon = (icon: string) => {
     switch (icon) {
       case 'phone': return <PhoneCall className="h-3.5 w-3.5" />;
@@ -907,8 +934,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Preencher campos da atividade</div>
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {Object.keys(rawSuggestion.activity_fields).length} campo(s) sugerido(s)
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="truncate">{Object.keys(rawSuggestion.activity_fields).length} campo(s) sugerido(s)</span>
+                          <EntityLinkButton type="activity" id={activityId} label="Abrir atividade" />
                         </div>
                       </div>
                       <Check className="h-3.5 w-3.5 text-primary shrink-0" />
@@ -932,8 +960,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Atualizar campos do Lead</div>
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {Object.entries(rawSuggestion.lead_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="truncate">{Object.entries(rawSuggestion.lead_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}</span>
+                          <EntityLinkButton type="lead" id={leadId || contextData.lead?.id} label="Abrir lead" />
                         </div>
                       </div>
                       <Check className="h-3.5 w-3.5 text-amber-600 shrink-0" />
@@ -957,8 +986,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Atualizar campos do Contato</div>
-                        <div className="text-[10px] text-muted-foreground truncate">
-                          {Object.entries(rawSuggestion.contact_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="truncate">{Object.entries(rawSuggestion.contact_fields).map(([k, v]) => `${k}: ${v}`).join(', ')}</span>
+                          <EntityLinkButton type="contact" id={contextData.contact?.id} label="Abrir contato" />
                         </div>
                       </div>
                       <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
