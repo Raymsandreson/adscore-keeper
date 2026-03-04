@@ -2223,6 +2223,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           const bgColor = block.cfg.color || 'bg-muted-foreground';
                           const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
                           const count = block.items.length;
+                          const openCount = block.items.filter(a => a.status !== 'concluida').length;
+                          const doneCount = count - openCount;
                           const blockKey = `${dayIdx}::${block.cfg.activityType}`;
                           const isSelected = selectedBlockKey === blockKey;
 
@@ -2246,6 +2248,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             >
                               <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
                               <div className="text-lg font-bold leading-none">{count}</div>
+                              {count > 0 && (
+                                <div className="flex items-center gap-1 text-[9px] font-semibold mt-0.5">
+                                  <span className="opacity-90">○{openCount}</span>
+                                  <span className="opacity-60">✓{doneCount}</span>
+                                </div>
+                              )}
                               {block.heightPx > 50 && (
                                 <div className="text-[8px] opacity-70 mt-0.5">
                                   {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
