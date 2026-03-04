@@ -43,39 +43,34 @@ interface QueuedActivity {
   metadata: Record<string, any>;
 }
 
-const BATCH_INTERVAL = 5000; // Flush every 5 seconds
+const BATCH_INTERVAL = 5000;
 const MAX_BATCH_SIZE = 20;
+
+// Module-level queue to avoid hook count changes
+const activityQueue: QueuedActivity[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function flushQueue() {
+  if (activityQueue.length === 0) return;
+  const batch = activityQueue.splice(0, MAX_BATCH_SIZE);
+  try {
+    const { error } = await supabase.from('user_activity_log').insert(batch);
+    if (error) console.error('Error flushing activity batch:', error);
+  } catch (error) {
+    console.error('Error flushing activity batch:', error);
+  }
+}
+
+function scheduleFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushQueue();
+  }, BATCH_INTERVAL);
+}
 
 export function useActivityLogger() {
   const { user } = useAuthContext();
-  const queueRef = useRef<QueuedActivity[]>([]);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const flush = useCallback(async () => {
-    if (queueRef.current.length === 0) return;
-    
-    const batch = queueRef.current.splice(0, MAX_BATCH_SIZE);
-    
-    try {
-      const { error } = await supabase
-        .from('user_activity_log')
-        .insert(batch);
-
-      if (error) {
-        console.error('Error flushing activity batch:', error);
-      }
-    } catch (error) {
-      console.error('Error flushing activity batch:', error);
-    }
-  }, []);
-
-  const scheduleFlush = useCallback(() => {
-    if (timerRef.current) return;
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      flush();
-    }, BATCH_INTERVAL);
-  }, [flush]);
 
   const logActivity = useCallback(({
     actionType,
@@ -85,7 +80,7 @@ export function useActivityLogger() {
   }: LogActivityParams) => {
     if (!user) return;
 
-    queueRef.current.push({
+    activityQueue.push({
       user_id: user.id,
       action_type: actionType,
       entity_type: entityType,
@@ -93,13 +88,12 @@ export function useActivityLogger() {
       metadata,
     });
 
-    // Flush immediately if batch is full, otherwise schedule
-    if (queueRef.current.length >= MAX_BATCH_SIZE) {
-      flush();
+    if (activityQueue.length >= MAX_BATCH_SIZE) {
+      flushQueue();
     } else {
       scheduleFlush();
     }
-  }, [user, flush, scheduleFlush]);
+  }, [user]);
 
   return { logActivity };
 }
