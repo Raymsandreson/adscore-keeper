@@ -342,6 +342,7 @@ const ActivitiesPage = () => {
       contact_name: formContactName || null,
     };
 
+    let createdActivityId: string | null = null;
     if (formRepeatWeekDays.length > 0 && formDeadline) {
       // Create one activity per selected day of the week, starting from the deadline week
       const baseDate = parseISO(formDeadline);
@@ -350,20 +351,23 @@ const ActivitiesPage = () => {
       for (const dayIdx of formRepeatWeekDays) {
         const targetDate = addDays(weekStart, dayIdx);
         const dateStr = format(targetDate, 'yyyy-MM-dd');
-        await createActivity({
+        const result = await createActivity({
           ...baseData,
           deadline: dateStr,
           notification_date: dateStr,
         });
+        if (!createdActivityId && result?.id) createdActivityId = result.id;
       }
       toast.success(`${formRepeatWeekDays.length} atividades criadas para a semana!`);
     } else {
-      await createActivity({
+      const result = await createActivity({
         ...baseData,
         deadline: formDeadline || null,
         notification_date: formNotificationDate || null,
       });
+      if (result?.id) createdActivityId = result.id;
     }
+
 
     // If created for another assignee, add them to the filter so the activities are visible
     if (formAssignedTo && formAssignedTo !== user?.id && !filterAssignee.includes(formAssignedTo)) {
@@ -1497,8 +1501,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={startWorkflow} title="Workflow">
             <Play className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => { resetForm(); setSheetMode('create'); }} title="Nova atividade">
-            <Plus className="h-4 w-4" />
+          <Button size="sm" className="bg-white text-primary font-semibold hover:bg-white/90 gap-1 shadow-sm" onClick={() => { resetForm(); setSheetMode('create'); }}>
+            <Plus className="h-4 w-4" /> Nova Atividade
           </Button>
           <UserMenu />
         </div>
@@ -2714,7 +2718,60 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               ) : (
                 <div className="flex items-center justify-between max-w-2xl">
                   <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={closeSheet}>Cancelar</Button>
-                  <Button size="sm" className="h-8 text-xs" onClick={handleCreate}>Criar</Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1"
+                      onClick={async () => {
+                        // Auto-create the activity first, then open chat in edit mode
+                        if (!formTitle.trim()) {
+                          toast.error('Informe o assunto antes de abrir o chat');
+                          return;
+                        }
+                        if (!formType) {
+                          toast.error('Selecione o tipo de atividade antes de abrir o chat');
+                          return;
+                        }
+                        try {
+                          const result = await createActivity({
+                            title: formTitle,
+                            description: null,
+                            what_was_done: formWhatWasDone || null,
+                            current_status_notes: formCurrentStatus || null,
+                            next_steps: formNextSteps || null,
+                            activity_type: formType,
+                            priority: formPriority,
+                            lead_id: formLeadId || null,
+                            lead_name: formLeadName || null,
+                            assigned_to: formAssignedTo || null,
+                            assigned_to_name: formAssignedToName || null,
+                            notes: formNotes || null,
+                            contact_id: formContactId || null,
+                            contact_name: formContactName || null,
+                            deadline: formDeadline || null,
+                            notification_date: formNotificationDate || null,
+                          });
+                          if (result) {
+                            // Switch to edit mode with the created activity
+                            const createdActivity = result as LeadActivity;
+                            setSelectedActivity(createdActivity);
+                            setSelectedActivityId(createdActivity.id);
+                            setSheetMode('edit');
+                            fetchActivities(getFilterParams());
+                            setChatOpen(true);
+                          }
+                        } catch {
+                          // Error already toasted by createActivity
+                        }
+                      }}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" /> Chat
+                    </Button>
+                    <Button size="sm" className="h-8 text-xs gap-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold" onClick={handleCreate}>
+                      <Plus className="h-3.5 w-3.5" /> Criar
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
