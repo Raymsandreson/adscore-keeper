@@ -1,27 +1,73 @@
 
 
-## Plano: Botão "Criar Atividade" destacado + Chat com mídias no modo criação
+## Plano: Integração Meta BM com Rotina de Tráfego Pago e Produtividade
 
-### O que será feito
+### Contexto
+Você quer que os dados da Meta Business Manager (leads qualificados, leads chegados, criativos subidos) sejam puxados diariamente e contabilizados como métricas de produtividade dentro da rotina de tráfego pago. Além disso, quer uma aba editável para registrar o que foi feito e o que está dando certo.
 
-1. **Botão "Criar Atividade" mais destacado**
-   - No header da página, trocar o botão de ícone discreto (`variant="ghost"`) por um botão com texto visível, cor de destaque (primária) e ícone `Plus`.
-   - Na barra de ação do formulário (modo `create`), destacar o botão "Criar" com cor mais forte e ícone.
+### Arquitetura
 
-2. **Chat com suporte a mídias no modo criação**
-   - Atualmente o botão "Chat" só aparece no modo `edit` (quando a atividade já existe). No modo `create`, ele não existe.
-   - Adicionar o botão "Chat" também na barra de ação do modo `create`, abrindo o `ActivityChatSheet` em modo de criação (sem `activityId`, usando um ID temporário ou `null`).
-   - O `ActivityChatSheet` já suporta mídias (imagens, PDFs, áudio) — basta disponibilizá-lo no fluxo de criação.
-   - Após criar a atividade, migrar as mensagens de chat do ID temporário para o ID real da atividade criada.
+```text
+┌─────────────────────────────────────────────┐
+│         Edge Function (CRON diário)         │
+│  meta-daily-sync                            │
+│  - Puxa dados da Meta API (server-side)     │
+│  - Salva em tabela: meta_daily_metrics      │
+│  - Métricas: leads, leads qualificados,     │
+│    criativos ativos                         │
+└───────────────┬─────────────────────────────┘
+                │
+┌───────────────▼─────────────────────────────┐
+│       Tabela: meta_daily_metrics            │
+│  user_id, date, leads_received,             │
+│  leads_qualified, creatives_uploaded,        │
+│  notes, what_worked, next_actions           │
+└───────────────┬─────────────────────────────┘
+                │
+┌───────────────▼─────────────────────────────┐
+│  Integração na Produtividade                │
+│  - Novas métricas no useTeamProductivity    │
+│  - Visível no Dashboard + Banner            │
+│  - Conta na % de produtividade da rotina    │
+└─────────────────────────────────────────────┘
+```
 
-### Mudanças técnicas
+### Etapas de Implementação
 
-**`src/pages/ActivitiesPage.tsx`:**
-- **Linha ~1500**: Substituir o `Button variant="ghost" size="icon"` por um botão destacado: `<Button size="sm" className="bg-white text-primary font-semibold hover:bg-white/90 gap-1"><Plus /> Nova Atividade</Button>`
-- **Linha ~2714-2718**: No bloco `sheetMode === 'create'`, adicionar botão "Chat" (igual ao do modo edit) antes do botão "Criar", e destacar o botão "Criar" com ícone e cor.
-- **Estado**: Usar um `tempChatKey` (ex: `temp_${Date.now()}`) quando o chat é aberto no modo criação, para que mensagens sejam salvas com esse identificador temporário.
-- **Após `handleCreate`**: Se o chat foi usado, atualizar as mensagens no banco migrando o `activity_id` de `null` / temporário para o ID real retornado pelo `createActivity`.
+**1. Tabela `meta_daily_metrics`**
+- `id`, `user_id`, `date`, `account_id`
+- Métricas automáticas: `leads_received`, `leads_qualified`, `creatives_active`, `spend`, `impressions`, `clicks`
+- Campos editáveis: `notes` (o que fiz), `what_worked` (o que deu certo), `next_actions` (próximos passos), `manual_creatives_uploaded`
+- RLS: usuário vê seus próprios dados, admin vê todos
 
-**`src/components/activities/ActivityChatSheet.tsx`:**
-- Já funciona com `activityId: null` e `leadId: null` — usa `leadId` como fallback. Precisará aceitar um `tempKey` opcional para o caso de criação sem ID.
+**2. Edge Function `meta-daily-sync`**
+- Executa via CRON diário (pg_cron)
+- Busca config da Meta (token + account_id) da tabela existente ou secrets
+- Chama a Graph API server-side (sem CORS)
+- Calcula leads recebidos (action_type = lead), leads qualificados (filtro por conversões), criativos ativos
+- Insere/atualiza `meta_daily_metrics` para o dia
+
+**3. Novo componente `TrafficActivityPanel`**
+- Aba dentro da página de Atividades ou Dashboard de Tráfego Pago
+- Exibe métricas diárias (automáticas da Meta)
+- Campos editáveis: "O que fiz hoje", "O que está dando certo", "Criativos subidos manualmente"
+- Histórico por data com possibilidade de edição
+
+**4. Integração com Produtividade**
+- Adicionar métricas `leadsReceived`, `leadsQualified`, `creativesUploaded` ao `useTeamProductivity`
+- Registrar como `activity_log` entries para contar na % de produtividade
+- Vincular ao tipo de atividade "tráfego pago" na rotina do membro
+- Aparece no banner de produtividade e no dashboard da equipe
+
+**5. Configuração de Metas (CommissionGoals)**
+- Adicionar metas de ação diária: leads recebidos, leads qualificados, criativos subidos
+- Permitir definir targets por membro
+
+### Detalhes Técnicos
+
+- A Edge Function usa os secrets `META_ACCESS_TOKEN` já configurados
+- Precisará de uma tabela `meta_account_configs` para mapear qual account_id pertence a qual user_id (caso múltiplos gestores)
+- O CRON roda 1x/dia às 23:00 para capturar dados do dia
+- Os campos editáveis são salvos via update direto na tabela pelo frontend
+- As métricas automáticas da Meta são read-only no frontend
 
