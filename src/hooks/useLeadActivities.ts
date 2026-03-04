@@ -27,6 +27,7 @@ export interface LeadActivity {
   updated_at: string;
   contact_id: string | null;
   contact_name: string | null;
+  matrix_quadrant: string | null;
 }
 
 export function useLeadActivities() {
@@ -113,6 +114,7 @@ export function useLeadActivities() {
           what_was_done: activity.what_was_done || null,
           current_status_notes: activity.current_status_notes || null,
           next_steps: activity.next_steps || null,
+          matrix_quadrant: activity.matrix_quadrant || null,
         } as any)
         .select()
         .single();

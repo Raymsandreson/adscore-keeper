@@ -2726,45 +2726,41 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       size="sm"
                       className="h-8 text-xs gap-1"
                       onClick={async () => {
-                        // Auto-create the activity first, then open chat in edit mode
-                        if (!formTitle.trim()) {
-                          toast.error('Informe o assunto antes de abrir o chat');
-                          return;
-                        }
-                        if (!formType) {
-                          toast.error('Selecione o tipo de atividade antes de abrir o chat');
-                          return;
-                        }
-                        try {
-                          const result = await createActivity({
-                            title: formTitle,
-                            description: null,
-                            what_was_done: formWhatWasDone || null,
-                            current_status_notes: formCurrentStatus || null,
-                            next_steps: formNextSteps || null,
-                            activity_type: formType,
-                            priority: formPriority,
-                            lead_id: formLeadId || null,
-                            lead_name: formLeadName || null,
-                            assigned_to: formAssignedTo || null,
-                            assigned_to_name: formAssignedToName || null,
-                            notes: formNotes || null,
-                            contact_id: formContactId || null,
-                            contact_name: formContactName || null,
-                            deadline: formDeadline || null,
-                            notification_date: formNotificationDate || null,
-                          });
-                          if (result) {
-                            // Switch to edit mode with the created activity
-                            const createdActivity = result as LeadActivity;
-                            setSelectedActivity(createdActivity);
-                            setSelectedActivityId(createdActivity.id);
-                            setSheetMode('edit');
-                            fetchActivities(getFilterParams());
-                            setChatOpen(true);
+                        // If we have title+type, create first then open chat in edit mode
+                        if (formTitle.trim() && formType) {
+                          try {
+                            const result = await createActivity({
+                              title: formTitle,
+                              description: null,
+                              what_was_done: formWhatWasDone || null,
+                              current_status_notes: formCurrentStatus || null,
+                              next_steps: formNextSteps || null,
+                              activity_type: formType,
+                              priority: formPriority,
+                              lead_id: formLeadId || null,
+                              lead_name: formLeadName || null,
+                              assigned_to: formAssignedTo || null,
+                              assigned_to_name: formAssignedToName || null,
+                              notes: formNotes || null,
+                              contact_id: formContactId || null,
+                              contact_name: formContactName || null,
+                              deadline: formDeadline || null,
+                              notification_date: formNotificationDate || null,
+                            });
+                            if (result) {
+                              const createdActivity = result as LeadActivity;
+                              setSelectedActivity(createdActivity);
+                              setSelectedActivityId(createdActivity.id);
+                              setSheetMode('edit');
+                              fetchActivities(getFilterParams());
+                              setChatOpen(true);
+                            }
+                          } catch {
+                            // Error already toasted by createActivity
                           }
-                        } catch {
-                          // Error already toasted by createActivity
+                        } else {
+                          // Open chat directly without requiring fields - AI will handle it
+                          setChatOpen(true);
                         }
                       }}
                     >
@@ -2785,13 +2781,43 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
         open={chatOpen}
         onOpenChange={setChatOpen}
         activityId={selectedActivity?.id || null}
-        leadId={selectedActivity?.lead_id || null}
+        leadId={selectedActivity?.lead_id || formLeadId || null}
         activityTitle={selectedActivity?.title || formTitle}
         onApplySuggestion={(suggestion) => {
           if (suggestion.what_was_done) setFormWhatWasDone(suggestion.what_was_done);
           if (suggestion.current_status_notes) setFormCurrentStatus(suggestion.current_status_notes);
           if (suggestion.next_steps) setFormNextSteps(suggestion.next_steps);
           if (suggestion.notes) setFormNotes(suggestion.notes);
+        }}
+        onCreateActivity={async (activityData) => {
+          try {
+            const result = await createActivity({
+              title: activityData.title || 'Nova atividade',
+              description: activityData.notes || null,
+              what_was_done: activityData.what_was_done || null,
+              current_status_notes: activityData.current_status_notes || null,
+              next_steps: activityData.next_steps || null,
+              activity_type: activityData.activity_type || formType || 'tarefa',
+              priority: activityData.priority || 'normal',
+              lead_id: activityData.lead_id || formLeadId || null,
+              lead_name: activityData.lead_name || formLeadName || null,
+              assigned_to: formAssignedTo || null,
+              assigned_to_name: formAssignedToName || null,
+              notes: activityData.notes || null,
+              contact_id: activityData.contact_id || formContactId || null,
+              contact_name: activityData.contact_name || formContactName || null,
+              deadline: activityData.deadline || null,
+              notification_date: null,
+              matrix_quadrant: activityData.matrix_quadrant || null,
+            });
+            if (result) {
+              const createdActivity = result as LeadActivity;
+              setSelectedActivity(createdActivity);
+              setSelectedActivityId(createdActivity.id);
+              setSheetMode('edit');
+              fetchActivities(getFilterParams());
+            }
+          } catch { /* error toasted */ }
         }}
       />
 
