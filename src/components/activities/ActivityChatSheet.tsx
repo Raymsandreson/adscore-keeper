@@ -75,14 +75,14 @@ interface ActivityChatSheetProps {
 export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion, onApplyLeadFields, onApplyContactFields, onCreateActivity }: ActivityChatSheetProps) {
   const { user } = useAuthContext();
   
-  // Get stable conversation scope IDs - falls back to user-scoped virtual ID for general chat
+  // Get stable conversation scope IDs - general chat uses null IDs + sender_id filter
   const getConversationScope = useCallback(() => {
     const effActivityId = activityId || null;
     const effLeadId = leadId || null;
-    if (effActivityId || effLeadId) return { activity_id: effActivityId, lead_id: effLeadId };
-    // General chat: use user-scoped virtual lead_id (no FK constraint on this column)
-    if (user?.id) return { activity_id: null, lead_id: `chat_user_${user.id}` };
-    return { activity_id: null, lead_id: null };
+    if (effActivityId || effLeadId) return { activity_id: effActivityId, lead_id: effLeadId, isGeneralChat: false };
+    // General chat: both IDs null, filter by sender_id
+    if (user?.id) return { activity_id: null, lead_id: null, isGeneralChat: true };
+    return { activity_id: null, lead_id: null, isGeneralChat: false };
   }, [activityId, leadId, user?.id]);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -136,12 +136,19 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   // Fetch messages
   const fetchMessages = useCallback(async () => {
     const scope = getConversationScope();
-    if (!scope.activity_id && !scope.lead_id) return;
+    if (!scope.activity_id && !scope.lead_id && !scope.isGeneralChat) return;
     setLoading(true);
     try {
       let query = supabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
-      if (scope.activity_id) query = query.eq('activity_id', scope.activity_id);
-      else if (scope.lead_id) query = query.eq('lead_id', scope.lead_id);
+      if (scope.isGeneralChat) {
+        // General chat: messages with both IDs null, belonging to this user (or from AI)
+        query = query.is('activity_id', null).is('lead_id', null)
+          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
+      } else if (scope.activity_id) {
+        query = query.eq('activity_id', scope.activity_id);
+      } else if (scope.lead_id) {
+        query = query.eq('lead_id', scope.lead_id);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -151,7 +158,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setLoading(false);
     }
-  }, [getConversationScope]);
+  }, [getConversationScope, user?.id]);
 
   // Fetch AI action suggestions
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
@@ -313,7 +320,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
     const scope = getConversationScope();
-    if (!scope.activity_id && !scope.lead_id) {
+    if (!scope.activity_id && !scope.lead_id && !scope.isGeneralChat) {
       toast.error('Erro: faça login para usar o chat.');
       return;
     }
