@@ -315,6 +315,22 @@ Responda em português do Brasil.`;
     if (mode === "assistant") {
       const { chat_history, activity_context, lead_context, contact_context, activity_history } = context || {};
 
+      // Fetch registered users (assessors) and activity types from DB
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const sb = createClient(supabaseUrl, supabaseKey);
+
+      const [profilesRes, typesRes] = await Promise.all([
+        sb.from("profiles").select("user_id, full_name").order("full_name"),
+        sb.from("activity_types").select("key, label").eq("is_active", true).order("display_order"),
+      ]);
+
+      const assessors = (profilesRes.data || []).filter((p: any) => p.full_name);
+      const actTypes = (typesRes.data || []);
+      const assessorsList = assessors.map((a: any) => `- "${a.full_name}" (id: ${a.user_id})`).join("\n");
+      const actTypesList = actTypes.map((t: any) => `"${t.key}" (${t.label})`).join(", ");
+      const actTypeKeys = actTypes.map((t: any) => t.key);
+
       const systemPrompt = `Você é o assistente IA de um CRM jurídico trabalhista (Abraci). Você está conversando com um assessor sobre uma atividade/caso.
 
 CONTEXTO ATUAL:
@@ -322,6 +338,14 @@ ${activity_context ? `Atividade: ${JSON.stringify(activity_context)}` : 'Sem ati
 ${lead_context ? `Lead/Caso: ${JSON.stringify(lead_context)}` : 'Sem lead vinculado'}
 ${contact_context ? `Contato: ${JSON.stringify(contact_context)}` : 'Sem contato vinculado'}
 ${activity_history?.length ? `Histórico de atividades recentes do lead:\n${activity_history.map((a: any) => `- ${a.title} (${a.status}) - ${a.activity_type} - ${a.deadline || ''} - ${a.what_was_done || ''}`).join('\n')}\n\nTotal de atividades pendentes: ${activity_history.filter((a: any) => a.status === 'pendente').length}\nTotal em andamento: ${activity_history.filter((a: any) => a.status === 'em_andamento').length}\nTotal concluídas: ${activity_history.filter((a: any) => a.status === 'concluida').length}` : ''}
+
+ASSESSORES CADASTRADOS (usuários do sistema):
+${assessorsList}
+- Quando o assessor mencionar um nome, identifique qual assessor cadastrado corresponde
+- Se houver dúvida (nome ambíguo ou parcial), pergunte qual assessor ele quis dizer
+- Use o user_id para preencher o campo assigned_to e o full_name para assigned_to_name
+
+TIPOS DE ATIVIDADE DISPONÍVEIS: ${actTypesList}
 
 SEU PAPEL:
 1. Guie o assessor sobre como prosseguir com o caso
@@ -335,6 +359,7 @@ SEU PAPEL:
 9. TODA atividade DEVE ter prazo (deadline) e data de notificação (notification_date). A notificação geralmente é 1 dia antes do prazo. Use formato YYYY-MM-DDTHH:mm.
 10. Sugira leads e contatos para vincular à atividade quando o contexto indicar (suggested_lead_name, suggested_contact_name)
 11. Preencha TODOS os campos possíveis: descrição (notes), o que foi feito (what_was_done), observações (current_status_notes) e próximos passos (next_steps)
+12. Quando o assessor mencionar alguém para atribuir a atividade, identifique o assessor cadastrado e preencha assigned_to (user_id) e assigned_to_name
 
 MATRIZ DE EISENHOWER:
 - do_now (🔥 Faça Agora): Urgente + Importante — prazos judiciais próximos, audiências iminentes
@@ -437,7 +462,7 @@ SUGESTÕES DE CONTINUAÇÃO (OBRIGATÓRIO):
                     next_steps: { type: "string" },
                     notes: { type: "string" },
                     priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
-                    activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
+                    activity_type: { type: "string", enum: actTypeKeys.length > 0 ? actTypeKeys : ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
                   },
                   additionalProperties: false,
                 },
@@ -476,11 +501,13 @@ SUGESTÕES DE CONTINUAÇÃO (OBRIGATÓRIO):
                 },
                 new_activity: {
                   type: "object",
-                  description: "Sugere criação de uma nova atividade. Use quando o assessor mencionar uma tarefa futura ou quando estiver criando uma atividade via chat. SEMPRE inclua matrix_quadrant. SEMPRE inclua deadline (prazo da atividade) e notification_date (data de notificação/lembrete, geralmente 1 dia antes do deadline). Sugira lead_name e contact_name quando o contexto indicar.",
+                  description: "Sugere criação de uma nova atividade. Use quando o assessor mencionar uma tarefa futura ou quando estiver criando uma atividade via chat. SEMPRE inclua matrix_quadrant. SEMPRE inclua deadline (prazo da atividade) e notification_date (data de notificação/lembrete, geralmente 1 dia antes do deadline). Sugira lead_name e contact_name quando o contexto indicar. Quando o assessor mencionar um nome para atribuir, identifique o assessor cadastrado e preencha assigned_to e assigned_to_name.",
                   properties: {
                     title: { type: "string" },
-                    activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
+                    activity_type: { type: "string", enum: actTypeKeys.length > 0 ? actTypeKeys : ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
                     priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
+                    assigned_to: { type: "string", description: "user_id do assessor responsável pela atividade. Use o ID da lista de assessores cadastrados." },
+                    assigned_to_name: { type: "string", description: "Nome completo do assessor responsável pela atividade." },
                     what_was_done: { type: "string" },
                     current_status_notes: { type: "string" },
                     next_steps: { type: "string" },
