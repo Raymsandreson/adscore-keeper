@@ -19,6 +19,8 @@ export interface MyProductivity {
   activitiesOverdue: number;
   sessionMinutes: number;
   totalActions: number;
+  metaLeadsGenerated: number;
+  metaROAS: number;
 }
 
 export interface MyDailyGoals {
@@ -38,7 +40,7 @@ const emptyProductivity: MyProductivity = {
   commentReplies: 0, dmsSent: 0, contactsCreated: 0, leadsCreated: 0,
   leadsClosed: 0, leadsProgressed: 0, callsMade: 0, callsAnswered: 0, callsUnanswered: 0,
   stageChanges: 0, checklistItemsChecked: 0, activitiesCompleted: 0, activitiesOverdue: 0,
-  sessionMinutes: 0, totalActions: 0,
+  sessionMinutes: 0, totalActions: 0, metaLeadsGenerated: 0, metaROAS: 0,
 };
 
 const hardcodedDefaults: MyDailyGoals = {
@@ -201,6 +203,8 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         sessionMinutes,
         totalActions: contacts.length + dmsSent + totalCommentReplies + leads.length +
           callsMade + checklistItemsChecked + completedActivities.length - overdueActivities.length,
+        metaLeadsGenerated: 0,
+        metaROAS: 0,
       };
 
       setData(prod);
@@ -356,5 +360,9 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
     return Math.round(best);
   })();
 
-  return { data, goals, goalProgress, loading, refetch: fetchData };
+  const updateMetaMetrics = useCallback((metaLeadsGenerated: number, metaROAS: number) => {
+    setData(prev => ({ ...prev, metaLeadsGenerated, metaROAS }));
+  }, []);
+
+  return { data, goals, goalProgress, loading, refetch: fetchData, updateMetaMetrics };
 }

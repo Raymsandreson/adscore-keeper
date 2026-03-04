@@ -500,6 +500,8 @@ export function UserProductivityBanner() {
     { key: 'stageChanges' as MetricKey, label: 'Fases', value: data.stageChanges, icon: ArrowRightLeft, color: 'text-amber-500' },
     { key: 'leadsClosed' as MetricKey, label: 'Fechados', value: data.leadsClosed, icon: Trophy, color: 'text-yellow-500' },
     { key: 'contactsCreated' as MetricKey, label: 'Contatos', value: data.contactsCreated, icon: Users, color: 'text-teal-500' },
+    ...(data.metaLeadsGenerated > 0 ? [{ key: 'leadsCreated' as MetricKey, label: 'Leads Meta', value: data.metaLeadsGenerated, icon: Target, color: 'text-orange-500' }] : []),
+    ...(data.metaROAS > 0 ? [{ key: 'leadsCreated' as MetricKey, label: 'ROAS', value: data.metaROAS, icon: DollarSign, color: 'text-emerald-500' }] : []),
   ];
 
   // Goal items for detail view

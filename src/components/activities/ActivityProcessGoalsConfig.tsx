@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Trash2, Target, ChevronDown, ChevronUp } from 'lucide-react';
-import { GOAL_CATEGORIES, type GoalCategory } from '@/hooks/useRoutineProcessGoals';
+import { GOAL_CATEGORIES, RESULT_METRICS_COMERCIAL, RESULT_METRICS_MARKETING, type GoalCategory } from '@/hooks/useRoutineProcessGoals';
 
 export interface ProcessGoalEntry {
   metric_key: string;
@@ -172,54 +172,150 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
               );
             }
 
-            // Action & Result categories
-            const availableMetrics = getAvailableMetricsForCategory(cat.key);
-            const allCategoryMetrics = cat.metrics;
-            const hasRoom = availableMetrics.length > categoryGoals.length || categoryGoals.length < allCategoryMetrics.length;
+            // Action category - original behavior
+            if (cat.key === 'action') {
+              const availableMetrics = getAvailableMetricsForCategory(cat.key);
+              const allCategoryMetrics = cat.metrics;
+              const hasRoom = availableMetrics.length > categoryGoals.length || categoryGoals.length < allCategoryMetrics.length;
 
-            return (
-              <div key={cat.key} className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px]">{cat.icon}</span>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                    {cat.label} ({categoryGoals.length})
-                  </span>
-                  <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
-                    {cat.period}
-                  </span>
-                </div>
+              return (
+                <div key={cat.key} className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]">{cat.icon}</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {cat.label} ({categoryGoals.length})
+                    </span>
+                    <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                      {cat.period}
+                    </span>
+                  </div>
 
-                {categoryGoals.map(goal => (
-                  <div key={goal.originalIdx} className="flex items-center gap-1.5 flex-wrap pl-3">
-                    <Select
-                      value={goal.metric_key}
-                      onValueChange={v => updateGoal(goal.originalIdx, { metric_key: v })}
+                  {categoryGoals.map(goal => (
+                    <div key={goal.originalIdx} className="flex items-center gap-1.5 flex-wrap pl-3">
+                      <Select
+                        value={goal.metric_key}
+                        onValueChange={v => updateGoal(goal.originalIdx, { metric_key: v })}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cat.metrics.map(m => (
+                            <SelectItem
+                              key={m.value}
+                              value={m.value}
+                              disabled={usedMetrics.has(m.value) && goal.metric_key !== m.value}
+                            >
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        type="number"
+                        min={0}
+                        value={goal.target_value || ''}
+                        onChange={e => updateGoal(goal.originalIdx, { target_value: parseInt(e.target.value) || 0 })}
+                        placeholder="Meta"
+                        className="h-7 text-xs w-[70px]"
+                      />
+
+                      <Select
+                        value={goal.board_id || 'all'}
+                        onValueChange={v => updateGoal(goal.originalIdx, { board_id: v === 'all' ? null : v })}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-[130px]">
+                          <SelectValue placeholder="Funil" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os funis</SelectItem>
+                          {boards.map(b => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeGoal(goal.originalIdx)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  {hasRoom && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[10px] gap-1 text-muted-foreground pl-3"
+                      onClick={() => addGoal(cat.key)}
                     >
-                      <SelectTrigger className="h-7 text-xs w-[140px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cat.metrics.map(m => (
-                          <SelectItem
-                            key={m.value}
-                            value={m.value}
-                            disabled={usedMetrics.has(m.value) && goal.metric_key !== m.value}
-                          >
-                            {m.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <Plus className="h-3 w-3" />
+                      Adicionar {cat.label.toLowerCase().replace('metas de ', '')}
+                    </Button>
+                  )}
+                </div>
+              );
+            }
 
-                    <Input
-                      type="number"
-                      min={0}
-                      value={goal.target_value || ''}
-                      onChange={e => updateGoal(goal.originalIdx, { target_value: parseInt(e.target.value) || 0 })}
-                      placeholder="Meta"
-                      className="h-7 text-xs w-[70px]"
-                    />
+            // Result category - split into Comercial and Marketing subcategories
+            if (cat.key === 'result') {
+              const comercialMetricKeys = RESULT_METRICS_COMERCIAL.map(m => m.value);
+              const marketingMetricKeys = RESULT_METRICS_MARKETING.map(m => m.value);
+              
+              const comercialGoals = goals
+                .map((g, idx) => ({ ...g, originalIdx: idx }))
+                .filter(g => comercialMetricKeys.includes(g.metric_key));
+              const marketingGoals = goals
+                .map((g, idx) => ({ ...g, originalIdx: idx }))
+                .filter(g => marketingMetricKeys.includes(g.metric_key));
 
+              const hasComercialRoom = RESULT_METRICS_COMERCIAL.some(m => !usedMetrics.has(m.value));
+              const hasMarketingRoom = RESULT_METRICS_MARKETING.some(m => !usedMetrics.has(m.value));
+
+              const addSubGoal = (metrics: typeof RESULT_METRICS_COMERCIAL) => {
+                const available = metrics.find(m => !usedMetrics.has(m.value));
+                if (!available) return;
+                onChange([...goals, { metric_key: available.value, target_value: 0, board_id: null }]);
+                setExpanded(true);
+              };
+
+              const renderGoalRow = (goal: typeof comercialGoals[0], metricOptions: typeof RESULT_METRICS_COMERCIAL, showBoardSelector: boolean) => (
+                <div key={goal.originalIdx} className="flex items-center gap-1.5 flex-wrap pl-3">
+                  <Select
+                    value={goal.metric_key}
+                    onValueChange={v => updateGoal(goal.originalIdx, { metric_key: v })}
+                  >
+                    <SelectTrigger className="h-7 text-xs w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {metricOptions.map(m => (
+                        <SelectItem
+                          key={m.value}
+                          value={m.value}
+                          disabled={usedMetrics.has(m.value) && goal.metric_key !== m.value}
+                        >
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    type="number"
+                    min={0}
+                    value={goal.target_value || ''}
+                    onChange={e => updateGoal(goal.originalIdx, { target_value: parseInt(e.target.value) || 0 })}
+                    placeholder="Meta"
+                    className="h-7 text-xs w-[70px]"
+                  />
+
+                  {showBoardSelector && (
                     <Select
                       value={goal.board_id || 'all'}
                       onValueChange={v => updateGoal(goal.originalIdx, { board_id: v === 'all' ? null : v })}
@@ -234,31 +330,78 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
                         ))}
                       </SelectContent>
                     </Select>
+                  )}
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                      onClick={() => removeGoal(goal.originalIdx)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-
-                {hasRoom && (
                   <Button
                     variant="ghost"
-                    size="sm"
-                    className="h-6 text-[10px] gap-1 text-muted-foreground pl-3"
-                    onClick={() => addGoal(cat.key)}
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeGoal(goal.originalIdx)}
                   >
-                    <Plus className="h-3 w-3" />
-                    Adicionar {cat.label.toLowerCase().replace('metas de ', '')}
+                    <Trash2 className="h-3 w-3" />
                   </Button>
-                )}
-              </div>
-            );
+                </div>
+              );
+
+              return (
+                <div key={cat.key} className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]">{cat.icon}</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {cat.label} ({comercialGoals.length + marketingGoals.length})
+                    </span>
+                    <span className="text-[9px] font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                      {cat.period}
+                    </span>
+                  </div>
+
+                  {/* Área Comercial */}
+                  <div className="ml-2 space-y-1 border-l-2 border-primary/20 pl-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-semibold text-primary uppercase tracking-wide">
+                        💼 Área Comercial ({comercialGoals.length})
+                      </span>
+                    </div>
+                    {comercialGoals.map(g => renderGoalRow(g, RESULT_METRICS_COMERCIAL, true))}
+                    {hasComercialRoom && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px] gap-1 text-muted-foreground pl-3"
+                        onClick={() => addSubGoal(RESULT_METRICS_COMERCIAL)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar resultado comercial
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Área de Marketing */}
+                  <div className="ml-2 space-y-1 border-l-2 border-orange-300/40 pl-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-semibold text-orange-600 uppercase tracking-wide">
+                        📢 Área de Marketing ({marketingGoals.length})
+                      </span>
+                    </div>
+                    {marketingGoals.map(g => renderGoalRow(g, RESULT_METRICS_MARKETING, false))}
+                    {hasMarketingRoom && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px] gap-1 text-muted-foreground pl-3"
+                        onClick={() => addSubGoal(RESULT_METRICS_MARKETING)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar resultado marketing
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // Fallback (shouldn't reach here)
+            return null;
           })}
 
           {totalGoals === 0 && (
