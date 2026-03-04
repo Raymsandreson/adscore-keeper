@@ -98,7 +98,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [regenPrompt, setRegenPrompt] = useState('');
   const [regenMaxChars, setRegenMaxChars] = useState(600);
   const [regenerating, setRegenerating] = useState(false);
-  const [aiAssistantMode, setAiAssistantMode] = useState(false);
+  const [aiAssistantMode, setAiAssistantMode] = useState(true);
   const [aiResponding, setAiResponding] = useState(false);
   const [pendingAiActions, setPendingAiActions] = useState<AIAssistantResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
