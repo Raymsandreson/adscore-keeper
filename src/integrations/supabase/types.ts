@@ -3419,59 +3419,107 @@ export type Database = {
       }
       lead_processes: {
         Row: {
+          ano_inicio: number | null
+          area: string | null
+          assuntos: string[] | null
           case_id: string | null
+          classe: string | null
           created_at: string
           created_by: string | null
           description: string | null
+          envolvidos: Json | null
+          escavador_raw: Json | null
           fee_percentage: number | null
           finished_at: string | null
+          fonte_data_fim: string | null
+          fonte_data_inicio: string | null
+          fonte_nome: string | null
+          fonte_tipo: string | null
+          grau: string | null
           id: string
           lead_id: string
+          movimentacoes: Json | null
           notes: string | null
+          polo_ativo: string | null
+          polo_passivo: string | null
           process_number: string | null
           process_type: string
           started_at: string | null
           status: string
           title: string
+          tribunal: string | null
           updated_at: string
+          valor_causa: number | null
           workflow_id: string | null
           workflow_name: string | null
         }
         Insert: {
+          ano_inicio?: number | null
+          area?: string | null
+          assuntos?: string[] | null
           case_id?: string | null
+          classe?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          envolvidos?: Json | null
+          escavador_raw?: Json | null
           fee_percentage?: number | null
           finished_at?: string | null
+          fonte_data_fim?: string | null
+          fonte_data_inicio?: string | null
+          fonte_nome?: string | null
+          fonte_tipo?: string | null
+          grau?: string | null
           id?: string
           lead_id: string
+          movimentacoes?: Json | null
           notes?: string | null
+          polo_ativo?: string | null
+          polo_passivo?: string | null
           process_number?: string | null
           process_type?: string
           started_at?: string | null
           status?: string
           title: string
+          tribunal?: string | null
           updated_at?: string
+          valor_causa?: number | null
           workflow_id?: string | null
           workflow_name?: string | null
         }
         Update: {
+          ano_inicio?: number | null
+          area?: string | null
+          assuntos?: string[] | null
           case_id?: string | null
+          classe?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
+          envolvidos?: Json | null
+          escavador_raw?: Json | null
           fee_percentage?: number | null
           finished_at?: string | null
+          fonte_data_fim?: string | null
+          fonte_data_inicio?: string | null
+          fonte_nome?: string | null
+          fonte_tipo?: string | null
+          grau?: string | null
           id?: string
           lead_id?: string
+          movimentacoes?: Json | null
           notes?: string | null
+          polo_ativo?: string | null
+          polo_passivo?: string | null
           process_number?: string | null
           process_type?: string
           started_at?: string | null
           status?: string
           title?: string
+          tribunal?: string | null
           updated_at?: string
+          valor_causa?: number | null
           workflow_id?: string | null
           workflow_name?: string | null
         }
