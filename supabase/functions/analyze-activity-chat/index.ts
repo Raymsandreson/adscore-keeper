@@ -321,18 +321,30 @@ CONTEXTO ATUAL:
 ${activity_context ? `Atividade: ${JSON.stringify(activity_context)}` : 'Sem atividade vinculada'}
 ${lead_context ? `Lead/Caso: ${JSON.stringify(lead_context)}` : 'Sem lead vinculado'}
 ${contact_context ? `Contato: ${JSON.stringify(contact_context)}` : 'Sem contato vinculado'}
-${activity_history?.length ? `Histórico de atividades recentes do lead:\n${activity_history.map((a: any) => `- ${a.title} (${a.status}) - ${a.activity_type} - ${a.what_was_done || ''}`).join('\n')}` : ''}
+${activity_history?.length ? `Histórico de atividades recentes do lead:\n${activity_history.map((a: any) => `- ${a.title} (${a.status}) - ${a.activity_type} - ${a.deadline || ''} - ${a.what_was_done || ''}`).join('\n')}\n\nTotal de atividades pendentes: ${activity_history.filter((a: any) => a.status === 'pendente').length}\nTotal em andamento: ${activity_history.filter((a: any) => a.status === 'em_andamento').length}\nTotal concluídas: ${activity_history.filter((a: any) => a.status === 'concluida').length}` : ''}
 
 SEU PAPEL:
 1. Guie o assessor sobre como prosseguir com o caso
 2. Responda dúvidas sobre procedimentos jurídicos trabalhistas
 3. Sugira próximos passos baseados no contexto
 4. Quando o assessor fornecer informações sobre o andamento, ofereça organizar nos campos corretos
+5. Ao criar atividades, SEMPRE classifique na Matriz de Eisenhower (do_now, schedule, delegate, eliminate) com base na urgência e importância
+6. Analise a carga de trabalho atual (atividades pendentes/em andamento) e sugira datas adequadas para novas atividades, evitando sobrecarga
+7. Se houver muitas atividades pendentes, alerte o assessor e sugira priorização
+8. Se o assessor iniciar uma conversa sem atividade vinculada, pergunte sobre o que precisa ser feito e crie a atividade com todos os campos preenchidos
+
+MATRIZ DE EISENHOWER:
+- do_now (🔥 Faça Agora): Urgente + Importante — prazos judiciais próximos, audiências iminentes
+- schedule (📅 Agende): Não urgente + Importante — acompanhamentos, preparação de documentos
+- delegate (🤝 Delegue): Urgente + Pouco importante — tarefas administrativas urgentes
+- eliminate (🗑️ Retire): Não urgente + Pouco importante — tarefas que podem ser eliminadas
 
 IMPORTANTE:
 - Seja conciso e objetivo (máximo 3-4 parágrafos)
 - Use linguagem profissional mas acessível
 - Quando identificar informações que podem preencher campos, use a ferramenta disponível
+- Sempre que criar uma nova atividade, inclua o quadrante da matriz de Eisenhower (matrix_quadrant)
+- Sugira datas realistas considerando a carga de trabalho atual
 - Responda em português do Brasil`;
 
       // Build conversation for AI
@@ -451,7 +463,7 @@ IMPORTANTE:
                 },
                 new_activity: {
                   type: "object",
-                  description: "Sugere criação de uma nova atividade. Só use quando o assessor mencionar uma tarefa futura clara.",
+                  description: "Sugere criação de uma nova atividade. Use quando o assessor mencionar uma tarefa futura ou quando estiver criando uma atividade via chat. SEMPRE inclua matrix_quadrant.",
                   properties: {
                     title: { type: "string" },
                     activity_type: { type: "string", enum: ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
@@ -461,8 +473,9 @@ IMPORTANTE:
                     next_steps: { type: "string" },
                     notes: { type: "string" },
                     deadline: { type: "string", description: "Data no formato YYYY-MM-DD" },
+                    matrix_quadrant: { type: "string", enum: ["do_now", "schedule", "delegate", "eliminate"], description: "Quadrante da Matriz de Eisenhower" },
                   },
-                  required: ["title"],
+                  required: ["title", "matrix_quadrant"],
                   additionalProperties: false,
                 },
               },

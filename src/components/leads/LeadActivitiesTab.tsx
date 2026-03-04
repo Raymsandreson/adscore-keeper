@@ -3,18 +3,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play } from 'lucide-react';
+import { Plus, CheckCircle2, Clock, AlertCircle, Loader2, ListTodo, Save, Trash2, Play, MessageCircle } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
+import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 
 interface LeadActivity {
   id: string;
@@ -31,6 +31,7 @@ interface LeadActivity {
   current_status_notes: string | null;
   next_steps: string | null;
   notes: string | null;
+  matrix_quadrant: string | null;
 }
 
 interface LeadActivitiesTabProps {
@@ -41,8 +42,7 @@ interface LeadActivitiesTabProps {
 export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) {
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [showChatSheet, setShowChatSheet] = useState(false);
 
   // Edit state
   const [editActivity, setEditActivity] = useState<LeadActivity | null>(null);
@@ -57,13 +57,6 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
   const [editNextSteps, setEditNextSteps] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
-  // Form state
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState('');
-  const [priority, setPriority] = useState('normal');
-  const [deadline, setDeadline] = useState('');
-  const [description, setDescription] = useState('');
-
   const { types: activityTypes } = useActivityTypes();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
@@ -75,7 +68,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     setLoading(true);
     const { data, error } = await supabase
       .from('lead_activities')
-      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes')
+      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
       .eq('lead_id', leadId)
       .order('created_at', { ascending: false });
 
@@ -183,38 +176,29 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     }
   };
 
-  const handleCreate = async () => {
-    if (!title.trim()) { toast.error('Informe o título'); return; }
-    if (!type) { toast.error('Selecione o tipo de atividade'); return; }
-
-    setSaving(true);
+  const handleCreateFromChat = async (activityData: any) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('lead_activities').insert({
-        title,
+        title: activityData.title,
         lead_id: leadId,
         lead_name: leadName,
-        activity_type: type,
+        activity_type: activityData.activity_type || 'tarefa',
         status: 'pendente',
-        priority,
-        deadline: deadline || null,
-        description: description || null,
+        priority: activityData.priority || 'normal',
+        deadline: activityData.deadline || null,
+        description: activityData.notes || null,
+        what_was_done: activityData.what_was_done || null,
+        current_status_notes: activityData.current_status_notes || null,
+        next_steps: activityData.next_steps || null,
+        matrix_quadrant: activityData.matrix_quadrant || null,
         created_by: user?.id || null,
       } as any);
-
       if (error) throw error;
-      toast.success('Atividade criada!');
-      setTitle('');
-      setType('');
-      setPriority('normal');
-      setDeadline('');
-      setDescription('');
-      setShowForm(false);
+      toast.success('Atividade criada pela IA!');
       await fetchActivities();
     } catch {
       toast.error('Erro ao criar atividade');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -248,10 +232,11 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
     return found?.color || '#888';
   };
 
-  const statusLabels: Record<string, string> = {
-    pendente: 'Pendente',
-    em_andamento: 'Em Andamento',
-    concluida: 'Concluída',
+  const quadrantLabels: Record<string, string> = {
+    do_now: '🔥 Faça Agora',
+    schedule: '📅 Agende',
+    delegate: '🤝 Delegue',
+    eliminate: '🗑️ Retire',
   };
 
   if (loading) {
@@ -265,67 +250,14 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           <ListTodo className="h-4 w-4" />
           Atividades ({activities.length})
         </h4>
-        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)} className="gap-1">
+        <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
+          <MessageCircle className="h-3 w-3" />
           <Plus className="h-3 w-3" />
           Nova
         </Button>
       </div>
 
-      {showForm && (
-        <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-          <div>
-            <Label className="text-xs">Título *</Label>
-            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Título da atividade" className="h-8 text-sm" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Tipo *</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {allowedTypes.map(t => (
-                    <SelectItem key={t.key} value={t.key}>
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
-                        {t.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Prioridade</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="baixa">Baixa</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="alta">Alta</SelectItem>
-                  <SelectItem value="urgente">Urgente</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs">Prazo</Label>
-            <Input type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)} className="h-8 text-sm" />
-          </div>
-          <div>
-            <Label className="text-xs">Descrição</Label>
-            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." rows={2} className="text-sm" />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-            <Button size="sm" onClick={handleCreate} disabled={saving}>
-              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
-              Criar
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {activities.length === 0 && !showForm ? (
+      {activities.length === 0 ? (
         <div className="text-center py-8 text-sm text-muted-foreground">
           Nenhuma atividade vinculada a este lead.
         </div>
@@ -347,11 +279,16 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                 <p className={`text-sm font-medium truncate ${a.status === 'concluida' ? 'line-through text-muted-foreground' : ''}`}>
                   {a.title}
                 </p>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1" style={{ borderColor: getTypeColor(a.activity_type) }}>
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(a.activity_type) }} />
                     {getTypeLabel(a.activity_type)}
                   </Badge>
+                  {a.matrix_quadrant && quadrantLabels[a.matrix_quadrant] && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {quadrantLabels[a.matrix_quadrant]}
+                    </span>
+                  )}
                   {a.deadline && (
                     <span className="text-[10px] text-muted-foreground">
                       {format(new Date(a.deadline), "dd/MM HH:mm", { locale: ptBR })}
@@ -486,6 +423,17 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* AI Chat for creating activities */}
+      <ActivityChatSheet
+        open={showChatSheet}
+        onOpenChange={setShowChatSheet}
+        activityId={null}
+        leadId={leadId}
+        activityTitle={undefined}
+        onApplySuggestion={() => {}}
+        onCreateActivity={handleCreateFromChat}
+      />
     </div>
   );
 }
