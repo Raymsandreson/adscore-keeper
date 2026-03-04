@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -35,10 +35,49 @@ interface LogActivityParams {
   metadata?: Record<string, any>;
 }
 
+interface QueuedActivity {
+  user_id: string;
+  action_type: string;
+  entity_type?: string;
+  entity_id?: string;
+  metadata: Record<string, any>;
+}
+
+const BATCH_INTERVAL = 5000; // Flush every 5 seconds
+const MAX_BATCH_SIZE = 20;
+
 export function useActivityLogger() {
   const { user } = useAuthContext();
+  const queueRef = useRef<QueuedActivity[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const logActivity = useCallback(async ({
+  const flush = useCallback(async () => {
+    if (queueRef.current.length === 0) return;
+    
+    const batch = queueRef.current.splice(0, MAX_BATCH_SIZE);
+    
+    try {
+      const { error } = await supabase
+        .from('user_activity_log')
+        .insert(batch);
+
+      if (error) {
+        console.error('Error flushing activity batch:', error);
+      }
+    } catch (error) {
+      console.error('Error flushing activity batch:', error);
+    }
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (timerRef.current) return;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      flush();
+    }, BATCH_INTERVAL);
+  }, [flush]);
+
+  const logActivity = useCallback(({
     actionType,
     entityType,
     entityId,
@@ -46,24 +85,21 @@ export function useActivityLogger() {
   }: LogActivityParams) => {
     if (!user) return;
 
-    try {
-      const { error } = await supabase
-        .from('user_activity_log')
-        .insert({
-          user_id: user.id,
-          action_type: actionType,
-          entity_type: entityType,
-          entity_id: entityId,
-          metadata,
-        });
+    queueRef.current.push({
+      user_id: user.id,
+      action_type: actionType,
+      entity_type: entityType,
+      entity_id: entityId,
+      metadata,
+    });
 
-      if (error) {
-        console.error('Error logging activity:', error);
-      }
-    } catch (error) {
-      console.error('Error logging activity:', error);
+    // Flush immediately if batch is full, otherwise schedule
+    if (queueRef.current.length >= MAX_BATCH_SIZE) {
+      flush();
+    } else {
+      scheduleFlush();
     }
-  }, [user]);
+  }, [user, flush, scheduleFlush]);
 
   return { logActivity };
 }
