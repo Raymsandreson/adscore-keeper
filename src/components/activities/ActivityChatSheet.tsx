@@ -14,6 +14,7 @@ import {
   RefreshCw, Settings2, Trash2, Ban, Plus, MessageCircle, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmDialogDateFields } from './ConfirmDialogDateFields';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -1657,26 +1658,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
             </div>
 
             {/* Deadline and Notification date */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">📅 Prazo *</label>
-                <Input
-                  type="datetime-local"
-                  value={confirmNewActivity?.deadline || ''}
-                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, deadline: e.target.value } : prev)}
-                  className="h-8 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">🔔 Notificação</label>
-                <Input
-                  type="datetime-local"
-                  value={confirmNewActivity?.notification_date || ''}
-                  onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, notification_date: e.target.value } : prev)}
-                  className="h-8 text-sm"
-                />
-              </div>
-            </div>
+            <ConfirmDialogDateFields
+              confirmNewActivity={confirmNewActivity}
+              setConfirmNewActivity={setConfirmNewActivity}
+            />
 
             {/* Eisenhower */}
             <div className="space-y-1">
