@@ -156,6 +156,7 @@ const ActivitiesPage = () => {
   const { configs: blocksViewSettings } = useTimeBlockSettings(blocksViewUserId || user?.id || undefined);
   const { types: dbActivityTypes } = useActivityTypes();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
+  const [selectedBlockKey, setSelectedBlockKey] = useState<string | null>(null);
   // Countdown timer state for time block click
   const [countdownBlock, setCountdownBlock] = useState<TimeBlockConfig | null>(null);
   const [countdownRemaining, setCountdownRemaining] = useState(0);
@@ -2007,97 +2008,107 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           const totalOpen = displayedActivities.filter(a => a.status !== 'concluida').length;
           const totalAll = displayedActivities.length;
 
+          // Find selected block data
+
+          // Find selected block data
+          const selectedBlockData = (() => {
+            if (!selectedBlockKey) return null;
+            const [dayIdxStr, cfgType] = selectedBlockKey.split('::');
+            const dayIdx = parseInt(dayIdxStr);
+            const dayDate = weekDates[dayIdx];
+            if (!dayDate) return null;
+            const blocks = getBlocksForDay(dayDate, dayIdx);
+            const block = blocks.find(b => b.cfg.activityType === cfgType);
+            if (!block) return null;
+            return { ...block, dayDate, dayIdx };
+          })();
+
           return (
             <div className="flex flex-1 overflow-hidden h-full">
-              {/* Left sidebar: Activity type list with counts */}
+              {/* Left sidebar: selected block activities or type summary */}
               <div className="w-[260px] shrink-0 border-r flex flex-col overflow-hidden bg-card">
-                <div className="px-3 py-2 border-b flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">TIPO</span>
-                </div>
-                {/* Routine info */}
-                {activeSettings.length > 0 && (
-                  <div className="px-3 py-2 border-b bg-muted/20">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {activeSettings.slice(0, 1).map((cfg, i) => (
-                        <div key={i} className="text-[10px] text-muted-foreground truncate flex-1">
-                          {cfg.label} {cfg.startHour}h-{cfg.endHour}h
+                {selectedBlockData ? (
+                  <>
+                    {/* Selected block header */}
+                    <div className={cn('px-3 py-2 border-b text-white flex items-center justify-between', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
+                        <p className="text-[10px] opacity-80">
+                          {format(selectedBlockData.dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {selectedBlockData.cfg.startHour}h–{selectedBlockData.cfg.endHour}h
+                        </p>
+                      </div>
+                      <button
+                        className="text-white/80 hover:text-white ml-2 shrink-0"
+                        onClick={() => setSelectedBlockKey(null)}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <ScrollArea className="flex-1">
+                      {selectedBlockData.items.length === 0 ? (
+                        <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                          Nenhuma atividade neste bloco
                         </div>
-                      ))}
-                      {activeSettings.length > 1 && (
-                        <span className="text-[10px] text-muted-foreground">+{activeSettings.length - 1}</span>
+                      ) : (
+                        <div className="divide-y">
+                          {selectedBlockData.items.map(a => (
+                            <div
+                              key={a.id}
+                              className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
+                              onClick={() => handleOpenEdit(a)}
+                            >
+                              <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', selectedBlockData.cfg.color || 'bg-muted-foreground')} />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate">{a.title}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">📁 {a.lead_name}</span>}
+                                  <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
+                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
+                    </ScrollArea>
+                    <div className="px-3 py-2 border-t text-xs text-muted-foreground text-center">
+                      {selectedBlockData.items.length} atividade{selectedBlockData.items.length !== 1 ? 's' : ''}
                     </div>
-                    <div className="flex gap-0.5 mt-1">
-                      {[0,1,2,3,4].map(d => {
-                        const has = activeSettings.some(c => c.days.includes(d));
-                        return (
-                          <span key={d} className={cn("text-[8px] px-1 py-0.5 rounded font-bold", has ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground/40")}>
-                            {['S','T','Q','Q','S'][d]}
-                          </span>
-                        );
-                      })}
+                  </>
+                ) : (
+                  <>
+                    <div className="px-3 py-2 border-b flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">TIPO</span>
+                      <span className="text-[10px] text-muted-foreground">Clique em um bloco →</span>
                     </div>
-                  </div>
-                )}
-                <ScrollArea className="flex-1">
-                  <div className="py-1">
-                    {typeSummary.map(t => (
-                      <Popover key={t.value}>
-                        <PopoverTrigger asChild>
-                          <button className={cn(
-                            "w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors text-left",
+                    <ScrollArea className="flex-1">
+                      <div className="py-1">
+                        {typeSummary.map(t => (
+                          <div key={t.value} className={cn(
+                            "w-full px-3 py-2 flex items-center gap-2 text-left",
                             t.routineCfg && 'border-l-2',
-                          )} style={t.routineCfg ? { borderLeftColor: undefined } : undefined}>
+                          )}>
                             <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
                             <span className="text-xs font-medium flex-1 truncate">{t.label}</span>
                             <span className="text-xs font-bold tabular-nums">
                               <span className={t.openCount > 0 ? 'text-foreground' : 'text-muted-foreground'}>{t.openCount}</span>
                               <span className="text-muted-foreground/50">/{t.totalCount}</span>
                             </span>
-                          </button>
-                        </PopoverTrigger>
-                        {t.items.length > 0 && (
-                          <PopoverContent className="w-80 p-0" align="start" side="right">
-                            <div className={cn('px-3 py-2 border-b text-white rounded-t-md', t.routineCfg?.color || t.header || 'bg-muted-foreground')}>
-                              <p className="text-xs font-bold">{t.label} — {t.totalCount} atividade{t.totalCount !== 1 ? 's' : ''}</p>
-                            </div>
-                            <ScrollArea className="max-h-64">
-                              <div className="divide-y">
-                                {t.items.map(a => (
-                                  <div
-                                    key={a.id}
-                                    className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
-                                    onClick={() => handleOpenEdit(a)}
-                                  >
-                                    <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-xs font-medium truncate">{a.title}</p>
-                                      <div className="flex items-center gap-1.5 mt-0.5">
-                                        {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">📁 {a.lead_name}</span>}
-                                        <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
-                                          {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </ScrollArea>
-                          </PopoverContent>
-                        )}
-                      </Popover>
-                    ))}
-                  </div>
-                  {/* Total */}
-                  <div className="px-3 py-2 border-t flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                    <span className="text-xs font-bold flex-1">TOTAL</span>
-                    <span className="text-xs font-bold tabular-nums">
-                      <span>{totalOpen}</span>
-                      <span className="text-muted-foreground/50">/{totalAll}</span>
-                    </span>
-                  </div>
-                </ScrollArea>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="px-3 py-2 border-t flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                        <span className="text-xs font-bold flex-1">TOTAL</span>
+                        <span className="text-xs font-bold tabular-nums">
+                          <span>{totalOpen}</span>
+                          <span className="text-muted-foreground/50">/{totalAll}</span>
+                        </span>
+                      </div>
+                    </ScrollArea>
+                  </>
+                )}
               </div>
 
               {/* Weekly grid */}
@@ -2157,68 +2168,32 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           const bgColor = block.cfg.color || 'bg-muted-foreground';
                           const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
                           const count = block.items.length;
+                          const blockKey = `${dayIdx}::${block.cfg.activityType}`;
+                          const isSelected = selectedBlockKey === blockKey;
 
                           return (
-                            <Popover key={bi}>
-                              <PopoverTrigger asChild>
-                                <div
-                                  className={cn(
-                                    'absolute left-1 right-1 rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
-                                    bgColor,
-                                    count === 0 && 'opacity-30'
-                                  )}
-                                  style={{
-                                    top: block.topPx + 1,
-                                    height: Math.max(block.heightPx - 2, 24),
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
-                                  <div className="text-lg font-bold leading-none">{count}</div>
-                                  {block.heightPx > 50 && (
-                                    <div className="text-[8px] opacity-70 mt-0.5">
-                                      {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
-                                    </div>
-                                  )}
+                            <div
+                              key={bi}
+                              className={cn(
+                                'absolute left-1 right-1 rounded-lg cursor-pointer hover:opacity-90 transition-all shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
+                                bgColor,
+                                count === 0 && 'opacity-30',
+                                isSelected && 'ring-2 ring-foreground ring-offset-1'
+                              )}
+                              style={{
+                                top: block.topPx + 1,
+                                height: Math.max(block.heightPx - 2, 24),
+                              }}
+                              onClick={() => setSelectedBlockKey(isSelected ? null : blockKey)}
+                            >
+                              <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
+                              <div className="text-lg font-bold leading-none">{count}</div>
+                              {block.heightPx > 50 && (
+                                <div className="text-[8px] opacity-70 mt-0.5">
+                                  {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
                                 </div>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-80 p-0" align="start" side="right">
-                                <div className={cn('px-3 py-2 border-b text-white rounded-t-md', bgColor)}>
-                                  <p className="text-xs font-bold">{block.cfg.label} — {count} atividade{count !== 1 ? 's' : ''}</p>
-                                  <p className="text-[10px] opacity-80">
-                                    {format(dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {block.cfg.startHour}h–{block.cfg.endHour}h
-                                  </p>
-                                </div>
-                                {count === 0 ? (
-                                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                                    Nenhuma atividade neste bloco
-                                  </div>
-                                ) : (
-                                  <ScrollArea className="max-h-64">
-                                    <div className="divide-y">
-                                      {block.items.map(a => (
-                                        <div
-                                          key={a.id}
-                                          className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
-                                          onClick={() => handleOpenEdit(a)}
-                                        >
-                                          <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', bgColor)} />
-                                          <div className="min-w-0 flex-1">
-                                            <p className="text-xs font-medium truncate">{a.title}</p>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                              {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">📁 {a.lead_name}</span>}
-                                              <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
-                                                {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </ScrollArea>
-                                )}
-                              </PopoverContent>
-                            </Popover>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
