@@ -924,7 +924,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                       <div className="flex-1 min-w-0">
                         <div className="text-[11px] font-medium">Criar nova atividade</div>
                         <div className="text-[10px] text-muted-foreground truncate">
-                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''}
+                          {rawSuggestion.new_activity.title} {rawSuggestion.new_activity.deadline ? `• Prazo: ${rawSuggestion.new_activity.deadline}` : ''} {rawSuggestion.new_activity.matrix_quadrant ? `• ${{'do_now':'🔥 Faça Agora','schedule':'📅 Agende','delegate':'🤝 Delegue','eliminate':'🗑️ Retire'}[rawSuggestion.new_activity.matrix_quadrant] || ''}` : ''}
                         </div>
                       </div>
                       <Plus className="h-3.5 w-3.5 text-blue-600 shrink-0" />
