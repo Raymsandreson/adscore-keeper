@@ -12,11 +12,13 @@ export interface RoutineProcessGoal {
 }
 
 export type GoalCategory = 'action' | 'progress' | 'result';
+export type ResultSubcategory = 'comercial' | 'marketing';
 
 export interface MetricOption {
   value: string;
   label: string;
   category: GoalCategory;
+  subcategory?: ResultSubcategory;
 }
 
 export const ACTION_METRICS: MetricOption[] = [
@@ -34,9 +36,19 @@ export const PROGRESS_METRICS: MetricOption[] = [
   { value: 'stages', label: 'Fases concluídas', category: 'progress' },
 ];
 
+export const RESULT_METRICS_COMERCIAL: MetricOption[] = [
+  { value: 'deals_closed', label: 'Leads fechados', category: 'result', subcategory: 'comercial' },
+  { value: 'deals_refused', label: 'Leads recusados', category: 'result', subcategory: 'comercial' },
+];
+
+export const RESULT_METRICS_MARKETING: MetricOption[] = [
+  { value: 'meta_leads_generated', label: 'Leads gerados (Meta)', category: 'result', subcategory: 'marketing' },
+  { value: 'meta_roas', label: 'ROAS', category: 'result', subcategory: 'marketing' },
+];
+
 export const RESULT_METRICS: MetricOption[] = [
-  { value: 'deals_closed', label: 'Leads fechados', category: 'result' },
-  { value: 'deals_refused', label: 'Leads recusados', category: 'result' },
+  ...RESULT_METRICS_COMERCIAL,
+  ...RESULT_METRICS_MARKETING,
 ];
 
 export const GOAL_CATEGORIES = [
