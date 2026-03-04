@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Send, Mic, MicOff, Paperclip, Sparkles, Loader2, X, Check,
-  FileText, User, Briefcase, Plus, Ban, CalendarCheck,
+  FileText, User, Briefcase, Plus, Ban, CalendarCheck, ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -224,9 +224,13 @@ export function EntityAIChat({
         lead_id: leadId || null,
         message_type: 'ai_suggestion',
         content: data.response_text,
-        ai_suggestion: data.activity_fields || data.lead_fields || data.contact_fields || data.new_activity
-          ? { activity_fields: data.activity_fields, lead_fields: data.lead_fields, contact_fields: data.contact_fields, new_activity: data.new_activity }
-          : null,
+        ai_suggestion: {
+          ...(data.activity_fields ? { activity_fields: data.activity_fields } : {}),
+          ...(data.lead_fields ? { lead_fields: data.lead_fields } : {}),
+          ...(data.contact_fields ? { contact_fields: data.contact_fields } : {}),
+          ...(data.new_activity ? { new_activity: data.new_activity } : {}),
+          ...(data.follow_up_suggestions?.length ? { follow_up_suggestions: data.follow_up_suggestions } : {}),
+        },
         sender_id: null,
         sender_name: 'IA Abraci',
       } as any);
@@ -451,6 +455,22 @@ export function EntityAIChat({
                     <CalendarCheck className="h-3 w-3 text-blue-600 shrink-0" />
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Follow-up suggestion chips */}
+            {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).at(-1)?.id && (
+              <div className="flex flex-wrap gap-1.5 pl-1">
+                {rawSuggestion.follow_up_suggestions.map((s: any, i: number) => (
+                  <button
+                    key={i}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors text-[11px] font-medium text-primary"
+                    onClick={() => setInputText(s.message)}
+                  >
+                    <ArrowRight className="h-3 w-3 shrink-0" />
+                    {s.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
