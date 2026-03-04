@@ -2835,10 +2835,20 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             });
             if (result) {
               const createdActivity = result as LeadActivity;
+              // Auto-add assignee to filter so the new activity is visible
+              const newAssigneeFilter = [...filterAssignee];
+              if (createdActivity.assigned_to && filterAssignee.length > 0 && !filterAssignee.includes(createdActivity.assigned_to)) {
+                newAssigneeFilter.push(createdActivity.assigned_to);
+                setFilterAssignee(newAssigneeFilter);
+              }
               setSelectedActivity(createdActivity);
               setSelectedActivityId(createdActivity.id);
               setSheetMode('edit');
-              fetchActivities(getFilterParams());
+              // Use updated filter with the new assignee included
+              fetchActivities({
+                ...getFilterParams(),
+                assigned_to: newAssigneeFilter.length > 0 ? newAssigneeFilter : 'all',
+              });
               return createdActivity;
             }
           } catch { /* error toasted */ }
