@@ -1918,6 +1918,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           const today = new Date();
           const weekStart = startOfWeek(today, { weekStartsOn: 1 });
           const weekDates = WEEK_DAYS.map(d => addDays(weekStart, d.dayIdx));
+          const HOUR_HEIGHT = 64; // px per hour
+          const totalHeight = (maxHour - minHour) * HOUR_HEIGHT;
 
           const getActivityDay = (a: LeadActivity) => {
             const dateStr = a.deadline || a.notification_date;
@@ -1925,7 +1927,6 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             try { return parseISO(dateStr); } catch { return null; }
           };
 
-          // Helper: resolve effective activity type considering workflow step type
           const getEffectiveType = (a: LeadActivity): string => {
             if (a.lead_id && leadWorkflowActivityTypes[a.lead_id]) {
               return leadWorkflowActivityTypes[a.lead_id];
@@ -1933,28 +1934,47 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             return a.activity_type;
           };
 
-          // For each day, collect activities by type
-          const byDayAndType = weekDates.map((dayDate, dayColIdx) => {
+          // Build blocks per day: each timeBlockSetting generates a visual block per day
+          const getBlocksForDay = (dayDate: Date, dayIdx: number) => {
             const dayActivities = displayedActivities.filter(a => {
               const d = getActivityDay(a);
               return d && isSameDay(d, dayDate);
             });
-            // Also activities with no date but whose type config includes this day (as "default" slot)
-            const noDateForDay = displayedActivities.filter(a => {
+            const noDateActivities = displayedActivities.filter(a => {
               if (a.deadline || a.notification_date) return false;
               const effectiveType = getEffectiveType(a);
               const cfg = timeBlockSettings.find(c => c.activityType === effectiveType);
-              return cfg?.days.includes(dayColIdx) ?? false;
+              return cfg?.days.includes(dayIdx) ?? false;
             });
-            const byType = ACTIVITY_TYPES.map(t => ({
-              ...t,
-              items: dayActivities.filter(a => getEffectiveType(a) === t.value),
-              noDateItems: noDateForDay.filter(a => getEffectiveType(a) === t.value),
-            })).filter(t => t.items.length > 0 || t.noDateItems.length > 0);
-            const knownTypes = ACTIVITY_TYPES.map(t => t.value);
-            const otherItems = dayActivities.filter(a => !knownTypes.includes(getEffectiveType(a)));
-            return { dayDate, byType, otherItems, total: dayActivities.length, dayColIdx };
-          });
+
+            return timeBlockSettings
+              .filter(cfg => cfg.days.includes(dayIdx))
+              .map(cfg => {
+                const startM = cfg.startMinute || 0;
+                const endM = cfg.endMinute || 0;
+                const startDecimal = cfg.startHour + startM / 60;
+                const endDecimal = cfg.endHour + endM / 60;
+                const topPx = (startDecimal - minHour) * HOUR_HEIGHT;
+                const heightPx = (endDecimal - startDecimal) * HOUR_HEIGHT;
+
+                const items = [
+                  ...dayActivities.filter(a => {
+                    const et = getEffectiveType(a);
+                    if (et !== cfg.activityType) return false;
+                    const dateStr = a.deadline || a.notification_date;
+                    if (!dateStr) return false;
+                    try {
+                      const d = parseISO(dateStr);
+                      const h = d.getHours();
+                      return h >= cfg.startHour && h < cfg.endHour;
+                    } catch { return false; }
+                  }),
+                  ...noDateActivities.filter(a => getEffectiveType(a) === cfg.activityType),
+                ];
+
+                return { cfg, items, topPx, heightPx };
+              });
+          };
 
           const unscheduled = displayedActivities.filter(a => {
             if (a.deadline || a.notification_date) return false;
@@ -1963,82 +1983,14 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             return !cfg || cfg.days.length === 0;
           });
 
-          const typeSummary = ACTIVITY_TYPES.map(t => ({
-            ...t,
-            total: displayedActivities.filter(a => getEffectiveType(a) === t.value).length,
-            open: displayedActivities.filter(a => getEffectiveType(a) === t.value && a.status !== 'concluida').length,
-          }));
-
           return (
             <div className="flex flex-1 overflow-hidden h-full">
-              {/* LEFT: Type legend panel */}
-              <div className="w-[200px] shrink-0 border-r bg-card/50 flex flex-col overflow-y-auto">
-                <div className="px-3 py-2 border-b flex items-center justify-between">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">TIPO</p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setTimeBlockSettingsOpen(true)}
-                    title="Configurar distribuição dos blocos"
-                  >
-                    <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </div>
-                {/* Schedule preview per type */}
-                <div className="px-3 py-2 border-b space-y-1.5">
-                  {timeBlockSettings.filter(c => c.days.length > 0).map(cfg => {
-                    const daysLabels = ['S','T','Q','Q','S'];
-                    return (
-                      <div
-                        key={cfg.blockId || cfg.activityType}
-                        className="text-[10px] cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5 transition-colors"
-                        onClick={() => setCountdownBlock(cfg)}
-                      >
-                        <div className="flex items-center gap-1 mb-0.5">
-                          <span className={cn('h-2 w-2 rounded-full shrink-0', cfg.color)} />
-                          <span className="font-semibold text-muted-foreground truncate">{cfg.label}</span>
-                        </div>
-                        <div className="flex items-center gap-0.5 ml-3">
-                          {[0,1,2,3,4].map(d => (
-                            <span key={d} className={cn(
-                              'h-4 w-4 rounded text-[8px] flex items-center justify-center font-bold',
-                              cfg.days.includes(d) ? `${cfg.color} text-white` : 'bg-muted/30 text-muted-foreground/40'
-                            )}>
-                              {daysLabels[d]}
-                            </span>
-                          ))}
-                          <span className="ml-1 text-muted-foreground/60">{cfg.startHour}h-{cfg.endHour}h</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex-1 divide-y">
-                  {typeSummary.map(t => (
-                    <div key={t.value} className={cn('flex items-center gap-2 px-3 py-2.5', t.bg)}>
-                      <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.dot)} />
-                      <span className="text-xs font-semibold flex-1 truncate uppercase">{t.label}</span>
-                      <div className="text-right text-[10px] text-muted-foreground shrink-0">
-                        <span className="font-bold text-foreground">{t.open}</span>
-                        <span className="opacity-60">/{t.total}</span>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/20">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/50" />
-                    <span className="text-xs font-bold flex-1 uppercase">TOTAL</span>
-                    <span className="text-xs font-bold text-foreground">{displayedActivities.filter(a=>a.status!=='concluida').length}/{displayedActivities.length}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* RIGHT: Weekly grid */}
+              {/* Weekly grid - full width */}
               <div className="flex-1 overflow-auto">
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex">
                   <div className="w-10 shrink-0" />
-                  {byDayAndType.map(({ dayDate }, i) => (
+                  {weekDates.map((dayDate, i) => (
                     <div key={i} className={cn(
                       'flex-1 text-center py-2 border-l text-xs font-bold uppercase tracking-wider',
                       isSameDay(dayDate, today) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
@@ -2049,160 +2001,110 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   ))}
                 </div>
 
-                {/* Time grid */}
-                <div className="relative">
-                  {WEEK_HOURS.map((hour) => {
-                    const hourActiveTypes = timeBlockSettings.filter(
-                      cfg => hour >= cfg.startHour && hour < cfg.endHour
-                    );
-                    const isConfiguredHour = hourActiveTypes.length > 0;
-
-                    return (
+                {/* Time grid with proportional blocks */}
+                <div className="relative flex">
+                  {/* Hour labels */}
+                  <div className="w-10 shrink-0 relative" style={{ height: totalHeight }}>
+                    {WEEK_HOURS.map((hour) => (
                       <div
                         key={hour}
-                        className={cn('flex border-b', isConfiguredHour ? 'min-h-[72px]' : 'min-h-[36px] opacity-60')}
+                        className="absolute left-0 w-full text-[10px] text-muted-foreground font-medium pl-1"
+                        style={{ top: (hour - minHour) * HOUR_HEIGHT }}
                       >
-                        {/* Hour label with type color indicators */}
-                        <div className={cn(
-                          'w-10 shrink-0 text-[10px] text-muted-foreground pt-1 pl-1 font-medium flex flex-col',
-                          isConfiguredHour && 'font-bold'
-                        )}>
-                          {hour}h
-                          <div className="flex flex-col gap-0.5 mt-0.5">
-                            {hourActiveTypes.map(cfg => (
-                              <span key={cfg.activityType} className={cn('h-1 w-6 rounded-full', cfg.color)} title={cfg.label} />
-                            ))}
-                          </div>
-                        </div>
-                        {/* Day cells */}
-                        {byDayAndType.map(({ dayDate, byType, otherItems, dayColIdx }) => {
-                          const cellActivities: { typeConfig: typeof ACTIVITY_TYPES[0] | null; items: LeadActivity[]; isDefault: boolean }[] = [];
+                        {hour}h
+                      </div>
+                    ))}
+                  </div>
 
-                          byType.forEach(t => {
-                            const cfg = timeBlockSettings.find(c => c.activityType === t.value);
-                            const hourItems = t.items.filter(a => {
-                              const dateStr = a.deadline || a.notification_date;
-                              if (!dateStr) return false;
-                              try {
-                                const d = parseISO(dateStr);
-                                const hasTime = dateStr.includes('T') || dateStr.length > 10;
-                                if (hasTime) return d.getHours() === hour;
-                                return cfg ? hour === cfg.startHour : hour === 8;
-                              } catch { return false; }
-                            });
-                            const noDateInSlot = (t.noDateItems || []).filter(() =>
-                              cfg ? hour === cfg.startHour : hour === 8
-                            );
-                            if (hourItems.length > 0 || noDateInSlot.length > 0) {
-                              cellActivities.push({ typeConfig: t, items: [...hourItems, ...noDateInSlot], isDefault: noDateInSlot.length > 0 && hourItems.length === 0 });
-                            }
-                          });
+                  {/* Day columns with blocks */}
+                  {weekDates.map((dayDate, dayIdx) => {
+                    const blocks = getBlocksForDay(dayDate, dayIdx);
+                    return (
+                      <div
+                        key={dayIdx}
+                        className={cn(
+                          'flex-1 border-l relative',
+                          isSameDay(dayDate, today) && 'bg-primary/5',
+                        )}
+                        style={{ height: totalHeight }}
+                      >
+                        {/* Hour grid lines */}
+                        {WEEK_HOURS.map(hour => (
+                          <div
+                            key={hour}
+                            className="absolute left-0 right-0 border-b border-border/30"
+                            style={{ top: (hour - minHour) * HOUR_HEIGHT }}
+                          />
+                        ))}
 
-                          const otherHourItems = otherItems.filter(a => {
-                            const dateStr = a.deadline || a.notification_date;
-                            if (!dateStr) return false;
-                            try {
-                              const d = parseISO(dateStr);
-                              const hasTime = dateStr.includes('T') || dateStr.length > 10;
-                              return hasTime ? d.getHours() === hour : hour === 8;
-                            } catch { return false; }
-                          });
-                          if (otherHourItems.length > 0) cellActivities.push({ typeConfig: null, items: otherHourItems, isDefault: false });
-
-                          const slotCfgs = timeBlockSettings.filter(cfg =>
-                            cfg.days.includes(dayColIdx) && hour >= cfg.startHour && hour < cfg.endHour
-                          );
-                          const hasConfiguredSlot = slotCfgs.length > 0;
+                        {/* Proportional blocks */}
+                        {blocks.map((block, bi) => {
+                          const tc = ACTIVITY_TYPES.find(t => t.value === block.cfg.activityType);
+                          const bgColor = tc?.header || 'bg-muted-foreground';
+                          const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
+                          const count = block.items.length;
 
                           return (
-                            <div
-                              key={dayColIdx}
-                              className={cn(
-                                'flex-1 border-l p-1 flex flex-col gap-1 transition-colors cursor-pointer',
-                                isSameDay(dayDate, today) && 'bg-primary/5',
-                                hasConfiguredSlot && !isSameDay(dayDate, today) && 'bg-muted/10',
-                              )}
-                              onClick={() => {
-                                if (hasConfiguredSlot && isSameDay(dayDate, today)) {
-                                  // Find the matching block for this hour+day
-                                  const matchingBlock = slotCfgs[0];
-                                  if (matchingBlock) setCountdownBlock(matchingBlock);
-                                }
-                              }}
-                            >
-                              {cellActivities.length === 0 && hasConfiguredSlot && (
-                                <div className="flex flex-wrap gap-0.5">
-                                  {slotCfgs.map(cfg => (
-                                    <span
-                                      key={cfg.activityType}
-                                      className={cn('opacity-20 rounded px-1 text-[8px] font-bold text-white', cfg.color)}
-                                    >
-                                      {cfg.label.slice(0, 3)}
-                                    </span>
-                                  ))}
+                            <Popover key={bi}>
+                              <PopoverTrigger asChild>
+                                <div
+                                  className={cn(
+                                    'absolute left-1 right-1 rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
+                                    bgColor,
+                                    count === 0 && 'opacity-30'
+                                  )}
+                                  style={{
+                                    top: block.topPx + 1,
+                                    height: Math.max(block.heightPx - 2, 24),
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
+                                  <div className="text-lg font-bold leading-none">{count}</div>
+                                  {block.heightPx > 50 && (
+                                    <div className="text-[8px] opacity-70 mt-0.5">
+                                      {block.cfg.startHour}:{String(block.cfg.startMinute || 0).padStart(2, '0')}–{block.cfg.endHour}:{String(block.cfg.endMinute || 0).padStart(2, '0')}
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                              {cellActivities.map((cell, ci) => {
-                                const tc = cell.typeConfig || { header: 'bg-muted-foreground', dot: 'bg-muted-foreground', label: 'Outro', value: 'outro', bg: '', border: '' };
-                                return cell.items.length === 1 ? (
-                                  <div
-                                    key={ci}
-                                    className={cn(
-                                      'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
-                                      tc.header,
-                                      cell.isDefault && 'opacity-60 border-2 border-dashed border-white/40'
-                                    )}
-                                    onClick={(e) => { e.stopPropagation(); handleOpenEdit(cell.items[0]); }}
-                                  >
-                                    <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
-                                    <div className="text-[9px] opacity-80 mt-0.5 leading-tight line-clamp-2">{cell.items[0].title}</div>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-80 p-0" align="start" side="right">
+                                <div className={cn('px-3 py-2 border-b text-white rounded-t-md', bgColor)}>
+                                  <p className="text-xs font-bold">{block.cfg.label} — {count} atividade{count !== 1 ? 's' : ''}</p>
+                                  <p className="text-[10px] opacity-80">
+                                    {format(dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {block.cfg.startHour}h–{block.cfg.endHour}h
+                                  </p>
+                                </div>
+                                {count === 0 ? (
+                                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                                    Nenhuma atividade neste bloco
                                   </div>
                                 ) : (
-                                  <Popover key={ci}>
-                                    <PopoverTrigger asChild>
-                                      <div
-                                        className={cn(
-                                          'rounded-md px-2 py-1.5 text-white cursor-pointer hover:opacity-90 transition-opacity shadow-sm',
-                                          tc.header,
-                                          cell.isDefault && 'opacity-60 border-2 border-dashed border-white/40'
-                                        )}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{tc.label.slice(0, 4)}</div>
-                                        <div className="text-sm font-bold leading-none">{cell.items.length}</div>
-                                      </div>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-72 p-0" align="start" side="bottom">
-                                      <div className="px-3 py-2 border-b bg-muted/30">
-                                        <p className="text-xs font-bold">{tc.label} — {cell.items.length} atividade{cell.items.length > 1 ? 's' : ''}</p>
-                                      </div>
-                                      <ScrollArea className="max-h-56">
-                                        <div className="divide-y">
-                                          {cell.items.map(a => (
-                                            <div
-                                              key={a.id}
-                                              className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
-                                              onClick={() => handleOpenEdit(a)}
-                                            >
-                                              <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', tc.dot || tc.header)} />
-                                              <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-medium truncate">{a.title}</p>
-                                                <div className="flex items-center gap-1.5 mt-0.5">
-                                                  {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{a.lead_name}</span>}
-                                                  <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
-                                                    {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
-                                                  </Badge>
-                                                </div>
-                                              </div>
+                                  <ScrollArea className="max-h-64">
+                                    <div className="divide-y">
+                                      {block.items.map(a => (
+                                        <div
+                                          key={a.id}
+                                          className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
+                                          onClick={() => handleOpenEdit(a)}
+                                        >
+                                          <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', tc?.dot || bgColor)} />
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-medium truncate">{a.title}</p>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                              {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">📁 {a.lead_name}</span>}
+                                              <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
+                                                {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                              </Badge>
                                             </div>
-                                          ))}
+                                          </div>
                                         </div>
-                                      </ScrollArea>
-                                    </PopoverContent>
-                                  </Popover>
-                                );
-                              })}
-                            </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                )}
+                              </PopoverContent>
+                            </Popover>
                           );
                         })}
                       </div>
