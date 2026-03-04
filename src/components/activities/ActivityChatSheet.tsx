@@ -14,7 +14,7 @@ import {
   RefreshCw, Settings2, Trash2, Ban, Plus, MessageCircle, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ConfirmDialogDateFields } from './ConfirmDialogDateFields';
+import { ConfirmDialogDateFields } from '@/components/activities/ConfirmDialogDateFields';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
