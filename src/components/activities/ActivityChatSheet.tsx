@@ -121,6 +121,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [pendingAiActions, setPendingAiActions] = useState<AIAssistantResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [confirmNewActivity, setConfirmNewActivity] = useState<any | null>(null);
+  const [activityTypes, setActivityTypes] = useState<{ key: string; label: string }[]>([]);
+  const [profilesList, setProfilesList] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [lastCreatedActivityId, setLastCreatedActivityId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -139,6 +142,14 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     supabase.from('profiles').select('full_name').eq('user_id', user.id).single()
       .then(({ data }) => setUserName(data?.full_name || user.email || 'Usuário'));
   }, [user]);
+
+  // Fetch activity types and profiles for the confirm dialog
+  useEffect(() => {
+    supabase.from('activity_types').select('key, label').eq('is_active', true).order('display_order')
+      .then(({ data }) => setActivityTypes((data || []) as { key: string; label: string }[]));
+    supabase.from('profiles').select('user_id, full_name').order('full_name')
+      .then(({ data }) => setProfilesList((data || []).filter((p: any) => p.full_name) as { user_id: string; full_name: string }[]));
+  }, []);
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
@@ -1558,18 +1569,21 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
             {/* Type and Priority row */}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Tipo</label>
+                <label className="text-xs font-medium text-foreground">Tipo de Atividade *</label>
                 <select
                   className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
                   value={confirmNewActivity?.activity_type || 'tarefa'}
                   onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, activity_type: e.target.value } : prev)}
                 >
-                  <option value="tarefa">Tarefa</option>
-                  <option value="audiencia">Audiência</option>
-                  <option value="prazo">Prazo</option>
-                  <option value="acompanhamento">Acompanhamento</option>
-                  <option value="reuniao">Reunião</option>
-                  <option value="diligencia">Diligência</option>
+                  {activityTypes.length > 0 ? activityTypes.map(t => (
+                    <option key={t.key} value={t.key}>{t.label}</option>
+                  )) : (
+                    <>
+                      <option value="tarefa">Tarefa</option>
+                      <option value="audiencia">Audiência</option>
+                      <option value="prazo">Prazo</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div className="space-y-1">
@@ -1585,6 +1599,28 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                   <option value="urgente">Urgente</option>
                 </select>
               </div>
+            </div>
+
+            {/* Assessor */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Assessor (Responsável)</label>
+              <select
+                className="w-full h-8 text-sm rounded-md border border-input bg-background px-2"
+                value={confirmNewActivity?.assigned_to || ''}
+                onChange={(e) => {
+                  const selected = profilesList.find(p => p.user_id === e.target.value);
+                  setConfirmNewActivity((prev: any) => prev ? { 
+                    ...prev, 
+                    assigned_to: e.target.value || null, 
+                    assigned_to_name: selected?.full_name || null 
+                  } : prev);
+                }}
+              >
+                <option value="">Selecione...</option>
+                {profilesList.map(p => (
+                  <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
+                ))}
+              </select>
             </div>
 
             {/* Deadline and Notification date */}
@@ -1689,10 +1725,25 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         <AlertDialogFooter className="shrink-0 pt-2 border-t">
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            onClick={() => {
+            onClick={async () => {
               if (onCreateActivity && confirmNewActivity) {
-                onCreateActivity(confirmNewActivity);
+                const result: any = onCreateActivity(confirmNewActivity);
+                const resolved = result instanceof Promise ? await result : result;
+                const createdId = resolved?.id || null;
                 toast.success('Atividade criada!');
+                
+                // Send follow-up message asking if user wants to open it
+                const scope = getConversationScope();
+                const linkText = createdId ? `\n\n🔗 [Abrir atividade](${window.location.origin}/?openActivity=${createdId})` : '';
+                await supabase.from('activity_chat_messages').insert({
+                  activity_id: scope.activity_id,
+                  lead_id: scope.lead_id,
+                  message_type: 'text',
+                  content: `✅ **Atividade criada com sucesso!**\n\n📋 *${confirmNewActivity.title}*${linkText}`,
+                  sender_id: null,
+                  sender_name: 'Assistente IA',
+                });
+                fetchMessages();
               }
               setConfirmNewActivity(null);
             }}
