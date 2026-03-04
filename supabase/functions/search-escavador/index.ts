@@ -20,12 +20,10 @@ serve(async (req) => {
       });
     }
 
-    const { action, numero_cnj, nome, cpf_cnpj } = await req.json();
+    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado } = await req.json();
 
     let url = '';
     let method = 'GET';
-
-    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado } = await req.json();
 
     switch (action) {
       case 'buscar_por_numero':

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Select,
@@ -53,7 +54,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const [searchQuery, setSearchQuery] = useState('');
   const [oabEstado, setOabEstado] = useState('SP');
   const [results, setResults] = useState<EscavadorResult[]>([]);
-  const [selectedResult, setSelectedResult] = useState<EscavadorResult | null>(null);
+  const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
   const [searchError, setSearchError] = useState('');
 
   // Manual form state
@@ -70,7 +71,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setSearching(true);
     setSearchError('');
     setResults([]);
-    setSelectedResult(null);
+    setSelectedResults(new Set());
 
     try {
       const actionMap = {
@@ -121,56 +122,85 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     }
   };
 
-  const saveFromEscavador = async (result: EscavadorResult) => {
+  const toggleResult = (index: number) => {
+    setSelectedResults(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const saveSelectedFromEscavador = async () => {
+    if (selectedResults.size === 0) return;
     setSaving(true);
+    let successCount = 0;
+    let skipCount = 0;
     try {
-      // Check if this process_number is already linked to a case
-      const { data: existing } = await supabase
-        .from('lead_processes')
-        .select('id, case_id')
-        .eq('process_number', result.numero_cnj)
-        .not('case_id', 'is', null)
-        .maybeSingle();
-
-      if (existing) {
-        toast.error('Este processo já está vinculado a outro caso.');
-        setSaving(false);
-        return;
-      }
-
-      const fonte = result.fontes?.[0];
-      const title = fonte?.classe?.nome || 
-        `${result.titulo_polo_ativo || 'Autor'} vs ${result.titulo_polo_passivo || 'Réu'}`;
-      const description = [
-        fonte?.area?.nome && `Área: ${fonte.area.nome}`,
-        fonte?.nome && `Fonte: ${fonte.nome}`,
-        fonte?.grau && `Grau: ${fonte.grau}`,
-        fonte?.assuntos?.length && `Assuntos: ${fonte.assuntos.map(a => a.nome).join(', ')}`,
-      ].filter(Boolean).join('\n');
-
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
-        .from('lead_processes')
-        .insert({
-          lead_id: leadId,
-          case_id: caseId,
-          process_type: 'judicial',
-          process_number: result.numero_cnj,
-          title,
-          description,
-          status: result.fontes_tribunais_estao_arquivadas ? 'arquivado' : 'em_andamento',
-          created_by: user?.id,
-        } as any);
+      for (const idx of selectedResults) {
+        const result = results[idx];
+        if (!result) continue;
 
-      if (error) throw error;
-      toast.success('Processo judicial vinculado ao caso');
-      onProcessAdded();
-      onOpenChange(false);
-      resetForm();
+        // Check duplicate
+        const { data: existing } = await supabase
+          .from('lead_processes')
+          .select('id, case_id')
+          .eq('process_number', result.numero_cnj)
+          .not('case_id', 'is', null)
+          .maybeSingle();
+
+        if (existing) {
+          skipCount++;
+          continue;
+        }
+
+        const fonte = result.fontes?.[0];
+        const title = fonte?.classe?.nome || 
+          `${result.titulo_polo_ativo || 'Autor'} vs ${result.titulo_polo_passivo || 'Réu'}`;
+        const description = [
+          fonte?.area?.nome && `Área: ${fonte.area.nome}`,
+          fonte?.nome && `Fonte: ${fonte.nome}`,
+          fonte?.grau && `Grau: ${fonte.grau}`,
+          fonte?.assuntos?.length && `Assuntos: ${fonte.assuntos.map(a => a.nome).join(', ')}`,
+        ].filter(Boolean).join('\n');
+
+        const { error } = await supabase
+          .from('lead_processes')
+          .insert({
+            lead_id: leadId,
+            case_id: caseId,
+            process_type: 'judicial',
+            process_number: result.numero_cnj,
+            title,
+            description,
+            status: result.fontes_tribunais_estao_arquivadas ? 'arquivado' : 'em_andamento',
+            created_by: user?.id,
+          } as any);
+
+        if (error) {
+          console.error('Error saving process:', error);
+          skipCount++;
+        } else {
+          successCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount} processo(s) vinculado(s) ao caso`);
+        onProcessAdded();
+      }
+      if (skipCount > 0) {
+        toast.warning(`${skipCount} processo(s) já vinculado(s) ou com erro`);
+      }
+      if (successCount > 0) {
+        onOpenChange(false);
+        resetForm();
+      }
     } catch (err: any) {
       console.error('Save error:', err);
-      toast.error(err.message || 'Erro ao salvar processo');
+      toast.error(err.message || 'Erro ao salvar processos');
     } finally {
       setSaving(false);
     }
@@ -230,7 +260,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const resetForm = () => {
     setSearchQuery('');
     setResults([]);
-    setSelectedResult(null);
+    setSelectedResults(new Set());
     setSearchError('');
     setOabEstado('SP');
     setManualForm({ title: '', process_number: '', process_type: 'judicial', description: '', fee_percentage: '' });
@@ -308,16 +338,18 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               <div className="space-y-2 max-h-[300px] overflow-y-auto">
                 {results.map((r, i) => {
                   const fonte = r.fontes?.[0];
+                  const isSelected = selectedResults.has(i);
                   return (
                     <div
                       key={r.numero_cnj || i}
                       className={`border rounded-lg p-3 cursor-pointer transition-colors hover:bg-muted/50 ${
-                        selectedResult?.numero_cnj === r.numero_cnj ? 'ring-2 ring-primary bg-primary/5' : ''
+                        isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
                       }`}
-                      onClick={() => setSelectedResult(r)}
+                      onClick={() => toggleResult(i)}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                      <div className="flex items-start gap-2">
+                        <Checkbox checked={isSelected} className="mt-0.5" />
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium">{r.numero_cnj}</p>
                           {fonte?.classe && (
                             <p className="text-xs text-muted-foreground">{fonte.classe.nome}</p>
@@ -341,14 +373,14 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               </div>
             )}
 
-            {selectedResult && (
+            {selectedResults.size > 0 && (
               <Button
-                onClick={() => saveFromEscavador(selectedResult)}
+                onClick={saveSelectedFromEscavador}
                 disabled={saving}
                 className="w-full"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                Vincular Processo ao Caso
+                Vincular {selectedResults.size} processo(s) ao Caso
               </Button>
             )}
           </TabsContent>
