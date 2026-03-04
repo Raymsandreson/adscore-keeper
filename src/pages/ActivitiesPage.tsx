@@ -151,6 +151,9 @@ const ActivitiesPage = () => {
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   // Assignee's routine: when creating/editing for another user, load their routine
   const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
+  // Blocks view: load the routine of the single selected assignee
+  const blocksViewUserId = viewMode === 'blocks' && filterAssignee.length === 1 ? filterAssignee[0] : undefined;
+  const { configs: blocksViewSettings } = useTimeBlockSettings(blocksViewUserId || user?.id || undefined);
   const { types: dbActivityTypes } = useActivityTypes();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   // Countdown timer state for time block click
@@ -1520,7 +1523,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                     const c = countByField('assigned_to', m.user_id);
                     const isSelected = filterAssignee.includes(m.user_id);
                     return (
-                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
+                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => viewMode === 'blocks' ? setFilterAssignee(isSelected ? [] : [m.user_id]) : toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                         <span className="ml-2 flex gap-1 text-[10px]">
@@ -1901,9 +1904,24 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
         {/* === BLOCOS DE TEMPO (AGENDA SEMANAL) === */}
         {viewMode === 'blocks' && !isEditing && (() => {
+          // Use the selected assignee's routine for blocks view
+          const activeSettings = blocksViewSettings.length > 0 ? blocksViewSettings : timeBlockSettings;
+
+          // If multiple assignees selected, show message to select just one
+          if (filterAssignee.length > 1) {
+            return (
+              <div className="flex flex-1 items-center justify-center text-center p-8">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">Selecione apenas um assessor para visualizar os blocos de tempo.</p>
+                  <p className="text-xs text-muted-foreground/70">A visualização de blocos mostra a rotina individual de cada membro.</p>
+                </div>
+              </div>
+            );
+          }
+
           // Derive the hour range from settings
-          const allStartHours = timeBlockSettings.map(c => c.startHour);
-          const allEndHours = timeBlockSettings.map(c => c.endHour);
+          const allStartHours = activeSettings.map(c => c.startHour);
+          const allEndHours = activeSettings.map(c => c.endHour);
           const minHour = Math.min(...allStartHours, 8);
           const maxHour = Math.max(...allEndHours, 18);
           const WEEK_HOURS = Array.from({ length: maxHour - minHour }, (_, i) => i + minHour);
@@ -1934,7 +1952,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             return a.activity_type;
           };
 
-          // Build blocks per day: each timeBlockSetting generates a visual block per day
+          // Build blocks per day: each activeSettings generates a visual block per day
           const getBlocksForDay = (dayDate: Date, dayIdx: number) => {
             const dayActivities = displayedActivities.filter(a => {
               const d = getActivityDay(a);
@@ -1943,11 +1961,11 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             const noDateActivities = displayedActivities.filter(a => {
               if (a.deadline || a.notification_date) return false;
               const effectiveType = getEffectiveType(a);
-              const cfg = timeBlockSettings.find(c => c.activityType === effectiveType);
+              const cfg = activeSettings.find(c => c.activityType === effectiveType);
               return cfg?.days.includes(dayIdx) ?? false;
             });
 
-            return timeBlockSettings
+            return activeSettings
               .filter(cfg => cfg.days.includes(dayIdx))
               .map(cfg => {
                 const startM = cfg.startMinute || 0;
@@ -1979,7 +1997,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           const unscheduled = displayedActivities.filter(a => {
             if (a.deadline || a.notification_date) return false;
             const effectiveType = getEffectiveType(a);
-            const cfg = timeBlockSettings.find(c => c.activityType === effectiveType);
+            const cfg = activeSettings.find(c => c.activityType === effectiveType);
             return !cfg || cfg.days.length === 0;
           });
 
@@ -2039,8 +2057,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
                         {/* Proportional blocks */}
                         {blocks.map((block, bi) => {
-                          const tc = ACTIVITY_TYPES.find(t => t.value === block.cfg.activityType);
-                          const bgColor = tc?.header || 'bg-muted-foreground';
+                          const bgColor = block.cfg.color || 'bg-muted-foreground';
                           const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
                           const count = block.items.length;
 
@@ -2088,7 +2105,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                           className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
                                           onClick={() => handleOpenEdit(a)}
                                         >
-                                          <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', tc?.dot || bgColor)} />
+                                          <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', bgColor)} />
                                           <div className="min-w-0 flex-1">
                                             <p className="text-xs font-medium truncate">{a.title}</p>
                                             <div className="flex items-center gap-1.5 mt-0.5">
