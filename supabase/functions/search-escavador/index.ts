@@ -25,6 +25,8 @@ serve(async (req) => {
     let url = '';
     let method = 'GET';
 
+    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado } = await req.json();
+
     switch (action) {
       case 'buscar_por_numero':
         if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
@@ -36,7 +38,6 @@ serve(async (req) => {
         break;
       case 'buscar_por_cpf_cnpj':
         if (!cpf_cnpj) throw new Error('cpf_cnpj é obrigatório');
-        // Remove formatting
         const clean = cpf_cnpj.replace(/[.\-\/]/g, '');
         if (clean.length === 11) {
           url = `${ESCAVADOR_BASE}/processos/cpf/${clean}`;
@@ -44,8 +45,12 @@ serve(async (req) => {
           url = `${ESCAVADOR_BASE}/processos/cnpj/${clean}`;
         }
         break;
+      case 'buscar_por_oab':
+        if (!oab_numero || !oab_estado) throw new Error('oab_numero e oab_estado são obrigatórios');
+        url = `${ESCAVADOR_BASE}/processos/oab/${encodeURIComponent(oab_estado.toUpperCase())}/${encodeURIComponent(oab_numero)}`;
+        break;
       default:
-        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj');
+        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab');
     }
 
     console.log(`Escavador request: ${method} ${url}`);

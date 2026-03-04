@@ -49,8 +49,9 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const [tab, setTab] = useState<'escavador' | 'manual'>('escavador');
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [searchType, setSearchType] = useState<'numero' | 'nome' | 'cpf'>('numero');
+  const [searchType, setSearchType] = useState<'numero' | 'nome' | 'cpf' | 'oab'>('numero');
   const [searchQuery, setSearchQuery] = useState('');
+  const [oabEstado, setOabEstado] = useState('SP');
   const [results, setResults] = useState<EscavadorResult[]>([]);
   const [selectedResult, setSelectedResult] = useState<EscavadorResult | null>(null);
   const [searchError, setSearchError] = useState('');
@@ -76,12 +77,17 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         numero: 'buscar_por_numero',
         nome: 'buscar_por_nome',
         cpf: 'buscar_por_cpf_cnpj',
+        oab: 'buscar_por_oab',
       };
 
       const body: any = { action: actionMap[searchType] };
       if (searchType === 'numero') body.numero_cnj = searchQuery;
       if (searchType === 'nome') body.nome = searchQuery;
       if (searchType === 'cpf') body.cpf_cnpj = searchQuery;
+      if (searchType === 'oab') {
+        body.oab_numero = searchQuery;
+        body.oab_estado = oabEstado;
+      }
 
       const { data, error } = await supabase.functions.invoke('search-escavador', { body });
 
@@ -226,6 +232,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setResults([]);
     setSelectedResult(null);
     setSearchError('');
+    setOabEstado('SP');
     setManualForm({ title: '', process_number: '', process_type: 'judicial', description: '', fee_percentage: '' });
   };
 
@@ -259,14 +266,28 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                   <SelectItem value="numero">Nº CNJ</SelectItem>
                   <SelectItem value="nome">Nome</SelectItem>
                   <SelectItem value="cpf">CPF/CNPJ</SelectItem>
+                  <SelectItem value="oab">OAB</SelectItem>
                 </SelectContent>
               </Select>
+              {searchType === 'oab' && (
+                <Select value={oabEstado} onValueChange={setOabEstado}>
+                  <SelectTrigger className="w-[80px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'].map(uf => (
+                      <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder={
                   searchType === 'numero' ? '0000000-00.0000.0.00.0000' :
-                  searchType === 'nome' ? 'Nome da parte...' : 'CPF ou CNPJ...'
+                  searchType === 'nome' ? 'Nome da parte...' :
+                  searchType === 'oab' ? 'Nº da OAB...' : 'CPF ou CNPJ...'
                 }
                 className="flex-1"
                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
