@@ -43,6 +43,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
   const [workflowId, setWorkflowId] = useState('');
   const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
+  const [feePercentage, setFeePercentage] = useState('');
 
   useEffect(() => {
     fetchProcesses();
@@ -56,6 +57,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
     setWorkflowId('');
     setStartedAt(new Date().toISOString().slice(0, 10));
     setNotes('');
+    setFeePercentage('');
     setEditingProcess(null);
   };
 
@@ -68,6 +70,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
     setWorkflowId(p.workflow_id || '');
     setStartedAt(p.started_at || '');
     setNotes(p.notes || '');
+    setFeePercentage(p.fee_percentage != null ? String(p.fee_percentage) : '');
     setShowAddDialog(true);
   };
 
@@ -84,6 +87,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
       workflow_name: selectedBoard?.name || null,
       started_at: startedAt || null,
       notes: notes || null,
+      fee_percentage: feePercentage ? parseFloat(feePercentage) : null,
     };
 
     if (editingProcess) {
@@ -177,6 +181,9 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
                   {p.process_number && (
                     <p className="text-xs text-muted-foreground">Nº {p.process_number}</p>
                   )}
+                  {p.fee_percentage != null && (
+                    <p className="text-xs text-muted-foreground">Honorários: {p.fee_percentage}%</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -255,9 +262,15 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
               <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Processo trabalhista contra empresa X" />
             </div>
 
-            <div>
-              <Label>Nº do Processo</Label>
-              <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Nº do Processo</Label>
+                <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
+              </div>
+              <div>
+                <Label>Honorários (%)</Label>
+                <Input type="number" min="0" max="100" step="0.1" value={feePercentage} onChange={e => setFeePercentage(e.target.value)} placeholder="Ex: 30" />
+              </div>
             </div>
 
             <div>

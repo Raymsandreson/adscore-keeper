@@ -1,0 +1,1 @@
+ALTER TABLE public.lead_processes ADD COLUMN fee_percentage numeric DEFAULT null;

@@ -3423,6 +3423,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          fee_percentage: number | null
           finished_at: string | null
           id: string
           lead_id: string
@@ -3441,6 +3442,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          fee_percentage?: number | null
           finished_at?: string | null
           id?: string
           lead_id: string
@@ -3459,6 +3461,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          fee_percentage?: number | null
           finished_at?: string | null
           id?: string
           lead_id?: string
