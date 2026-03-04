@@ -1448,9 +1448,9 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
 
   return (
-    <div className="h-dvh flex flex-col bg-background overflow-hidden">
+    <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20 sticky top-0">
+      <div className="bg-primary text-primary-foreground px-4 py-2.5 flex items-center justify-between shrink-0 shadow-md z-20">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold tracking-tight">Atividades</h1>
           <div className="flex items-center gap-1.5 text-primary-foreground/80 text-xs">
@@ -1509,7 +1509,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
       </div>
 
       {/* Filters strip - compact horizontal */}
-      <div className={cn("bg-muted/30 border-b px-3 py-1.5 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none sticky top-0 z-10", isEditing && "hidden md:flex")}>
+      <div className={cn("bg-muted/30 border-b px-3 py-1.5 flex items-center gap-2 overflow-x-auto shrink-0 scrollbar-none", isEditing && "hidden md:flex")}>
         {/* Assessor */}
         <Popover open={openFilterKey === 'assignee'} onOpenChange={o => setOpenFilterKey(o ? 'assignee' : null)}>
           <PopoverTrigger asChild>
