@@ -183,6 +183,10 @@ const ActivitiesPage = () => {
     fetchActivities(getFilterParams());
   }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact]);
 
+  useEffect(() => {
+    if (viewMode === 'blocks') setOpenFilterKey(null);
+  }, [viewMode]);
+
   const toggleFilter = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], value: string) => {
     setter(current.includes(value) ? current.filter(v => v !== value) : [...current, value]);
   };
@@ -2054,8 +2058,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           {selectedBlockData.items.map(a => (
                             <div
                               key={a.id}
-                              className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
-                              onClick={() => handleOpenEdit(a)}
+                              className="px-3 py-2 transition-colors flex items-start gap-2"
                             >
                               <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', selectedBlockData.cfg.color || 'bg-muted-foreground')} />
                               <div className="min-w-0 flex-1">
@@ -2184,7 +2187,10 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                 top: block.topPx + 1,
                                 height: Math.max(block.heightPx - 2, 24),
                               }}
-                              onClick={() => setSelectedBlockKey(isSelected ? null : blockKey)}
+                              onClick={() => {
+                                setOpenFilterKey(null);
+                                setSelectedBlockKey(isSelected ? null : blockKey);
+                              }}
                             >
                               <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">{abbreviation}</div>
                               <div className="text-lg font-bold leading-none">{count}</div>
