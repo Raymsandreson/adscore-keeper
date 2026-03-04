@@ -124,12 +124,14 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
-    if (!activityId && !leadId) return;
+    const effectiveActivityId = activityId || contextData.activity?.id;
+    const effectiveLeadId = leadId || contextData.lead?.id;
+    if (!effectiveActivityId && !effectiveLeadId) return;
     setLoading(true);
     try {
       let query = supabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
-      if (activityId) query = query.eq('activity_id', activityId);
-      else if (leadId) query = query.eq('lead_id', leadId);
+      if (effectiveActivityId) query = query.eq('activity_id', effectiveActivityId);
+      else if (effectiveLeadId) query = query.eq('lead_id', effectiveLeadId);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -139,7 +141,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setLoading(false);
     }
-  }, [activityId, leadId]);
+  }, [activityId, leadId, contextData.activity?.id, contextData.lead?.id]);
 
   // Fetch AI action suggestions
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
@@ -230,9 +232,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       });
       if (error) throw error;
       if (data?.description) {
+        const stableActivityId = activityId || contextData.activity?.id || null;
+        const stableLeadId = leadId || contextData.lead?.id || null;
         await supabase.from('activity_chat_messages').insert({
-          activity_id: activityId,
-          lead_id: leadId,
+          activity_id: stableActivityId,
+          lead_id: stableLeadId,
           message_type: 'ai_suggestion',
           content: data.description,
           sender_id: null,
@@ -299,12 +303,14 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
-    if (!activityId && !leadId) return;
+    const stableActivityId = activityId || contextData.activity?.id || null;
+    const stableLeadId = leadId || contextData.lead?.id || null;
+    if (!stableActivityId && !stableLeadId) return;
     setSending(true);
     try {
       const { error } = await supabase.from('activity_chat_messages').insert({
-        activity_id: activityId,
-        lead_id: leadId,
+        activity_id: stableActivityId,
+        lead_id: stableLeadId,
         message_type: type,
         content: content || null,
         file_url: fileUrl || null,
@@ -354,6 +360,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const triggerAIAssistant = async (lastUserMessage?: string) => {
+    // Capture stable references to avoid stale closures
+    const stableActivityId = activityId || contextData.activity?.id || null;
+    const stableLeadId = leadId || contextData.lead?.id || null;
+    
     setAiResponding(true);
     try {
       // Build chat history from messages
@@ -400,10 +410,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
       const response = data as AIAssistantResponse;
 
-      // Save AI response as chat message
+      // Save AI response as chat message using stable IDs
       await supabase.from('activity_chat_messages').insert({
-        activity_id: activityId,
-        lead_id: leadId,
+        activity_id: stableActivityId,
+        lead_id: stableLeadId,
         message_type: 'ai_suggestion',
         content: response.response_text,
         ai_suggestion: response.activity_fields || response.lead_fields || response.contact_fields || response.new_activity
@@ -713,8 +723,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         setPendingSuggestion(data.suggestion);
         // Save AI suggestion as a message
         await supabase.from('activity_chat_messages').insert({
-          activity_id: activityId,
-          lead_id: leadId,
+          activity_id: activityId || contextData.activity?.id || null,
+          lead_id: leadId || contextData.lead?.id || null,
           message_type: 'ai_suggestion',
           content: JSON.stringify(data.suggestion),
           ai_suggestion: data.suggestion,
