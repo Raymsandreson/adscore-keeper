@@ -62,6 +62,7 @@ export function EntityAIChat({
   const [recording, setRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [aiResponding, setAiResponding] = useState(false);
+  const [aiProgressSteps, setAiProgressSteps] = useState<{ label: string; status: 'pending' | 'active' | 'done' }[]>([]);
   const [userName, setUserName] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -153,6 +154,13 @@ export function EntityAIChat({
   const triggerAIAssistant = async (lastUserMessage?: string) => {
     if (!conversationKey) return;
     setAiResponding(true);
+    const steps = [
+      { label: 'Lendo contexto da conversa...', status: 'active' as const },
+      { label: 'Analisando dados do caso...', status: 'pending' as const },
+      { label: 'Gerando resposta inteligente...', status: 'pending' as const },
+      { label: 'Preparando sugestões...', status: 'pending' as const },
+    ];
+    setAiProgressSteps([...steps]);
     try {
       const chatHistory = messages
         .filter(m => !m.deleted_at)
@@ -165,6 +173,11 @@ export function EntityAIChat({
       if (lastUserMessage) {
         chatHistory.push({ role: 'user', content: lastUserMessage, type: 'text', file_url: null });
       }
+
+      // Progress: step 1 done, step 2 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i === 0 ? { ...s, status: 'done' } : i === 1 ? { ...s, status: 'active' } : s
+      ));
 
       // Fetch context
       let leadData = null;
@@ -203,6 +216,11 @@ export function EntityAIChat({
         }
       }
 
+      // Progress: step 2 done, step 3 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i <= 1 ? { ...s, status: 'done' } : i === 2 ? { ...s, status: 'active' } : s
+      ));
+
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
         body: {
           mode: 'assistant',
@@ -218,6 +236,11 @@ export function EntityAIChat({
       });
 
       if (error) throw error;
+
+      // Progress: step 3 done, step 4 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i <= 2 ? { ...s, status: 'done' } : i === 3 ? { ...s, status: 'active' } : s
+      ));
 
       await supabase.from('activity_chat_messages').insert({
         activity_id: activityId || null,
@@ -240,7 +263,11 @@ export function EntityAIChat({
       console.error('AI assistant error:', e);
       toast.error('Erro ao obter resposta da IA');
     } finally {
-      setAiResponding(false);
+      setAiProgressSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+      setTimeout(() => {
+        setAiResponding(false);
+        setAiProgressSteps([]);
+      }, 500);
     }
   };
 
@@ -562,13 +589,30 @@ export function EntityAIChat({
         ) : (
           messages.map(renderMessage)
         )}
-        {aiResponding && (
+        {aiResponding && aiProgressSteps.length > 0 && (
           <div className="flex justify-start mb-2">
-            <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-primary">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Analisando...
+            <div className="max-w-[85%] bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2.5 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-primary mb-1">
+                <Sparkles className="h-3 w-3 animate-pulse" /> IA trabalhando...
               </div>
+              {aiProgressSteps.map((step, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px]">
+                  {step.status === 'done' ? (
+                    <Check className="h-3 w-3 text-green-500 shrink-0" />
+                  ) : step.status === 'active' ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                  ) : (
+                    <div className="h-3 w-3 rounded-full border border-muted-foreground/30 shrink-0" />
+                  )}
+                  <span className={cn(
+                    step.status === 'done' && "text-muted-foreground line-through",
+                    step.status === 'active' && "text-primary font-medium",
+                    step.status === 'pending' && "text-muted-foreground/50"
+                  )}>
+                    {step.label}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
