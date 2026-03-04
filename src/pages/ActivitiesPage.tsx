@@ -149,6 +149,8 @@ const ActivitiesPage = () => {
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
   const aiSuggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [calendarExpanded, setCalendarExpanded] = useState(true);
+  const [deadlineDateCount, setDeadlineDateCount] = useState<number | null>(null);
+  const [notifDateCount, setNotifDateCount] = useState<number | null>(null);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
   // Assignee's routine: when creating/editing for another user, load their routine
   const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
@@ -776,6 +778,22 @@ const ActivitiesPage = () => {
     }
   };
 
+  // Fetch open activity counts for the assignee on the selected dates
+  useEffect(() => {
+    const fetchDateCount = async (date: string, setter: (v: number | null) => void) => {
+      if (!date || !formAssignedTo) { setter(null); return; }
+      const { count, error } = await supabase
+        .from('lead_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', formAssignedTo)
+        .eq('deadline', date)
+        .neq('status', 'concluida');
+      if (!error) setter(count ?? 0);
+    };
+    fetchDateCount(formDeadline, setDeadlineDateCount);
+    fetchDateCount(formNotificationDate, setNotifDateCount);
+  }, [formDeadline, formNotificationDate, formAssignedTo]);
+
   // Calendar data
   const calendarDays = useMemo(() => {
     const start = startOfMonth(calendarMonth);
@@ -1029,12 +1047,26 @@ const ActivitiesPage = () => {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label>Prazo da atividade</Label>
+          <div className="flex items-center justify-between">
+            <Label>Prazo da atividade</Label>
+            {deadlineDateCount !== null && formDeadline && (
+              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", deadlineDateCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400")}>
+                {deadlineDateCount} atv{deadlineDateCount !== 1 ? 's' : ''} abertas
+              </span>
+            )}
+          </div>
           <Input type="date" value={formDeadline} onChange={e => handleDeadlineChange(e.target.value)} />
         </div>
 
         <div>
-          <Label>Prazo de notificação</Label>
+          <div className="flex items-center justify-between">
+            <Label>Prazo de notificação</Label>
+            {notifDateCount !== null && formNotificationDate && (
+              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", notifDateCount > 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400")}>
+                {notifDateCount} atv{notifDateCount !== 1 ? 's' : ''} abertas
+              </span>
+            )}
+          </div>
           <Input type="date" value={formNotificationDate} onChange={e => setFormNotificationDate(e.target.value)} />
         </div>
       </div>
