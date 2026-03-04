@@ -2001,7 +2001,10 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             const totalCount = typeActs.length;
             // Find matching routine config for color
             const routineCfg = activeSettings.find(c => c.activityType === t.value);
-            return { ...t, openCount, totalCount, routineCfg, items: typeActs };
+            // Get hex color: from routine config, or from dbActivityTypes, or fallback
+            const dbType = dbActivityTypes.find(dt => dt.key === t.value);
+            const hexColor = routineCfg?.color || dbType?.color || '#888';
+            return { ...t, openCount, totalCount, routineCfg, hexColor, items: typeActs };
           }).filter(t => t.totalCount > 0 || activeSettings.some(c => c.activityType === t.value));
 
           const totalOpen = displayedActivities.filter(a => a.status !== 'concluida').length;
@@ -2047,8 +2050,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                           <button className={cn(
                             "w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors text-left",
                             t.routineCfg && 'border-l-2',
-                          )} style={t.routineCfg ? { borderLeftColor: undefined } : undefined}>
-                            <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
+                          )} style={t.routineCfg ? { borderLeftColor: t.routineCfg.color } : undefined}>
+                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: t.hexColor }} />
                             <span className="text-xs font-medium flex-1 truncate">{t.label}</span>
                             <span className="text-xs font-bold tabular-nums">
                               <span className={t.openCount > 0 ? 'text-foreground' : 'text-muted-foreground'}>{t.openCount}</span>
@@ -2058,7 +2061,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         </PopoverTrigger>
                         {t.items.length > 0 && (
                           <PopoverContent className="w-80 p-0" align="start" side="right">
-                            <div className={cn('px-3 py-2 border-b text-white rounded-t-md', t.routineCfg?.color || t.header || 'bg-muted-foreground')}>
+                            <div className="px-3 py-2 border-b text-white rounded-t-md" style={{ backgroundColor: t.hexColor }}>
                               <p className="text-xs font-bold">{t.label} — {t.totalCount} atividade{t.totalCount !== 1 ? 's' : ''}</p>
                             </div>
                             <ScrollArea className="max-h-64">
@@ -2069,7 +2072,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                     className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
                                     onClick={() => handleOpenEdit(a)}
                                   >
-                                    <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
+                                    <span className="mt-1 h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: t.hexColor }} />
                                     <div className="min-w-0 flex-1">
                                       <p className="text-xs font-medium truncate">{a.title}</p>
                                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -2154,7 +2157,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
                         {/* Proportional blocks */}
                         {blocks.map((block, bi) => {
-                          const bgColor = block.cfg.color || 'bg-muted-foreground';
+                          const blockColor = block.cfg.color || '#888';
                           const abbreviation = block.cfg.label.slice(0, 4).toUpperCase();
                           const count = block.items.length;
 
@@ -2164,12 +2167,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                 <div
                                   className={cn(
                                     'absolute left-1 right-1 rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-sm flex flex-col items-center justify-center text-white overflow-hidden',
-                                    bgColor,
                                     count === 0 && 'opacity-30'
                                   )}
                                   style={{
                                     top: block.topPx + 1,
                                     height: Math.max(block.heightPx - 2, 24),
+                                    backgroundColor: blockColor,
                                   }}
                                   onClick={(e) => e.stopPropagation()}
                                 >
@@ -2183,7 +2186,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                 </div>
                               </PopoverTrigger>
                               <PopoverContent className="w-80 p-0" align="start" side="right">
-                                <div className={cn('px-3 py-2 border-b text-white rounded-t-md', bgColor)}>
+                                <div className="px-3 py-2 border-b text-white rounded-t-md" style={{ backgroundColor: blockColor }}>
                                   <p className="text-xs font-bold">{block.cfg.label} — {count} atividade{count !== 1 ? 's' : ''}</p>
                                   <p className="text-[10px] opacity-80">
                                     {format(dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {block.cfg.startHour}h–{block.cfg.endHour}h
@@ -2202,7 +2205,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                                           className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
                                           onClick={() => handleOpenEdit(a)}
                                         >
-                                          <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', bgColor)} />
+                                          <span className="mt-1 h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: blockColor }} />
                                           <div className="min-w-0 flex-1">
                                             <p className="text-xs font-medium truncate">{a.title}</p>
                                             <div className="flex items-center gap-1.5 mt-0.5">
