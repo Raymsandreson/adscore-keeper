@@ -74,6 +74,17 @@ interface ActivityChatSheetProps {
 
 export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, activityTitle, onApplySuggestion, onApplyLeadFields, onApplyContactFields, onCreateActivity }: ActivityChatSheetProps) {
   const { user } = useAuthContext();
+  
+  // Get stable conversation scope IDs - falls back to user-scoped virtual ID for general chat
+  const getConversationScope = useCallback(() => {
+    const effActivityId = activityId || null;
+    const effLeadId = leadId || null;
+    if (effActivityId || effLeadId) return { activity_id: effActivityId, lead_id: effLeadId };
+    // General chat: use user-scoped virtual lead_id (no FK constraint on this column)
+    if (user?.id) return { activity_id: null, lead_id: `chat_user_${user.id}` };
+    return { activity_id: null, lead_id: null };
+  }, [activityId, leadId, user?.id]);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -124,14 +135,13 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   // Fetch messages
   const fetchMessages = useCallback(async () => {
-    const effectiveActivityId = activityId || contextData.activity?.id;
-    const effectiveLeadId = leadId || contextData.lead?.id;
-    if (!effectiveActivityId && !effectiveLeadId) return;
+    const scope = getConversationScope();
+    if (!scope.activity_id && !scope.lead_id) return;
     setLoading(true);
     try {
       let query = supabase.from('activity_chat_messages').select('*').order('created_at', { ascending: true });
-      if (effectiveActivityId) query = query.eq('activity_id', effectiveActivityId);
-      else if (effectiveLeadId) query = query.eq('lead_id', effectiveLeadId);
+      if (scope.activity_id) query = query.eq('activity_id', scope.activity_id);
+      else if (scope.lead_id) query = query.eq('lead_id', scope.lead_id);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -141,7 +151,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setLoading(false);
     }
-  }, [activityId, leadId, contextData.activity?.id, contextData.lead?.id]);
+  }, [getConversationScope]);
 
   // Fetch AI action suggestions
   const fetchActionSuggestions = useCallback(async (actData: any, leadData: any, contactData: any) => {
@@ -232,11 +242,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       });
       if (error) throw error;
       if (data?.description) {
-        const stableActivityId = activityId || contextData.activity?.id || null;
-        const stableLeadId = leadId || contextData.lead?.id || null;
+        const scope = getConversationScope();
         await supabase.from('activity_chat_messages').insert({
-          activity_id: stableActivityId,
-          lead_id: stableLeadId,
+          activity_id: scope.activity_id,
+          lead_id: scope.lead_id,
           message_type: 'ai_suggestion',
           content: data.description,
           sender_id: null,
@@ -303,19 +312,16 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const sendMessage = async (type: string, content?: string, fileUrl?: string, fileName?: string, fileSize?: number, audioDuration?: number) => {
-    const stableActivityId = activityId || contextData.activity?.id || null;
-    const stableLeadId = leadId || contextData.lead?.id || null;
-    console.log('[Chat] sendMessage IDs:', { activityId, leadId, stableActivityId, stableLeadId, contextActivity: contextData.activity?.id });
-    if (!stableActivityId && !stableLeadId) {
-      console.error('[Chat] Cannot send: no activityId or leadId available');
-      toast.error('Erro: atividade não identificada. Reabra o chat.');
+    const scope = getConversationScope();
+    if (!scope.activity_id && !scope.lead_id) {
+      toast.error('Erro: faça login para usar o chat.');
       return;
     }
     setSending(true);
     try {
       const { error } = await supabase.from('activity_chat_messages').insert({
-        activity_id: stableActivityId,
-        lead_id: stableLeadId,
+        activity_id: scope.activity_id,
+        lead_id: scope.lead_id,
         message_type: type,
         content: content || null,
         file_url: fileUrl || null,
@@ -365,9 +371,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   };
 
   const triggerAIAssistant = async (lastUserMessage?: string) => {
-    // Capture stable references to avoid stale closures
-    const stableActivityId = activityId || contextData.activity?.id || null;
-    const stableLeadId = leadId || contextData.lead?.id || null;
+    const scope = getConversationScope();
     
     setAiResponding(true);
     try {
@@ -417,8 +421,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
       // Save AI response as chat message using stable IDs
       await supabase.from('activity_chat_messages').insert({
-        activity_id: stableActivityId,
-        lead_id: stableLeadId,
+        activity_id: scope.activity_id,
+        lead_id: scope.lead_id,
         message_type: 'ai_suggestion',
         content: response.response_text,
         ai_suggestion: response.activity_fields || response.lead_fields || response.contact_fields || response.new_activity
@@ -728,8 +732,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         setPendingSuggestion(data.suggestion);
         // Save AI suggestion as a message
         await supabase.from('activity_chat_messages').insert({
-          activity_id: activityId || contextData.activity?.id || null,
-          lead_id: leadId || contextData.lead?.id || null,
+          activity_id: getConversationScope().activity_id,
+          lead_id: getConversationScope().lead_id,
           message_type: 'ai_suggestion',
           content: JSON.stringify(data.suggestion),
           ai_suggestion: data.suggestion,
