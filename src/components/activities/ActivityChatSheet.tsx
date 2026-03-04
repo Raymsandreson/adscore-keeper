@@ -117,6 +117,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const [regenerating, setRegenerating] = useState(false);
   const [aiAssistantMode, setAiAssistantMode] = useState(true);
   const [aiResponding, setAiResponding] = useState(false);
+  const [aiProgressSteps, setAiProgressSteps] = useState<{ label: string; status: 'pending' | 'active' | 'done' }[]>([]);
   const [pendingAiActions, setPendingAiActions] = useState<AIAssistantResponse | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [confirmNewActivity, setConfirmNewActivity] = useState<any | null>(null);
@@ -387,6 +388,14 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     const scope = getConversationScope();
     
     setAiResponding(true);
+    // Initialize progress steps for real-time preview
+    const steps = [
+      { label: 'Lendo contexto da conversa...', status: 'active' as const },
+      { label: 'Analisando dados do caso...', status: 'pending' as const },
+      { label: 'Gerando resposta inteligente...', status: 'pending' as const },
+      { label: 'Preparando sugestões de ação...', status: 'pending' as const },
+    ];
+    setAiProgressSteps([...steps]);
     try {
       // Build chat history from messages
       const chatHistory = messages
@@ -403,6 +412,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         chatHistory.push({ role: 'user', content: lastUserMessage, type: 'text', file_url: null });
       }
 
+      // Progress: step 1 done, step 2 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i === 0 ? { ...s, status: 'done' } : i === 1 ? { ...s, status: 'active' } : s
+      ));
+
       // Fetch activity history for context
       let activityHistory: any[] = [];
       if (contextData.lead?.id) {
@@ -414,6 +428,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           .limit(10);
         activityHistory = histData || [];
       }
+
+      // Progress: step 2 done, step 3 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i <= 1 ? { ...s, status: 'done' } : i === 2 ? { ...s, status: 'active' } : s
+      ));
 
       const { data, error } = await supabase.functions.invoke('analyze-activity-chat', {
         body: {
@@ -431,6 +450,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       if (error) throw error;
 
       const response = data as AIAssistantResponse;
+
+      // Progress: step 3 done, step 4 active
+      setAiProgressSteps(prev => prev.map((s, i) => 
+        i <= 2 ? { ...s, status: 'done' } : i === 3 ? { ...s, status: 'active' } : s
+      ));
 
       // Save AI response as chat message using stable IDs
       await supabase.from('activity_chat_messages').insert({
@@ -459,7 +483,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
       console.error('AI assistant error:', e);
       toast.error('Erro ao obter resposta da IA');
     } finally {
-      setAiResponding(false);
+      // All steps done
+      setAiProgressSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+      setTimeout(() => {
+        setAiResponding(false);
+        setAiProgressSteps([]);
+      }, 500);
     }
   };
 
@@ -1282,20 +1311,37 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           ) : (
             messages.map(renderMessage)
           )}
-          {/* AI responding indicator */}
-          {aiResponding && (
+          {/* AI responding - real-time progress preview */}
+          {aiResponding && aiProgressSteps.length > 0 && (
             <div className="flex justify-start mb-2">
-              <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2">
-                <div className="flex items-center gap-2 text-xs text-primary">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>IA está pensando...</span>
+              <div className="max-w-[85%] bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[10px] font-medium text-primary mb-1">
+                  <Sparkles className="h-3 w-3 animate-pulse" /> IA trabalhando...
                 </div>
+                {aiProgressSteps.map((step, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[11px]">
+                    {step.status === 'done' ? (
+                      <Check className="h-3 w-3 text-green-500 shrink-0" />
+                    ) : step.status === 'active' ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <div className="h-3 w-3 rounded-full border border-muted-foreground/30 shrink-0" />
+                    )}
+                    <span className={cn(
+                      step.status === 'done' && "text-muted-foreground line-through",
+                      step.status === 'active' && "text-primary font-medium",
+                      step.status === 'pending' && "text-muted-foreground/50"
+                    )}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </div>
 
-        {/* AI buttons */}
+        {/* AI toggle */}
         <div className="shrink-0 px-3 py-1.5 border-t bg-muted/30 flex gap-1.5">
           <Button
             variant={aiAssistantMode ? 'default' : 'outline'}
@@ -1305,16 +1351,6 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           >
             <MessageCircle className="h-3 w-3" />
             {aiAssistantMode ? 'Chat IA ativo' : 'Conversar com IA'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
-            onClick={handleAIAnalyze}
-            disabled={analyzing || messages.length === 0}
-          >
-            {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {analyzing ? 'Analisando...' : 'Preencher Campos'}
           </Button>
         </div>
 
