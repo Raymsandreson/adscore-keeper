@@ -1976,17 +1976,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                 const heightPx = (endDecimal - startDecimal) * HOUR_HEIGHT;
 
                 const items = [
-                  ...dayActivities.filter(a => {
-                    const et = getEffectiveType(a);
-                    if (et !== cfg.activityType) return false;
-                    const dateStr = a.deadline || a.notification_date;
-                    if (!dateStr) return false;
-                    try {
-                      const d = parseISO(dateStr);
-                      const h = d.getHours();
-                      return h >= cfg.startHour && h < cfg.endHour;
-                    } catch { return false; }
-                  }),
+                  ...dayActivities.filter(a => getEffectiveType(a) === cfg.activityType),
                   ...noDateActivities.filter(a => getEffectiveType(a) === cfg.activityType),
                 ];
 
@@ -2001,9 +1991,116 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
             return !cfg || cfg.days.length === 0;
           });
 
+          // Build type summary for left sidebar
+          const typeSummary = allKnownActivityTypes.map(t => {
+            const typeActs = displayedActivities.filter(a => {
+              const et = getEffectiveType(a);
+              return et === t.value;
+            });
+            const openCount = typeActs.filter(a => a.status !== 'concluida').length;
+            const totalCount = typeActs.length;
+            // Find matching routine config for color
+            const routineCfg = activeSettings.find(c => c.activityType === t.value);
+            return { ...t, openCount, totalCount, routineCfg, items: typeActs };
+          }).filter(t => t.totalCount > 0 || activeSettings.some(c => c.activityType === t.value));
+
+          const totalOpen = displayedActivities.filter(a => a.status !== 'concluida').length;
+          const totalAll = displayedActivities.length;
+
           return (
             <div className="flex flex-1 overflow-hidden h-full">
-              {/* Weekly grid - full width */}
+              {/* Left sidebar: Activity type list with counts */}
+              <div className="w-[260px] shrink-0 border-r flex flex-col overflow-hidden bg-card">
+                <div className="px-3 py-2 border-b flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">TIPO</span>
+                </div>
+                {/* Routine info */}
+                {activeSettings.length > 0 && (
+                  <div className="px-3 py-2 border-b bg-muted/20">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {activeSettings.slice(0, 1).map((cfg, i) => (
+                        <div key={i} className="text-[10px] text-muted-foreground truncate flex-1">
+                          {cfg.label} {cfg.startHour}h-{cfg.endHour}h
+                        </div>
+                      ))}
+                      {activeSettings.length > 1 && (
+                        <span className="text-[10px] text-muted-foreground">+{activeSettings.length - 1}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-0.5 mt-1">
+                      {[0,1,2,3,4].map(d => {
+                        const has = activeSettings.some(c => c.days.includes(d));
+                        return (
+                          <span key={d} className={cn("text-[8px] px-1 py-0.5 rounded font-bold", has ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground/40")}>
+                            {['S','T','Q','Q','S'][d]}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <ScrollArea className="flex-1">
+                  <div className="py-1">
+                    {typeSummary.map(t => (
+                      <Popover key={t.value}>
+                        <PopoverTrigger asChild>
+                          <button className={cn(
+                            "w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/40 transition-colors text-left",
+                            t.routineCfg && 'border-l-2',
+                          )} style={t.routineCfg ? { borderLeftColor: undefined } : undefined}>
+                            <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
+                            <span className="text-xs font-medium flex-1 truncate">{t.label}</span>
+                            <span className="text-xs font-bold tabular-nums">
+                              <span className={t.openCount > 0 ? 'text-foreground' : 'text-muted-foreground'}>{t.openCount}</span>
+                              <span className="text-muted-foreground/50">/{t.totalCount}</span>
+                            </span>
+                          </button>
+                        </PopoverTrigger>
+                        {t.items.length > 0 && (
+                          <PopoverContent className="w-80 p-0" align="start" side="right">
+                            <div className={cn('px-3 py-2 border-b text-white rounded-t-md', t.routineCfg?.color || t.header || 'bg-muted-foreground')}>
+                              <p className="text-xs font-bold">{t.label} — {t.totalCount} atividade{t.totalCount !== 1 ? 's' : ''}</p>
+                            </div>
+                            <ScrollArea className="max-h-64">
+                              <div className="divide-y">
+                                {t.items.map(a => (
+                                  <div
+                                    key={a.id}
+                                    className="px-3 py-2 hover:bg-muted/40 cursor-pointer transition-colors flex items-start gap-2"
+                                    onClick={() => handleOpenEdit(a)}
+                                  >
+                                    <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-medium truncate">{a.title}</p>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        {a.lead_name && <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">📁 {a.lead_name}</span>}
+                                        <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
+                                          {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : '○'}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </PopoverContent>
+                        )}
+                      </Popover>
+                    ))}
+                  </div>
+                  {/* Total */}
+                  <div className="px-3 py-2 border-t flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                    <span className="text-xs font-bold flex-1">TOTAL</span>
+                    <span className="text-xs font-bold tabular-nums">
+                      <span>{totalOpen}</span>
+                      <span className="text-muted-foreground/50">/{totalAll}</span>
+                    </span>
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Weekly grid */}
               <div className="flex-1 overflow-auto">
                 {/* Day headers */}
                 <div className="sticky top-0 z-10 bg-card border-b flex">
