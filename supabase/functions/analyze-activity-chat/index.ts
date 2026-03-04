@@ -375,6 +375,7 @@ IMPORTANTE:
 - Quando identificar informações que podem preencher campos, use a ferramenta disponível
 - Sempre que criar uma nova atividade, inclua o quadrante da matriz de Eisenhower (matrix_quadrant)
 - SEMPRE inclua deadline e notification_date ao criar atividades — use o ANO ATUAL (${new Date().getFullYear()})
+- NUNCA sugira datas em sábados, domingos ou feriados nacionais brasileiros. Se a data calculada cair em fim de semana ou feriado, avance para o próximo dia útil
 - Sugira datas realistas considerando a carga de trabalho atual
 - Responda em português do Brasil
 
