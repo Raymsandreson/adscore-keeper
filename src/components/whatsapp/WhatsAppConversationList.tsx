@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -34,7 +34,7 @@ interface Props {
   privatePhones?: Set<string>;
 }
 
-type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls';
+type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 
@@ -47,7 +47,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
-  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('inbound');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());
@@ -147,6 +147,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     if (quickFilter === 'no_lead' && c.lead_id) return false;
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
+    if (quickFilter === 'groups' && !c.phone.includes('@g.us')) return false;
 
     // Direction filter: only show conversations that have messages in the selected direction
     if (directionFilter === 'inbound' && !c.messages.some(m => m.direction === 'inbound')) return false;
@@ -237,6 +238,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
+    { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
   ];
 
   const counts: Record<QuickFilter, number> = {
@@ -244,6 +246,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
     no_lead: conversations.filter(c => !c.lead_id).length,
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
+    groups: conversations.filter(c => c.phone.includes('@g.us')).length,
   };
 
   if (loading) {
