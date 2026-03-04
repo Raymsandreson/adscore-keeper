@@ -750,15 +750,14 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     }
   };
 
-  const handleActionClick = async (action: { label: string; detail: string }) => {
-    setExecutingAction(action.label);
-    // Send the action as a user message
-    await sendMessage('text', `📋 Ação selecionada: ${action.label}\n${action.detail}`);
-    // Auto-trigger AI analysis after sending
+  const handleActionClick = (action: { label: string; detail: string }) => {
+    // Fill input with suggestion so user can review/edit before sending
+    setInputText(`${action.label}: ${action.detail}`);
+    // Focus the input
     setTimeout(() => {
-      handleAIAnalyze();
-      setExecutingAction(null);
-    }, 500);
+      const input = document.querySelector<HTMLInputElement>('[data-chat-input]');
+      input?.focus();
+    }, 100);
   };
 
   const formatTime = (seconds: number) => {
@@ -1319,6 +1318,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
                 <Phone className="h-4 w-4" />
               </Button>
               <Input
+                data-chat-input
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
