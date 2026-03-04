@@ -16,6 +16,7 @@ export interface LeadProcess {
   started_at: string | null;
   finished_at: string | null;
   notes: string | null;
+  fee_percentage: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

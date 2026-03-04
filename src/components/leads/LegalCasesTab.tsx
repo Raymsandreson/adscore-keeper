@@ -240,6 +240,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
   const [workflowId, setWorkflowId] = useState('');
   const [startedAt, setStartedAt] = useState(new Date().toISOString().slice(0, 10));
   const [processNotes, setProcessNotes] = useState('');
+  const [processFeePercentage, setProcessFeePercentage] = useState('');
 
   useEffect(() => {
     if (expanded) fetchProcesses();
@@ -253,6 +254,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
     setWorkflowId('');
     setStartedAt(new Date().toISOString().slice(0, 10));
     setProcessNotes('');
+    setProcessFeePercentage('');
     setEditingProcess(null);
   };
 
@@ -265,6 +267,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
     setWorkflowId(p.workflow_id || '');
     setStartedAt(p.started_at || '');
     setProcessNotes(p.notes || '');
+    setProcessFeePercentage(p.fee_percentage != null ? String(p.fee_percentage) : '');
     setShowProcessDialog(true);
   };
 
@@ -282,6 +285,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
       workflow_name: selectedBoard?.name || null,
       started_at: startedAt || null,
       notes: processNotes || null,
+      fee_percentage: processFeePercentage ? parseFloat(processFeePercentage) : null,
     };
     let savedProcess: LeadProcess | undefined;
     if (editingProcess) {
@@ -453,9 +457,15 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
               <Label>Título *</Label>
               <Input value={processTitle} onChange={e => setProcessTitle(e.target.value)} placeholder="Ex: Reclamatória trabalhista" />
             </div>
-            <div>
-              <Label>Nº do Processo</Label>
-              <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Nº do Processo</Label>
+                <Input value={processNumber} onChange={e => setProcessNumber(e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
+              </div>
+              <div>
+                <Label>Honorários (%)</Label>
+                <Input type="number" min="0" max="100" step="0.1" value={processFeePercentage} onChange={e => setProcessFeePercentage(e.target.value)} placeholder="Ex: 30" />
+              </div>
             </div>
             <div>
               <Label>Fluxo de Trabalho</Label>
@@ -545,6 +555,9 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
             <p className="text-xs font-medium">{process.title}</p>
             {process.process_number && (
               <p className="text-[10px] text-muted-foreground">Nº {process.process_number}</p>
+            )}
+            {process.fee_percentage != null && (
+              <p className="text-[10px] text-muted-foreground">Honorários: {process.fee_percentage}%</p>
             )}
           </div>
         </div>

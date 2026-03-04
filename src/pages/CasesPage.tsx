@@ -259,6 +259,9 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
                     {p.process_number && (
                       <p className="text-[10px] text-muted-foreground">Nº {p.process_number}</p>
                     )}
+                    {p.fee_percentage != null && (
+                      <p className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</p>
+                    )}
                     {p.workflow_name && (
                       <p className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</p>
                     )}
