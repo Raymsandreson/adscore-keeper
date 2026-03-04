@@ -1,36 +1,27 @@
 
 
-## Problema
+## Plano: Botão "Criar Atividade" destacado + Chat com mídias no modo criação
 
-O componente `BankTransactionsView.tsx` (aba **Conta**) nunca recebeu os campos financeiros novos. Ele tem seu próprio estado de edição (`editData`) que só inclui `categoryId`, `linkType`, `linkId`, `notes`, `manualState`, `manualCity` — sem Empresa, Setor, Natureza, Recorrência, Beneficiário, Forma de Pagamento ou Nº NF.
+### O que será feito
 
-## Plano de Implementação
+1. **Botão "Criar Atividade" mais destacado**
+   - No header da página, trocar o botão de ícone discreto (`variant="ghost"`) por um botão com texto visível, cor de destaque (primária) e ícone `Plus`.
+   - Na barra de ação do formulário (modo `create`), destacar o botão "Criar" com cor mais forte e ícone.
 
-### 1. Adicionar imports e hooks
+2. **Chat com suporte a mídias no modo criação**
+   - Atualmente o botão "Chat" só aparece no modo `edit` (quando a atividade já existe). No modo `create`, ele não existe.
+   - Adicionar o botão "Chat" também na barra de ação do modo `create`, abrindo o `ActivityChatSheet` em modo de criação (sem `activityId`, usando um ID temporário ou `null`).
+   - O `ActivityChatSheet` já suporta mídias (imagens, PDFs, áudio) — basta disponibilizá-lo no fluxo de criação.
+   - Após criar a atividade, migrar as mensagens de chat do ID temporário para o ID real da atividade criada.
 
-Importar `useCompanies`, `useCostCenters`, `useBeneficiaries` no `BankTransactionsView.tsx` e inicializar os hooks.
+### Mudanças técnicas
 
-### 2. Expandir o estado `editData`
+**`src/pages/ActivitiesPage.tsx`:**
+- **Linha ~1500**: Substituir o `Button variant="ghost" size="icon"` por um botão destacado: `<Button size="sm" className="bg-white text-primary font-semibold hover:bg-white/90 gap-1"><Plus /> Nova Atividade</Button>`
+- **Linha ~2714-2718**: No bloco `sheetMode === 'create'`, adicionar botão "Chat" (igual ao do modo edit) antes do botão "Criar", e destacar o botão "Criar" com ícone e cor.
+- **Estado**: Usar um `tempChatKey` (ex: `temp_${Date.now()}`) quando o chat é aberto no modo criação, para que mensagens sejam salvas com esse identificador temporário.
+- **Após `handleCreate`**: Se o chat foi usado, atualizar as mensagens no banco migrando o `activity_id` de `null` / temporário para o ID real retornado pelo `createActivity`.
 
-Adicionar os 7 campos ao tipo do estado: `companyId`, `costCenterId`, `nature`, `recurrence`, `beneficiaryId`, `paymentMethod`, `invoiceNumber` (linhas 106-113).
-
-### 3. Atualizar `startEditing`
-
-Carregar os novos campos do override existente ao iniciar edição (linhas 310-339).
-
-### 4. Atualizar `cancelEditing`
-
-Limpar os novos campos ao cancelar (linha 344).
-
-### 5. Atualizar `saveTransaction`
-
-Passar os novos campos como `extraFields` para `setTransactionOverride` (linhas 347-368).
-
-### 6. Adicionar campos no formulário de edição
-
-Inserir entre a seção de Localização (linha 716) e Descrição (linha 718) os mesmos blocos de campos já presentes em `PendingTransactionsList.tsx`:
-- **Empresa + Setor/Centro de Custo** (grid 2 cols)
-- **Natureza + Recorrência** (grid 2 cols)
-- **Beneficiário + Forma de Pagamento** (grid 2 cols)
-- **Nº NF** (junto com Descrição em grid 3 cols, igual ao PendingTransactionsList)
+**`src/components/activities/ActivityChatSheet.tsx`:**
+- Já funciona com `activityId: null` e `leadId: null` — usa `leadId` como fallback. Precisará aceitar um `tempKey` opcional para o caso de criação sem ID.
 
