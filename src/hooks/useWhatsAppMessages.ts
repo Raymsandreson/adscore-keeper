@@ -188,8 +188,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             instance_name: msg.instance_name,
           });
         } else {
-          existing.messages.push(msg);
-          if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
+          // Deduplicate group messages: same messageid from different instances
+          const msgId = msg.external_message_id?.split(':').pop();
+          const isDuplicate = msgId && existing.messages.some(m => {
+            const existingMsgId = m.external_message_id?.split(':').pop();
+            return existingMsgId === msgId && m.created_at === msg.created_at;
+          });
+          if (!isDuplicate) {
+            existing.messages.push(msg);
+            if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
+          }
           if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
           if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
           if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
@@ -536,11 +544,31 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       if (error) throw error;
       const allMsgs = (data || []) as WhatsAppMessage[];
 
+      // Deduplicate group messages (same messageid from different instances)
+      const deduped: WhatsAppMessage[] = [];
+      const seenMsgIds = new Set<string>();
+      for (const m of allMsgs) {
+        const msgId = m.external_message_id?.split(':').pop();
+        const dedupKey = msgId ? `${msgId}_${m.created_at}` : m.id;
+        if (!seenMsgIds.has(dedupKey)) {
+          seenMsgIds.add(dedupKey);
+          deduped.push(m);
+        }
+      }
+
       setConversations(prev => prev.map(c => {
         if (c.phone !== phone) return c;
-        // Merge: use all fetched messages (they are the complete set for this phone)
         const existingIds = new Set(c.messages.map(m => m.id));
-        const newMsgs = allMsgs.filter(m => !existingIds.has(m.id));
+        const existingMsgKeys = new Set(c.messages.map(m => {
+          const mid = m.external_message_id?.split(':').pop();
+          return mid ? `${mid}_${m.created_at}` : m.id;
+        }));
+        const newMsgs = deduped.filter(m => {
+          if (existingIds.has(m.id)) return false;
+          const mid = m.external_message_id?.split(':').pop();
+          const key = mid ? `${mid}_${m.created_at}` : m.id;
+          return !existingMsgKeys.has(key);
+        });
         if (newMsgs.length === 0) return c;
         return { ...c, messages: [...c.messages, ...newMsgs] };
       }));
