@@ -278,6 +278,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           sender_name: 'IA Abraci',
         } as any);
         await fetchMessages();
+
+        // After transcription/description, trigger AI assistant to process the command
+        if (aiAssistantMode && fileType === 'audio' && data.description) {
+          await triggerAIAssistant(data.description);
+        }
       }
     } catch (e) {
       console.error('Error auto-analyzing file:', e);
