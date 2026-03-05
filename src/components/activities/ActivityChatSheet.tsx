@@ -287,7 +287,9 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
         // After transcription/description, trigger AI assistant to process the command
         if (aiAssistantMode && fileType === 'audio' && data.description) {
-          await triggerAIAssistant(data.description);
+          // Wrap transcription with an action command so the AI knows to ACT on it, not just acknowledge
+          const actionPrompt = `[COMANDO DE VOZ DO ASSESSOR — transcrição do áudio acima. EXECUTE a ação solicitada imediatamente. Se for um pedido para criar atividade, use a ferramenta new_activity com TODOS os campos preenchidos. NÃO peça confirmação, apenas crie.]\n\n${data.description}`;
+          await triggerAIAssistant(actionPrompt);
         }
       }
     } catch (e) {
