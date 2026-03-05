@@ -1251,10 +1251,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           <SheetHeader>
             <SheetTitle className="text-sm flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                <FileText className="h-4 w-4 text-primary" />
+                <Sparkles className="h-4 w-4 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm">{activityTitle || 'Chat da Atividade'}</div>
+                <div className="truncate text-sm">{activityTitle || 'Chat IA'}</div>
                 <div className="text-[10px] text-muted-foreground font-normal">{messages.length} mensagens</div>
               </div>
             </SheetTitle>
