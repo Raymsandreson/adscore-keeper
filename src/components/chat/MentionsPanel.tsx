@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MentionsPanelProps {
   open: boolean;
@@ -40,7 +41,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
   const navigate = useNavigate();
 
-  const handleMentionClick = (mention: typeof mentions[0]) => {
+  const handleMentionClick = async (mention: typeof mentions[0]) => {
     if (!mention.is_read) {
       toast.info('Clique em "Dar ciência" antes de abrir a menção.');
       return;
@@ -50,9 +51,24 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     // Navigate to entity with deep link
     const msgParam = `&highlightMsg=${mention.message_id}`;
     switch (mention.entity_type) {
-      case 'lead':
-        navigate(`/leads?openLead=${mention.entity_id}${msgParam}`);
+      case 'lead': {
+        // Fetch the lead's board_id for correct navigation
+        let boardParam = '';
+        try {
+          const { data: lead } = await supabase
+            .from('leads')
+            .select('board_id')
+            .eq('id', mention.entity_id)
+            .maybeSingle();
+          if (lead?.board_id) {
+            boardParam = `board=${lead.board_id}&`;
+          }
+        } catch (e) {
+          console.error('Error fetching lead board:', e);
+        }
+        navigate(`/leads?${boardParam}openLead=${mention.entity_id}${msgParam}`);
         break;
+      }
       case 'activity':
         navigate(`/?openActivity=${mention.entity_id}${msgParam}`);
         break;
