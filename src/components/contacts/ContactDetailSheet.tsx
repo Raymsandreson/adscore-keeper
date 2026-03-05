@@ -67,6 +67,7 @@ import { ptBR } from 'date-fns/locale';
 import { Briefcase } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { CopyableText } from '@/components/ui/copyable-text';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
 import { Sparkles } from 'lucide-react';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
@@ -480,6 +481,7 @@ export function ContactDetailSheet({
             </Title>
             <div className="flex items-center gap-1">
               <ShareMenu entityType="contact" entityId={contact.id} entityName={contact.full_name} />
+              <TeamChatButton entityType="contact" entityId={contact.id} entityName={contact.full_name} variant="icon" className="h-8 w-8" />
               <Button
                 size="sm"
                 onClick={handleSave}
