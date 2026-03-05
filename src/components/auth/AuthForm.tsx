@@ -5,12 +5,21 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, LogIn, UserPlus } from 'lucide-react';
+import { Loader2, LogIn, UserPlus, Eye, EyeOff } from 'lucide-react';
 
 export const AuthForm = () => {
   const { signIn, signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  
+  // Password visibility
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirm, setShowSignupConfirm] = useState(false);
   
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -65,6 +74,88 @@ export const AuthForm = () => {
     setIsLoading(false);
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) {
+      toast.error('Informe seu email');
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast.success('Email enviado!', { description: 'Verifique sua caixa de entrada para redefinir a senha.' });
+      setShowForgotPassword(false);
+      setForgotEmail('');
+    } catch (error: any) {
+      toast.error('Erro ao enviar email', { description: error.message });
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const PasswordInput = ({ id, value, onChange, show, onToggle, placeholder = '••••••••' }: {
+    id: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    show: boolean; onToggle: () => void; placeholder?: string;
+  }) => (
+    <div className="relative">
+      <Input
+        id={id}
+        type={show ? 'text' : 'password'}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required
+        className="pr-10"
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
+        tabIndex={-1}
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">ABRACI.IA</CardTitle>
+            <CardDescription>Informe seu email para redefinir a senha</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <Input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={forgotLoading}>
+                {forgotLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Enviar link de redefinição
+              </Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setShowForgotPassword(false)}>
+                Voltar ao login
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -96,14 +187,22 @@ export const AuthForm = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Senha</Label>
-                  <Input
+                  <PasswordInput
                     id="login-password"
-                    type="password"
-                    placeholder="••••••••"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    required
+                    show={showLoginPassword}
+                    onToggle={() => setShowLoginPassword(!showLoginPassword)}
                   />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Esqueci minha senha
+                  </button>
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? (
@@ -142,24 +241,22 @@ export const AuthForm = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Senha</Label>
-                  <Input
+                  <PasswordInput
                     id="signup-password"
-                    type="password"
-                    placeholder="••••••••"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
-                    required
+                    show={showSignupPassword}
+                    onToggle={() => setShowSignupPassword(!showSignupPassword)}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-confirm">Confirmar Senha</Label>
-                  <Input
+                  <PasswordInput
                     id="signup-confirm"
-                    type="password"
-                    placeholder="••••••••"
                     value={signupConfirmPassword}
                     onChange={(e) => setSignupConfirmPassword(e.target.value)}
-                    required
+                    show={showSignupConfirm}
+                    onToggle={() => setShowSignupConfirm(!showSignupConfirm)}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
