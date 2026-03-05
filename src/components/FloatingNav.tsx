@@ -8,6 +8,7 @@ import {
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
+import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,7 @@ export function FloatingNav() {
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
 
   const noop = useCallback(() => {}, []);
 
@@ -305,9 +307,8 @@ export function FloatingNav() {
           <button
             onClick={() => {
               if (hasUpdate) {
-                setUpdating(true);
-                applyUpdate();
-                setTimeout(() => window.location.reload(), 3000);
+                setUpdateNotesOpen(true);
+                setMenuOpen(false);
               } else {
                 setChecking(true);
                 checkForUpdates();
@@ -341,6 +342,18 @@ export function FloatingNav() {
       <MentionsPanel
         open={mentionsOpen}
         onOpenChange={setMentionsOpen}
+      />
+
+      {/* Update Notes Dialog */}
+      <UpdateNotesDialog
+        open={updateNotesOpen}
+        onOpenChange={setUpdateNotesOpen}
+        onApplyUpdate={() => {
+          setUpdating(true);
+          applyUpdate();
+          setTimeout(() => window.location.reload(), 3000);
+        }}
+        updating={updating}
       />
     </>
   );
