@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 interface MentionsPanelProps {
   open: boolean;
@@ -39,9 +40,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
   const navigate = useNavigate();
 
-  const handleMentionClick = async (mention: typeof mentions[0]) => {
+  const handleMentionClick = (mention: typeof mentions[0]) => {
     if (!mention.is_read) {
-      await markAsRead(mention.id);
+      toast.info('Clique em "Dar ciência" antes de abrir a menção.');
+      return;
     }
     onOpenChange(false);
 
@@ -63,6 +65,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     }
   };
 
+  const handleAcknowledge = async (mentionId: string) => {
+    await markAsRead(mentionId);
+  };
+
   const unreadCount = mentions.filter(m => !m.is_read).length;
 
   return (
@@ -82,7 +88,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
               </div>
               {unreadCount > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
-                  <CheckCheck className="h-3.5 w-3.5 mr-1" /> Ler todas
+                  <CheckCheck className="h-3.5 w-3.5 mr-1" /> Dar ciência em todas
                 </Button>
               )}
             </SheetTitle>
@@ -135,9 +141,28 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                         {mention.entity_name && (
                           <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{mention.entity_name}</span>
                         )}
-                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
-                          {format(new Date(mention.created_at), "dd/MM HH:mm", { locale: ptBR })}
-                        </span>
+                        <div className="ml-auto flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-muted-foreground">
+                            {format(new Date(mention.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                          </span>
+                          {!mention.is_read ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 px-2 text-[10px]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAcknowledge(mention.id);
+                              }}
+                            >
+                              Dar ciência
+                            </Button>
+                          ) : (
+                            <Badge variant="secondary" className="h-5 px-1.5 text-[9px]">
+                              Ciente
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-2" />

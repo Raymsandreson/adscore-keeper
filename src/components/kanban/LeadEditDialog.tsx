@@ -75,6 +75,7 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -659,7 +660,12 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               <User className="h-5 w-5" />
               Editar Lead
             </Title>
-            {lead && <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />}
+            {lead && (
+              <div className="flex items-center gap-1">
+                <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />
+                <TeamChatButton entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} variant="icon" className="h-8 w-8" />
+              </div>
+            )}
           </div>
         </Header>
 

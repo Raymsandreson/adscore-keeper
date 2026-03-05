@@ -31,6 +31,7 @@ import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activities/TimeBlockSettingsDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
@@ -2697,6 +2698,15 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       Criar Lead
                     </Button>
                   )}
+                  {sheetMode === 'edit' && selectedActivity?.id && (
+                    <TeamChatButton
+                      entityType="activity"
+                      entityId={selectedActivity.id}
+                      entityName={selectedActivity.title}
+                      variant="icon"
+                      className="h-7 w-7"
+                    />
+                  )}
                   {formLeadId && (
                     <Button
                       variant="ghost"
@@ -2748,6 +2758,11 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
               {!formLeadId && (
                 <p className="text-[11px] text-muted-foreground mt-1.5">
                   Nenhum lead vinculado. Vincule um lead existente no formulário ou crie um novo.
+                </p>
+              )}
+              {sheetMode === 'edit' && selectedActivity?.id && (
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Para marcar pessoas com @, use o botão 👥 Chat da Equipe no topo desta atividade.
                 </p>
               )}
               {/* Funnel progress bar */}
@@ -2820,7 +2835,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                         className="h-8 text-xs gap-1"
                         onClick={() => setChatOpen(true)}
                       >
-                        <MessageCircle className="h-3.5 w-3.5" /> Chat
+                        <MessageCircle className="h-3.5 w-3.5" /> Chat IA
                       </Button>
                     </div>
                     <div className="flex gap-2 flex-wrap">

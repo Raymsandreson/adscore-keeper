@@ -10,6 +10,7 @@ import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 
@@ -128,6 +129,16 @@ const WorkflowProgressPage = () => {
 
           {selectedLead && (
             <ShareMenu entityType="workflow" entityId={selectedLead.id} entityName={selectedLead.lead_name || 'Lead sem nome'} size="sm" variant="outline" />
+          )}
+
+          {selectedBoard && (
+            <TeamChatButton
+              entityType="workflow"
+              entityId={selectedBoard.id}
+              entityName={selectedBoard.name}
+              variant="icon"
+              className="h-9 w-9"
+            />
           )}
 
           <Button variant="outline" size="sm" onClick={() => setShowLeadPicker(true)}>
