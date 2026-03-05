@@ -42,7 +42,7 @@ import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { CustomFieldInput } from '@/components/leads/CustomFieldsForm';
 import { CustomFieldsConfigPanel } from '@/components/leads/CustomFieldsConfigPanel';
 import { LeadStageHistoryPanel } from '@/components/kanban/LeadStageHistoryPanel';
-import { LeadChecklistPanel } from '@/components/kanban/LeadChecklistPanel';
+import { LeadFunnelOverview } from '@/components/kanban/LeadFunnelOverview';
 import { LeadActivitiesTab } from '@/components/leads/LeadActivitiesTab';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
@@ -714,7 +714,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               </TabsTrigger>
               <TabsTrigger value="checklist" className="text-xs py-1.5 px-2.5">
                 <CheckSquare className="h-3 w-3 mr-1" />
-                Checklist
+                {leadOutcome === 'closed' ? 'Fluxo de Trabalho' : 'Funil de Vendas'}
               </TabsTrigger>
               <TabsTrigger value="activities" className="text-xs py-1.5 px-2.5">
                 <Calendar className="h-3 w-3 mr-1" />
@@ -1402,14 +1402,15 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               </div>
             </TabsContent>
 
-            {/* Checklist Tab */}
+            {/* Funnel/Workflow Tab */}
             <TabsContent value="checklist" className="mt-0">
               {lead && (
-                <LeadChecklistPanel
+                <LeadFunnelOverview
                   leadId={lead.id}
                   boardId={lead.board_id || null}
                   currentStageId={lead.status || null}
                   boards={boards}
+                  isClosed={leadOutcome === 'closed'}
                 />
               )}
             </TabsContent>
