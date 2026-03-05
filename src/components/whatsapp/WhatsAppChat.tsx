@@ -726,16 +726,16 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           {isGroup && (
             <Dialog open={showGroupMembers} onOpenChange={setShowGroupMembers}>
-              <DialogTrigger asChild>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DialogTrigger asChild>
                     <Button variant="outline" size="icon" className="h-8 w-8">
                       <Users className="h-3.5 w-3.5" />
                     </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Membros do grupo ({groupParticipants.length})</TooltipContent>
-                </Tooltip>
-              </DialogTrigger>
+                  </DialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Membros do grupo ({groupParticipants.length})</TooltipContent>
+              </Tooltip>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
