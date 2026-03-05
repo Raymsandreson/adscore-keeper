@@ -1421,18 +1421,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           )}
         </div>
 
-        {/* AI toggle */}
-        <div className="shrink-0 px-3 py-1.5 border-t bg-muted/30 flex gap-1.5">
-          <Button
-            variant={aiAssistantMode ? 'default' : 'outline'}
-            size="sm"
-            className="flex-1 h-7 text-xs gap-1"
-            onClick={() => setAiAssistantMode(!aiAssistantMode)}
-          >
-            <MessageCircle className="h-3 w-3" />
-            {aiAssistantMode ? 'Chat IA ativo' : 'Conversar com IA'}
-          </Button>
-        </div>
+        {/* AI always active indicator */}
 
         {/* Input area */}
         <div className="shrink-0 px-3 py-2 border-t bg-muted/60">
