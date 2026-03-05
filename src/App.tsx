@@ -36,6 +36,7 @@ const IncomingCallBanner = lazyRetry(() => import("@/components/IncomingCallBann
 const CallFieldSuggestionsBanner = lazyRetry(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
 const FloatingWhatsAppCall = lazyRetry(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
 const PWAInstallBanner = lazyRetry(() => import("@/components/PWAInstallBanner").then(m => ({ default: m.PWAInstallBanner })));
+const GlobalAIChatButton = lazyRetry(() => import("@/components/GlobalAIChatButton").then(m => ({ default: m.GlobalAIChatButton })));
 
 // Lazy-loaded pages (with retry for stale chunks)
 const Index = lazyRetry(() => import("./pages/Index"));
@@ -98,6 +99,7 @@ function AppRoutes() {
         <CallFieldSuggestionsBanner />
         <FloatingWhatsAppCall />
         <PWAInstallBanner />
+        <GlobalAIChatButton />
       </Suspense>
       <FloatingNav />
       <Suspense fallback={<PageLoading />}>
