@@ -2,32 +2,15 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard,
-  Users,
-  CalendarDays,
-  TrendingUp,
-  Trophy,
-  UsersRound,
-  MessageCircle,
-  CreditCard,
-  Filter,
-  Bot,
-  Target,
-  Heart,
-  Megaphone,
-  Zap,
-  Menu,
-  X,
-  Search,
-  ClipboardList,
-  ChevronRight,
-  Phone,
-  MessageSquare as MessageSquareIcon,
-  Scale,
-  Briefcase,
+  LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
+  MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
+  Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
+  MessageSquare as MessageSquareIcon, Scale, Briefcase,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 
 interface NavItem {
   id: string;
@@ -48,59 +31,32 @@ export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin } = useUserRole();
-  const [open, setOpen] = useState(false);
+  const { user } = useAuthContext();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-
-  // Draggable state
+  const [whatsAppOpen, setWhatsAppOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const isDraggingRef = useRef(false);
-  const dragStart = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
-  const posRef = useRef({ x: 0, y: 0 });
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('floatingNavPos');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const pos = { x: parsed.x || 0, y: parsed.y || 0 };
-        setPosition(pos);
-        posRef.current = pos;
-      }
-    } catch {}
-  }, []);
+  const noop = useCallback(() => {}, []);
 
+  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
+  const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
+
+  // Close menu when clicking outside
   useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!isDraggingRef.current || !dragStart.current) return;
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
-      const newPos = { x: dragStart.current.posX + dx, y: dragStart.current.posY + dy };
-      posRef.current = newPos;
-      setPosition(newPos);
-    };
-    const onUp = () => {
-      if (isDraggingRef.current) {
-        isDraggingRef.current = false;
-        dragStart.current = null;
-        try { localStorage.setItem('floatingNavPos', JSON.stringify(posRef.current)); } catch {}
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setExpandedSection(null);
       }
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, []);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
-    isDraggingRef.current = true;
-    dragStart.current = { x: e.clientX, y: e.clientY, posX: posRef.current.x, posY: posRef.current.y };
-  }, []);
-
-  // Top-level quick links (always visible when menu open)
+  // Quick links
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
     { id: "leads", label: "Leads", icon: <Users className="h-4 w-4" />, path: "/leads" },
@@ -108,15 +64,11 @@ export function FloatingNav() {
     { id: "whatsapp", label: "WhatsApp", icon: <MessageSquareIcon className="h-4 w-4" />, path: "/whatsapp", color: "text-green-500" },
     { id: "finance", label: "Finanças", icon: <CreditCard className="h-4 w-4" />, path: "/finance", color: "text-green-500" },
     { id: "cost-org", label: "Ecossistema", icon: <Target className="h-4 w-4" />, path: "/cost-organization", color: "text-purple-500" },
-    
   ];
 
-  // Sections with sub-items
   const sections: NavSection[] = [
     {
-      id: "dashboard",
-      label: "Dashboard",
-      icon: <LayoutDashboard className="h-4 w-4" />,
+      id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />,
       items: [
         { id: "dashboard-main", label: "Visão Geral", icon: <LayoutDashboard className="h-3.5 w-3.5" />, path: "/dashboard" },
         { id: "paid", label: "Tráfego Pago", icon: <Megaphone className="h-3.5 w-3.5" />, path: "/dashboard?tab=paid", color: "text-blue-500" },
@@ -125,9 +77,7 @@ export function FloatingNav() {
       ],
     },
     {
-      id: "automation",
-      label: "Automação",
-      icon: <Bot className="h-4 w-4" />,
+      id: "automation", label: "Automação", icon: <Bot className="h-4 w-4" />,
       items: [
         { id: "automation-main", label: "Painel", icon: <Bot className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation", color: "text-purple-500" },
         { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
@@ -136,9 +86,7 @@ export function FloatingNav() {
       ],
     },
     {
-      id: "processual",
-      label: "Processual",
-      icon: <Scale className="h-4 w-4" />,
+      id: "processual", label: "Processual", icon: <Scale className="h-4 w-4" />,
       items: [
         { id: "cases", label: "Casos", icon: <Briefcase className="h-3.5 w-3.5" />, path: "/cases", color: "text-primary" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
@@ -146,9 +94,7 @@ export function FloatingNav() {
       ],
     },
     {
-      id: "more",
-      label: "Mais",
-      icon: <TrendingUp className="h-4 w-4" />,
+      id: "more", label: "Mais", icon: <TrendingUp className="h-4 w-4" />,
       items: [
         { id: "analytics", label: "Analytics", icon: <TrendingUp className="h-3.5 w-3.5" />, path: "/analytics" },
         { id: "leaderboard", label: "Ranking", icon: <Trophy className="h-3.5 w-3.5" />, path: "/leaderboard", color: "text-yellow-500" },
@@ -157,27 +103,14 @@ export function FloatingNav() {
     },
   ];
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setExpandedSection(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
   const handleNavigate = (path: string) => {
     navigate(path);
-    setOpen(false);
+    setMenuOpen(false);
     setExpandedSection(null);
   };
 
   const openCommandPalette = () => {
-    setOpen(false);
+    setMenuOpen(false);
     setExpandedSection(null);
     const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
     document.dispatchEvent(event);
@@ -194,108 +127,140 @@ export function FloatingNav() {
     setExpandedSection(prev => prev === sectionId ? null : sectionId);
   };
 
-   return (
-    <div
-      ref={containerRef}
-      className="fixed z-50 touch-none select-none"
-      style={{
-        bottom: `${24 - position.y}px`,
-        right: `${24 - position.x}px`,
-      }}
-      onPointerDown={handlePointerDown}
-    >
-      {/* Expanded Menu Panel */}
-      {open && (
-        <div
-          data-no-drag
-          className="mb-2 w-56 bg-card/95 backdrop-blur-lg border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
-          style={{ cursor: 'default' }}
-        >
-          {/* Search */}
-          <button
-            onClick={openCommandPalette}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:bg-accent/50 transition-colors border-b border-border/30"
+  if (isHidden) return null;
+
+  return (
+    <>
+      <div ref={containerRef} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:bottom-6">
+        {/* Menu Panel - appears above the dock */}
+        {menuOpen && (
+          <div
+            className="mb-2 w-56 mx-auto bg-card/95 backdrop-blur-lg border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
           >
-            <Search className="h-4 w-4" />
-            <span>Buscar...</span>
-            <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+            {/* Search */}
+            <button
+              onClick={openCommandPalette}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-muted-foreground hover:bg-accent/50 transition-colors border-b border-border/30"
+            >
+              <Search className="h-4 w-4" />
+              <span>Buscar...</span>
+              <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+            </button>
+
+            <div className="max-h-[60vh] overflow-y-auto">
+              <div className="py-1.5">
+                {quickLinks.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNavigate(item.path)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-accent/50",
+                      isActive(item.path) && "bg-primary/10 text-primary font-medium"
+                    )}
+                  >
+                    <span className={cn(item.color)}>{item.icon}</span>
+                    {item.label}
+                    {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                  </button>
+                ))}
+              </div>
+
+              {sections.map(section => (
+                <div key={section.id} className="border-t border-border/30">
+                  <button
+                    onClick={() => toggleSection(section.id)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/50",
+                      expandedSection === section.id && "bg-accent/30"
+                    )}
+                  >
+                    {section.icon}
+                    <span className="flex-1 text-left">{section.label}</span>
+                    <ChevronRight className={cn(
+                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                      expandedSection === section.id && "rotate-90"
+                    )} />
+                  </button>
+                  {expandedSection === section.id && (
+                    <div className="bg-muted/20 py-1 animate-in slide-in-from-top-1 fade-in duration-150">
+                      {section.items.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleNavigate(item.path)}
+                          className={cn(
+                            "w-full flex items-center gap-2 pl-10 pr-4 py-1.5 text-xs transition-colors hover:bg-accent/50",
+                            isActive(item.path) && "bg-primary/10 text-primary font-medium"
+                          )}
+                        >
+                          <span className={cn(item.color)}>{item.icon}</span>
+                          {item.label}
+                          {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Dock Bar */}
+        <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2.5 py-2 shadow-2xl">
+          {/* Menu button */}
+          <button
+            onClick={() => { setMenuOpen(v => !v); setExpandedSection(null); }}
+            title="Menu"
+            className={cn(
+              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+              "bg-primary text-primary-foreground",
+              menuOpen && "ring-2 ring-primary/50 scale-110"
+            )}
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
 
-          {/* Quick Links */}
-          <div className="max-h-[60vh] overflow-y-auto">
-          <div className="py-1.5">
-            {quickLinks.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleNavigate(item.path)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-accent/50",
-                  isActive(item.path) && "bg-primary/10 text-primary font-medium"
-                )}
-              >
-                <span className={cn(item.color)}>{item.icon}</span>
-                {item.label}
-                {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-              </button>
-            ))}
-          </div>
+          {/* WhatsApp Call button */}
+          <button
+            onClick={() => {
+              setWhatsAppOpen(v => !v);
+              setMenuOpen(false);
+            }}
+            title="WhatsApp Call"
+            className={cn(
+              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+              "bg-green-600 text-white hover:bg-green-700",
+              whatsAppOpen && "ring-2 ring-green-400/50 scale-110"
+            )}
+          >
+            <Phone className="h-5 w-5" />
+          </button>
 
-          {/* Collapsible Sections */}
-          {sections.map(section => (
-            <div key={section.id} className="border-t border-border/30">
-              <button
-                onClick={() => toggleSection(section.id)}
-                className={cn(
-                  "w-full flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-colors hover:bg-accent/50",
-                  expandedSection === section.id && "bg-accent/30"
-                )}
-              >
-                {section.icon}
-                <span className="flex-1 text-left">{section.label}</span>
-                <ChevronRight className={cn(
-                  "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                  expandedSection === section.id && "rotate-90"
-                )} />
-              </button>
-
-              {expandedSection === section.id && (
-                <div className="bg-muted/20 py-1 animate-in slide-in-from-top-1 fade-in duration-150">
-                  {section.items.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleNavigate(item.path)}
-                      className={cn(
-                        "w-full flex items-center gap-2 pl-10 pr-4 py-1.5 text-xs transition-colors hover:bg-accent/50",
-                        isActive(item.path) && "bg-primary/10 text-primary font-medium"
-                      )}
-                    >
-                      <span className={cn(item.color)}>{item.icon}</span>
-                      {item.label}
-                      {isActive(item.path) && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-          </div>
+          {/* AI Chat button */}
+          <button
+            onClick={() => {
+              setAiChatOpen(true);
+              setMenuOpen(false);
+            }}
+            title="Chat IA"
+            className={cn(
+              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+              "bg-accent text-accent-foreground hover:bg-accent/80"
+            )}
+          >
+            <Bot className="h-5 w-5" />
+          </button>
         </div>
-      )}
-
-      {/* FAB Button */}
-      <div className="flex justify-end">
-        <Button
-          data-no-drag
-          size="icon"
-          className={cn(
-            "h-14 w-14 rounded-full shadow-lg transition-transform duration-200 cursor-pointer",
-            open && "rotate-90"
-          )}
-          onClick={() => { setOpen(v => !v); setExpandedSection(null); }}
-        >
-          {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
       </div>
-    </div>
+
+      {/* AI Chat Sheet */}
+      <ActivityChatSheet
+        open={aiChatOpen}
+        onOpenChange={setAiChatOpen}
+        activityId={null}
+        leadId={null}
+        onApplySuggestion={noop}
+      />
+    </>
   );
 }

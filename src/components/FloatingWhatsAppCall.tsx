@@ -46,9 +46,11 @@ interface DBContact {
   email: string | null;
 }
 
-export function FloatingWhatsAppCall() {
+export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { externalOpen?: boolean; onExternalOpenChange?: (v: boolean) => void } = {}) {
   const { user } = useAuthContext();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = externalOpen !== undefined ? externalOpen : internalOpen;
+  const setOpen = onExternalOpenChange || setInternalOpen;
   const [instances, setInstances] = useState<UserInstance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<UserInstance | null>(null);
   const [recentConversations, setRecentConversations] = useState<RecentConversation[]>([]);
@@ -281,25 +283,6 @@ export function FloatingWhatsAppCall() {
 
   return (
     <>
-      {/* Floating Button */}
-      <button
-        onClick={() => {
-          if (open) {
-            setOpen(false);
-          } else {
-            setOpen(true);
-            if (instances.length === 0) fetchInstances();
-          }
-        }}
-        className={cn(
-          "fixed bottom-24 right-6 z-[60] h-14 w-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200",
-          "bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95",
-          open && "bg-red-500 hover:bg-red-600"
-        )}
-        title="Ligar via WhatsApp"
-      >
-        {open ? <X className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
-      </button>
 
       {/* Panels Container */}
       {open && (

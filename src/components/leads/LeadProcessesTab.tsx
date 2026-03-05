@@ -24,6 +24,7 @@ import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 
 interface LeadProcessesTabProps {
   leadId: string;
@@ -34,6 +35,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
   const { processes, loading, fetchProcesses, addProcess, updateProcess, deleteProcess } = useLeadProcesses(leadId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingProcess, setEditingProcess] = useState<LeadProcess | null>(null);
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
 
   // Form state
   const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
@@ -225,7 +227,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
                   Reabrir
                 </Button>
               )}
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => deleteProcess(p.id)}>
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive" onClick={() => confirmDelete('Excluir Processo', `Tem certeza que deseja excluir o processo "${p.title}"? Esta ação não pode ser desfeita.`, () => deleteProcess(p.id))}>
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>
@@ -308,6 +310,8 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDeleteDialog />
     </div>
   );
 }

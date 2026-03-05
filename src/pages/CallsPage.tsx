@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -48,6 +49,7 @@ function formatDuration(seconds: number) {
 export default function CallsPage() {
   const { user } = useAuthContext();
   const { records, loading, updateRecord, deleteRecord, createRecord, authorizedInstances } = useCallRecords();
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [search, setSearch] = useState('');
   const [filterResult, setFilterResult] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -270,15 +272,20 @@ export default function CallsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Excluir esta ligação?')) return;
-    try {
-      await deleteRecord(id);
-      toast.success('Ligação excluída');
-      setSelectedCall(null);
-    } catch (e) {
-      toast.error('Erro ao excluir');
-    }
+  const handleDelete = (id: string) => {
+    confirmDelete(
+      'Excluir Ligação',
+      'Tem certeza que deseja excluir esta ligação? Esta ação não pode ser desfeita.',
+      async () => {
+        try {
+          await deleteRecord(id);
+          toast.success('Ligação excluída');
+          setSelectedCall(null);
+        } catch (e) {
+          toast.error('Erro ao excluir');
+        }
+      }
+    );
   };
 
   const handleCreateCall = async () => {
@@ -905,6 +912,7 @@ export default function CallsPage() {
           )}
         </SheetContent>
       </Sheet>
+      <ConfirmDeleteDialog />
     </div>
   );
 }
