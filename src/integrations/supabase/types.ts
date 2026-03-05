@@ -4797,6 +4797,100 @@ export type Database = {
         }
         Relationships: []
       }
+      team_chat_mentions: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_name: string | null
+          entity_type: string
+          id: string
+          is_read: boolean
+          mentioned_user_id: string
+          message_id: string
+          read_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_name?: string | null
+          entity_type: string
+          id?: string
+          is_read?: boolean
+          mentioned_user_id: string
+          message_id: string
+          read_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          is_read?: boolean
+          mentioned_user_id?: string
+          message_id?: string
+          read_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_chat_mentions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "team_chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          deleted_at: string | null
+          entity_id: string
+          entity_name: string | null
+          entity_type: string
+          id: string
+          reply_to_id: string | null
+          sender_id: string
+          sender_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          deleted_at?: string | null
+          entity_id: string
+          entity_name?: string | null
+          entity_type: string
+          id?: string
+          reply_to_id?: string | null
+          sender_id: string
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          deleted_at?: string | null
+          entity_id?: string
+          entity_name?: string | null
+          entity_type?: string
+          id?: string
+          reply_to_id?: string | null
+          sender_id?: string
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_chat_messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "team_chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_invitations: {
         Row: {
           accepted_at: string | null

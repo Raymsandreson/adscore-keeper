@@ -1,0 +1,153 @@
+import { useMyMentions } from '@/hooks/useTeamChat';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
+
+interface MentionsPanelProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const entityIcons: Record<string, React.ReactNode> = {
+  lead: <Briefcase className="h-3.5 w-3.5" />,
+  activity: <ClipboardList className="h-3.5 w-3.5" />,
+  contact: <Users className="h-3.5 w-3.5" />,
+  workflow: <Workflow className="h-3.5 w-3.5" />,
+};
+
+const entityLabels: Record<string, string> = {
+  lead: 'Lead',
+  activity: 'Atividade',
+  contact: 'Contato',
+  workflow: 'Fluxo',
+};
+
+const entityColors: Record<string, string> = {
+  lead: 'bg-blue-500/10 text-blue-600',
+  activity: 'bg-emerald-500/10 text-emerald-600',
+  contact: 'bg-purple-500/10 text-purple-600',
+  workflow: 'bg-orange-500/10 text-orange-600',
+};
+
+export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
+  const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
+  const navigate = useNavigate();
+
+  const handleMentionClick = async (mention: typeof mentions[0]) => {
+    if (!mention.is_read) {
+      await markAsRead(mention.id);
+    }
+    onOpenChange(false);
+
+    // Navigate to entity with deep link
+    const msgParam = `&highlightMsg=${mention.message_id}`;
+    switch (mention.entity_type) {
+      case 'lead':
+        navigate(`/leads?openLead=${mention.entity_id}${msgParam}`);
+        break;
+      case 'activity':
+        navigate(`/?openActivity=${mention.entity_id}${msgParam}`);
+        break;
+      case 'contact':
+        navigate(`/leads?openContact=${mention.entity_id}${msgParam}`);
+        break;
+      case 'workflow':
+        navigate(`/workflow?openBoard=${mention.entity_id}${msgParam}`);
+        break;
+    }
+  };
+
+  const unreadCount = mentions.filter(m => !m.is_read).length;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[380px] sm:w-[420px] p-0 flex flex-col">
+        <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
+          <SheetHeader>
+            <SheetTitle className="text-sm flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                <AtSign className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="truncate text-sm">Menções</div>
+                <div className="text-[10px] text-muted-foreground font-normal">
+                  {unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas'}
+                </div>
+              </div>
+              {unreadCount > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
+                  <CheckCheck className="h-3.5 w-3.5 mr-1" /> Ler todas
+                </Button>
+              )}
+            </SheetTitle>
+          </SheetHeader>
+        </div>
+
+        <ScrollArea className="flex-1">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : mentions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
+              <AtSign className="h-8 w-8 opacity-30" />
+              <p>Nenhuma menção ainda.<br/>Quando alguém marcar você com <span className="font-medium text-primary">@seu_nome</span>, aparecerá aqui.</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {mentions.map(mention => (
+                <button
+                  key={mention.id}
+                  onClick={() => handleMentionClick(mention)}
+                  className={cn(
+                    "w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors",
+                    !mention.is_read && "bg-primary/5"
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={cn("shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5", entityColors[mention.entity_type] || 'bg-muted')}>
+                      {entityIcons[mention.entity_type] || <AtSign className="h-3.5 w-3.5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-semibold truncate">
+                          {mention.message?.sender_name || 'Alguém'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">mencionou você</span>
+                        {!mention.is_read && (
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[12px] text-muted-foreground line-clamp-2 mb-1">
+                        {mention.message?.content}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5", entityColors[mention.entity_type])}>
+                          {entityIcons[mention.entity_type]}
+                          <span className="ml-1">{entityLabels[mention.entity_type] || mention.entity_type}</span>
+                        </Badge>
+                        {mention.entity_name && (
+                          <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{mention.entity_name}</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                          {format(new Date(mention.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                        </span>
+                      </div>
+                    </div>
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-2" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
+}
