@@ -663,7 +663,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             {lead && (
               <div className="flex items-center gap-1">
                 <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />
-                <TeamChatButton entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} variant="icon" className="h-8 w-8" />
+                <TeamChatButton entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} variant="full" className="h-8" />
               </div>
             )}
           </div>
