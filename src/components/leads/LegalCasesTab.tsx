@@ -28,6 +28,7 @@ import { useLegalCases, LegalCase } from '@/hooks/useLegalCases';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProcessParties';
+import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -564,16 +565,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
     setSearchResults([]);
   };
 
-  // Map Escavador participation types to party roles
-  const mapParticipationToRole = (tipo: string): PartyRole => {
-    const t = tipo?.toLowerCase() || '';
-    if (t.includes('autor') || t.includes('reclamante') || t.includes('requerente') || t.includes('exequente')) return 'autor';
-    if (t.includes('réu') || t.includes('reu') || t.includes('reclamad') || t.includes('requerid') || t.includes('executad')) return 'reu';
-    if (t.includes('advogad')) return 'advogado';
-    if (t.includes('testemunha')) return 'testemunha';
-    if (t.includes('perit')) return 'perito';
-    return 'outro';
-  };
+   // mapParticipationToRole now imported from shared utility
 
   const handleRefreshFromEscavador = async () => {
     if (!process.process_number) {
@@ -615,43 +607,10 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
 
       await onUpdate(process.id, updates as any);
 
-      // Auto-create contacts and parties from envolvidos
+      // Auto-create contacts and parties from envolvidos using shared utility
       if (fonte?.envolvidos?.length) {
         const { data: { user } } = await supabase.auth.getUser();
-        let partiesCreated = 0;
-        for (const env of fonte.envolvidos) {
-          if (!env.nome) continue;
-
-          // Check existing contact
-          const { data: existingContacts } = await supabase
-            .from('contacts')
-            .select('id')
-            .ilike('full_name', env.nome.trim())
-            .limit(1);
-
-          let contactId: string;
-          if (existingContacts && existingContacts.length > 0) {
-            contactId = existingContacts[0].id;
-          } else {
-            const { data: newContact, error: cErr } = await supabase
-              .from('contacts')
-              .insert({
-                full_name: env.nome.trim(),
-                notes: `Cadastrado via Escavador (${env.tipo_participacao || 'envolvido'})`,
-                created_by: user?.id,
-              })
-              .select('id')
-              .single();
-            if (cErr || !newContact) continue;
-            contactId = newContact.id;
-          }
-
-          const role = mapParticipationToRole(env.tipo_participacao);
-          const { error: pErr } = await supabase
-            .from('process_parties')
-            .insert({ process_id: process.id, contact_id: contactId, role, notes: env.tipo_participacao } as any);
-          if (!pErr) partiesCreated++;
-        }
+        const partiesCreated = await autoCreatePartiesFromEnvolvidos(process.id, fonte.envolvidos, user?.id);
         if (partiesCreated > 0) fetchParties();
       }
 
