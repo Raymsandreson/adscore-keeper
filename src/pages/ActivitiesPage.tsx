@@ -140,7 +140,8 @@ const ActivitiesPage = () => {
   const [workflowFinished, setWorkflowFinished] = useState(false);
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
   const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
-  const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
+  const [selectedCalDays, setSelectedCalDays] = useState<string[]>([]);
+  const selectedCalDay = selectedCalDays[0] ?? null;
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
@@ -825,9 +826,12 @@ const ActivitiesPage = () => {
   }, [activities]);
 
   const displayedActivities = useMemo(() => {
-    if (!selectedCalDay) return activities;
-    return activities.filter(a => a.deadline === selectedCalDay);
-  }, [activities, selectedCalDay]);
+    if (selectedCalDays.length === 0) return activities;
+    return activities.filter(a => {
+      const dateKey = a.deadline || a.notification_date;
+      return dateKey ? selectedCalDays.includes(dateKey) : false;
+    });
+  }, [activities, selectedCalDays]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -1738,8 +1742,8 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           </PopoverContent>
         </Popover>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || selectedCalDay) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setSelectedCalDay(null); }}>
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || selectedCalDays.length > 0) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setSelectedCalDays([]); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -2352,12 +2356,12 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                       const dayActivities = activitiesByDate[dateKey] || [];
                       const openCount = dayActivities.filter(a => a.status !== 'concluida').length;
                       const doneCount = dayActivities.filter(a => a.status === 'concluida').length;
-                      const isSelected = selectedCalDay === dateKey;
+                      const isSelected = selectedCalDays.includes(dateKey);
 
                       return (
                         <button
                           key={dateKey}
-                          onClick={() => setSelectedCalDay(isSelected ? null : dateKey)}
+                          onClick={() => setSelectedCalDays(prev => prev.includes(dateKey) ? prev.filter(d => d !== dateKey) : [...prev, dateKey].sort())}
                           className={cn(
                             "relative p-0.5 rounded-md text-xs transition-colors",
                             isToday(day) && "ring-1 ring-primary font-bold",
@@ -2383,38 +2387,57 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                 </div>
 
-                {/* Stats by type - per user breakdown */}
-                <div className="px-3 pb-2 space-y-1 overflow-x-auto scrollbar-none">
-                  {(() => {
-                    const selectedMembers = filterAssignee.length > 0
-                      ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
-                      : teamMembers.filter(m => activities.some(a => a.assigned_to === m.user_id));
-                    
-                    return selectedMembers.map(member => {
-                      const memberActivities = activities.filter(a => a.assigned_to === member.user_id);
-                      if (memberActivities.length === 0) return null;
-                      return (
-                        <div key={member.user_id} className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
-                            {member.full_name?.split(' ')[0] || 'Sem nome'}
-                          </span>
-                          {allKnownActivityTypes.map(t => {
-                            const typeActs = memberActivities.filter(a => a.activity_type === t.value);
-                            const openCount = typeActs.filter(a => a.status !== 'concluida').length;
-                            const doneCount = typeActs.filter(a => a.status === 'concluida').length;
-                            if (openCount === 0 && doneCount === 0) return null;
+                {/* Stats by type - popup */}
+                <div className="px-3 pb-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 w-full justify-between text-xs">
+                        <span>Resumo por assessor</span>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                          {selectedCalDays.length > 0 ? `${selectedCalDays.length} dia(s)` : 'Geral'}
+                        </Badge>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[560px] max-w-[calc(100vw-2rem)] p-3">
+                      <div className="max-h-[260px] overflow-y-auto space-y-1">
+                        {(() => {
+                          const baseActivities = selectedCalDays.length > 0 ? displayedActivities : activities;
+                          const selectedMembers = filterAssignee.length > 0
+                            ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
+                            : teamMembers.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
+
+                          if (selectedMembers.length === 0) {
+                            return <div className="text-xs text-muted-foreground">Nenhuma atividade para o filtro atual.</div>;
+                          }
+
+                          return selectedMembers.map(member => {
+                            const memberActivities = baseActivities.filter(a => a.assigned_to === member.user_id);
+                            if (memberActivities.length === 0) return null;
                             return (
-                              <div key={t.value} className="flex items-center gap-1 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
-                                <span className="font-medium text-muted-foreground">{t.label}</span>
-                                <span className="text-destructive font-bold">{openCount}</span>
-                                <span className="text-green-600 font-bold">{doneCount}</span>
+                              <div key={member.user_id} className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
+                                  {member.full_name?.split(' ')[0] || 'Sem nome'}
+                                </span>
+                                {allKnownActivityTypes.map(t => {
+                                  const typeActs = memberActivities.filter(a => a.activity_type === t.value);
+                                  const openCount = typeActs.filter(a => a.status !== 'concluida').length;
+                                  const doneCount = typeActs.filter(a => a.status === 'concluida').length;
+                                  if (openCount === 0 && doneCount === 0) return null;
+                                  return (
+                                    <div key={t.value} className="flex items-center gap-1 text-[10px] shrink-0 bg-muted/40 rounded-full px-2 py-0.5">
+                                      <span className="font-medium text-muted-foreground">{t.label}</span>
+                                      <span className="text-destructive font-bold">{openCount}</span>
+                                      <span className="text-green-600 font-bold">{doneCount}</span>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             );
-                          })}
-                        </div>
-                      );
-                    });
-                  })()}
+                          });
+                        })()}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </>
             )}
@@ -2422,11 +2445,18 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
 
           {/* Activity list - scrollable like WhatsApp chat */}
           <div className="flex-1 overflow-y-auto bg-muted/10">
-            {selectedCalDay && (
+            {selectedCalDays.length > 0 && (
               <div className="sticky top-0 z-10 flex justify-center py-1.5">
-                <Badge variant="secondary" className="text-xs shadow-sm cursor-pointer" onClick={() => setSelectedCalDay(null)}>
-                  {format(parseISO(selectedCalDay), "dd 'de' MMMM", { locale: ptBR })} <X className="h-3 w-3 ml-1" />
-                </Badge>
+                <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-full px-2">
+                  {[...selectedCalDays].sort().map(day => (
+                    <Badge key={day} variant="secondary" className="text-xs shadow-sm cursor-pointer" onClick={() => setSelectedCalDays(prev => prev.filter(d => d !== day))}>
+                      {format(parseISO(day), "dd 'de' MMM", { locale: ptBR })} <X className="h-3 w-3 ml-1" />
+                    </Badge>
+                  ))}
+                  <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => setSelectedCalDays([])}>
+                    Limpar tudo
+                  </Badge>
+                </div>
               </div>
             )}
 
