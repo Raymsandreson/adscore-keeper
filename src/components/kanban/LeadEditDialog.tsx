@@ -77,6 +77,8 @@ import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
 import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
 import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
+import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
+import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -214,6 +216,9 @@ export function LeadEditDialog({
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
+  const [viewingContactId, setViewingContactId] = useState<string | null>(null);
+  const [viewingContact, setViewingContact] = useState<ContactType | null>(null);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   
   // New classification creation
   const [isAddingClassification, setIsAddingClassification] = useState(false);
@@ -538,6 +543,22 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
     }
   };
 
+  const handleViewContact = async (contactId: string) => {
+    try {
+      const { data } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single();
+      if (data) {
+        setViewingContact(data as ContactType);
+        setContactSheetOpen(true);
+      }
+    } catch (e) {
+      console.error('Error fetching contact:', e);
+    }
+  };
+
   const handleSave = async () => {
     if (!lead) return;
     
@@ -652,6 +673,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
     : 'max-w-2xl max-h-[90vh] flex flex-col';
 
   return (
+    <>
     <Wrapper open={open} onOpenChange={onOpenChange}>
       <Content className={contentClassName} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
         <Header>
@@ -1418,7 +1440,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             {/* Casos Tab */}
             {leadOutcome === 'closed' && (
               <TabsContent value="casos" className="mt-0">
-                <LegalCasesTab leadId={lead.id} boards={boards} />
+                <LegalCasesTab leadId={lead.id} boards={boards} onViewContact={handleViewContact} />
               </TabsContent>
             )}
 
@@ -1483,5 +1505,13 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         </Footer>
       </Content>
     </Wrapper>
+
+      {/* Contact Detail Sheet for viewing parties */}
+      <ContactDetailSheet
+        contact={viewingContact}
+        open={contactSheetOpen}
+        onOpenChange={(v) => { setContactSheetOpen(v); if (!v) setViewingContact(null); }}
+      />
+    </>
   );
 }
