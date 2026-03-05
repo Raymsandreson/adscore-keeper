@@ -223,11 +223,10 @@ export function GlobalDatabaseSearch() {
         setDmSheetOpen(true);
         break;
       case 'activity':
-        // Navigate to activities page - the activity will be visible there
-        navigate('/');
+        navigate(`/?openActivity=${result.id}`);
         break;
       case 'workflow':
-        navigate('/workflow');
+        navigate(`/workflow`);
         break;
     }
   };
