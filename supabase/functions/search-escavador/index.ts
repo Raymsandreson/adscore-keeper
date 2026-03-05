@@ -20,7 +20,7 @@ serve(async (req) => {
       });
     }
 
-    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado } = await req.json();
+    const { action, numero_cnj, nome, cpf_cnpj, oab_numero, oab_estado, cursor } = await req.json();
 
     let url = '';
     let method = 'GET';
@@ -47,8 +47,50 @@ serve(async (req) => {
         if (!oab_numero || !oab_estado) throw new Error('oab_numero e oab_estado são obrigatórios');
         url = `${ESCAVADOR_BASE}/processos/oab/${encodeURIComponent(oab_estado.toUpperCase())}/${encodeURIComponent(oab_numero)}`;
         break;
+      case 'buscar_movimentacoes':
+        if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
+        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/movimentacoes`;
+        if (cursor) {
+          url += `?cursor=${encodeURIComponent(cursor)}`;
+        }
+        break;
+      case 'buscar_completo':
+        // Fetch process details + movimentações in one call
+        if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
+        
+        // 1. Fetch process details
+        const processUrl = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}`;
+        console.log(`Escavador process request: GET ${processUrl}`);
+        const processResp = await fetch(processUrl, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        });
+        const processData = await processResp.json();
+        if (!processResp.ok) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: processData.message || processData.error || `Erro ${processResp.status}`,
+          }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        // 2. Fetch movimentações
+        const movUrl = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/movimentacoes`;
+        console.log(`Escavador movimentações request: GET ${movUrl}`);
+        const movResp = await fetch(movUrl, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+        });
+        let movimentacoes: any[] = [];
+        if (movResp.ok) {
+          const movData = await movResp.json();
+          movimentacoes = movData.items || movData.data || (Array.isArray(movData) ? movData : []);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: { ...processData, movimentacoes_detalhadas: movimentacoes },
+        }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        
       default:
-        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab');
+        throw new Error('Ação inválida. Use: buscar_por_numero, buscar_por_nome, buscar_por_cpf_cnpj, buscar_por_oab, buscar_movimentacoes, buscar_completo');
     }
 
     console.log(`Escavador request: ${method} ${url}`);

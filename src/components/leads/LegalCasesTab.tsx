@@ -32,7 +32,7 @@ import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
@@ -429,6 +429,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                     onEdit={() => openEditProcess(p)}
                     onStatusChange={handleProcessStatusChange}
                     onDelete={() => deleteProcess(p.id)}
+                    onUpdate={updateProcess}
                   />
                 ))}
               </div>
@@ -528,15 +529,18 @@ interface ProcessCardProps {
   onEdit: () => void;
   onStatusChange: (p: LeadProcess, status: LeadProcess['status']) => void;
   onDelete: () => void;
+  onUpdate: (id: string, updates: Partial<LeadProcess>) => Promise<LeadProcess | undefined>;
 }
 
-function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChange, onDelete }: ProcessCardProps) {
+function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate }: ProcessCardProps) {
   const [showParties, setShowParties] = useState(false);
   const { parties, loading: partiesLoading, fetchParties, addParty, removeParty } = useProcessParties(process.id);
   const [showAddParty, setShowAddParty] = useState(false);
   const [searchContact, setSearchContact] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedRole, setSelectedRole] = useState<PartyRole>('autor');
+  const [refreshing, setRefreshing] = useState(false);
+  const [showMovimentacoes, setShowMovimentacoes] = useState(false);
 
   useEffect(() => {
     if (showParties) fetchParties();
@@ -558,6 +562,106 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
     setShowAddParty(false);
     setSearchContact('');
     setSearchResults([]);
+  };
+
+  // Map Escavador participation types to party roles
+  const mapParticipationToRole = (tipo: string): PartyRole => {
+    const t = tipo?.toLowerCase() || '';
+    if (t.includes('autor') || t.includes('reclamante') || t.includes('requerente') || t.includes('exequente')) return 'autor';
+    if (t.includes('réu') || t.includes('reu') || t.includes('reclamad') || t.includes('requerid') || t.includes('executad')) return 'reu';
+    if (t.includes('advogad')) return 'advogado';
+    if (t.includes('testemunha')) return 'testemunha';
+    if (t.includes('perit')) return 'perito';
+    return 'outro';
+  };
+
+  const handleRefreshFromEscavador = async () => {
+    if (!process.process_number) {
+      toast.error('Este processo não tem número CNJ para buscar no Escavador');
+      return;
+    }
+    setRefreshing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('search-escavador', {
+        body: { action: 'buscar_completo', numero_cnj: process.process_number },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error);
+
+      const result = data.data;
+      const fonte = result.fontes?.[0];
+      const movimentacoes = result.movimentacoes_detalhadas || (fonte as any)?.movimentacoes || [];
+
+      // Update the process with fresh data
+      const updates: Partial<LeadProcess> = {
+        polo_ativo: result.titulo_polo_ativo || process.polo_ativo,
+        polo_passivo: result.titulo_polo_passivo || process.polo_passivo,
+        ano_inicio: result.ano_inicio || process.ano_inicio,
+        tribunal: fonte?.tribunal || fonte?.nome || process.tribunal,
+        grau: fonte?.grau || process.grau,
+        classe: fonte?.classe?.nome || process.classe,
+        area: fonte?.area?.nome || process.area,
+        assuntos: fonte?.assuntos?.map((a: any) => a.nome) || process.assuntos,
+        valor_causa: (result as any).valor_causa || process.valor_causa,
+        envolvidos: fonte?.envolvidos || process.envolvidos,
+        movimentacoes: movimentacoes.length > 0 ? movimentacoes : process.movimentacoes,
+        fonte_nome: fonte?.nome || process.fonte_nome,
+        fonte_tipo: fonte?.tipo || process.fonte_tipo,
+        fonte_data_inicio: fonte?.data_inicio || process.fonte_data_inicio,
+        fonte_data_fim: fonte?.data_fim || process.fonte_data_fim,
+        escavador_raw: result,
+      };
+
+      await onUpdate(process.id, updates as any);
+
+      // Auto-create contacts and parties from envolvidos
+      if (fonte?.envolvidos?.length) {
+        const { data: { user } } = await supabase.auth.getUser();
+        let partiesCreated = 0;
+        for (const env of fonte.envolvidos) {
+          if (!env.nome) continue;
+
+          // Check existing contact
+          const { data: existingContacts } = await supabase
+            .from('contacts')
+            .select('id')
+            .ilike('full_name', env.nome.trim())
+            .limit(1);
+
+          let contactId: string;
+          if (existingContacts && existingContacts.length > 0) {
+            contactId = existingContacts[0].id;
+          } else {
+            const { data: newContact, error: cErr } = await supabase
+              .from('contacts')
+              .insert({
+                full_name: env.nome.trim(),
+                notes: `Cadastrado via Escavador (${env.tipo_participacao || 'envolvido'})`,
+                created_by: user?.id,
+              })
+              .select('id')
+              .single();
+            if (cErr || !newContact) continue;
+            contactId = newContact.id;
+          }
+
+          const role = mapParticipationToRole(env.tipo_participacao);
+          const { error: pErr } = await supabase
+            .from('process_parties')
+            .insert({ process_id: process.id, contact_id: contactId, role, notes: env.tipo_participacao } as any);
+          if (!pErr) partiesCreated++;
+        }
+        if (partiesCreated > 0) fetchParties();
+      }
+
+      toast.success(`Processo atualizado com ${movimentacoes.length} movimentações e ${fonte?.envolvidos?.length || 0} envolvidos`);
+    } catch (err: any) {
+      console.error('Refresh error:', err);
+      toast.error(err.message || 'Erro ao atualizar do Escavador');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -617,7 +721,50 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-destructive" onClick={onDelete}>
           <Trash2 className="h-2.5 w-2.5" />
         </Button>
+        {process.process_number && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] px-2 text-primary"
+            onClick={handleRefreshFromEscavador}
+            disabled={refreshing}
+          >
+            {refreshing ? <Loader2 className="h-2.5 w-2.5 mr-0.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5 mr-0.5" />}
+            Atualizar Escavador
+          </Button>
+        )}
+        {process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
+            onClick={() => setShowMovimentacoes(!showMovimentacoes)}>
+            <ScrollText className="h-2.5 w-2.5 mr-0.5" /> Movimentações ({(process.movimentacoes as any[]).length})
+          </Button>
+        )}
       </div>
+
+      {/* Movimentações section */}
+      {showMovimentacoes && process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
+        <div className="border-t pt-2 space-y-1.5 max-h-[200px] overflow-y-auto">
+          <h5 className="text-[10px] font-semibold flex items-center gap-1">
+            <ScrollText className="h-3 w-3" /> Movimentações
+          </h5>
+          {(process.movimentacoes as any[]).slice(0, 20).map((mov: any, i: number) => (
+            <div key={i} className="p-1.5 border rounded text-[10px] space-y-0.5 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{mov.tipo || mov.type || 'Movimentação'}</span>
+                <span className="text-muted-foreground">{mov.data || mov.date || ''}</span>
+              </div>
+              {(mov.conteudo || mov.content || mov.descricao) && (
+                <p className="text-muted-foreground line-clamp-2">{mov.conteudo || mov.content || mov.descricao}</p>
+              )}
+            </div>
+          ))}
+          {(process.movimentacoes as any[]).length > 20 && (
+            <p className="text-[10px] text-muted-foreground text-center">
+              ... e mais {(process.movimentacoes as any[]).length - 20} movimentações
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Parties section */}
       {showParties && (
