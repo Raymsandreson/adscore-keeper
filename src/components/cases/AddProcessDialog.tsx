@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { KanbanBoard } from '@/hooks/useKanbanBoards';
 
 interface AddProcessDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface AddProcessDialogProps {
   caseId: string;
   leadId: string;
   onProcessAdded: () => void;
+  boards?: KanbanBoard[];
 }
 
 interface EscavadorResult {
@@ -46,7 +48,7 @@ interface EscavadorResult {
   fontes_tribunais_estao_arquivadas?: boolean;
 }
 
-export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, onProcessAdded }: AddProcessDialogProps) {
+export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, onProcessAdded, boards = [] }: AddProcessDialogProps) {
   const [tab, setTab] = useState<'escavador' | 'manual'>('escavador');
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,14 +59,36 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const [selectedResults, setSelectedResults] = useState<Set<number>>(new Set());
   const [searchError, setSearchError] = useState('');
 
+  // Common fields - always asked
+  const [processType, setProcessType] = useState<'judicial' | 'administrativo'>('judicial');
+  const [workflowId, setWorkflowId] = useState('');
+
   // Manual form state
   const [manualForm, setManualForm] = useState({
     title: '',
     process_number: '',
-    process_type: 'judicial' as 'judicial' | 'administrativo',
     description: '',
     fee_percentage: '',
+    started_at: new Date().toISOString().slice(0, 10),
+    notes: '',
   });
+
+  // Load boards if not provided
+  const [loadedBoards, setLoadedBoards] = useState<KanbanBoard[]>([]);
+  const activeBoards = boards.length > 0 ? boards : loadedBoards;
+
+  useEffect(() => {
+    if (open && boards.length === 0) {
+      supabase.from('kanban_boards').select('*').order('display_order').then(({ data }) => {
+        if (data) {
+          setLoadedBoards(data.map(b => ({
+            ...b,
+            stages: Array.isArray(b.stages) ? b.stages as any : [],
+          })));
+        }
+      });
+    }
+  }, [open, boards.length]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -95,12 +119,10 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      // Normalize response - Escavador v2 returns differently per endpoint
       const responseData = data.data;
       let processos: EscavadorResult[] = [];
 
       if (responseData.numero_cnj) {
-        // Single process response
         processos = [responseData];
       } else if (responseData.items) {
         processos = responseData.items;
@@ -130,6 +152,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       return next;
     });
   };
+
+  const selectedBoard = activeBoards.find(b => b.id === workflowId);
 
   const saveSelectedFromEscavador = async () => {
     if (selectedResults.size === 0) return;
@@ -171,7 +195,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           .insert({
             lead_id: leadId,
             case_id: caseId,
-            process_type: 'judicial',
+            process_type: processType,
             process_number: result.numero_cnj,
             title,
             description,
@@ -192,6 +216,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             fonte_data_inicio: fonte?.data_inicio || null,
             fonte_data_fim: fonte?.data_fim || null,
             escavador_raw: result,
+            workflow_id: workflowId || null,
+            workflow_name: selectedBoard?.name || null,
             created_by: user?.id,
           } as any);
 
@@ -200,6 +226,24 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           skipCount++;
         } else {
           successCount++;
+          
+          // Auto-create "Dar andamento" activity
+          try {
+            await supabase.from('lead_activities').insert({
+              lead_id: leadId,
+              lead_name: title,
+              title: 'Dar andamento',
+              description: `Atividade criada automaticamente para o processo: ${title} (Nº ${result.numero_cnj})`,
+              activity_type: 'tarefa',
+              status: 'pendente',
+              priority: 'normal',
+              assigned_to: user?.id,
+              created_by: user?.id,
+              deadline: new Date().toISOString().slice(0, 10),
+            } as any);
+          } catch (actErr) {
+            console.error('Error auto-creating activity:', actErr);
+          }
         }
       }
 
@@ -251,17 +295,42 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         .insert({
           lead_id: leadId,
           case_id: caseId,
-          process_type: manualForm.process_type,
+          process_type: processType,
           process_number: manualForm.process_number || null,
           title: manualForm.title,
           description: manualForm.description || null,
           fee_percentage: manualForm.fee_percentage ? parseFloat(manualForm.fee_percentage) : null,
+          workflow_id: workflowId || null,
+          workflow_name: selectedBoard?.name || null,
+          started_at: manualForm.started_at || null,
+          notes: manualForm.notes || null,
           status: 'em_andamento',
           created_by: user?.id,
         } as any);
 
       if (error) throw error;
-      toast.success('Processo adicionado ao caso');
+      
+      // Auto-create "Dar andamento" activity
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        await supabase.from('lead_activities').insert({
+          lead_id: leadId,
+          lead_name: manualForm.title.trim(),
+          title: 'Dar andamento',
+          description: `Atividade criada automaticamente para o processo: ${manualForm.title.trim()}${manualForm.process_number ? ` (Nº ${manualForm.process_number})` : ''}`,
+          activity_type: 'tarefa',
+          status: 'pendente',
+          priority: 'normal',
+          assigned_to: currentUser?.id,
+          created_by: currentUser?.id,
+          deadline: new Date().toISOString().slice(0, 10),
+        } as any);
+        toast.success('Processo adicionado e atividade "Dar andamento" criada');
+      } catch (actErr) {
+        console.error('Error auto-creating activity:', actErr);
+        toast.success('Processo adicionado ao caso');
+      }
+      
       onProcessAdded();
       onOpenChange(false);
       resetForm();
@@ -279,7 +348,9 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setSelectedResults(new Set());
     setSearchError('');
     setOabEstado('SP');
-    setManualForm({ title: '', process_number: '', process_type: 'judicial', description: '', fee_percentage: '' });
+    setProcessType('judicial');
+    setWorkflowId('');
+    setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
   };
 
   return (
@@ -291,6 +362,46 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             Cadastrar Processo
           </DialogTitle>
         </DialogHeader>
+
+        {/* Common fields: Type + Workflow - Always visible */}
+        <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs font-semibold">Tipo do Processo *</Label>
+              <Select value={processType} onValueChange={v => setProcessType(v as any)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="judicial">
+                    <span className="flex items-center gap-2"><Gavel className="h-3 w-3" /> Judicial</span>
+                  </SelectItem>
+                  <SelectItem value="administrativo">
+                    <span className="flex items-center gap-2"><FileText className="h-3 w-3" /> Administrativo</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-semibold">Fluxo de Trabalho *</Label>
+              <Select value={workflowId} onValueChange={setWorkflowId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um fluxo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeBoards.map(b => (
+                    <SelectItem key={b.id} value={b.id}>
+                      <span className="flex items-center gap-2">
+                        <ClipboardList className="h-3 w-3" />
+                        {b.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as any)}>
           <TabsList className="w-full">
@@ -413,18 +524,6 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Tipo</Label>
-                <Select value={manualForm.process_type} onValueChange={v => setManualForm(p => ({ ...p, process_type: v as any }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="judicial">Judicial</SelectItem>
-                    <SelectItem value="administrativo">Administrativo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
                 <Label>Nº Processo</Label>
                 <Input
                   value={manualForm.process_number}
@@ -432,17 +531,25 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                   placeholder="0000000-00.0000.0.00.0000"
                 />
               </div>
+              <div>
+                <Label>Honorários (%)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={manualForm.fee_percentage}
+                  onChange={e => setManualForm(p => ({ ...p, fee_percentage: e.target.value }))}
+                  placeholder="Ex: 30"
+                />
+              </div>
             </div>
 
             <div>
-              <Label>Honorários (%)</Label>
+              <Label>Data de Início</Label>
               <Input
-                type="number"
-                min="0"
-                max="100"
-                value={manualForm.fee_percentage}
-                onChange={e => setManualForm(p => ({ ...p, fee_percentage: e.target.value }))}
-                placeholder="Ex: 30"
+                type="date"
+                value={manualForm.started_at}
+                onChange={e => setManualForm(p => ({ ...p, started_at: e.target.value }))}
               />
             </div>
 
@@ -453,6 +560,16 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                 onChange={e => setManualForm(p => ({ ...p, description: e.target.value }))}
                 placeholder="Detalhes do processo..."
                 rows={3}
+              />
+            </div>
+
+            <div>
+              <Label>Observações</Label>
+              <Textarea
+                value={manualForm.notes}
+                onChange={e => setManualForm(p => ({ ...p, notes: e.target.value }))}
+                placeholder="Notas adicionais..."
+                rows={2}
               />
             </div>
 
