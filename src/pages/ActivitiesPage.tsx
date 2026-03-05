@@ -141,7 +141,7 @@ const ActivitiesPage = () => {
   const [workflowStartTime, setWorkflowStartTime] = useState<Date | null>(null);
   const [activityStartTime, setActivityStartTime] = useState<Date | null>(null);
   const [selectedCalDays, setSelectedCalDays] = useState<string[]>([]);
-  const selectedCalDay = selectedCalDays[0] ?? null;
+  const selectedCalDay: string | null = selectedCalDays.length > 0 ? selectedCalDays[0] : null;
   const [chatOpen, setChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
   const [viewMode, setViewMode] = usePageState<'list' | 'matrix' | 'blocks'>('activities_viewMode', 'list');
