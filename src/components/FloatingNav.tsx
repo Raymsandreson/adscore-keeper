@@ -44,6 +44,7 @@ export function FloatingNav() {
   const unreadMentions = useUnreadMentionsCount();
   const [hasUpdate, setHasUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   const noop = useCallback(() => {}, []);
 
@@ -300,25 +301,30 @@ export function FloatingNav() {
             )}
           </button>
 
-          {/* Update button - only shows when update available */}
-          {hasUpdate && (
-            <button
-              onClick={() => {
+          {/* Update button - always visible */}
+          <button
+            onClick={() => {
+              if (hasUpdate) {
                 setUpdating(true);
                 applyUpdate();
-                // Fallback reload after 3s if controllerchange doesn't fire
                 setTimeout(() => window.location.reload(), 3000);
-              }}
-              title="Atualização disponível"
-              className={cn(
-                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
-                "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
-              )}
-            >
-              <RefreshCw className={cn("h-5 w-5", updating && "animate-spin")} />
-              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />
-            </button>
-          )}
+              } else {
+                setChecking(true);
+                checkForUpdates();
+                setTimeout(() => setChecking(false), 3000);
+              }
+            }}
+            title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
+            className={cn(
+              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+              hasUpdate
+                ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+                : "bg-muted text-muted-foreground hover:bg-accent"
+            )}
+          >
+            <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
+            {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
+          </button>
         </div>
       </div>
 
