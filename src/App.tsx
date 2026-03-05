@@ -57,6 +57,7 @@ const InstallPage = lazyRetry(() => import("./pages/InstallPage"));
 const CasesPage = lazyRetry(() => import("./pages/CasesPage"));
 const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"));
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"));
+const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
 
 const queryClient = new QueryClient();
 
@@ -118,7 +119,8 @@ function AppRoutes() {
           <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
           <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
           <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
-          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+           <Route path="/privacy" element={<PrivacyPolicyPage />} />
+           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/install" element={<InstallPage />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
