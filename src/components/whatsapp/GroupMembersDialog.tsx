@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -42,9 +42,10 @@ interface Props {
   leadId: string | null;
   isGroup: boolean;
   messageParticipants: Array<{ phone: string; name: string }>;
+  onViewContact?: (contactId: string) => void;
 }
 
-export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants }: Props) {
+export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants, onViewContact }: Props) {
   const [loading, setLoading] = useState(false);
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
   const [contactsMap, setContactsMap] = useState<Map<string, ContactInfo>>(new Map());
@@ -97,12 +98,16 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       if (!error && data?.success && data.participants) {
         apiParticipants = data.participants.map((p: any) => {
           const rawId = p.id || p.phone || '';
-          // Handle both @s.whatsapp.net and @lid formats
-          const phone = rawId.replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-          const lid = rawId.includes('@lid') ? rawId : undefined;
+          // Handle @s.whatsapp.net format
+          let phone = rawId.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+          const isLid = rawId.includes('@lid');
+          // For @lid entries, extract the numeric part
+          if (isLid) {
+            phone = rawId.replace('@lid', '').replace(/\D/g, '');
+          }
           const name = p.name || p.notify || p.pushName || phone || 'Desconhecido';
-          return { phone, name, admin: p.admin || undefined, lid };
-        }).filter((p: GroupParticipant) => p.phone && p.phone.length >= 8);
+          return { phone, name, admin: p.admin || undefined, lid: isLid ? rawId : undefined };
+        }).filter((p: GroupParticipant) => p.phone && p.phone.length >= 4);
       }
 
       // Merge with message-extracted participants
@@ -456,7 +461,26 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                           <TooltipContent>Criar contato{leadId ? ' e vincular ao lead' : ''}</TooltipContent>
                         </Tooltip>
                       )}
-                      {hasContact && (
+                      {hasContact && onViewContact && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onViewContact(contact!.id);
+                                onOpenChange(false);
+                              }}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 text-primary" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Abrir ficha do contato</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {hasContact && !onViewContact && (
                         <Check className="h-4 w-4 text-primary" />
                       )}
                       {isExpanded ? (
