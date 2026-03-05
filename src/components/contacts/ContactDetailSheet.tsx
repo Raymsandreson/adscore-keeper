@@ -64,7 +64,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Briefcase } from 'lucide-react';
+import { Briefcase, Scale } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
@@ -158,6 +158,7 @@ export function ContactDetailSheet({
   const [existingLeads, setExistingLeads] = useState<any[]>([]);
   const [selectedExistingLeadId, setSelectedExistingLeadId] = useState('');
   const previousClassificationsRef = useRef<string[]>([]);
+  const [linkedProcesses, setLinkedProcesses] = useState<any[]>([]);
   
   // State for full LeadEditDialog when creating new lead
   const [showLeadEditDialog, setShowLeadEditDialog] = useState(false);
@@ -192,6 +193,25 @@ export function ContactDetailSheet({
       }
     }
   }, [contact, open]);
+
+  // Fetch linked cases/processes
+  useEffect(() => {
+    if (contact?.id && open) {
+      (async () => {
+        const { data } = await supabase
+          .from('process_parties')
+          .select('role, notes, lead_processes(id, process_number, polo_ativo, polo_passivo, status, case_id, legal_cases(case_number, title))')
+          .eq('contact_id', contact.id);
+        setLinkedProcesses((data || []).filter((d: any) => d.lead_processes).map((d: any) => ({
+          role: d.role,
+          roleNotes: d.notes,
+          ...d.lead_processes,
+          case_number: d.lead_processes?.legal_cases?.case_number,
+          case_title: d.lead_processes?.legal_cases?.title,
+        })));
+      })();
+    }
+  }, [contact?.id, open]);
 
   // Search professions when typing
   useEffect(() => {
@@ -1072,6 +1092,34 @@ export function ContactDetailSheet({
                   <p className="text-xs text-muted-foreground mt-1">
                     Vincule leads a este contato através do gerenciador
                   </p>
+                </div>
+              )}
+
+              {/* Linked Cases/Processes */}
+              {linkedProcesses.length > 0 && (
+                <div className="space-y-2 pt-4 border-t">
+                  <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                    <Scale className="h-4 w-4" />
+                    Casos e Processos ({linkedProcesses.length})
+                  </h4>
+                  {linkedProcesses.map((proc: any, i: number) => (
+                    <div key={i} className="p-2.5 rounded-lg border bg-card text-xs space-y-1">
+                      {proc.case_number && (
+                        <p className="font-medium text-sm">{proc.case_number} — {proc.case_title}</p>
+                      )}
+                      {proc.process_number && (
+                        <p className="text-muted-foreground">Nº {proc.process_number}</p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px]">
+                          {proc.role === 'autor' ? 'Autor' : proc.role === 'reu' ? 'Réu' : proc.role === 'advogado' ? 'Advogado' : proc.roleNotes || proc.role}
+                        </Badge>
+                        {proc.status && (
+                          <Badge variant="secondary" className="text-[10px]">{proc.status}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </TabsContent>

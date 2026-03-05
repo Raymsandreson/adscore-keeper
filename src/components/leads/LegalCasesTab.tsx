@@ -41,9 +41,10 @@ import AddProcessDialog from '@/components/cases/AddProcessDialog';
 interface LegalCasesTabProps {
   leadId: string;
   boards: KanbanBoard[];
+  onViewContact?: (contactId: string) => void;
 }
 
-export function LegalCasesTab({ leadId, boards }: LegalCasesTabProps) {
+export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabProps) {
   const { cases, loading: casesLoading, fetchCases, createCase, updateCase, deleteCase } = useLegalCases(leadId);
   const { nuclei } = useSpecializedNuclei();
 
@@ -160,6 +161,7 @@ export function LegalCasesTab({ leadId, boards }: LegalCasesTabProps) {
             onDelete={() => deleteCase(c.id)}
             statusColors={caseStatusColors}
             statusLabels={caseStatusLabels}
+            onViewContact={onViewContact}
           />
         ))}
       </div>
@@ -227,9 +229,10 @@ interface CaseCardProps {
   onDelete: () => void;
   statusColors: Record<string, string>;
   statusLabels: Record<string, string>;
+  onViewContact?: (contactId: string) => void;
 }
 
-function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels }: CaseCardProps) {
+function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChange, onDelete, statusColors, statusLabels, onViewContact }: CaseCardProps) {
   const { processes, loading: procLoading, fetchProcesses, addProcess, updateProcess, deleteProcess } = useLeadProcesses(legalCase.id);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [editingProcess, setEditingProcess] = useState<LeadProcess | null>(null);
@@ -431,6 +434,7 @@ function CaseCard({ legalCase, boards, expanded, onToggle, onEdit, onStatusChang
                     onStatusChange={handleProcessStatusChange}
                     onDelete={() => deleteProcess(p.id)}
                     onUpdate={updateProcess}
+                    onViewContact={onViewContact}
                   />
                 ))}
               </div>
@@ -531,9 +535,10 @@ interface ProcessCardProps {
   onStatusChange: (p: LeadProcess, status: LeadProcess['status']) => void;
   onDelete: () => void;
   onUpdate: (id: string, updates: Partial<LeadProcess>) => Promise<LeadProcess | undefined>;
+  onViewContact?: (contactId: string) => void;
 }
 
-function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate }: ProcessCardProps) {
+function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChange, onDelete, onUpdate, onViewContact }: ProcessCardProps) {
   const [showParties, setShowParties] = useState(false);
   const { parties, loading: partiesLoading, fetchParties, addParty, removeParty } = useProcessParties(process.id);
   const [showAddParty, setShowAddParty] = useState(false);
@@ -769,13 +774,19 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
 
           {parties.map(party => (
             <div key={party.id} className="flex items-center justify-between text-xs p-1.5 border rounded">
-              <div>
-                <span className="font-medium">{party.contact_name}</span>
-                <Badge variant="outline" className="ml-1.5 text-[9px]">
+              <div className="flex items-center gap-1 min-w-0 flex-1">
+                <button
+                  className="font-medium text-left hover:text-primary hover:underline truncate transition-colors"
+                  onClick={() => onViewContact?.(party.contact_id)}
+                  title="Abrir contato"
+                >
+                  {party.contact_name}
+                </button>
+                <Badge variant="outline" className="ml-1 text-[9px] shrink-0">
                   {partyRoleLabels[party.role] || party.role}
                 </Badge>
               </div>
-              <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => removeParty(party.id)}>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 shrink-0" onClick={() => removeParty(party.id)}>
                 <XCircle className="h-3 w-3 text-destructive" />
               </Button>
             </div>

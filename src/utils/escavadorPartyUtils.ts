@@ -100,6 +100,19 @@ const extractDocument = (env: EscavadorEnvolvido): string | null => {
 };
 
 /**
+ * Determines the classification for a contact based on Escavador data.
+ * - Advogados with OAB → "Cliente"
+ * - Pessoa Jurídica → "Empresa"
+ * - Everyone else → "Parte Contrária"
+ */
+const determineClassification = (env: EscavadorEnvolvido): string => {
+  const role = mapParticipationToRole(env);
+  if (role === 'advogado' || env.oabs?.length) return 'Cliente';
+  if (env.tipo_pessoa === 'JURIDICA') return 'Empresa';
+  return 'Parte Contrária';
+};
+
+/**
  * Creates or finds a contact for an envolvido and links as process party.
  * Returns true if a party was created.
  */
@@ -111,11 +124,12 @@ const createContactAndParty = async (
   if (!env.nome?.trim()) return false;
 
   const contactName = (env.nome_normalizado || env.nome).trim();
+  const classification = determineClassification(env);
   
   // Check existing contact by name
   const { data: existingContacts } = await supabase
     .from('contacts')
-    .select('id, notes')
+    .select('id, notes, classification')
     .ilike('full_name', contactName)
     .limit(1);
 
@@ -126,10 +140,9 @@ const createContactAndParty = async (
   if (existingContacts && existingContacts.length > 0) {
     contactId = existingContacts[0].id;
     
-    // Update existing contact with new data if we have document info they don't
+    // Update existing contact with new data
     const updates: Record<string, any> = {};
     if (document) {
-      // We'll append document to notes if not already there
       const existingNotes = existingContacts[0].notes || '';
       if (!existingNotes.includes(document)) {
         updates.notes = existingNotes 
@@ -137,8 +150,9 @@ const createContactAndParty = async (
           : `Doc: ${document}`;
       }
     }
-    if (env.tipo_pessoa === 'JURIDICA') {
-      updates.classification = 'Empresa';
+    // Update classification if not already set
+    if (!existingContacts[0].classification) {
+      updates.classification = classification;
     }
     if (Object.keys(updates).length > 0) {
       await supabase.from('contacts').update(updates).eq('id', contactId);
@@ -149,14 +163,11 @@ const createContactAndParty = async (
       full_name: contactName,
       notes: document ? `${notes}\nDoc: ${document}` : notes,
       created_by: userId || null,
+      classification,
     };
 
-    if (env.tipo_pessoa === 'JURIDICA') {
-      contactData.classification = 'Empresa';
-    }
-
     // If advogado with OAB, add to profession
-    if (env.oabs?.length) {
+    if (env.oabs?.length || mapParticipationToRole(env) === 'advogado') {
       contactData.profession = 'Advogado(a)';
     }
 
