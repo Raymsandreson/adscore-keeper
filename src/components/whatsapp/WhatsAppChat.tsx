@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle } from 'lucide-react';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
@@ -86,6 +87,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [leads, setLeads] = useState<Array<{ id: string; lead_name: string | null }>>([]);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [selectedRelationship, setSelectedRelationship] = useState('');
+  const [selectedParticipantPhone, setSelectedParticipantPhone] = useState('');
   const [callRecords, setCallRecords] = useState<any[]>([]);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
@@ -554,40 +556,95 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   };
 
   const handleLinkLead = async () => {
-    if (selectedLeadId) {
-      onLinkToLead(conversation.phone, selectedLeadId);
-      
-      // If there's a contact linked, also create contact_leads bridge with relationship
-      if (conversation.contact_id && selectedRelationship) {
-        try {
-          // Check if bridge already exists
+    if (!selectedLeadId) return;
+    
+    onLinkToLead(conversation.phone, selectedLeadId);
+    
+    // For groups: create/find contact from selected participant and link to lead
+    if (isGroup && selectedParticipantPhone) {
+      try {
+        const participant = groupParticipants.find(p => p.phone === selectedParticipantPhone);
+        const participantName = participant?.name || selectedParticipantPhone;
+        
+        // Find existing contact by phone
+        const normalizedPhone = selectedParticipantPhone.replace(/\D/g, '');
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('phone', normalizedPhone)
+          .maybeSingle();
+        
+        let contactId = existingContact?.id;
+        
+        if (!contactId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          const { data: newContact } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: participantName !== selectedParticipantPhone ? participantName : `Contato ${normalizedPhone}`,
+              phone: normalizedPhone,
+              created_by: user?.id || null,
+            })
+            .select('id')
+            .single();
+          contactId = newContact?.id;
+        }
+        
+        if (contactId) {
           const { data: existing } = await supabase
             .from('contact_leads')
             .select('id')
-            .eq('contact_id', conversation.contact_id)
+            .eq('contact_id', contactId)
             .eq('lead_id', selectedLeadId)
             .maybeSingle();
           
-          if (existing) {
-            await supabase.from('contact_leads')
-              .update({ relationship_to_victim: selectedRelationship } as any)
-              .eq('id', existing.id);
-          } else {
+          if (!existing) {
             await supabase.from('contact_leads').insert({
-              contact_id: conversation.contact_id,
+              contact_id: contactId,
               lead_id: selectedLeadId,
-              relationship_to_victim: selectedRelationship,
+              relationship_to_victim: selectedRelationship || null,
             } as any);
           }
-        } catch (e) {
-          console.error('Error linking contact to lead:', e);
+          
+          // Also link messages from this phone to the contact
+          await supabase
+            .from('whatsapp_messages')
+            .update({ contact_id: contactId } as any)
+            .eq('phone', conversation.phone);
         }
+      } catch (e) {
+        console.error('Error linking group participant to lead:', e);
       }
-      
-      setShowLinkDialog(false);
-      setSelectedLeadId('');
-      setSelectedRelationship('');
+    } else if (conversation.contact_id && selectedRelationship) {
+      // Non-group: existing flow
+      try {
+        const { data: existing } = await supabase
+          .from('contact_leads')
+          .select('id')
+          .eq('contact_id', conversation.contact_id)
+          .eq('lead_id', selectedLeadId)
+          .maybeSingle();
+        
+        if (existing) {
+          await supabase.from('contact_leads')
+            .update({ relationship_to_victim: selectedRelationship } as any)
+            .eq('id', existing.id);
+        } else {
+          await supabase.from('contact_leads').insert({
+            contact_id: conversation.contact_id,
+            lead_id: selectedLeadId,
+            relationship_to_victim: selectedRelationship,
+          } as any);
+        }
+      } catch (e) {
+        console.error('Error linking contact to lead:', e);
+      }
     }
+    
+    setShowLinkDialog(false);
+    setSelectedLeadId('');
+    setSelectedRelationship('');
+    setSelectedParticipantPhone('');
   };
 
   const formatPhone = (phone: string) => {
@@ -725,24 +782,70 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
       )}
 
       <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Vincular a um Lead</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-              <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
-              <SelectContent>
-                {leads.map(lead => (
-                  <SelectItem key={lead.id} value={lead.id}>
-                    {lead.lead_name || 'Lead sem nome'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {conversation.contact_id && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Lead</label>
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger><SelectValue placeholder="Selecione um lead..." /></SelectTrigger>
+                <SelectContent>
+                  {leads.map(lead => (
+                    <SelectItem key={lead.id} value={lead.id}>
+                      {lead.lead_name || 'Lead sem nome'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Group participant selector */}
+            {isGroup && groupParticipants.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Contato do grupo (será vinculado ao lead)
+                </label>
+                <ScrollArea className="max-h-[180px] border rounded-md">
+                  <div className="p-1 space-y-0.5">
+                    {groupParticipants.filter(p => p.name !== 'Você').map(p => (
+                      <button
+                        key={p.phone}
+                        type="button"
+                        className={cn(
+                          "w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors text-sm",
+                          selectedParticipantPhone === p.phone
+                            ? "bg-primary/10 border border-primary/30"
+                            : "hover:bg-muted/50"
+                        )}
+                        onClick={() => setSelectedParticipantPhone(
+                          selectedParticipantPhone === p.phone ? '' : p.phone
+                        )}
+                      >
+                        <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0 text-xs font-medium">
+                          {(p.name || '?')[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate text-sm">{p.name || p.phone}</p>
+                          {p.name && p.name !== p.phone && (
+                            <p className="text-[10px] text-muted-foreground">{p.phone}</p>
+                          )}
+                        </div>
+                        {selectedParticipantPhone === p.phone && (
+                          <Badge variant="secondary" className="text-[10px] shrink-0">Selecionado</Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Relationship selector - show for groups when participant selected, or non-groups with contact */}
+            {((isGroup && selectedParticipantPhone) || (!isGroup && conversation.contact_id)) && (
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Relação com a vítima</label>
+                <label className="text-xs font-medium text-muted-foreground">Relação com a vítima</label>
                 <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
                   <SelectTrigger><SelectValue placeholder="Selecione a relação..." /></SelectTrigger>
                   <SelectContent>
@@ -753,6 +856,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 </Select>
               </div>
             )}
+
             <Button className="w-full" onClick={handleLinkLead} disabled={!selectedLeadId}>
               Vincular
             </Button>
