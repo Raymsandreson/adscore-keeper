@@ -1395,9 +1395,34 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : messages.length === 0 && !contextData.activity ? (
-            <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-xs text-center gap-2">
-              <Send className="h-8 w-8 opacity-30" />
-              <p>Nenhuma mensagem ainda.<br/>Envie texto, áudio, fotos ou PDFs.</p>
+            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground text-xs text-center gap-4">
+              <div className="flex flex-col items-center gap-1">
+                <Sparkles className="h-8 w-8 text-primary/40" />
+                <p className="text-sm font-medium text-foreground">Chat IA</p>
+                <p className="text-[11px]">Seu assistente para leads, atividades, contatos e mais.</p>
+              </div>
+              <div className="w-full space-y-1.5 max-w-[280px]">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-primary/60 mb-2">Experimente comandos como:</p>
+                {[
+                  { icon: <Plus className="h-3 w-3" />, text: "Crie uma atividade de ligação para o lead João amanhã às 10h" },
+                  { icon: <Search className="h-3 w-3" />, text: "Busque todos os leads de São Paulo com status novo" },
+                  { icon: <CalendarCheck className="h-3 w-3" />, text: "Quais atividades estão atrasadas esta semana?" },
+                  { icon: <User className="h-3 w-3" />, text: "Atualize o telefone do contato Maria para (11) 99999-0000" },
+                  { icon: <ArrowRight className="h-3 w-3" />, text: "Mova o lead Carlos para a etapa Fechamento no funil" },
+                  { icon: <FileSearch className="h-3 w-3" />, text: "Resuma as últimas atividades do lead Ana" },
+                ].map((cmd, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInputText(cmd.text)}
+                    className="w-full flex items-center gap-2 p-2 rounded-lg border border-border/60 bg-card hover:bg-primary/10 hover:border-primary/30 transition-all text-left group"
+                  >
+                    <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      {cmd.icon}
+                    </div>
+                    <span className="text-[11px] text-foreground/80 group-hover:text-foreground leading-tight">{cmd.text}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             messages.map(renderMessage)
