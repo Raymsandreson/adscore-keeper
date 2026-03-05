@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -57,6 +57,9 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [editingField, setEditingField] = useState<{ phone: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [linkingPhone, setLinkingPhone] = useState<string | null>(null);
+  const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  const [linkSearchResults, setLinkSearchResults] = useState<Array<{ id: string; full_name: string; phone: string | null; notes: string | null }>>([]);
 
   useEffect(() => {
     if (open && isGroup) {
@@ -320,6 +323,60 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       toast.error('Erro ao atualizar relação');
     }
     setEditingField(null);
+  };
+
+  const handleSearchExistingContacts = async (query: string) => {
+    setLinkSearchQuery(query);
+    if (query.length < 2) {
+      setLinkSearchResults([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('contacts')
+      .select('id, full_name, phone, notes')
+      .ilike('full_name', `%${query}%`)
+      .order('full_name')
+      .limit(10);
+    setLinkSearchResults(data || []);
+  };
+
+  const handleLinkToExistingContact = async (participant: GroupParticipant, contactId: string) => {
+    setAddingPhone(participant.phone);
+    try {
+      const normalizedPhone = participant.phone.replace(/\D/g, '');
+      
+      // Update existing contact with this phone number
+      const { error } = await supabase
+        .from('contacts')
+        .update({ phone: normalizedPhone })
+        .eq('id', contactId);
+      if (error) throw error;
+
+      // Link to lead if applicable
+      if (leadId) {
+        const { data: linkExists } = await (supabase as any)
+          .from('contact_leads')
+          .select('id')
+          .eq('contact_id', contactId)
+          .eq('lead_id', leadId)
+          .maybeSingle();
+
+        if (!linkExists) {
+          await (supabase as any).from('contact_leads').insert({ contact_id: contactId, lead_id: leadId });
+        }
+      }
+
+      toast.success('Número vinculado ao contato!');
+      setLinkingPhone(null);
+      setLinkSearchQuery('');
+      setLinkSearchResults([]);
+      await enrichWithContactData(participants);
+    } catch (e: any) {
+      console.error('Error linking:', e);
+      toast.error('Erro ao vincular: ' + (e.message || 'Erro'));
+    } finally {
+      setAddingPhone(null);
+    }
   };
 
   const formatPhone = (phone: string) => {
@@ -610,7 +667,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
                   {/* Expanded but no contact yet */}
                   {isExpanded && !hasContact && (
-                    <div className="px-3 pb-3 pt-1 border-t border-border/50 mx-3">
+                    <div className="px-3 pb-3 pt-1 border-t border-border/50 mx-3 space-y-2">
                       <div className="flex items-center gap-2 py-2">
                         <p className="text-xs text-muted-foreground flex-1">
                           Este participante ainda não é um contato salvo.
@@ -629,7 +686,67 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                           )}
                           Criar contato
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setLinkingPhone(linkingPhone === p.phone ? null : p.phone);
+                            setLinkSearchQuery(p.name !== p.phone ? p.name : '');
+                            if (p.name !== p.phone && p.name.length >= 2) {
+                              handleSearchExistingContacts(p.name);
+                            } else {
+                              setLinkSearchResults([]);
+                            }
+                          }}
+                        >
+                          <Link2 className="h-3 w-3 mr-1" />
+                          Vincular existente
+                        </Button>
                       </div>
+
+                      {/* Link to existing contact search */}
+                      {linkingPhone === p.phone && (
+                        <div className="space-y-2 pb-1">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              placeholder="Buscar contato por nome..."
+                              value={linkSearchQuery}
+                              onChange={(e) => handleSearchExistingContacts(e.target.value)}
+                              className="h-8 text-xs pl-8"
+                              autoFocus
+                            />
+                          </div>
+                          {linkSearchResults.length > 0 && (
+                            <div className="max-h-32 overflow-y-auto space-y-0.5 rounded-md border p-1">
+                              {linkSearchResults.map(c => (
+                                <button
+                                  key={c.id}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-muted transition-colors"
+                                  onClick={() => handleLinkToExistingContact(p, c.id)}
+                                  disabled={addingPhone === p.phone}
+                                >
+                                  <div className="h-6 w-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 text-[10px] font-semibold">
+                                    {c.full_name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium truncate">{c.full_name}</p>
+                                    <p className="text-[10px] text-muted-foreground truncate">
+                                      {c.phone ? `Tel: ${c.phone}` : 'Sem telefone'}
+                                      {c.notes?.includes('Escavador') ? ' • via Escavador' : ''}
+                                    </p>
+                                  </div>
+                                  <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {linkSearchQuery.length >= 2 && linkSearchResults.length === 0 && (
+                            <p className="text-[10px] text-muted-foreground text-center py-1">Nenhum contato encontrado.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
