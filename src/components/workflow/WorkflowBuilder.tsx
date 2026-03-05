@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,7 @@ type ViewMode = 'list' | 'edit';
 
 export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: WorkflowBuilderProps) {
   const { boards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const {
     templates,
     fetchTemplates,
@@ -289,10 +291,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
     setViewMode('edit');
   };
 
-  const handleDeleteWorkflow = async (board: KanbanBoard) => {
-    if (!confirm(`Excluir o fluxo "${board.name}"? Leads serão desvinculados.`)) return;
-    await deleteBoard(board.id);
-    fetchBoards();
+  const handleDeleteWorkflow = (board: KanbanBoard) => {
+    confirmDelete(
+      'Excluir Fluxo de Trabalho',
+      `Excluir o fluxo "${board.name}"? Leads serão desvinculados. Esta ação não pode ser desfeita.`,
+      async () => { await deleteBoard(board.id); fetchBoards(); }
+    );
   };
 
   // Phase helpers
@@ -1224,6 +1228,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved }: Workflo
         </div>
       </DialogContent>
     </Dialog>
+    <ConfirmDeleteDialog />
     </>
   );
 }

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
@@ -92,6 +93,7 @@ const ActivitiesPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthContext();
   const { activities, loading, fetchActivities, createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
@@ -544,10 +546,16 @@ const ActivitiesPage = () => {
     fetchActivities(getFilterParams());
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteActivity(id);
-    closeSheet();
-    fetchActivities(getFilterParams());
+  const handleDelete = (id: string) => {
+    confirmDelete(
+      'Excluir Atividade',
+      'Tem certeza que deseja excluir esta atividade? Esta ação não pode ser desfeita.',
+      async () => {
+        await deleteActivity(id);
+        closeSheet();
+        fetchActivities(getFilterParams());
+      }
+    );
   };
 
   const closeSheet = () => {
@@ -3034,6 +3042,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           </div>
         </div>
       )}
+      <ConfirmDeleteDialog />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { usePageState } from "@/hooks/usePageState";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -118,6 +119,7 @@ export default function FinancePage() {
   } = useCreditCardTransactions();
 
   const { categories, cardAssignments, getCardAssignment, overrides, getTransactionOverride } = useExpenseCategories();
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { mappings, findLocalCategoryByApiName } = useCategoryApiMappings();
   const { accounts: costAccounts } = useCostAccounts();
 
@@ -345,12 +347,16 @@ export default function FinancePage() {
     toast.success('Transações sincronizadas!');
   }, [syncTransactions, fetchTransactions, startDate, endDate]);
 
-  const handleDeleteConnection = useCallback(async (itemId: string) => {
-    if (confirm('Tem certeza que deseja desconectar esta conta?')) {
-      await deleteConnection(itemId);
-      toast.success('Conta desconectada');
-    }
-  }, [deleteConnection]);
+  const handleDeleteConnection = useCallback((itemId: string) => {
+    confirmDelete(
+      'Desconectar Conta',
+      'Tem certeza que deseja desconectar esta conta? Esta ação não pode ser desfeita.',
+      async () => {
+        await deleteConnection(itemId);
+        toast.success('Conta desconectada');
+      }
+    );
+  }, [deleteConnection, confirmDelete]);
 
   // Filter transactions by card permissions first, then by all filters
   const permittedTransactions = useMemo(() => {
@@ -1509,6 +1515,7 @@ export default function FinancePage() {
           onSaved={() => {}}
         />
       </div>
+      <ConfirmDeleteDialog />
     </div>
   );
 }

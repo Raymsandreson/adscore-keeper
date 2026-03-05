@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
@@ -345,6 +346,7 @@ const followerStatusConfig: Record<FollowerStatus, { label: string; color: strin
 export const ContactsManager: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { contacts, totalCount, stats, tagStats, loading, fetchContacts, fetchStats, fetchTagStats, addContact, updateContact, deleteContact, updateClassification, convertToLead, importFromCSV, importFromMetaExport, mergeDuplicateContacts } = useContacts();
+  const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
   const { visibility, toggleColumn, resetToDefault } = useContactColumnVisibility();
   const { classifications, addClassification } = useContactClassifications();
@@ -2174,7 +2176,7 @@ export const ContactsManager: React.FC = () => {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem 
                                 className="text-destructive"
-                                onClick={() => deleteContact(contact.id)}
+                                onClick={() => confirmDelete('Excluir Contato', `Tem certeza que deseja excluir "${contact.full_name}"? Esta ação não pode ser desfeita.`, () => deleteContact(contact.id))}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Excluir
@@ -2878,6 +2880,7 @@ export const ContactsManager: React.FC = () => {
           fetchContacts(currentPage, itemsPerPage);
         }}
       />
+      <ConfirmDeleteDialog />
     </div>
   );
 };
