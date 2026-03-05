@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle } from 'lucide-react';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
+import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -98,9 +99,6 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
-  const [apiGroupParticipants, setApiGroupParticipants] = useState<Array<{ phone: string; name: string; admin?: string }>>([]);
-  const [loadingGroupMembers, setLoadingGroupMembers] = useState(false);
-  const [addingContactPhone, setAddingContactPhone] = useState<string | null>(null);
   const [showZapSign, setShowZapSign] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -180,115 +178,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     return senderColors[Math.abs(hash) % senderColors.length];
   };
 
-  // Fetch group participants from API when dialog opens
-  const fetchGroupParticipantsFromApi = async () => {
-    if (!isGroup || !conversation.instance_name) return;
-    setLoadingGroupMembers(true);
-    try {
-      const chatId = conversation.phone;
-      const { data: inst } = await supabase
-        .from('whatsapp_instances')
-        .select('id')
-        .eq('instance_name', conversation.instance_name)
-        .eq('is_active', true)
-        .maybeSingle();
-      
-      const { data, error } = await supabase.functions.invoke('send-whatsapp', {
-        body: { action: 'fetch_group_participants', group_id: chatId, instance_id: inst?.id },
-      });
-      if (error) throw error;
-      if (data?.success && data.participants) {
-        const mapped = data.participants.map((p: any) => {
-          const phone = (p.id || p.phone || '').replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-          const name = p.name || p.notify || p.pushName || phone;
-          return { phone, name, admin: p.admin || null };
-        }).filter((p: any) => p.phone);
-        setApiGroupParticipants(mapped);
-      }
-    } catch (e) {
-      console.error('Error fetching group participants:', e);
-    } finally {
-      setLoadingGroupMembers(false);
-    }
-  };
 
-  // Merge API participants with message-extracted ones
-  const allGroupParticipants = (() => {
-    if (apiGroupParticipants.length === 0) return groupParticipants.map(p => ({ ...p, admin: undefined as string | undefined }));
-    const merged = new Map<string, { phone: string; name: string; admin?: string }>();
-    for (const p of apiGroupParticipants) {
-      merged.set(p.phone, p);
-    }
-    // Fill in names from message metadata if API didn't provide them
-    for (const p of groupParticipants) {
-      if (merged.has(p.phone)) {
-        const existing = merged.get(p.phone)!;
-        if (existing.name === existing.phone && p.name !== p.phone) {
-          existing.name = p.name;
-        }
-      } else {
-        merged.set(p.phone, p);
-      }
-    }
-    return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
-  })();
-
-  const handleAddParticipantAsContact = async (participant: { phone: string; name: string }) => {
-    setAddingContactPhone(participant.phone);
-    try {
-      const normalizedPhone = participant.phone.replace(/\D/g, '');
-      // Check if contact exists
-      const { data: existing } = await supabase
-        .from('contacts')
-        .select('id, full_name')
-        .or(`phone.eq.${normalizedPhone},phone.eq.+${normalizedPhone},phone.eq.+55${normalizedPhone}`)
-        .maybeSingle();
-      
-      if (existing) {
-        toast.info(`Contato "${existing.full_name}" já existe!`);
-        if (conversation.lead_id) {
-          // Link to lead
-          const { data: linkExists } = await supabase
-            .from('contact_leads')
-            .select('id')
-            .eq('contact_id', existing.id)
-            .eq('lead_id', conversation.lead_id)
-            .maybeSingle();
-          if (!linkExists) {
-            await supabase.from('contact_leads').insert({ contact_id: existing.id, lead_id: conversation.lead_id });
-            toast.success('Contato vinculado ao lead!');
-          }
-        }
-      } else {
-        // Create contact
-        const { data: newContact, error } = await supabase
-          .from('contacts')
-          .insert({ full_name: participant.name, phone: normalizedPhone })
-          .select()
-          .single();
-        if (error) throw error;
-        toast.success(`Contato "${participant.name}" criado!`);
-        
-        if (conversation.lead_id && newContact) {
-          await supabase.from('contact_leads').insert({ contact_id: newContact.id, lead_id: conversation.lead_id });
-          toast.success('Contato vinculado ao lead!');
-        }
-      }
-      // Update messages with this phone to have the contact_id
-      const contactId = existing?.id;
-      if (contactId) {
-        await supabase
-          .from('whatsapp_messages')
-          .update({ contact_id: contactId } as any)
-          .eq('phone', conversation.phone);
-      }
-    } catch (e: any) {
-      console.error('Error adding participant as contact:', e);
-      toast.error('Erro ao criar contato: ' + (e.message || 'Erro desconhecido'));
-    } finally {
-      setAddingContactPhone(null);
-    }
-  };
 
   useEffect(() => {
     const storageKey = `wa-identify-sender:${conversation.phone}`;
@@ -838,80 +728,25 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           {isGroup && (
-            <Dialog open={showGroupMembers} onOpenChange={(open) => {
-              setShowGroupMembers(open);
-              if (open) fetchGroupParticipantsFromApi();
-            }}>
+            <>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-8 w-8">
-                      <Users className="h-3.5 w-3.5" />
-                    </Button>
-                  </DialogTrigger>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setShowGroupMembers(true)}>
+                    <Users className="h-3.5 w-3.5" />
+                  </Button>
                 </TooltipTrigger>
-                <TooltipContent>Membros do grupo ({allGroupParticipants.length || groupParticipants.length})</TooltipContent>
+                <TooltipContent>Membros do grupo</TooltipContent>
               </Tooltip>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Membros do grupo ({allGroupParticipants.length})
-                  </DialogTitle>
-                </DialogHeader>
-                <ScrollArea className="max-h-[450px]">
-                  {loadingGroupMembers && (
-                    <div className="flex items-center justify-center py-4">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                      <span className="ml-2 text-sm text-muted-foreground">Buscando membros...</span>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    {allGroupParticipants.map(p => (
-                      <div key={p.phone} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 group">
-                        <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                          <User className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium truncate">{p.name}</p>
-                            {p.admin && (
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                                {p.admin === 'superadmin' ? 'Admin' : p.admin === 'admin' ? 'Admin' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">{formatPhone(p.phone)}</p>
-                        </div>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                              disabled={addingContactPhone === p.phone}
-                              onClick={() => handleAddParticipantAsContact(p)}
-                            >
-                              {addingContactPhone === p.phone ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <UserPlus className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Adicionar como contato{conversation.lead_id ? ' e vincular ao lead' : ''}</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    ))}
-                    {allGroupParticipants.length === 0 && !loadingGroupMembers && (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        Nenhum participante identificado.
-                      </p>
-                    )}
-                  </div>
-                </ScrollArea>
-              </DialogContent>
-            </Dialog>
+              <GroupMembersDialog
+                open={showGroupMembers}
+                onOpenChange={setShowGroupMembers}
+                conversationPhone={conversation.phone}
+                instanceName={conversation.instance_name}
+                leadId={conversation.lead_id}
+                isGroup={isGroup}
+                messageParticipants={groupParticipants}
+              />
+            </>
           )}
         </div>
       </div>
@@ -958,7 +793,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 </label>
                 <ScrollArea className="max-h-[180px] border rounded-md">
                   <div className="p-1 space-y-0.5">
-                    {allGroupParticipants.filter(p => p.name !== 'Você').map(p => (
+                    {groupParticipants.filter(p => p.name !== 'Você').map(p => (
                       <button
                         key={p.phone}
                         type="button"

@@ -63,9 +63,11 @@ Deno.serve(async (req) => {
         }
 
         const groupData = await infoRes.json()
+        console.log('Group info response keys:', Object.keys(groupData || {}))
         // UazAPI returns participants as an array with id, admin, etc.
         const participants = groupData?.participants || groupData?.data?.participants || []
         const groupName = groupData?.subject || groupData?.name || groupData?.data?.subject || ''
+        console.log('Participants count:', participants.length, 'sample:', JSON.stringify(participants.slice(0, 2)))
 
         return new Response(
           JSON.stringify({ success: true, participants, group_name: groupName }),
