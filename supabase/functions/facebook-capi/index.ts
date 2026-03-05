@@ -150,7 +150,22 @@ serve(async (req) => {
       }
     );
 
-    const result = await response.json();
+    const responseText = await response.text();
+
+    let result: any;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      console.error('Facebook CAPI returned non-JSON response:', responseText);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Facebook API returned non-JSON response', 
+          details: responseText,
+          status: response.status,
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!response.ok) {
       console.error('Facebook CAPI error:', JSON.stringify(result));
