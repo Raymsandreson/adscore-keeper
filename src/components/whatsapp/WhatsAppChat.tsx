@@ -745,6 +745,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 leadId={conversation.lead_id}
                 isGroup={isGroup}
                 messageParticipants={groupParticipants}
+                onViewContact={onViewContact}
               />
             </>
           )}
