@@ -1275,6 +1275,39 @@ export type Database = {
         }
         Relationships: []
       }
+      company_areas: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       contact_classifications: {
         Row: {
           color: string
@@ -3924,6 +3957,82 @@ export type Database = {
         }
         Relationships: []
       }
+      member_area_assignments: {
+        Row: {
+          area_id: string
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          area_id: string
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          area_id?: string
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_area_assignments_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "company_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_metric_goals: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          metric_id: string
+          period_end: string | null
+          period_start: string | null
+          period_type: string
+          target_value: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          metric_id: string
+          period_end?: string | null
+          period_start?: string | null
+          period_type: string
+          target_value?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          metric_id?: string
+          period_end?: string | null
+          period_start?: string | null
+          period_type?: string
+          target_value?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_metric_goals_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "metric_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_module_permissions: {
         Row: {
           access_level: string
@@ -4039,6 +4148,65 @@ export type Database = {
           what_worked?: string | null
         }
         Relationships: []
+      }
+      metric_definitions: {
+        Row: {
+          area_id: string
+          calculation_formula: string | null
+          category: string
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          periodicity: string
+          scope_id: string | null
+          scope_type: string | null
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          area_id: string
+          calculation_formula?: string | null
+          category: string
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          periodicity: string
+          scope_id?: string | null
+          scope_type?: string | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          area_id?: string
+          calculation_formula?: string | null
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          periodicity?: string
+          scope_id?: string | null
+          scope_type?: string | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metric_definitions_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "company_areas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       n8n_automation_logs: {
         Row: {
