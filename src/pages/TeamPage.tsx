@@ -17,6 +17,7 @@ import { MemberRoutineManager } from '@/components/team/MemberRoutineManager';
 import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstancePermissions';
 import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
+import { MetricsManager } from '@/components/team/MetricsManager';
 import {
   Users,
   BarChart3,
@@ -33,6 +34,7 @@ import {
   MessageSquare,
   GraduationCap,
   TrendingUp,
+  Activity,
 } from 'lucide-react';
 
 export default function TeamPage() {
@@ -63,7 +65,7 @@ export default function TeamPage() {
 
   // All authenticated users can access - admin-only tabs are filtered below
   const availableTabs = isAdmin
-    ? ['productivity', 'commission', 'evaluations', 'traffic', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
+    ? ['productivity', 'metrics', 'commission', 'evaluations', 'traffic', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
     : ['productivity', 'members', 'teams'];
 
   return (
@@ -89,6 +91,12 @@ export default function TeamPage() {
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Produtividade</span>
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="metrics" className="gap-2 shrink-0">
+                <Activity className="h-4 w-4" />
+                <span className="hidden sm:inline">Métricas</span>
+              </TabsTrigger>
+            )}
             {isAdmin && (
               <TabsTrigger value="commission" className="gap-2 shrink-0">
                 <DollarSign className="h-4 w-4" />
@@ -155,6 +163,10 @@ export default function TeamPage() {
 
           <TabsContent value="productivity">
             <TeamProductivityDashboard />
+          </TabsContent>
+
+          <TabsContent value="metrics">
+            <MetricsManager />
           </TabsContent>
 
           <TabsContent value="commission">
