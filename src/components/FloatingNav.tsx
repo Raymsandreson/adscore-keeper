@@ -5,12 +5,14 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
-  MessageSquare as MessageSquareIcon, Scale, Briefcase,
+  MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign,
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
+import { MentionsPanel } from "@/components/chat/MentionsPanel";
+import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
 
 interface NavItem {
   id: string;
@@ -36,7 +38,9 @@ export function FloatingNav() {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [mentionsOpen, setMentionsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const unreadMentions = useUnreadMentionsCount();
 
   const noop = useCallback(() => {}, []);
 
@@ -266,6 +270,26 @@ export function FloatingNav() {
           >
             <Bot className="h-5 w-5" />
           </button>
+
+          {/* Mentions button */}
+          <button
+            onClick={() => {
+              setMentionsOpen(true);
+              setMenuOpen(false);
+            }}
+            title="Menções"
+            className={cn(
+              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+              "bg-muted text-muted-foreground hover:bg-muted/80"
+            )}
+          >
+            <AtSign className="h-5 w-5" />
+            {unreadMentions > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                {unreadMentions > 9 ? '9+' : unreadMentions}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -276,6 +300,12 @@ export function FloatingNav() {
         activityId={null}
         leadId={null}
         onApplySuggestion={noop}
+      />
+
+      {/* Mentions Panel */}
+      <MentionsPanel
+        open={mentionsOpen}
+        onOpenChange={setMentionsOpen}
       />
     </>
   );

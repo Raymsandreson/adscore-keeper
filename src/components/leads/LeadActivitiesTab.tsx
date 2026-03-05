@@ -15,6 +15,7 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityNotesField } from '@/components/activities/ActivityNotesField';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 
 interface LeadActivity {
   id: string;
@@ -251,11 +252,14 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
           <ListTodo className="h-4 w-4" />
           Atividades ({activities.length})
         </h4>
-        <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
-          <MessageCircle className="h-3 w-3" />
-          <Plus className="h-3 w-3" />
-          Nova
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <TeamChatButton entityType="lead" entityId={leadId} entityName={leadName} variant="icon" />
+          <Button size="sm" variant="outline" onClick={() => setShowChatSheet(true)} className="gap-1">
+            <MessageCircle className="h-3 w-3" />
+            <Plus className="h-3 w-3" />
+            Nova
+          </Button>
+        </div>
       </div>
 
       {activities.length === 0 ? (

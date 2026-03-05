@@ -12,6 +12,7 @@ import {
   ExternalLink, MapPin, Building2, Phone, Mail, User, Calendar,
   ArrowRight, Clock, FileText, Instagram, Heart, UserPlus, Search, Link2, Loader2,
 } from 'lucide-react';
+import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -344,6 +345,11 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
           <TabsTrigger value="historico" className="text-xs h-8 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
             Funil {stageHistory.length > 0 && <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4">{stageHistory.length}</Badge>}
           </TabsTrigger>
+          {leadId && (
+            <div className="ml-auto flex items-center">
+              <TeamChatButton entityType="lead" entityId={leadId} entityName={leadName || undefined} variant="icon" />
+            </div>
+          )}
         </TabsList>
 
         {/* Lead Details Tab */}
