@@ -17,14 +17,14 @@ export function initPWAUpdater() {
     }
   });
 
-  // Periodically check for updates (every 60s)
+  // Check for updates every 30 minutes (non-intrusive)
   setInterval(() => {
     navigator.serviceWorker.getRegistration().then(reg => {
       if (reg) {
         reg.update().catch(() => {});
       }
     });
-  }, 60 * 1000);
+  }, 30 * 60 * 1000);
 
   // Also check on visibility change (user returns to app)
   document.addEventListener('visibilitychange', () => {
