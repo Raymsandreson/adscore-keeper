@@ -2387,19 +2387,84 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                   </div>
                 </div>
 
-                {/* Stats by type - popup */}
-                <div className="px-3 pb-2">
+                {/* Two summary buttons side by side */}
+                <div className="px-3 pb-2 flex gap-2">
+                  {/* By Activity Type */}
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 w-full justify-between text-xs">
-                        <span>Resumo por assessor</span>
+                      <Button variant="outline" size="sm" className="h-7 flex-1 justify-between text-xs">
+                        <span>Por tipo de atv</span>
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                          {(() => {
+                            const base = selectedCalDays.length > 0 ? displayedActivities : activities;
+                            const open = base.filter(a => a.status !== 'concluida').length;
+                            const done = base.filter(a => a.status === 'concluida').length;
+                            return `${open}⏳ ${done}✓`;
+                          })()}
+                        </Badge>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[400px] max-w-[calc(100vw-2rem)] p-3">
+                      <p className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Resumo por tipo de atividade</p>
+                      <div className="max-h-[300px] overflow-y-auto space-y-1">
+                        {(() => {
+                          const baseActivities = selectedCalDays.length > 0 ? displayedActivities : activities;
+                          const typeSummary = allKnownActivityTypes.map(t => {
+                            const typeActs = baseActivities.filter(a => a.activity_type === t.value);
+                            const openCount = typeActs.filter(a => a.status !== 'concluida').length;
+                            const doneCount = typeActs.filter(a => a.status === 'concluida').length;
+                            return { ...t, openCount, doneCount, total: typeActs.length };
+                          }).filter(t => t.total > 0);
+
+                          if (typeSummary.length === 0) {
+                            return <div className="text-xs text-muted-foreground">Nenhuma atividade.</div>;
+                          }
+
+                          const totalOpen = baseActivities.filter(a => a.status !== 'concluida').length;
+                          const totalDone = baseActivities.filter(a => a.status === 'concluida').length;
+
+                          return (
+                            <>
+                              {typeSummary.map(t => (
+                                <div key={t.value} className="flex items-center gap-2 py-1">
+                                  <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.dot || 'bg-muted-foreground')} />
+                                  <span className="text-xs font-medium flex-1 truncate">{t.label}</span>
+                                  <span className="text-xs tabular-nums">
+                                    <span className="text-destructive font-bold">{t.openCount}</span>
+                                    <span className="text-muted-foreground mx-0.5">/</span>
+                                    <span className="text-green-600 font-bold">{t.doneCount}</span>
+                                  </span>
+                                </div>
+                              ))}
+                              <div className="flex items-center gap-2 py-1 border-t mt-1 pt-1.5">
+                                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
+                                <span className="text-xs font-bold flex-1">TOTAL</span>
+                                <span className="text-xs font-bold tabular-nums">
+                                  <span className="text-destructive">{totalOpen}</span>
+                                  <span className="text-muted-foreground mx-0.5">/</span>
+                                  <span className="text-green-600">{totalDone}</span>
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* By Assessor */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-7 flex-1 justify-between text-xs">
+                        <span>Por assessor</span>
                         <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
                           {selectedCalDays.length > 0 ? `${selectedCalDays.length} dia(s)` : 'Geral'}
                         </Badge>
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-[560px] max-w-[calc(100vw-2rem)] p-3">
-                      <div className="max-h-[260px] overflow-y-auto space-y-1">
+                    <PopoverContent align="end" className="w-[560px] max-w-[calc(100vw-2rem)] p-3">
+                      <p className="text-xs font-bold text-muted-foreground mb-2 uppercase tracking-wider">Resumo por assessor</p>
+                      <div className="max-h-[300px] overflow-y-auto space-y-1">
                         {(() => {
                           const baseActivities = selectedCalDays.length > 0 ? displayedActivities : activities;
                           const selectedMembers = filterAssignee.length > 0
@@ -2414,7 +2479,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             const memberActivities = baseActivities.filter(a => a.assigned_to === member.user_id);
                             if (memberActivities.length === 0) return null;
                             return (
-                              <div key={member.user_id} className="flex items-center gap-2 flex-wrap">
+                              <div key={member.user_id} className="flex items-center gap-2 flex-wrap py-0.5">
                                 <span className="text-[10px] font-semibold text-foreground/80 min-w-[80px] truncate">
                                   {member.full_name?.split(' ')[0] || 'Sem nome'}
                                 </span>
