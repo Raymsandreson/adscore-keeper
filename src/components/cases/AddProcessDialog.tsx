@@ -253,9 +253,26 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           continue;
         }
 
-        const fonte = result.fontes?.[0];
+        // Fetch complete data with movimentações
+        let fullResult = result;
+        let movimentacoes: any[] = [];
+        if (result.numero_cnj) {
+          try {
+            const { data: completeData } = await supabase.functions.invoke('search-escavador', {
+              body: { action: 'buscar_completo', numero_cnj: result.numero_cnj },
+            });
+            if (completeData?.success && completeData.data) {
+              fullResult = { ...result, ...completeData.data };
+              movimentacoes = completeData.data.movimentacoes_detalhadas || [];
+            }
+          } catch (e) {
+            console.warn('Could not fetch complete data, using initial result:', e);
+          }
+        }
+
+        const fonte = fullResult.fontes?.[0] || result.fontes?.[0];
         const title = fonte?.classe?.nome || 
-          `${result.titulo_polo_ativo || 'Autor'} vs ${result.titulo_polo_passivo || 'Réu'}`;
+          `${fullResult.titulo_polo_ativo || result.titulo_polo_ativo || 'Autor'} vs ${fullResult.titulo_polo_passivo || result.titulo_polo_passivo || 'Réu'}`;
         const description = [
           fonte?.area?.nome && `Área: ${fonte.area.nome}`,
           fonte?.nome && `Fonte: ${fonte.nome}`,
@@ -272,23 +289,23 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             process_number: result.numero_cnj,
             title,
             description,
-            status: result.fontes_tribunais_estao_arquivadas ? 'arquivado' : 'em_andamento',
-            polo_ativo: result.titulo_polo_ativo || null,
-            polo_passivo: result.titulo_polo_passivo || null,
-            ano_inicio: result.ano_inicio || null,
+            status: fullResult.fontes_tribunais_estao_arquivadas || result.fontes_tribunais_estao_arquivadas ? 'arquivado' : 'em_andamento',
+            polo_ativo: fullResult.titulo_polo_ativo || result.titulo_polo_ativo || null,
+            polo_passivo: fullResult.titulo_polo_passivo || result.titulo_polo_passivo || null,
+            ano_inicio: fullResult.ano_inicio || result.ano_inicio || null,
             tribunal: fonte?.tribunal || fonte?.nome || null,
             grau: fonte?.grau || null,
             classe: fonte?.classe?.nome || null,
             area: fonte?.area?.nome || null,
             assuntos: fonte?.assuntos?.map((a: any) => a.nome) || null,
-            valor_causa: (result as any).valor_causa || null,
+            valor_causa: (fullResult as any).valor_causa || (result as any).valor_causa || null,
             envolvidos: fonte?.envolvidos || null,
-            movimentacoes: (fonte as any)?.movimentacoes || null,
+            movimentacoes: movimentacoes.length > 0 ? movimentacoes : ((fonte as any)?.movimentacoes || null),
             fonte_nome: fonte?.nome || null,
             fonte_tipo: fonte?.tipo || null,
             fonte_data_inicio: fonte?.data_inicio || null,
             fonte_data_fim: fonte?.data_fim || null,
-            escavador_raw: result,
+            escavador_raw: fullResult,
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
             created_by: user?.id,
