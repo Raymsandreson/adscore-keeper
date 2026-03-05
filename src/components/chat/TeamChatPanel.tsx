@@ -20,7 +20,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const { user } = useAuthContext();
   const { messages, loading, sendMessage } = useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
-  const [inputText, setInputText] = useState('');
+  const draftKey = `team-chat-draft-${entityType}-${entityId}`;
+  const [inputText, setInputText] = useState(() => sessionStorage.getItem(draftKey) || '');
   const [sending, setSending] = useState(false);
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
@@ -49,6 +50,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
   const handleInputChange = (value: string) => {
     setInputText(value);
+    sessionStorage.setItem(draftKey, value);
     // Detect @ trigger
     const lastAt = value.lastIndexOf('@');
     if (lastAt >= 0) {
@@ -99,6 +101,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
     await sendMessage(text, mentionedIds);
     setInputText('');
+    sessionStorage.removeItem(draftKey);
     setSelectedMentions([]);
     setSending(false);
   };
