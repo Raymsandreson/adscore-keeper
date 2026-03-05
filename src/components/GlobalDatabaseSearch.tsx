@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CommandDialog,
   CommandEmpty,
@@ -13,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Users, MessageCircle, Contact, Send, Search, Loader2, User, Phone, Mail, MapPin, Calendar, FileText, Building, ExternalLink,
+  ClipboardList, Workflow, LayoutDashboard,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
@@ -25,7 +27,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 
 interface SearchResult {
   id: string;
-  type: 'lead' | 'contact' | 'comment' | 'dm';
+  type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow';
   title: string;
   subtitle: string;
   extra?: string;
@@ -51,6 +53,7 @@ export function GlobalDatabaseSearch() {
   const [selectedDm, setSelectedDm] = useState<any | null>(null);
   const [dmSheetOpen, setDmSheetOpen] = useState(false);
 
+  const navigate = useNavigate();
   const { updateLead } = useLeads();
   const { boards } = useKanbanBoards();
 
@@ -75,13 +78,13 @@ export function GlobalDatabaseSearch() {
     try {
       const searchTerm = `%${term}%`;
 
-      const [leadsRes, contactsRes, commentsRes, dmsRes] = await Promise.all([
+      const [leadsRes, contactsRes, commentsRes, dmsRes, activitiesRes, workflowsRes] = await Promise.all([
         supabase.from('leads').select('*')
-          .or(`lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm}`)
+          .or(`lead_name.ilike.${searchTerm},victim_name.ilike.${searchTerm},lead_phone.ilike.${searchTerm},lead_email.ilike.${searchTerm},notes.ilike.${searchTerm},instagram_username.ilike.${searchTerm},city.ilike.${searchTerm},cpf.ilike.${searchTerm},state.ilike.${searchTerm},source.ilike.${searchTerm}`)
           .order('updated_at', { ascending: false })
           .limit(15),
         supabase.from('contacts').select('*')
-          .or(`full_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm},instagram_username.ilike.${searchTerm},notes.ilike.${searchTerm},city.ilike.${searchTerm}`)
+          .or(`full_name.ilike.${searchTerm},phone.ilike.${searchTerm},email.ilike.${searchTerm},instagram_username.ilike.${searchTerm},notes.ilike.${searchTerm},city.ilike.${searchTerm},state.ilike.${searchTerm},profession.ilike.${searchTerm},neighborhood.ilike.${searchTerm}`)
           .order('updated_at', { ascending: false })
           .limit(15),
         supabase.from('instagram_comments').select('*')
@@ -91,6 +94,14 @@ export function GlobalDatabaseSearch() {
         supabase.from('dm_history').select('*')
           .or(`instagram_username.ilike.${searchTerm},dm_message.ilike.${searchTerm}`)
           .order('created_at', { ascending: false })
+          .limit(10),
+        supabase.from('lead_activities').select('*')
+          .or(`title.ilike.${searchTerm},description.ilike.${searchTerm},lead_name.ilike.${searchTerm},assigned_to_name.ilike.${searchTerm},activity_type.ilike.${searchTerm}`)
+          .order('updated_at', { ascending: false })
+          .limit(15),
+        supabase.from('kanban_boards').select('*')
+          .or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`)
+          .order('updated_at', { ascending: false })
           .limit(10),
       ]);
 
@@ -148,6 +159,32 @@ export function GlobalDatabaseSearch() {
         });
       });
 
+      // Activities
+      (activitiesRes.data || []).forEach((a: any) => {
+        mapped.push({
+          id: a.id,
+          type: 'activity',
+          title: a.title || 'Atividade sem título',
+          subtitle: a.lead_name ? `Lead: ${a.lead_name}` : (a.description || '').slice(0, 80),
+          extra: a.assigned_to_name || a.status || '',
+          date: a.updated_at || a.created_at,
+          raw: a,
+        });
+      });
+
+      // Workflows/Boards
+      (workflowsRes.data || []).forEach((w: any) => {
+        mapped.push({
+          id: w.id,
+          type: 'workflow',
+          title: w.name || 'Fluxo sem nome',
+          subtitle: w.description || '',
+          extra: w.board_type === 'workflow' ? 'Fluxo de Trabalho' : 'Funil de Vendas',
+          date: w.updated_at,
+          raw: w,
+        });
+      });
+
       setResults(mapped);
     } catch (err) {
       console.error('Search error:', err);
@@ -185,12 +222,21 @@ export function GlobalDatabaseSearch() {
         setSelectedDm(result.raw);
         setDmSheetOpen(true);
         break;
+      case 'activity':
+        // Navigate to activities page - the activity will be visible there
+        navigate('/');
+        break;
+      case 'workflow':
+        navigate('/workflow');
+        break;
     }
   };
 
   const typeConfig = {
     lead: { icon: Users, label: 'Lead', color: 'bg-blue-500/10 text-blue-700 border-blue-200' },
     contact: { icon: Contact, label: 'Contato', color: 'bg-green-500/10 text-green-700 border-green-200' },
+    activity: { icon: ClipboardList, label: 'Atividade', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
+    workflow: { icon: Workflow, label: 'Fluxo', color: 'bg-violet-500/10 text-violet-700 border-violet-200' },
     comment: { icon: MessageCircle, label: 'Comentário', color: 'bg-orange-500/10 text-orange-700 border-orange-200' },
     dm: { icon: Send, label: 'DM', color: 'bg-purple-500/10 text-purple-700 border-purple-200' },
   };
@@ -201,13 +247,13 @@ export function GlobalDatabaseSearch() {
     return acc;
   }, {} as Record<string, SearchResult[]>);
 
-  const groupOrder: Array<SearchResult['type']> = ['lead', 'contact', 'comment', 'dm'];
+  const groupOrder: Array<SearchResult['type']> = ['lead', 'contact', 'activity', 'workflow', 'comment', 'dm'];
 
   return (
     <>
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput
-          placeholder="Buscar leads, contatos, comentários, DMs... (⌘K)"
+          placeholder="Buscar leads, contatos, atividades, fluxos, comentários, DMs... (⌘K)"
           value={query}
           onValueChange={handleQueryChange}
         />
