@@ -160,6 +160,7 @@ const ActivitiesPage = () => {
   const { types: dbActivityTypes } = useActivityTypes();
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   const [selectedBlockKey, setSelectedBlockKey] = useState<string | null>(null);
+  const [blockSearchText, setBlockSearchText] = useState('');
   // Countdown timer state for time block click
   const [countdownBlock, setCountdownBlock] = useState<TimeBlockConfig | null>(null);
   const [countdownRemaining, setCountdownRemaining] = useState(0);
@@ -2068,37 +2069,65 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
           })();
 
           return (
-            <div className="flex flex-1 overflow-hidden h-full">
-              {/* Left sidebar: selected block activities or type summary */}
-              <div className="w-[260px] shrink-0 border-r flex flex-col overflow-hidden bg-card">
-                {selectedBlockData ? (
-                  <>
-                    {/* Selected block header */}
-                    <div className={cn('px-3 py-2 border-b text-white flex items-center justify-between', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
-                        <p className="text-[10px] opacity-80">
-                          {format(selectedBlockData.dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {selectedBlockData.cfg.startHour}h–{selectedBlockData.cfg.endHour}h
-                        </p>
-                      </div>
-                      <button
-                        className="text-white/80 hover:text-white ml-2 shrink-0"
-                        onClick={() => setSelectedBlockKey(null)}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+            <div className="flex flex-1 overflow-hidden h-full relative">
+              {/* Floating popup for selected block activities */}
+              {selectedBlockData && (
+                <div className="absolute left-3 top-3 z-30 w-[320px] max-h-[70vh] rounded-xl border bg-card shadow-xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200">
+                  {/* Header */}
+                  <div className={cn('px-3 py-2 text-white flex items-center justify-between rounded-t-xl', selectedBlockData.cfg.color || 'bg-muted-foreground')}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold truncate">{selectedBlockData.cfg.label}</p>
+                      <p className="text-[10px] opacity-80">
+                        {format(selectedBlockData.dayDate, 'EEEE, dd/MM', { locale: ptBR })} • {selectedBlockData.cfg.startHour}h–{selectedBlockData.cfg.endHour}h
+                      </p>
                     </div>
-                    <ScrollArea className="flex-1">
-                      {selectedBlockData.items.length === 0 ? (
-                        <div className="px-3 py-8 text-center text-xs text-muted-foreground">
-                          Nenhuma atividade neste bloco
-                        </div>
-                      ) : (
+                    <button
+                      className="text-white/80 hover:text-white ml-2 shrink-0"
+                      onClick={() => { setSelectedBlockKey(null); setBlockSearchText(''); }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {/* Search */}
+                  <div className="px-2 py-1.5 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar atividade..."
+                        value={blockSearchText}
+                        onChange={e => setBlockSearchText(e.target.value)}
+                        className="h-7 pl-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                  {/* Items */}
+                  <ScrollArea className="flex-1 max-h-[50vh]">
+                    {(() => {
+                      const searchLower = blockSearchText.toLowerCase();
+                      const filtered = blockSearchText
+                        ? selectedBlockData.items.filter(a =>
+                            (a.title || '').toLowerCase().includes(searchLower) ||
+                            (a.current_status_notes || '').toLowerCase().includes(searchLower) ||
+                            (a.what_was_done || '').toLowerCase().includes(searchLower) ||
+                            (a.next_steps || '').toLowerCase().includes(searchLower) ||
+                            (a.notes || '').toLowerCase().includes(searchLower) ||
+                            (a.lead_name || '').toLowerCase().includes(searchLower)
+                          )
+                        : selectedBlockData.items;
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                            {blockSearchText ? 'Nenhum resultado encontrado' : 'Nenhuma atividade neste bloco'}
+                          </div>
+                        );
+                      }
+                      return (
                         <div className="divide-y">
-                          {selectedBlockData.items.map(a => (
+                          {filtered.map(a => (
                             <div
                               key={a.id}
-                              className="px-3 py-2 transition-colors flex items-start gap-2"
+                              className="px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2"
+                              onClick={() => handleOpenEdit(a)}
                             >
                               <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', selectedBlockData.cfg.color || 'bg-muted-foreground')} />
                               <div className="min-w-0 flex-1">
@@ -2113,46 +2142,20 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                             </div>
                           ))}
                         </div>
-                      )}
-                    </ScrollArea>
-                    <div className="px-3 py-2 border-t text-xs text-muted-foreground text-center">
-                      {selectedBlockData.items.length} atividade{selectedBlockData.items.length !== 1 ? 's' : ''}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="px-3 py-2 border-b flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">TIPO</span>
-                      <span className="text-[10px] text-muted-foreground">Clique em um bloco →</span>
-                    </div>
-                    <ScrollArea className="flex-1">
-                      <div className="py-1">
-                        {typeSummary.map(t => (
-                          <div key={t.value} className={cn(
-                            "w-full px-3 py-2 flex items-center gap-2 text-left",
-                            t.routineCfg && 'border-l-2',
-                          )}>
-                            <span className={cn('h-2.5 w-2.5 rounded-full shrink-0', t.routineCfg?.color || t.dot || 'bg-muted-foreground')} />
-                            <span className="text-xs font-medium flex-1 truncate">{t.label}</span>
-                            <span className="text-xs font-bold tabular-nums">
-                              <span className={t.openCount > 0 ? 'text-foreground' : 'text-muted-foreground'}>{t.openCount}</span>
-                              <span className="text-muted-foreground/50">/{t.totalCount}</span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="px-3 py-2 border-t flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
-                        <span className="text-xs font-bold flex-1">TOTAL</span>
-                        <span className="text-xs font-bold tabular-nums">
-                          <span>{totalOpen}</span>
-                          <span className="text-muted-foreground/50">/{totalAll}</span>
-                        </span>
-                      </div>
-                    </ScrollArea>
-                  </>
-                )}
-              </div>
+                      );
+                    })()}
+                  </ScrollArea>
+                  <div className="px-3 py-1.5 border-t text-xs text-muted-foreground text-center">
+                    {blockSearchText
+                      ? `${selectedBlockData.items.filter(a => {
+                          const s = blockSearchText.toLowerCase();
+                          return (a.title||'').toLowerCase().includes(s)||(a.current_status_notes||'').toLowerCase().includes(s)||(a.what_was_done||'').toLowerCase().includes(s)||(a.next_steps||'').toLowerCase().includes(s)||(a.notes||'').toLowerCase().includes(s)||(a.lead_name||'').toLowerCase().includes(s);
+                        }).length} de ${selectedBlockData.items.length}`
+                      : `${selectedBlockData.items.length} atividade${selectedBlockData.items.length !== 1 ? 's' : ''}`
+                    }
+                  </div>
+                </div>
+              )}
 
               {/* Weekly grid */}
               <div className="flex-1 overflow-auto">
@@ -2231,6 +2234,7 @@ Tem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se 
                               }}
                               onClick={() => {
                                 setOpenFilterKey(null);
+                                setBlockSearchText('');
                                 setSelectedBlockKey(isSelected ? null : blockKey);
                               }}
                             >
