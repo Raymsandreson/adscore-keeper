@@ -75,7 +75,7 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
-import { TeamChatButton } from '@/components/chat/TeamChatButton';
+import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
 import { LegalCasesTab } from '@/components/leads/LegalCasesTab';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -663,7 +663,6 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
             {lead && (
               <div className="flex items-center gap-1">
                 <ShareMenu entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} />
-                <TeamChatButton entityType="lead" entityId={lead.id} entityName={lead.lead_name || 'Lead'} variant="full" className="h-8" />
               </div>
             )}
           </div>
@@ -754,6 +753,10 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
               <TabsTrigger value="ai_chat" className="text-xs py-1.5 px-2.5">
                 <Sparkles className="h-3 w-3 mr-1" />
                 Chat IA
+              </TabsTrigger>
+              <TabsTrigger value="team_chat" className="text-xs py-1.5 px-2.5">
+                <Users className="h-3 w-3 mr-1" />
+                Chat Equipe
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1455,6 +1458,15 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   if (fields.liability_type) setLiabilityType(fields.liability_type);
                   if (fields.notes) setNotes(prev => prev ? `${prev}\n\n${fields.notes}` : fields.notes);
                 }}
+              />
+            </TabsContent>
+
+            {/* Chat Equipe Tab */}
+            <TabsContent value="team_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
+              <TeamChatPanel
+                entityType="lead"
+                entityId={lead.id}
+                entityName={lead.lead_name || 'Lead'}
               />
             </TabsContent>
           </div>
