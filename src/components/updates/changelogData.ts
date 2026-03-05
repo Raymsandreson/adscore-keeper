@@ -1,0 +1,51 @@
+export interface ChangelogFeature {
+  title: string;
+  description: string;
+  icon: string; // emoji
+  howToUse?: string;
+}
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  title: string;
+  features: ChangelogFeature[];
+}
+
+/**
+ * Add new entries at the TOP of this array.
+ * The first entry is always shown when an update is available.
+ */
+export const changelog: ChangelogEntry[] = [
+  {
+    version: "2.8.0",
+    date: "2026-03-05",
+    title: "Melhorias na experiência do Lead",
+    features: [
+      {
+        title: "Chat da Equipe dentro do Lead",
+        description: "Agora o chat da equipe é uma aba integrada dentro do lead, sem precisar abrir uma tela separada.",
+        icon: "💬",
+        howToUse: "Abra qualquer lead → clique na aba 'Chat Equipe' ao lado de 'Chat IA'. Converse com sua equipe diretamente no contexto do lead.",
+      },
+      {
+        title: "Funil de Vendas / Fluxo de Trabalho",
+        description: "Visualize todas as etapas do funil ou fluxo de trabalho diretamente dentro do lead, com indicadores de progresso para cada fase.",
+        icon: "📊",
+        howToUse: "Abra qualquer lead → clique na aba 'Funil de Vendas' (ou 'Fluxo de Trabalho' para casos). Veja as etapas concluídas (✅), a atual (🔵) e as pendentes (⚪).",
+      },
+      {
+        title: "Rascunhos do Chat preservados",
+        description: "Ao trocar de aba dentro do lead, o texto que você estava digitando no chat é salvo automaticamente e restaurado quando voltar.",
+        icon: "📝",
+        howToUse: "Comece a digitar uma mensagem no chat → troque de aba → volte ao chat. Seu texto estará lá!",
+      },
+      {
+        title: "Notas de atualização interativas",
+        description: "Agora, antes de atualizar o sistema, você vê exatamente o que mudou e como usar cada novidade.",
+        icon: "🆕",
+        howToUse: "Quando o botão 🔄 ficar verde, clique nele para ver as novidades antes de atualizar.",
+      },
+    ],
+  },
+];
