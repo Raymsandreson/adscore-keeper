@@ -21,6 +21,65 @@ Deno.serve(async (req) => {
     // ========================
     // DELETE MESSAGE
     // ========================
+    // ========================
+    // FETCH GROUP PARTICIPANTS
+    // ========================
+    if (action === 'fetch_group_participants') {
+      const { group_id, instance_id } = body
+
+      if (!group_id) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'group_id is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const instance = await getInstance(supabase, instance_id)
+      if (!instance) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No active WhatsApp instance found' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const baseUrl = instance.base_url || 'https://abraci.uazapi.com'
+      // UazAPI v2: group info endpoint
+      const groupJid = group_id.includes('@g.us') ? group_id : `${group_id}@g.us`
+      
+      try {
+        const infoRes = await fetch(`${baseUrl}/group/info`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': instance.instance_token },
+          body: JSON.stringify({ id: groupJid }),
+        })
+
+        if (!infoRes.ok) {
+          const errText = await infoRes.text()
+          console.error('Group info error:', infoRes.status, errText)
+          return new Response(
+            JSON.stringify({ success: false, error: `API error: ${infoRes.status}` }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const groupData = await infoRes.json()
+        // UazAPI returns participants as an array with id, admin, etc.
+        const participants = groupData?.participants || groupData?.data?.participants || []
+        const groupName = groupData?.subject || groupData?.name || groupData?.data?.subject || ''
+
+        return new Response(
+          JSON.stringify({ success: true, participants, group_name: groupName }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (e) {
+        console.error('Error fetching group info:', e)
+        return new Response(
+          JSON.stringify({ success: false, error: e instanceof Error ? e.message : 'Unknown error' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     if (action === 'delete_message') {
       const { message_id, instance_id, external_message_id, phone } = body
 
