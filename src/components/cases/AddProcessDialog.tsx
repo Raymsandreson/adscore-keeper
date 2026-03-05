@@ -155,6 +155,79 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
   const selectedBoard = activeBoards.find(b => b.id === workflowId);
 
+  // Map Escavador participation types to our party roles
+  const mapParticipationToRole = (tipo: string): string => {
+    const t = tipo?.toLowerCase() || '';
+    if (t.includes('autor') || t.includes('reclamante') || t.includes('requerente') || t.includes('exequente')) return 'autor';
+    if (t.includes('réu') || t.includes('reu') || t.includes('reclamad') || t.includes('requerid') || t.includes('executad')) return 'reu';
+    if (t.includes('advogad')) return 'advogado';
+    if (t.includes('testemunha')) return 'testemunha';
+    if (t.includes('perit')) return 'perito';
+    return 'outro';
+  };
+
+  const autoCreatePartiesFromEnvolvidos = async (
+    processId: string,
+    envolvidos: Array<{ nome: string; tipo_participacao: string }>,
+    userId?: string
+  ) => {
+    try {
+      for (const env of envolvidos) {
+        if (!env.nome) continue;
+
+        // Check if contact already exists by name
+        const { data: existingContacts } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('full_name', env.nome.trim())
+          .limit(1);
+
+        let contactId: string;
+
+        if (existingContacts && existingContacts.length > 0) {
+          contactId = existingContacts[0].id;
+        } else {
+          // Create new contact
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              full_name: env.nome.trim(),
+              notes: `Cadastrado automaticamente via Escavador (${env.tipo_participacao || 'envolvido'})`,
+              created_by: userId,
+            })
+            .select('id')
+            .single();
+
+          if (contactError || !newContact) {
+            console.error('Error creating contact:', contactError);
+            continue;
+          }
+          contactId = newContact.id;
+        }
+
+        // Create process_party link
+        const role = mapParticipationToRole(env.tipo_participacao);
+        const { error: partyError } = await supabase
+          .from('process_parties')
+          .insert({
+            process_id: processId,
+            contact_id: contactId,
+            role,
+            notes: env.tipo_participacao || null,
+          } as any);
+
+        if (partyError) {
+          if (partyError.code !== '23505') {
+            console.error('Error creating party:', partyError);
+          }
+        }
+      }
+      console.log(`Auto-created parties from ${envolvidos.length} envolvidos for process ${processId}`);
+    } catch (err) {
+      console.error('Error auto-creating parties:', err);
+    }
+  };
+
   const saveSelectedFromEscavador = async () => {
     if (selectedResults.size === 0) return;
     setSaving(true);
@@ -190,7 +263,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           fonte?.assuntos?.length && `Assuntos: ${fonte.assuntos.map(a => a.nome).join(', ')}`,
         ].filter(Boolean).join('\n');
 
-        const { error } = await supabase
+        const { data: insertedProcess, error } = await supabase
           .from('lead_processes')
           .insert({
             lead_id: leadId,
@@ -219,13 +292,20 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             workflow_id: workflowId || null,
             workflow_name: selectedBoard?.name || null,
             created_by: user?.id,
-          } as any);
+          } as any)
+          .select('id')
+          .single();
 
         if (error) {
           console.error('Error saving process:', error);
           skipCount++;
         } else {
           successCount++;
+          
+          // Auto-create contacts and process_parties from envolvidos
+          if (insertedProcess?.id && fonte?.envolvidos?.length) {
+            await autoCreatePartiesFromEnvolvidos(insertedProcess.id, fonte.envolvidos, user?.id);
+          }
           
           // Auto-create "Dar andamento" activity
           try {
