@@ -212,27 +212,33 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
   // Fetch context data (activity, lead, contact)
   const fetchContext = useCallback(async () => {
-    if (!activityId) return;
+    if (!activityId && !leadId) return;
     setContextLoading(true);
     try {
-      const { data: actData } = await supabase
-        .from('lead_activities')
-        .select('*')
-        .eq('id', activityId)
-        .single();
-
+      let actData = null;
       let leadData = null;
       let contactData = null;
 
-      if (actData) {
-        if (actData.lead_id) {
+      if (activityId) {
+        const { data } = await supabase
+          .from('lead_activities')
+          .select('*')
+          .eq('id', activityId)
+          .single();
+        actData = data;
+
+        if (actData?.lead_id) {
           const { data: ld } = await supabase.from('leads').select('*').eq('id', actData.lead_id).single();
           leadData = ld;
         }
-        if (actData.contact_id) {
+        if (actData?.contact_id) {
           const { data: cd } = await supabase.from('contacts').select('*').eq('id', actData.contact_id).single();
           contactData = cd;
         }
+      } else if (leadId) {
+        // Opened from lead tab without a specific activity
+        const { data: ld } = await supabase.from('leads').select('*').eq('id', leadId).single();
+        leadData = ld;
       }
 
       setContextData({ activity: actData, lead: leadData, contact: contactData });
@@ -244,7 +250,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
     } finally {
       setContextLoading(false);
     }
-  }, [activityId, fetchActionSuggestions]);
+  }, [activityId, leadId, fetchActionSuggestions]);
 
   useEffect(() => {
     if (open) {
@@ -436,11 +442,12 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
 
       // Fetch activity history for context
       let activityHistory: any[] = [];
-      if (contextData.lead?.id) {
+      const effectiveLeadId = contextData.lead?.id || leadId;
+      if (effectiveLeadId) {
         const { data: histData } = await supabase
           .from('lead_activities')
           .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, deadline')
-          .eq('lead_id', contextData.lead.id)
+          .eq('lead_id', effectiveLeadId)
           .order('created_at', { ascending: false })
           .limit(10);
         activityHistory = histData || [];
