@@ -22,6 +22,7 @@ import {
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
 } from 'lucide-react';
 import { LegalCase } from '@/hooks/useLegalCases';
+import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
@@ -206,9 +207,13 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: legalCase.nucleus_color }} />
               )}
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{legalCase.case_number} — {legalCase.title}</p>
+                <p className="text-sm font-medium truncate">
+                  <CopyableText copyValue={legalCase.case_number} label="Número do caso" showIcon={false}>{legalCase.case_number}</CopyableText>
+                  {' — '}
+                  <CopyableText copyValue={legalCase.title} label="Título" showIcon={false}>{legalCase.title}</CopyableText>
+                </p>
                 {legalCase.nucleus_name && (
-                  <p className="text-xs text-muted-foreground">{legalCase.nucleus_name}</p>
+                  <CopyableText as="p" copyValue={legalCase.nucleus_name} label="Núcleo" showIcon={false} className="text-xs text-muted-foreground">{legalCase.nucleus_name}</CopyableText>
                 )}
               </div>
             </div>
@@ -223,7 +228,7 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
             {loadingDetails && <p className="text-xs text-muted-foreground">Carregando...</p>}
 
             {legalCase.description && (
-              <p className="text-xs text-muted-foreground whitespace-pre-line">{legalCase.description}</p>
+              <CopyableText as="p" copyValue={legalCase.description} label="Descrição" showIcon={false} className="text-xs text-muted-foreground whitespace-pre-line">{legalCase.description}</CopyableText>
             )}
 
             {/* Lead tab */}
@@ -232,10 +237,10 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
                 <h4 className="text-xs font-semibold flex items-center gap-1.5">
                   <ExternalLink className="h-3 w-3" /> Lead Vinculado
                 </h4>
-                <p className="text-sm font-medium">{leadInfo.lead_name}</p>
-                {leadInfo.lead_phone && <p className="text-xs text-muted-foreground">{leadInfo.lead_phone}</p>}
+                <CopyableText as="p" copyValue={leadInfo.lead_name} label="Nome do lead" showIcon={false} className="text-sm font-medium">{leadInfo.lead_name}</CopyableText>
+                {leadInfo.lead_phone && <CopyableText as="p" copyValue={leadInfo.lead_phone} label="Telefone" className="text-xs text-muted-foreground">{leadInfo.lead_phone}</CopyableText>}
                 {leadInfo.became_client_date && (
-                  <p className="text-xs text-muted-foreground">Fechado em: {leadInfo.became_client_date}</p>
+                  <CopyableText as="p" copyValue={leadInfo.became_client_date} label="Data" showIcon={false} className="text-xs text-muted-foreground">Fechado em: {leadInfo.became_client_date}</CopyableText>
                 )}
               </div>
             )}
@@ -268,19 +273,19 @@ function CaseListItem({ legalCase, expanded, onToggle }: { legalCase: any; expan
                       ) : (
                         <FileText className="h-3.5 w-3.5 text-blue-500" />
                       )}
-                      <span className="text-xs font-medium">{p.title}</span>
+                      <CopyableText copyValue={p.title} label="Processo" showIcon={false} className="text-xs font-medium">{p.title}</CopyableText>
                       <Badge variant="secondary" className="text-[10px] ml-auto">
                         {p.status === 'em_andamento' ? 'Em Andamento' : p.status === 'concluido' ? 'Concluído' : 'Arquivado'}
                       </Badge>
                     </div>
                     {p.process_number && (
-                      <p className="text-[10px] text-muted-foreground">Nº {p.process_number}</p>
+                      <CopyableText as="p" copyValue={p.process_number} label="Nº Processo" className="text-[10px] text-muted-foreground">Nº {p.process_number}</CopyableText>
                     )}
                     {p.fee_percentage != null && (
-                      <p className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</p>
+                      <CopyableText as="p" copyValue={`${p.fee_percentage}%`} label="Honorários" showIcon={false} className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</CopyableText>
                     )}
                     {p.workflow_name && (
-                      <p className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</p>
+                      <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
                     )}
                   </div>
                 ))}
