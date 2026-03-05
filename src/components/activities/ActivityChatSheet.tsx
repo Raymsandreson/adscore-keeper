@@ -164,9 +164,11 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
         query = query.is('activity_id', null).is('lead_id', null)
           .or(`sender_id.eq.${user?.id},sender_id.is.null`);
       } else if (scope.activity_id) {
-        query = query.eq('activity_id', scope.activity_id);
+        query = query.eq('activity_id', scope.activity_id)
+          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
       } else if (scope.lead_id) {
-        query = query.eq('lead_id', scope.lead_id);
+        query = query.eq('lead_id', scope.lead_id)
+          .or(`sender_id.eq.${user?.id},sender_id.is.null`);
       }
 
       const { data, error } = await query;

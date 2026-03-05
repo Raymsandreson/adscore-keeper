@@ -82,13 +82,14 @@ export function EntityAIChat({
   const conversationField = leadId ? 'lead_id' : 'activity_id';
 
   const fetchMessages = useCallback(async () => {
-    if (!conversationKey) return;
+    if (!conversationKey || !user?.id) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('activity_chat_messages')
         .select('*')
         .eq(conversationField, conversationKey)
+        .or(`sender_id.eq.${user.id},sender_id.is.null`)
         .order('created_at', { ascending: true });
       if (error) throw error;
       setMessages((data || []) as ChatMessage[]);
@@ -97,7 +98,7 @@ export function EntityAIChat({
     } finally {
       setLoading(false);
     }
-  }, [conversationKey, conversationField]);
+  }, [conversationKey, conversationField, user?.id]);
 
   useEffect(() => { fetchMessages(); }, [fetchMessages]);
 
