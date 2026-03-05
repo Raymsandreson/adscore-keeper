@@ -5,8 +5,9 @@ import {
   LayoutDashboard, Users, CalendarDays, TrendingUp, Trophy, UsersRound,
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
-  MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign,
+  MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
 } from "lucide-react";
+import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -41,8 +42,16 @@ export function FloatingNav() {
   const [mentionsOpen, setMentionsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const noop = useCallback(() => {}, []);
+
+  // Listen for PWA updates
+  useEffect(() => {
+    const unsub = onUpdateAvailable(() => setHasUpdate(true));
+    return unsub;
+  }, []);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
@@ -290,6 +299,26 @@ export function FloatingNav() {
               </span>
             )}
           </button>
+
+          {/* Update button - only shows when update available */}
+          {hasUpdate && (
+            <button
+              onClick={() => {
+                setUpdating(true);
+                applyUpdate();
+                // Fallback reload after 3s if controllerchange doesn't fire
+                setTimeout(() => window.location.reload(), 3000);
+              }}
+              title="Atualização disponível"
+              className={cn(
+                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+                "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+              )}
+            >
+              <RefreshCw className={cn("h-5 w-5", updating && "animate-spin")} />
+              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />
+            </button>
+          )}
         </div>
       </div>
 
