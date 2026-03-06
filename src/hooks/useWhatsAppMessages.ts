@@ -65,6 +65,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const conversationsRef = useRef<WhatsAppConversation[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const profileCacheRef = useRef<{ full_name: string | null; treatment_title: string | null } | null>(null);
+  const isFetchingRef = useRef(false);
+
+  const AUTO_REFRESH_INTERVAL_MS = 30000;
 
   const fetchInstances = async () => {
     if (!user) return;
@@ -149,8 +152,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [instances]);
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  const fetchMessages = useCallback(async (silent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (!silent) setLoading(true);
+
     try {
       let query = supabase
         .from('whatsapp_messages')
@@ -172,7 +179,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       setMessages(msgs);
 
       const convMap = new Map<string, WhatsAppConversation>();
-      
+
       for (const msg of msgs) {
         const existing = convMap.get(msg.phone);
         if (!existing) {
@@ -206,18 +213,24 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
 
       const convList = Array.from(convMap.values())
         .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-      
+
       conversationsRef.current = convList;
       setConversations(convList);
       setHasLoaded(true);
-      toast.success(`${convList.length} conversas carregadas`);
+
+      if (!silent) {
+        toast.success(`${convList.length} conversas carregadas`);
+      }
     } catch (error) {
       console.error('Error fetching WhatsApp messages:', error);
-      toast.error('Erro ao carregar conversas');
+      if (!silent) {
+        toast.error('Erro ao carregar conversas');
+      }
     } finally {
-      setLoading(false);
+      isFetchingRef.current = false;
+      if (!silent) setLoading(false);
     }
-  };
+  }, [instances, selectedInstanceId]);
 
   const sendMessage = async (
     phone: string,
@@ -528,8 +541,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (!hasLoaded) return;
     fetchMessages();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, hasLoaded, fetchMessages]);
+
+  // Lightweight auto-refresh to keep inbox updated without heavy UI churn
+  useEffect(() => {
+    if (!hasLoaded) return;
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchMessages(true);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [hasLoaded, fetchMessages, AUTO_REFRESH_INTERVAL_MS]);
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
