@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.search-escavador]
 verify_jwt = false
+
+[functions.analyze-petition]
+verify_jwt = false
