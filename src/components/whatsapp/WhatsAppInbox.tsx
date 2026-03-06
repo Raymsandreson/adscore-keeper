@@ -659,7 +659,20 @@ export function WhatsAppInbox() {
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => { refetch(); toast.info('Atualizando conversas...'); }} title="Atualizar conversas" disabled={loading}>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={async () => {
+              toast.info('Atualizando conversas...');
+              await Promise.all([refetch(), refetchStatus()]);
+              if (selectedPhone) {
+                await fetchFullConversation(selectedPhone);
+              }
+              toast.success('Conversas atualizadas');
+            }}
+            title="Atualizar conversas"
+            disabled={loading}
+          >
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowSetup(true)} title="Configuração">
