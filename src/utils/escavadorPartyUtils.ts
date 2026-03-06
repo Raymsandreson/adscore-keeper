@@ -159,7 +159,7 @@ const createContactAndParty = async (
   if (!env.nome?.trim()) return false;
 
   const contactName = (env.nome_normalizado || env.nome).trim();
-  const classification = determineClassification(env);
+  const classification = determineClassification(env, internalLawyers);
   
   // Check existing contact by name
   const { data: existingContacts } = await supabase
@@ -251,9 +251,12 @@ export const autoCreatePartiesFromEnvolvidos = async (
 ): Promise<number> => {
   let partiesCreated = 0;
 
+  // Fetch internal lawyers once for comparison
+  const internalLawyers = await fetchInternalLawyers();
+
   for (const env of envolvidos) {
     // Create the main envolvido
-    const created = await createContactAndParty(processId, env, userId);
+    const created = await createContactAndParty(processId, env, internalLawyers, userId);
     if (created) partiesCreated++;
 
     // Also create nested advogados
@@ -264,7 +267,7 @@ export const autoCreatePartiesFromEnvolvidos = async (
           ...adv,
           tipo: adv.tipo || 'ADVOGADO',
           polo: adv.polo || 'ADVOGADO',
-        }, userId);
+        }, internalLawyers, userId);
         if (advCreated) partiesCreated++;
       }
     }
