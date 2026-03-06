@@ -634,7 +634,7 @@ Deno.serve(async (req) => {
     // ========== EARLY FILTERS (no DB queries) ==========
     const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
 
-    // 1) Skip non-message EventTypes that don't need processing (read receipts, status updates, presence)
+    // 1) Event classification + call detection
     const eventType = String(body.EventType || '').toLowerCase()
     const bodyType = String(body.type || '').toLowerCase()
     const bodyEvent = String(body.event || '').toLowerCase()
@@ -655,7 +655,18 @@ Deno.serve(async (req) => {
       || bodyType.includes('call')
       || messageTypeHint.includes('call')
       || hasCallPayload
-    
+
+    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
+    if (skippableEvents.includes(eventType) && !isCallEvent) {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // 2) Skip group messages (high-volume) unless it is a call event
+    const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
+    const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
     if (isGroup && !isCallEvent) {
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: 'group_message_filtered' }),
