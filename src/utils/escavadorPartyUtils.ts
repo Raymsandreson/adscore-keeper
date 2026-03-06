@@ -131,15 +131,19 @@ const extractDocument = (env: EscavadorEnvolvido): string | null => {
 
 /**
  * Determines the classification for a contact based on Escavador data.
- * - Advogados with OAB → "Cliente"
- * - Pessoa Jurídica → "Empresa"
- * - Everyone else → "Parte Contrária"
+ * - Internal lawyers (OAB matches profile) → "advogado_interno"
+ * - External lawyers with OAB → "advogado_externo"
+ * - Pessoa Jurídica → "Empresa" (kept as legacy for empresa)
+ * - Everyone else → "parte_contraria"
  */
-const determineClassification = (env: EscavadorEnvolvido): string => {
+const determineClassification = (env: EscavadorEnvolvido, internalLawyers: InternalLawyer[]): string => {
   const role = mapParticipationToRole(env);
-  if (role === 'advogado' || env.oabs?.length) return 'Cliente';
-  if (env.tipo_pessoa === 'JURIDICA') return 'Empresa';
-  return 'Parte Contrária';
+  if (role === 'advogado' || env.oabs?.length) {
+    if (isInternalLawyer(env, internalLawyers)) return 'advogado_interno';
+    return 'advogado_externo';
+  }
+  if (env.tipo_pessoa === 'JURIDICA') return 'parte_contraria';
+  return 'parte_contraria';
 };
 
 /**
