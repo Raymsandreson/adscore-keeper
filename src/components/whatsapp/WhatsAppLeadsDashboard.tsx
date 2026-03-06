@@ -3,8 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
-import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3 } from 'lucide-react';
+import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -62,6 +64,12 @@ export function WhatsAppLeadsDashboard() {
   const [period, setPeriod] = useState('today');
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState('all');
+
+  // New metrics state
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }[]>([]);
+  const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
+  const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
+  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -127,6 +135,67 @@ export function WhatsAppLeadsDashboard() {
     if (msgsRes.data) setMessages(msgsRes.data);
     if (instRes.data) setInstances(instRes.data);
     setLoading(false);
+
+    // Fetch today's metrics for new cards
+    fetchTodayMetrics();
+  };
+
+  const fetchTodayMetrics = async () => {
+    const todayStart = startOfDay(new Date()).toISOString();
+
+    const [newConvsRes, followupsRes, docsRes] = await Promise.all([
+      // New inbound conversations today (first message per phone)
+      supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, created_at, instance_name')
+        .eq('direction', 'inbound')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: true })
+        .limit(500),
+      // Outbound follow-ups today
+      supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, created_at, instance_name')
+        .eq('direction', 'outbound')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      // Documents generated today
+      supabase
+        .from('zapsign_documents')
+        .select('id, document_name, template_name, signer_name, status, created_at')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    // Build unique new conversations (first inbound per phone today)
+    if (newConvsRes.data) {
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
+      for (const msg of newConvsRes.data) {
+        if (!phoneMap.has(msg.phone)) {
+          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
+        }
+      }
+      setTodayNewConvs(Array.from(phoneMap.values()));
+    }
+
+    // Build follow-ups (outbound messages grouped by phone)
+    if (followupsRes.data) {
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }>();
+      for (const msg of followupsRes.data) {
+        const existing = phoneMap.get(msg.phone);
+        if (!existing) {
+          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, outbound_count: 1, last_outbound_at: msg.created_at, instance_name: msg.instance_name });
+        } else {
+          existing.outbound_count++;
+        }
+      }
+      setTodayFollowups(Array.from(phoneMap.values()));
+    }
+
+    if (docsRes.data) {
+      setTodayDocs(docsRes.data as any[]);
+    }
   };
 
   // Filter messages by selected instance
@@ -434,7 +503,49 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
-      {/* Charts Row 1 */}
+      {/* Today's Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('new_convs')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayNewConvs.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('followups')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <PhoneForwarded className="h-4 w-4 text-emerald-500" />
+              <span className="text-xs text-muted-foreground">Follow-ups Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayFollowups.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('documents')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <FileSignature className="h-4 w-4 text-amber-500" />
+              <span className="text-xs text-muted-foreground">Documentos Gerados Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayDocs.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Leads por Dia */}
         <Card>
@@ -596,6 +707,121 @@ export function WhatsAppLeadsDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Side Panel Sheets */}
+      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Conversas Novas Hoje ({todayNewConvs.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {todayNewConvs.map((conv, i) => (
+                <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                    <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                    {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                    {format(parseISO(conv.first_message_at), 'HH:mm')}
+                  </span>
+                </div>
+              ))}
+              {todayNewConvs.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={sheetOpen === 'followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <PhoneForwarded className="h-5 w-5 text-emerald-500" />
+              Follow-ups Hoje ({todayFollowups.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {todayFollowups.map((fu, i) => (
+                <div key={`${fu.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{fu.contact_name || fu.phone}</p>
+                    <p className="text-xs text-muted-foreground">{fu.phone}</p>
+                    {fu.instance_name && <p className="text-[10px] text-muted-foreground">{fu.instance_name}</p>}
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <Badge variant="outline" className="text-xs">{fu.outbound_count} msgs</Badge>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {format(parseISO(fu.last_outbound_at), 'HH:mm')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {todayFollowups.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={sheetOpen === 'documents'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <FileSignature className="h-5 w-5 text-amber-500" />
+              Documentos Gerados Hoje ({todayDocs.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {/* Group by template_name */}
+              {(() => {
+                const grouped = new Map<string, typeof todayDocs>();
+                for (const doc of todayDocs) {
+                  const key = doc.template_name || 'Sem modelo';
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push(doc);
+                }
+                return Array.from(grouped.entries()).map(([templateName, docs]) => (
+                  <div key={templateName} className="space-y-1.5">
+                    <div className="flex items-center gap-2 pt-2">
+                      <Badge variant="secondary" className="text-xs">{templateName}</Badge>
+                      <span className="text-xs text-muted-foreground">({docs.length})</span>
+                    </div>
+                    {docs.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.document_name}</p>
+                          {doc.signer_name && <p className="text-xs text-muted-foreground">Signatário: {doc.signer_name}</p>}
+                        </div>
+                        <div className="text-right shrink-0 ml-2">
+                          <Badge variant={doc.status === 'signed' ? 'default' : 'outline'} className="text-xs">
+                            {doc.status === 'signed' ? 'Assinado' : doc.status === 'pending' ? 'Pendente' : doc.status}
+                          </Badge>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {format(parseISO(doc.created_at), 'HH:mm')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+              {todayDocs.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
