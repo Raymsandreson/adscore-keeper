@@ -81,6 +81,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       case 'workflow':
         navigate(`/workflow?openBoard=${mention.entity_id}${msgParam}`);
         break;
+      case 'whatsapp':
+        navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
+        break;
     }
   };
 
