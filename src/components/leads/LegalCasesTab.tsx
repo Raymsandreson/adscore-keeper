@@ -33,7 +33,7 @@ import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
@@ -547,6 +547,9 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [selectedRole, setSelectedRole] = useState<PartyRole>('autor');
   const [refreshing, setRefreshing] = useState(false);
   const [showMovimentacoes, setShowMovimentacoes] = useState(false);
+  const [showPetitionDialog, setShowPetitionDialog] = useState(false);
+  const [petitionText, setPetitionText] = useState('');
+  const [analyzingPetition, setAnalyzingPetition] = useState(false);
 
   useEffect(() => {
     if (showParties) fetchParties();
