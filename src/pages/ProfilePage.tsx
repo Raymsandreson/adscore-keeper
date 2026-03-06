@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale } from "lucide-react";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
@@ -31,6 +31,8 @@ const ProfilePage = () => {
   const [fullName, setFullName] = useState(profile?.full_name || "");
   const [treatmentTitle, setTreatmentTitle] = useState((profile as any)?.treatment_title || "none");
   const [gender, setGender] = useState((profile as any)?.gender || "none");
+  const [oabNumber, setOabNumber] = useState((profile as any)?.oab_number || "");
+  const [oabUf, setOabUf] = useState((profile as any)?.oab_uf || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const getInitials = () => {
@@ -56,6 +58,8 @@ const ProfilePage = () => {
       full_name: fullName.trim(),
       treatment_title: treatmentTitle === 'none' ? null : treatmentTitle,
       gender: gender === 'none' ? null : gender,
+      oab_number: oabNumber.trim() || null,
+      oab_uf: oabUf.trim() || null,
     } as any);
     
     if (error) {
@@ -157,6 +161,36 @@ const ProfilePage = () => {
               </Select>
               <p className="text-xs text-muted-foreground">
                 Usado para definir o pronome de tratamento padrão (Dr./Dra.) no WhatsApp
+              </p>
+            </div>
+
+            {/* OAB Fields */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Scale className="h-4 w-4" />
+                OAB (opcional)
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <Input
+                    value={oabNumber}
+                    onChange={(e) => setOabNumber(e.target.value)}
+                    placeholder="Número da OAB"
+                  />
+                </div>
+                <Select value={oabUf} onValueChange={setOabUf}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="UF" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf => (
+                      <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cadastre sua OAB para identificação automática como advogado interno nos processos
               </p>
             </div>
 
