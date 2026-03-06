@@ -828,6 +828,14 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
             Atualizar Escavador
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[10px] px-2 text-amber-600"
+          onClick={() => setShowPetitionDialog(true)}
+        >
+          <Sparkles className="h-2.5 w-2.5 mr-0.5" /> Analisar Petição
+        </Button>
         {process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
           <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
             onClick={() => setShowMovimentacoes(!showMovimentacoes)}>
@@ -924,6 +932,40 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
           ))}
         </div>
       )}
+
+      {/* Petition Analysis Dialog */}
+      <Dialog open={showPetitionDialog} onOpenChange={setShowPetitionDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Analisar Petição Inicial com IA
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Cole o texto da petição inicial abaixo. A IA irá extrair automaticamente as partes, endereços, profissões e relações.
+            </p>
+            <Textarea
+              value={petitionText}
+              onChange={(e) => setPetitionText(e.target.value)}
+              placeholder="Cole aqui o texto completo da petição inicial..."
+              rows={12}
+              className="text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPetitionDialog(false)}>Cancelar</Button>
+            <Button onClick={handleAnalyzePetition} disabled={analyzingPetition || !petitionText.trim()}>
+              {analyzingPetition ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analisando...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" /> Analisar</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
