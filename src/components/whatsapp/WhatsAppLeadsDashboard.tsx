@@ -707,6 +707,121 @@ export function WhatsAppLeadsDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Side Panel Sheets */}
+      <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-primary" />
+              Conversas Novas Hoje ({todayNewConvs.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {todayNewConvs.map((conv, i) => (
+                <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{conv.contact_name || conv.phone}</p>
+                    <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                    {conv.instance_name && <p className="text-[10px] text-muted-foreground">{conv.instance_name}</p>}
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                    {format(parseISO(conv.first_message_at), 'HH:mm')}
+                  </span>
+                </div>
+              ))}
+              {todayNewConvs.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nova hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={sheetOpen === 'followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <PhoneForwarded className="h-5 w-5 text-emerald-500" />
+              Follow-ups Hoje ({todayFollowups.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {todayFollowups.map((fu, i) => (
+                <div key={`${fu.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{fu.contact_name || fu.phone}</p>
+                    <p className="text-xs text-muted-foreground">{fu.phone}</p>
+                    {fu.instance_name && <p className="text-[10px] text-muted-foreground">{fu.instance_name}</p>}
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <Badge variant="outline" className="text-xs">{fu.outbound_count} msgs</Badge>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {format(parseISO(fu.last_outbound_at), 'HH:mm')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {todayFollowups.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={sheetOpen === 'documents'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <FileSignature className="h-5 w-5 text-amber-500" />
+              Documentos Gerados Hoje ({todayDocs.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {/* Group by template_name */}
+              {(() => {
+                const grouped = new Map<string, typeof todayDocs>();
+                for (const doc of todayDocs) {
+                  const key = doc.template_name || 'Sem modelo';
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push(doc);
+                }
+                return Array.from(grouped.entries()).map(([templateName, docs]) => (
+                  <div key={templateName} className="space-y-1.5">
+                    <div className="flex items-center gap-2 pt-2">
+                      <Badge variant="secondary" className="text-xs">{templateName}</Badge>
+                      <span className="text-xs text-muted-foreground">({docs.length})</span>
+                    </div>
+                    {docs.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{doc.document_name}</p>
+                          {doc.signer_name && <p className="text-xs text-muted-foreground">Signatário: {doc.signer_name}</p>}
+                        </div>
+                        <div className="text-right shrink-0 ml-2">
+                          <Badge variant={doc.status === 'signed' ? 'default' : 'outline'} className="text-xs">
+                            {doc.status === 'signed' ? 'Assinado' : doc.status === 'pending' ? 'Pendente' : doc.status}
+                          </Badge>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {format(parseISO(doc.created_at), 'HH:mm')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ));
+              })()}
+              {todayDocs.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
