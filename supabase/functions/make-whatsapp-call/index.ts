@@ -113,6 +113,14 @@ Deno.serve(async (req) => {
     })
 
     const responseData = await uazResponse.json().catch(() => ({}))
+    const resolvedCallId =
+      responseData?.callId
+      || responseData?.CallID
+      || responseData?.call_id
+      || responseData?.data?.callId
+      || responseData?.data?.CallID
+      || responseData?.data?.call_id
+      || null
 
     if (!uazResponse.ok) {
       console.error(`UazAPI error for instance ${instance.instance_name}: ${uazResponse.status}`, responseData)
@@ -124,7 +132,7 @@ Deno.serve(async (req) => {
 
     console.log('UazAPI call response:', JSON.stringify(responseData))
 
-    // Create call_record automatically
+    // Create/update call tracking bootstrap for this outbound call
     let callRecordId: string | null = null
     if (userId) {
       // Resolve lead_name if lead_id is provided but lead_name is not
@@ -138,6 +146,11 @@ Deno.serve(async (req) => {
         resolvedLeadName = leadData?.lead_name || null
       }
 
+      const noteSuffix = [
+        resolvedLeadName ? `Lead: ${resolvedLeadName}` : null,
+        resolvedCallId ? `CallID:${resolvedCallId}` : 'CallID:pending',
+      ].filter(Boolean).join(' | ')
+
       const { data: callRecord, error: insertError } = await supabase
         .from('call_records')
         .insert({
@@ -150,7 +163,7 @@ Deno.serve(async (req) => {
           lead_id: lead_id || null,
           lead_name: resolvedLeadName,
           phone_used: instance.instance_name || 'whatsapp',
-          notes: `Chamada iniciada via UazAPI.${resolvedLeadName ? ` Lead: ${resolvedLeadName}` : ''}`,
+          notes: `Chamada iniciada via UazAPI.${noteSuffix ? ` ${noteSuffix}` : ''}`,
           tags: ['whatsapp', 'uazapi'],
         })
         .select('id')
@@ -163,17 +176,21 @@ Deno.serve(async (req) => {
         console.log('Created call_record:', callRecordId)
       }
 
-      // Also insert into call_events_pending for real-time tracking
-      await supabase.from('call_events_pending').insert({
-        call_id: responseData?.callId || `manual_${Date.now()}`,
-        phone: formattedPhone,
-        event_type: 'offer',
-        from_me: true,
-        contact_name: contact_name || null,
-        instance_name: instance.instance_name,
-      }).then(({ error }) => {
-        if (error) console.error('Error creating call_events_pending:', error)
-      })
+      // Insert pending event only when call id is known (avoids orphan/manual duplicated pending rows)
+      if (resolvedCallId) {
+        await supabase.from('call_events_pending').insert({
+          call_id: resolvedCallId,
+          phone: formattedPhone,
+          event_type: 'offer',
+          from_me: true,
+          contact_name: contact_name || null,
+          instance_name: instance.instance_name,
+        }).then(({ error }) => {
+          if (error) console.error('Error creating call_events_pending:', error)
+        })
+      } else {
+        console.warn('UazAPI response did not include call id, skipping pending call event bootstrap')
+      }
     }
 
     return new Response(
@@ -182,6 +199,7 @@ Deno.serve(async (req) => {
         data: responseData,
         instance_name: instance.instance_name,
         call_record_id: callRecordId,
+        call_id: resolvedCallId,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
