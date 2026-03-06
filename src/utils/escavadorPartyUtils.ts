@@ -153,6 +153,7 @@ const determineClassification = (env: EscavadorEnvolvido, internalLawyers: Inter
 const createContactAndParty = async (
   processId: string,
   env: EscavadorEnvolvido,
+  internalLawyers: InternalLawyer[],
   userId?: string
 ): Promise<boolean> => {
   if (!env.nome?.trim()) return false;
