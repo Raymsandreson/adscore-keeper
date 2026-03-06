@@ -111,32 +111,33 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
       const recipientProfile = profiles.find(p => p.user_id === selectedUserId);
       const recipientName = recipientProfile?.full_name || recipientProfile?.email || '';
 
-      try {
-        // Create a system message for the share notification
-        const { data: sysMsg } = await supabase
-          .from('team_chat_messages')
-          .insert({
-            entity_type: 'whatsapp',
-            entity_id: phone,
-            entity_name: phone,
-            content: `📲 ${sharerName} compartilhou a conversa do WhatsApp (${phone}) com ${recipientName}.`,
-            sender_id: user.id,
-            sender_name: sharerName,
-          })
-          .select()
-          .single();
+      // Create a system message for the share notification
+      const { data: sysMsg, error: sysMsgError } = await supabase
+        .from('team_chat_messages')
+        .insert({
+          entity_type: 'whatsapp',
+          entity_id: phone,
+          entity_name: phone,
+          content: `📲 ${sharerName} compartilhou a conversa do WhatsApp (${phone}) com ${recipientName}.`,
+          sender_id: user.id,
+          sender_name: sharerName,
+        })
+        .select()
+        .single();
 
-        if (sysMsg) {
-          await supabase.from('team_chat_mentions').insert({
-            message_id: sysMsg.id,
-            mentioned_user_id: selectedUserId,
-            entity_type: 'whatsapp',
-            entity_id: phone,
-            entity_name: phone,
-          });
+      if (sysMsgError) {
+        console.error('Error creating share system message:', sysMsgError);
+      } else if (sysMsg) {
+        const { error: mentionError } = await supabase.from('team_chat_mentions').insert({
+          message_id: sysMsg.id,
+          mentioned_user_id: selectedUserId,
+          entity_type: 'whatsapp',
+          entity_id: phone,
+          entity_name: phone,
+        });
+        if (mentionError) {
+          console.error('Error creating share mention:', mentionError);
         }
-      } catch (e) {
-        console.error('Error creating share mention notification:', e);
       }
 
       // Copy link to clipboard automatically
