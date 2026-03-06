@@ -19,8 +19,9 @@ import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDial
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -863,6 +864,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
       {/* Messages + Call Records Timeline */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
         {timelineItems.map((item, idx) => {
+          // Date separator
+          const itemDate = new Date(item.timestamp);
+          const prevItemDate = idx > 0 ? new Date(timelineItems[idx - 1].timestamp) : null;
+          const showDateSeparator = idx === 0 || (prevItemDate && !isSameDay(itemDate, prevItemDate));
+          
+          const dateSeparator = showDateSeparator ? (
+            <div key={`date-${item.timestamp}`} className="flex items-center justify-center my-3">
+              <div className="bg-muted/80 text-muted-foreground text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                {isToday(itemDate) ? 'Hoje' : isYesterday(itemDate) ? 'Ontem' : format(itemDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </div>
+            </div>
+          ) : null;
           if (item.type === 'call') {
             const call = item.data;
             const isOutbound = call.call_type === 'outbound' || call.call_type === 'realizada';
