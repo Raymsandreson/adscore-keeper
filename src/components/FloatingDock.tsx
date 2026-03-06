@@ -15,7 +15,7 @@ export function FloatingDock({ onOpenNav, onOpenWhatsApp, onOpenAIChat, navOpen 
   const { user } = useAuthContext();
   const location = useLocation();
 
-  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
+  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install', '/whatsapp'];
   if (!user || hiddenRoutes.some(r => location.pathname.startsWith(r))) return null;
 
   const items = [
