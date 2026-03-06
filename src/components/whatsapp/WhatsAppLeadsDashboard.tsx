@@ -65,6 +65,12 @@ export function WhatsAppLeadsDashboard() {
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState('all');
 
+  // New metrics state
+  const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }[]>([]);
+  const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
+  const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
+  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | null>(null);
+
   useEffect(() => {
     fetchData();
   }, [period]);
