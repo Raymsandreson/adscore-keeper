@@ -25,8 +25,17 @@ const getLabel = (name: string) => {
     client: 'Cliente',
     non_client: 'Não-Cliente',
     prospect: 'Prospect',
+    lead: 'Lead',
     partner: 'Parceiro',
     supplier: 'Fornecedor',
+    ponte: 'Ponte',
+    nao_aderente: 'Não Aderente',
+    ex_cliente: 'Ex-cliente',
+    advogado_interno: 'Advogado Interno',
+    advogado_externo: 'Advogado Externo',
+    advogado_adverso: 'Advogado Adverso',
+    parte_contraria: 'Parte Contrária',
+    prestador_servico: 'Prestador de Serviço',
   };
   return systemLabels[name] || name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
@@ -93,7 +102,7 @@ export const MultiClassificationSelect: React.FC<MultiClassificationSelectProps>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Classificações (múltiplas)</DropdownMenuLabel>
+        <DropdownMenuLabel>Relacionamento Conosco</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {/* Classification checkboxes */}
@@ -126,7 +135,7 @@ export const MultiClassificationSelect: React.FC<MultiClassificationSelectProps>
               onClick={() => onChange([])}
             >
               <X className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">Limpar classificações</span>
+              <span className="text-sm">Limpar seleção</span>
             </div>
             <DropdownMenuSeparator />
           </>

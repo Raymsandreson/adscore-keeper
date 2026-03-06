@@ -554,7 +554,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                       {/* Classification */}
                       <div className="flex items-center gap-2">
                         <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs text-muted-foreground w-20 shrink-0">Classificação</span>
+                        <span className="text-xs text-muted-foreground w-20 shrink-0">Relacionamento</span>
                         <Select
                           value={contact.classification || ''}
                           onValueChange={(val) => handleUpdateContact(p.phone, 'classification', val)}

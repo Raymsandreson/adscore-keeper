@@ -33,7 +33,7 @@ import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
@@ -547,6 +547,9 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [selectedRole, setSelectedRole] = useState<PartyRole>('autor');
   const [refreshing, setRefreshing] = useState(false);
   const [showMovimentacoes, setShowMovimentacoes] = useState(false);
+  const [showPetitionDialog, setShowPetitionDialog] = useState(false);
+  const [petitionText, setPetitionText] = useState('');
+  const [analyzingPetition, setAnalyzingPetition] = useState(false);
 
   useEffect(() => {
     if (showParties) fetchParties();
@@ -628,6 +631,134 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
     }
   };
 
+  const handleAnalyzePetition = async () => {
+    if (!petitionText.trim()) {
+      toast.error('Cole o texto da petição inicial');
+      return;
+    }
+    setAnalyzingPetition(true);
+    try {
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('analyze-petition', {
+        body: { text: petitionText, processNumber: process.process_number },
+      });
+      if (fnError) throw fnError;
+      const extracted = fnData?.data;
+      if (!extracted) throw new Error('Sem dados extraídos');
+
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      let created = 0;
+
+      // Create contacts from extracted parties
+      const allParties = [
+        ...(extracted.partes || []),
+        ...(extracted.advogados || []).map((a: any) => ({
+          nome: a.nome,
+          tipo: a.lado === 'autor' ? 'advogado' : 'advogado',
+          profissao: 'Advogado(a)',
+          oab: a.oab_numero ? `OAB ${a.oab_uf || ''} ${a.oab_numero}` : null,
+        })),
+      ];
+
+      // Also create victim if found
+      if (extracted.vitima?.nome) {
+        const victimData: Record<string, any> = {
+          full_name: extracted.vitima.nome,
+          created_by: currentUser?.id || null,
+          classifications: ['client'],
+          classification: 'client',
+          relationship_date: new Date().toISOString(),
+        };
+        if (extracted.vitima.cpf) victimData.notes = `CPF: ${extracted.vitima.cpf}`;
+        if (extracted.vitima.profissao) victimData.profession = extracted.vitima.profissao;
+        if (extracted.vitima.endereco) {
+          if (extracted.vitima.endereco.rua) victimData.street = extracted.vitima.endereco.rua;
+          if (extracted.vitima.endereco.bairro) victimData.neighborhood = extracted.vitima.endereco.bairro;
+          if (extracted.vitima.endereco.cidade) victimData.city = extracted.vitima.endereco.cidade;
+          if (extracted.vitima.endereco.estado) victimData.state = extracted.vitima.endereco.estado;
+          if (extracted.vitima.endereco.cep) victimData.cep = extracted.vitima.endereco.cep;
+        }
+
+        const { data: existingVictim } = await supabase
+          .from('contacts').select('id').ilike('full_name', extracted.vitima.nome).limit(1);
+        
+        if (!existingVictim?.length) {
+          const { data: newContact } = await supabase.from('contacts').insert(victimData as any).select('id').single();
+          if (newContact) {
+            await supabase.from('process_parties').insert({
+              process_id: process.id,
+              contact_id: newContact.id,
+              role: 'autor',
+              notes: 'Vítima (extraído da inicial)',
+            } as any);
+            created++;
+          }
+        }
+      }
+
+      for (const parte of allParties) {
+        if (!parte.nome?.trim()) continue;
+        const contactData: Record<string, any> = {
+          full_name: parte.nome,
+          created_by: currentUser?.id || null,
+          classifications: ['parte_contraria'],
+          classification: 'parte_contraria',
+        };
+        if (parte.profissao) contactData.profession = parte.profissao;
+        if (parte.cpf) contactData.notes = `CPF: ${parte.cpf}`;
+        if (parte.endereco) {
+          if (parte.endereco.rua) contactData.street = parte.endereco.rua;
+          if (parte.endereco.bairro) contactData.neighborhood = parte.endereco.bairro;
+          if (parte.endereco.cidade) contactData.city = parte.endereco.cidade;
+          if (parte.endereco.estado) contactData.state = parte.endereco.estado;
+          if (parte.endereco.cep) contactData.cep = parte.endereco.cep;
+        }
+
+        const { data: existing } = await supabase
+          .from('contacts').select('id').ilike('full_name', parte.nome).limit(1);
+        
+        let contactId: string;
+        if (existing?.length) {
+          contactId = existing[0].id;
+        } else {
+          const { data: newC } = await supabase.from('contacts').insert(contactData as any).select('id').single();
+          if (!newC) continue;
+          contactId = newC.id;
+        }
+
+        const role = parte.tipo?.includes('advogad') ? 'advogado' : 
+                     parte.tipo?.includes('reu') ? 'reu' : 
+                     parte.tipo?.includes('autor') ? 'autor' : 'outro';
+        
+        await supabase.from('process_parties').insert({
+          process_id: process.id,
+          contact_id: contactId,
+          role,
+          notes: parte.relacao_vitima ? `Relação com vítima: ${parte.relacao_vitima}` : parte.tipo,
+        } as any).then(() => created++);
+      }
+
+      toast.success(`IA extraiu ${created} partes da petição${extracted.resumo_fatos ? '. Resumo adicionado.' : ''}`);
+      
+      // Save summary to process notes if available
+      if (extracted.resumo_fatos) {
+        const currentNotes = process.notes || '';
+        const newNotes = currentNotes 
+          ? `${currentNotes}\n\n--- Resumo da Inicial (IA) ---\n${extracted.resumo_fatos}` 
+          : `--- Resumo da Inicial (IA) ---\n${extracted.resumo_fatos}`;
+        await onUpdate(process.id, { notes: newNotes } as any);
+      }
+
+      setShowPetitionDialog(false);
+      setPetitionText('');
+      fetchParties();
+    } catch (err: any) {
+      console.error('Petition analysis error:', err);
+      toast.error(err.message || 'Erro ao analisar petição');
+    } finally {
+      setAnalyzingPetition(false);
+    }
+  };
+
   return (
     <div className="border rounded-lg p-2.5 space-y-2 bg-card">
       <div className="flex items-start justify-between">
@@ -697,6 +828,14 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
             Atualizar Escavador
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[10px] px-2 text-amber-600"
+          onClick={() => setShowPetitionDialog(true)}
+        >
+          <Sparkles className="h-2.5 w-2.5 mr-0.5" /> Analisar Petição
+        </Button>
         {process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
           <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
             onClick={() => setShowMovimentacoes(!showMovimentacoes)}>
@@ -793,6 +932,40 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
           ))}
         </div>
       )}
+
+      {/* Petition Analysis Dialog */}
+      <Dialog open={showPetitionDialog} onOpenChange={setShowPetitionDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Analisar Petição Inicial com IA
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Cole o texto da petição inicial abaixo. A IA irá extrair automaticamente as partes, endereços, profissões e relações.
+            </p>
+            <Textarea
+              value={petitionText}
+              onChange={(e) => setPetitionText(e.target.value)}
+              placeholder="Cole aqui o texto completo da petição inicial..."
+              rows={12}
+              className="text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPetitionDialog(false)}>Cancelar</Button>
+            <Button onClick={handleAnalyzePetition} disabled={analyzingPetition || !petitionText.trim()}>
+              {analyzingPetition ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Analisando...</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" /> Analisar</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

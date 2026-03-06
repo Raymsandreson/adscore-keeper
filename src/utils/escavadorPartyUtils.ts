@@ -17,6 +17,36 @@ export interface EscavadorEnvolvido {
   advogados?: EscavadorEnvolvido[];
 }
 
+interface InternalLawyer {
+  oab_number: string;
+  oab_uf: string;
+  full_name: string;
+}
+
+/**
+ * Fetches all internal lawyers (users with OAB registered in their profiles).
+ */
+const fetchInternalLawyers = async (): Promise<InternalLawyer[]> => {
+  const { data } = await supabase
+    .from('profiles')
+    .select('oab_number, oab_uf, full_name')
+    .not('oab_number', 'is', null);
+  return ((data || []) as any[]).filter(p => p.oab_number?.trim());
+};
+
+/**
+ * Checks if an envolvido's OAB matches any internal lawyer.
+ */
+const isInternalLawyer = (env: EscavadorEnvolvido, internalLawyers: InternalLawyer[]): boolean => {
+  if (!env.oabs?.length) return false;
+  return env.oabs.some(oab =>
+    internalLawyers.some(il =>
+      il.oab_number?.trim() === String(oab.numero).trim() &&
+      il.oab_uf?.toUpperCase() === oab.uf?.toUpperCase()
+    )
+  );
+};
+
 /**
  * Maps Escavador participation type and polo to our internal PartyRole.
  */
@@ -101,15 +131,19 @@ const extractDocument = (env: EscavadorEnvolvido): string | null => {
 
 /**
  * Determines the classification for a contact based on Escavador data.
- * - Advogados with OAB → "Cliente"
- * - Pessoa Jurídica → "Empresa"
- * - Everyone else → "Parte Contrária"
+ * - Internal lawyers (OAB matches profile) → "advogado_interno"
+ * - External lawyers with OAB → "advogado_externo"
+ * - Pessoa Jurídica → "Empresa" (kept as legacy for empresa)
+ * - Everyone else → "parte_contraria"
  */
-const determineClassification = (env: EscavadorEnvolvido): string => {
+const determineClassification = (env: EscavadorEnvolvido, internalLawyers: InternalLawyer[]): string => {
   const role = mapParticipationToRole(env);
-  if (role === 'advogado' || env.oabs?.length) return 'Cliente';
-  if (env.tipo_pessoa === 'JURIDICA') return 'Empresa';
-  return 'Parte Contrária';
+  if (role === 'advogado' || env.oabs?.length) {
+    if (isInternalLawyer(env, internalLawyers)) return 'advogado_interno';
+    return 'advogado_externo';
+  }
+  if (env.tipo_pessoa === 'JURIDICA') return 'parte_contraria';
+  return 'parte_contraria';
 };
 
 /**
@@ -119,12 +153,13 @@ const determineClassification = (env: EscavadorEnvolvido): string => {
 const createContactAndParty = async (
   processId: string,
   env: EscavadorEnvolvido,
+  internalLawyers: InternalLawyer[],
   userId?: string
 ): Promise<boolean> => {
   if (!env.nome?.trim()) return false;
 
   const contactName = (env.nome_normalizado || env.nome).trim();
-  const classification = determineClassification(env);
+  const classification = determineClassification(env, internalLawyers);
   
   // Check existing contact by name
   const { data: existingContacts } = await supabase
@@ -150,9 +185,10 @@ const createContactAndParty = async (
           : `Doc: ${document}`;
       }
     }
-    // Update classification if not already set
+    // Update classifications if not already set
     if (!existingContacts[0].classification) {
       updates.classification = classification;
+      updates.classifications = [classification];
     }
     if (Object.keys(updates).length > 0) {
       await supabase.from('contacts').update(updates).eq('id', contactId);
@@ -164,6 +200,8 @@ const createContactAndParty = async (
       notes: document ? `${notes}\nDoc: ${document}` : notes,
       created_by: userId || null,
       classification,
+      classifications: [classification],
+      relationship_date: new Date().toISOString(),
     };
 
     // If advogado with OAB, add to profession
@@ -216,9 +254,12 @@ export const autoCreatePartiesFromEnvolvidos = async (
 ): Promise<number> => {
   let partiesCreated = 0;
 
+  // Fetch internal lawyers once for comparison
+  const internalLawyers = await fetchInternalLawyers();
+
   for (const env of envolvidos) {
     // Create the main envolvido
-    const created = await createContactAndParty(processId, env, userId);
+    const created = await createContactAndParty(processId, env, internalLawyers, userId);
     if (created) partiesCreated++;
 
     // Also create nested advogados
@@ -229,7 +270,7 @@ export const autoCreatePartiesFromEnvolvidos = async (
           ...adv,
           tipo: adv.tipo || 'ADVOGADO',
           polo: adv.polo || 'ADVOGADO',
-        }, userId);
+        }, internalLawyers, userId);
         if (advCreated) partiesCreated++;
       }
     }
