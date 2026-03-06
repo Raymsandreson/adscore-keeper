@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,6 +21,7 @@ const entityIcons: Record<string, React.ReactNode> = {
   activity: <ClipboardList className="h-3.5 w-3.5" />,
   contact: <Users className="h-3.5 w-3.5" />,
   workflow: <Workflow className="h-3.5 w-3.5" />,
+  whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
 };
 
 const entityLabels: Record<string, string> = {
@@ -28,6 +29,7 @@ const entityLabels: Record<string, string> = {
   activity: 'Atividade',
   contact: 'Contato',
   workflow: 'Fluxo',
+  whatsapp: 'WhatsApp',
 };
 
 const entityColors: Record<string, string> = {
@@ -35,6 +37,7 @@ const entityColors: Record<string, string> = {
   activity: 'bg-emerald-500/10 text-emerald-600',
   contact: 'bg-purple-500/10 text-purple-600',
   workflow: 'bg-orange-500/10 text-orange-600',
+  whatsapp: 'bg-green-500/10 text-green-600',
 };
 
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
@@ -77,6 +80,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         break;
       case 'workflow':
         navigate(`/workflow?openBoard=${mention.entity_id}${msgParam}`);
+        break;
+      case 'whatsapp':
+        navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
         break;
     }
   };

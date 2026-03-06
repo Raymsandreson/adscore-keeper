@@ -104,6 +104,41 @@ export function WhatsAppConversationShareDialog({ phone, instanceName }: Props) 
         });
       if (error) throw error;
       toast.success('Conversa compartilhada!');
+
+      // Create a notification in the mentions panel for the recipient
+      const sharerProfile = profiles.find(p => p.user_id === user.id);
+      const sharerName = sharerProfile?.full_name || sharerProfile?.email || 'Alguém';
+      const recipientProfile = profiles.find(p => p.user_id === selectedUserId);
+      const recipientName = recipientProfile?.full_name || recipientProfile?.email || '';
+
+      try {
+        // Create a system message for the share notification
+        const { data: sysMsg } = await supabase
+          .from('team_chat_messages')
+          .insert({
+            entity_type: 'whatsapp',
+            entity_id: phone,
+            entity_name: phone,
+            content: `📲 ${sharerName} compartilhou a conversa do WhatsApp (${phone}) com ${recipientName}.`,
+            sender_id: user.id,
+            sender_name: sharerName,
+          })
+          .select()
+          .single();
+
+        if (sysMsg) {
+          await supabase.from('team_chat_mentions').insert({
+            message_id: sysMsg.id,
+            mentioned_user_id: selectedUserId,
+            entity_type: 'whatsapp',
+            entity_id: phone,
+            entity_name: phone,
+          });
+        }
+      } catch (e) {
+        console.error('Error creating share mention notification:', e);
+      }
+
       // Copy link to clipboard automatically
       const url = `${window.location.origin}/whatsapp?openChat=${encodeURIComponent(phone)}`;
       navigator.clipboard.writeText(url).then(() => {
