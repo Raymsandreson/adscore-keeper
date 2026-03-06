@@ -498,7 +498,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
           ...(response.follow_up_suggestions?.length ? { follow_up_suggestions: response.follow_up_suggestions } : {}),
         },
         sender_id: null,
-        sender_name: 'IA Abraci',
+        sender_name: 'IA WhatsJUD',
       } as any);
 
       await fetchMessages();
