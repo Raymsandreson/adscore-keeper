@@ -17,6 +17,36 @@ export interface EscavadorEnvolvido {
   advogados?: EscavadorEnvolvido[];
 }
 
+interface InternalLawyer {
+  oab_number: string;
+  oab_uf: string;
+  full_name: string;
+}
+
+/**
+ * Fetches all internal lawyers (users with OAB registered in their profiles).
+ */
+const fetchInternalLawyers = async (): Promise<InternalLawyer[]> => {
+  const { data } = await supabase
+    .from('profiles')
+    .select('oab_number, oab_uf, full_name')
+    .not('oab_number', 'is', null);
+  return ((data || []) as any[]).filter(p => p.oab_number?.trim());
+};
+
+/**
+ * Checks if an envolvido's OAB matches any internal lawyer.
+ */
+const isInternalLawyer = (env: EscavadorEnvolvido, internalLawyers: InternalLawyer[]): boolean => {
+  if (!env.oabs?.length) return false;
+  return env.oabs.some(oab =>
+    internalLawyers.some(il =>
+      il.oab_number?.trim() === String(oab.numero).trim() &&
+      il.oab_uf?.toUpperCase() === oab.uf?.toUpperCase()
+    )
+  );
+};
+
 /**
  * Maps Escavador participation type and polo to our internal PartyRole.
  */
