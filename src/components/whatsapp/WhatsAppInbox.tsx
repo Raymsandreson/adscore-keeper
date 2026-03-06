@@ -803,7 +803,7 @@ export function WhatsAppInbox() {
                       As conversas não são carregadas automaticamente para melhor performance.
                       Clique abaixo para carregar quando precisar.
                     </p>
-                    <Button onClick={refetch} disabled={loading} className="gap-2">
+                    <Button onClick={() => refetch()} disabled={loading} className="gap-2">
                       {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                       Carregar Conversas
                     </Button>
