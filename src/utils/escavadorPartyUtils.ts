@@ -185,9 +185,10 @@ const createContactAndParty = async (
           : `Doc: ${document}`;
       }
     }
-    // Update classification if not already set
+    // Update classifications if not already set
     if (!existingContacts[0].classification) {
       updates.classification = classification;
+      updates.classifications = [classification];
     }
     if (Object.keys(updates).length > 0) {
       await supabase.from('contacts').update(updates).eq('id', contactId);
@@ -199,6 +200,8 @@ const createContactAndParty = async (
       notes: document ? `${notes}\nDoc: ${document}` : notes,
       created_by: userId || null,
       classification,
+      classifications: [classification],
+      relationship_date: new Date().toISOString(),
     };
 
     // If advogado with OAB, add to profession
