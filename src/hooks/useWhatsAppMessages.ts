@@ -541,8 +541,19 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (!hasLoaded) return;
     fetchMessages();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInstanceId]);
+  }, [selectedInstanceId, hasLoaded, fetchMessages]);
+
+  // Lightweight auto-refresh to keep inbox updated without heavy UI churn
+  useEffect(() => {
+    if (!hasLoaded) return;
+
+    const intervalId = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      fetchMessages(true);
+    }, AUTO_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [hasLoaded, fetchMessages, AUTO_REFRESH_INTERVAL_MS]);
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
