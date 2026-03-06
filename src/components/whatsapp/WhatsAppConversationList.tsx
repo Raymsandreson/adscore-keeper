@@ -34,7 +34,7 @@ interface Props {
   privatePhones?: Set<string>;
 }
 
-type QuickFilter = 'all' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups';
 type SortMode = 'alpha' | 'last_received' | 'last_sent';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 
@@ -155,6 +155,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
       c.instance_name?.toLowerCase().includes(term)
     )) return false;
 
+    if (quickFilter === 'has_lead' && !c.lead_id) return false;
     if (quickFilter === 'no_lead' && c.lead_id) return false;
     if (quickFilter === 'unanswered' && !isUnanswered(c)) return false;
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
@@ -254,6 +255,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
 
   const counts: Record<QuickFilter, number> = {
     all: conversations.length,
+    has_lead: conversations.filter(c => !!c.lead_id).length,
     no_lead: conversations.filter(c => !c.lead_id).length,
     unanswered: conversations.filter(c => isUnanswered(c)).length,
     calls: conversations.filter(c => hasCalls(c)).length,
