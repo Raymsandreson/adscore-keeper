@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users } from 'lucide-react';
+import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -247,6 +247,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
 
   const quickFilters: { key: QuickFilter; label: string; icon: React.ReactNode }[] = [
     { key: 'all', label: 'Todas', icon: null },
+    { key: 'has_lead', label: 'Com lead', icon: <UserCheck className="h-3 w-3" /> },
     { key: 'no_lead', label: 'Sem lead', icon: <Unlink className="h-3 w-3" /> },
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
