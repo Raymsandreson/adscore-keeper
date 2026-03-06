@@ -458,8 +458,17 @@ export function ContactDetailSheet({
       client: 'Cliente',
       non_client: 'Não-Cliente',
       prospect: 'Prospect',
+      lead: 'Lead',
       partner: 'Parceiro',
       supplier: 'Fornecedor',
+      ponte: 'Ponte',
+      nao_aderente: 'Não Aderente',
+      ex_cliente: 'Ex-cliente',
+      advogado_interno: 'Advogado Interno',
+      advogado_externo: 'Advogado Externo',
+      advogado_adverso: 'Advogado Adverso',
+      parte_contraria: 'Parte Contrária',
+      prestador_servico: 'Prestador de Serviço',
     };
     return labels[name] || name.replace(/_/g, ' ');
   };
@@ -717,7 +726,7 @@ export function ContactDetailSheet({
                   <div>
                     <Label className="flex items-center gap-1">
                       <Tag className="h-3 w-3" />
-                      Classificações
+                      Relacionamento Conosco
                     </Label>
                     <MultiClassificationSelect
                       values={classifications}
