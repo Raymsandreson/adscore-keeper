@@ -71,7 +71,7 @@ export function PWAInstallBanner() {
             </div>
             
             <div>
-              <h2 className="text-lg font-bold text-foreground">Instale o ABRACI.IA</h2>
+              <h2 className="text-lg font-bold text-foreground">Instale o WhatsJUD</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Adicione à tela inicial do seu celular e acesse como um app nativo, mais rápido e prático!
               </p>

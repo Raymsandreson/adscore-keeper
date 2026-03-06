@@ -139,7 +139,7 @@ export const WorkflowReportDialog = ({
       }
     }
     
-    message += `\n🚀 _Enviado via ABRACI.IA_`;
+    message += `\n🚀 _Enviado via WhatsJUD_`;
     
     return message;
   };
