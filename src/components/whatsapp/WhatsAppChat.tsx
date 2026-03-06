@@ -928,7 +928,6 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                 "flex group",
                 msg.direction === 'outbound' ? "justify-end" : "justify-start"
               )}>
-            >
               {msg.direction === 'outbound' && (
                 <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteMessage(msg)} disabled={deletingMessageId === msg.id}>
                   {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
