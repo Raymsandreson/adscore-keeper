@@ -735,6 +735,20 @@ Deno.serve(async (req) => {
       
       console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
 
+      // Check wa_lastMessageType for call events arriving as chats/messages
+      const lastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
+      const msgMessageType = (body.message?.messageType || '').toLowerCase()
+      const isCallInMessage = lastMsgType.includes('call') || msgMessageType.includes('call')
+
+      if (isCallInMessage) {
+        console.log('Detected call event via messageType/wa_lastMessageType:', lastMsgType, msgMessageType)
+        const callRecord = await handleCallEvent(supabase, body)
+        return new Response(
+          JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       // Allow call-related EventTypes to pass through to the call handler above
       if (body.EventType !== 'messages') {
         // Check if this is a call event that wasn't caught above (UazAPI may use different naming)
