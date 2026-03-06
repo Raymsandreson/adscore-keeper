@@ -53,6 +53,7 @@ interface ConvShare {
   shared_by: string;
 }
 
+// Force clean rebuild
 export function WhatsAppInbox() {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>('all');
   const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
