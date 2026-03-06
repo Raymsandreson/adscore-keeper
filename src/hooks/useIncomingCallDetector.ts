@@ -96,9 +96,11 @@ export function useIncomingCallDetector() {
     };
   }, [user]);
 
-  // Auto-clear when call ends (accept or terminal state)
+  // Auto-clear when call ends (pending cleanup or final call record creation)
   useEffect(() => {
     if (!activeCall) return;
+
+    const normalizedActivePhone = activeCall.phone.replace(/\D/g, '');
 
     const channel = supabase
       .channel(`call_end_${activeCall.call_id}`)
@@ -109,9 +111,33 @@ export function useIncomingCallDetector() {
           schema: 'public',
           table: 'call_events_pending',
         },
-        () => {
-          // Pending events cleaned up = call ended
-          setActiveCall(null);
+        (payload) => {
+          const deletedEvent = payload.old as IncomingCallEvent;
+          if (deletedEvent?.call_id === activeCall.call_id) {
+            setActiveCall(null);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'call_records',
+        },
+        (payload) => {
+          const record = payload.new as { contact_phone?: string | null; phone_used?: string | null };
+          const recordPhone = (record.contact_phone || '').replace(/\D/g, '');
+          const samePhone =
+            !!recordPhone &&
+            (recordPhone === normalizedActivePhone ||
+              recordPhone.endsWith(normalizedActivePhone) ||
+              normalizedActivePhone.endsWith(recordPhone));
+          const sameInstance = !activeCall.instance_name || !record.phone_used || record.phone_used === activeCall.instance_name;
+
+          if (samePhone && sameInstance) {
+            setActiveCall(null);
+          }
         }
       )
       .subscribe();
@@ -125,7 +151,7 @@ export function useIncomingCallDetector() {
       supabase.removeChannel(channel);
       clearTimeout(timeout);
     };
-  }, [activeCall?.call_id]);
+  }, [activeCall]);
 
   const dismiss = useCallback(() => {
     if (activeCall) {
