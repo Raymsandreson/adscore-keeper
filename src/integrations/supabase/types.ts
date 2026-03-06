@@ -1312,6 +1312,7 @@ export type Database = {
         Row: {
           color: string
           created_at: string
+          description: string | null
           display_order: number | null
           icon: string | null
           id: string
@@ -1322,6 +1323,7 @@ export type Database = {
         Insert: {
           color?: string
           created_at?: string
+          description?: string | null
           display_order?: number | null
           icon?: string | null
           id?: string
@@ -1332,6 +1334,7 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string
+          description?: string | null
           display_order?: number | null
           icon?: string | null
           id?: string
@@ -1509,6 +1512,7 @@ export type Database = {
           phone: string | null
           profession: string | null
           profession_cbo_code: string | null
+          relationship_date: string | null
           state: string | null
           street: string | null
           tags: string[] | null
@@ -1535,6 +1539,7 @@ export type Database = {
           phone?: string | null
           profession?: string | null
           profession_cbo_code?: string | null
+          relationship_date?: string | null
           state?: string | null
           street?: string | null
           tags?: string[] | null
@@ -1561,6 +1566,7 @@ export type Database = {
           phone?: string | null
           profession?: string | null
           profession_cbo_code?: string | null
+          relationship_date?: string | null
           state?: string | null
           street?: string | null
           tags?: string[] | null
@@ -4485,6 +4491,8 @@ export type Database = {
           full_name: string | null
           gender: string | null
           id: string
+          oab_number: string | null
+          oab_uf: string | null
           treatment_title: string | null
           updated_at: string
           user_id: string
@@ -4496,6 +4504,8 @@ export type Database = {
           full_name?: string | null
           gender?: string | null
           id?: string
+          oab_number?: string | null
+          oab_uf?: string | null
           treatment_title?: string | null
           updated_at?: string
           user_id: string
@@ -4507,6 +4517,8 @@ export type Database = {
           full_name?: string | null
           gender?: string | null
           id?: string
+          oab_number?: string | null
+          oab_uf?: string | null
           treatment_title?: string | null
           updated_at?: string
           user_id?: string
