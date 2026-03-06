@@ -728,6 +728,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             instanceName={conversation.instance_name}
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
+          <WhatsAppMediaGallery messages={conversation.messages} />
           {isGroup && (
             <>
               <Tooltip>
