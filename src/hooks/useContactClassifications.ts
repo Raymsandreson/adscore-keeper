@@ -144,17 +144,16 @@ export const useContactClassifications = () => {
       client: 'Cliente',
       non_client: 'Não-Cliente',
       prospect: 'Prospect',
-      lead: 'Lead',
       partner: 'Parceiro',
       supplier: 'Fornecedor',
       ponte: 'Ponte',
-      nao_aderente: 'Não Aderente',
       ex_cliente: 'Ex-cliente',
       advogado_interno: 'Advogado Interno',
       advogado_externo: 'Advogado Externo',
       advogado_adverso: 'Advogado Adverso',
       parte_contraria: 'Parte Contrária',
       prestador_servico: 'Prestador de Serviço',
+      equipe_interna: 'Equipe Interna',
     };
     acc[c.name] = {
       label: labelMap[c.name] || c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
