@@ -135,6 +135,67 @@ export function WhatsAppLeadsDashboard() {
     if (msgsRes.data) setMessages(msgsRes.data);
     if (instRes.data) setInstances(instRes.data);
     setLoading(false);
+
+    // Fetch today's metrics for new cards
+    fetchTodayMetrics();
+  };
+
+  const fetchTodayMetrics = async () => {
+    const todayStart = startOfDay(new Date()).toISOString();
+
+    const [newConvsRes, followupsRes, docsRes] = await Promise.all([
+      // New inbound conversations today (first message per phone)
+      supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, created_at, instance_name')
+        .eq('direction', 'inbound')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: true })
+        .limit(500),
+      // Outbound follow-ups today
+      supabase
+        .from('whatsapp_messages')
+        .select('phone, contact_name, created_at, instance_name')
+        .eq('direction', 'outbound')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: false })
+        .limit(500),
+      // Documents generated today
+      supabase
+        .from('zapsign_documents')
+        .select('id, document_name, template_name, signer_name, status, created_at')
+        .gte('created_at', todayStart)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    // Build unique new conversations (first inbound per phone today)
+    if (newConvsRes.data) {
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
+      for (const msg of newConvsRes.data) {
+        if (!phoneMap.has(msg.phone)) {
+          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, first_message_at: msg.created_at, instance_name: msg.instance_name });
+        }
+      }
+      setTodayNewConvs(Array.from(phoneMap.values()));
+    }
+
+    // Build follow-ups (outbound messages grouped by phone)
+    if (followupsRes.data) {
+      const phoneMap = new Map<string, { phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }>();
+      for (const msg of followupsRes.data) {
+        const existing = phoneMap.get(msg.phone);
+        if (!existing) {
+          phoneMap.set(msg.phone, { phone: msg.phone, contact_name: msg.contact_name, outbound_count: 1, last_outbound_at: msg.created_at, instance_name: msg.instance_name });
+        } else {
+          existing.outbound_count++;
+        }
+      }
+      setTodayFollowups(Array.from(phoneMap.values()));
+    }
+
+    if (docsRes.data) {
+      setTodayDocs(docsRes.data as any[]);
+    }
   };
 
   // Filter messages by selected instance
