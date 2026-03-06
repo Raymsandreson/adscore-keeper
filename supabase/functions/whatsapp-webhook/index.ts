@@ -635,20 +635,26 @@ Deno.serve(async (req) => {
     const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
 
     // 1) Skip non-message EventTypes that don't need processing (read receipts, status updates, presence)
-    const eventType = body.EventType || ''
-    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
-    if (skippableEvents.includes(eventType)) {
-      return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
+    const eventType = String(body.EventType || '').toLowerCase()
+    const bodyType = String(body.type || '').toLowerCase()
+    const bodyEvent = String(body.event || '').toLowerCase()
+    const messageTypeHint = String(body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
+    const hasCallPayload = Boolean(
+      body.call
+      || body.call_id
+      || body.callId
+      || body.event?.CallID
+      || body.event?.call_id
+      || body.event?.Data?.Tag
+      || body.message?.call_id
+      || body.message?.callId
+    )
 
-    // 2) Skip group messages (chatid contains @g.us or wa_isGroup=true) — biggest volume reducer
-    const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
-    const isGroup = body.chat?.wa_isGroup === true || chatId.includes('@g.us')
-    const isCallEvent = eventType === 'call' || body.event === 'call' || body.type === 'call' 
-      || eventType === 'call_log' || body.type === 'CallState' || eventType === 'calls'
+    const isCallEvent = ['call', 'calls', 'call_log'].includes(eventType)
+      || bodyEvent === 'call'
+      || bodyType.includes('call')
+      || messageTypeHint.includes('call')
+      || hasCallPayload
     
     if (isGroup && !isCallEvent) {
       return new Response(
