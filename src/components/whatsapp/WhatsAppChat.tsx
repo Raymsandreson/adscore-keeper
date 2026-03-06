@@ -19,8 +19,9 @@ import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDial
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -727,6 +728,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             instanceName={conversation.instance_name}
           />
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
+          <WhatsAppMediaGallery messages={conversation.messages} />
           {isGroup && (
             <>
               <Tooltip>
@@ -863,6 +865,18 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
       {/* Messages + Call Records Timeline */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
         {timelineItems.map((item, idx) => {
+          // Date separator
+          const itemDate = new Date(item.timestamp);
+          const prevItemDate = idx > 0 ? new Date(timelineItems[idx - 1].timestamp) : null;
+          const showDateSeparator = idx === 0 || (prevItemDate && !isSameDay(itemDate, prevItemDate));
+          
+          const dateSeparator = showDateSeparator ? (
+            <div key={`date-${item.timestamp}`} className="flex items-center justify-center my-3">
+              <div className="bg-muted/80 text-muted-foreground text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                {isToday(itemDate) ? 'Hoje' : isYesterday(itemDate) ? 'Ontem' : format(itemDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </div>
+            </div>
+          ) : null;
           if (item.type === 'call') {
             const call = item.data;
             const isOutbound = call.call_type === 'outbound' || call.call_type === 'realizada';
@@ -876,26 +890,29 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             const isUnanswered = call.call_result === 'não_atendeu' || call.call_result === 'not_answered';
 
             return (
-              <div key={`call-${call.id}`} className="flex justify-center">
-                <div className={cn(
-                  "flex items-center gap-2 rounded-xl px-4 py-2 text-xs max-w-[85%] border",
-                  isUnanswered 
-                    ? "bg-destructive/10 border-destructive/30 text-destructive"
-                    : "bg-primary/10 border-primary/30 text-primary"
-                )}>
-                  {isOutbound ? <PhoneOutgoing className="h-3.5 w-3.5 shrink-0" /> : <PhoneIncoming className="h-3.5 w-3.5 shrink-0" />}
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">
-                      {isOutbound ? 'Chamada Realizada' : 'Chamada Recebida'}
-                      {isUnanswered && ' — Não Atendeu'}
-                    </span>
-                    <div className="flex items-center gap-2 text-[10px] opacity-80">
-                      <span>{resultLabel}</span>
-                      <span>•</span>
-                      <span>{durationStr}</span>
-                      <span>•</span>
-                      <Clock className="h-2.5 w-2.5 inline" />
-                      <span>{startTime} → {endTime}</span>
+              <div key={`call-${call.id}`}>
+                {dateSeparator}
+                <div className="flex justify-center">
+                  <div className={cn(
+                    "flex items-center gap-2 rounded-xl px-4 py-2 text-xs max-w-[85%] border",
+                    isUnanswered 
+                      ? "bg-destructive/10 border-destructive/30 text-destructive"
+                      : "bg-primary/10 border-primary/30 text-primary"
+                  )}>
+                    {isOutbound ? <PhoneOutgoing className="h-3.5 w-3.5 shrink-0" /> : <PhoneIncoming className="h-3.5 w-3.5 shrink-0" />}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {isOutbound ? 'Chamada Realizada' : 'Chamada Recebida'}
+                        {isUnanswered && ' — Não Atendeu'}
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] opacity-80">
+                        <span>{resultLabel}</span>
+                        <span>•</span>
+                        <span>{durationStr}</span>
+                        <span>•</span>
+                        <Clock className="h-2.5 w-2.5 inline" />
+                        <span>{startTime} → {endTime}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -906,13 +923,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           // Regular message
           const msg = item.data;
           return (
-            <div
-              key={msg.id}
-              className={cn(
+            <div key={msg.id}>
+              {dateSeparator}
+              <div className={cn(
                 "flex group",
                 msg.direction === 'outbound' ? "justify-end" : "justify-start"
-              )}
-            >
+              )}>
               {msg.direction === 'outbound' && (
                 <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteMessage(msg)} disabled={deletingMessageId === msg.id}>
                   {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
@@ -1007,6 +1023,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
                   {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                 </Button>
               )}
+              </div>
             </div>
           );
         })}
