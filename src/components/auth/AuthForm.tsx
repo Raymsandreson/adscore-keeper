@@ -126,7 +126,7 @@ export const AuthForm = () => {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">ABRACI.IA</CardTitle>
+            <CardTitle className="text-2xl">WhatsJUD</CardTitle>
             <CardDescription>Informe seu email para redefinir a senha</CardDescription>
           </CardHeader>
           <CardContent>
@@ -160,7 +160,7 @@ export const AuthForm = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">ABRACI.IA</CardTitle>
+          <CardTitle className="text-2xl">WhatsJUD</CardTitle>
           <CardDescription>
             Faça login ou crie sua conta para acessar a plataforma
           </CardDescription>

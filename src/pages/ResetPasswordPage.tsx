@@ -64,7 +64,7 @@ const ResetPasswordPage = () => {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">ABRACI.IA</CardTitle>
+            <CardTitle className="text-2xl">WhatsJUD</CardTitle>
             <CardDescription>Link inválido ou expirado. Solicite um novo link de redefinição.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -93,8 +93,8 @@ const ResetPasswordPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">ABRACI.IA</CardTitle>
-          <CardDescription>Defina sua nova senha</CardDescription>
+            <CardTitle className="text-2xl">WhatsJUD</CardTitle>
+            <CardDescription>Defina sua nova senha</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

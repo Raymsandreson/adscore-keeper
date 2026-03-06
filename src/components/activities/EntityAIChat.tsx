@@ -166,7 +166,7 @@ export function EntityAIChat({
       const chatHistory = messages
         .filter(m => !m.deleted_at)
         .map(m => ({
-          role: m.sender_name === 'IA Abraci' ? 'ai' : 'user',
+          role: m.sender_name === 'IA WhatsJUD' ? 'ai' : 'user',
           content: m.content || '',
           type: m.message_type,
           file_url: m.file_url,
@@ -256,7 +256,7 @@ export function EntityAIChat({
           ...(data.follow_up_suggestions?.length ? { follow_up_suggestions: data.follow_up_suggestions } : {}),
         },
         sender_id: null,
-        sender_name: 'IA Abraci',
+        sender_name: 'IA WhatsJUD',
       } as any);
 
       await fetchMessages();
@@ -417,7 +417,7 @@ export function EntityAIChat({
           <div className="max-w-[90%] space-y-1.5">
             <div className="bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-3 py-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium text-primary mb-1">
-                <Sparkles className="h-3 w-3" /> IA Abraci
+                <Sparkles className="h-3 w-3" /> IA WhatsJUD
               </div>
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
               <div className="text-[10px] text-muted-foreground mt-1">

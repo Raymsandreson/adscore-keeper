@@ -331,9 +331,9 @@ const Dashboard = () => {
             <UserMenu />
           </div>
           
-          <img src={abraciLogo} alt="ABRACI.IA" className="h-20 mx-auto" />
+          <img src={abraciLogo} alt="WhatsJUD" className="h-20 mx-auto" />
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2">
-            Abraci.IA
+            WhatsJUD
           </h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             Monitore seus benchmarks em tempo real conectado ao Meta Business Manager
