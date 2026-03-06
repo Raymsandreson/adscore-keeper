@@ -503,7 +503,49 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
-      {/* Charts Row 1 */}
+      {/* Today's Action Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('new_convs')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayNewConvs.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('followups')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <PhoneForwarded className="h-4 w-4 text-emerald-500" />
+              <span className="text-xs text-muted-foreground">Follow-ups Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayFollowups.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          onClick={() => setSheetOpen('documents')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <FileSignature className="h-4 w-4 text-amber-500" />
+              <span className="text-xs text-muted-foreground">Documentos Gerados Hoje</span>
+            </div>
+            <p className="text-2xl font-bold">{todayDocs.length}</p>
+            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Leads por Dia */}
         <Card>
