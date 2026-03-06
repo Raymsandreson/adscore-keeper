@@ -531,6 +531,73 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInstanceId]);
 
+  // Realtime subscription for new/updated messages
+  useEffect(() => {
+    if (!hasLoaded || instances.length === 0) return;
+
+    const channel = supabase
+      .channel('whatsapp_messages_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+        (payload) => {
+          const newMsg = payload.new as WhatsAppMessage;
+          
+          // Filter by instance if needed
+          if (selectedInstanceId && selectedInstanceId !== 'all') {
+            const inst = instances.find(i => i.id === selectedInstanceId);
+            if (inst && newMsg.instance_name !== inst.instance_name) return;
+          }
+
+          // Deduplicate
+          const newMsgId = newMsg.external_message_id?.split(':').pop();
+
+          setConversations(prev => {
+            const existing = prev.find(c => c.phone === newMsg.phone);
+            if (existing) {
+              const isDuplicate = newMsgId && existing.messages.some(m => {
+                const existingMsgId = m.external_message_id?.split(':').pop();
+                return existingMsgId === newMsgId && m.created_at === newMsg.created_at;
+              });
+              if (isDuplicate) return prev;
+
+              const updated = prev.map(c => {
+                if (c.phone !== newMsg.phone) return c;
+                return {
+                  ...c,
+                  messages: [newMsg, ...c.messages],
+                  last_message: newMsg.message_text,
+                  last_message_at: newMsg.created_at,
+                  unread_count: c.unread_count + (!newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0),
+                  contact_name: newMsg.contact_name || c.contact_name,
+                };
+              });
+              return updated.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+            } else {
+              // New conversation
+              const newConv: WhatsAppConversation = {
+                phone: newMsg.phone,
+                contact_name: newMsg.contact_name,
+                contact_id: newMsg.contact_id,
+                lead_id: newMsg.lead_id,
+                last_message: newMsg.message_text,
+                last_message_at: newMsg.created_at,
+                unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0,
+                messages: [newMsg],
+                instance_name: newMsg.instance_name,
+              };
+              return [newConv, ...prev];
+            }
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [hasLoaded, instances, selectedInstanceId]);
+
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
     try {
