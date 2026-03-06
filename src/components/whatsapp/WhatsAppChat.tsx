@@ -889,26 +889,29 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             const isUnanswered = call.call_result === 'não_atendeu' || call.call_result === 'not_answered';
 
             return (
-              <div key={`call-${call.id}`} className="flex justify-center">
-                <div className={cn(
-                  "flex items-center gap-2 rounded-xl px-4 py-2 text-xs max-w-[85%] border",
-                  isUnanswered 
-                    ? "bg-destructive/10 border-destructive/30 text-destructive"
-                    : "bg-primary/10 border-primary/30 text-primary"
-                )}>
-                  {isOutbound ? <PhoneOutgoing className="h-3.5 w-3.5 shrink-0" /> : <PhoneIncoming className="h-3.5 w-3.5 shrink-0" />}
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">
-                      {isOutbound ? 'Chamada Realizada' : 'Chamada Recebida'}
-                      {isUnanswered && ' — Não Atendeu'}
-                    </span>
-                    <div className="flex items-center gap-2 text-[10px] opacity-80">
-                      <span>{resultLabel}</span>
-                      <span>•</span>
-                      <span>{durationStr}</span>
-                      <span>•</span>
-                      <Clock className="h-2.5 w-2.5 inline" />
-                      <span>{startTime} → {endTime}</span>
+              <div key={`call-${call.id}`}>
+                {dateSeparator}
+                <div className="flex justify-center">
+                  <div className={cn(
+                    "flex items-center gap-2 rounded-xl px-4 py-2 text-xs max-w-[85%] border",
+                    isUnanswered 
+                      ? "bg-destructive/10 border-destructive/30 text-destructive"
+                      : "bg-primary/10 border-primary/30 text-primary"
+                  )}>
+                    {isOutbound ? <PhoneOutgoing className="h-3.5 w-3.5 shrink-0" /> : <PhoneIncoming className="h-3.5 w-3.5 shrink-0" />}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {isOutbound ? 'Chamada Realizada' : 'Chamada Recebida'}
+                        {isUnanswered && ' — Não Atendeu'}
+                      </span>
+                      <div className="flex items-center gap-2 text-[10px] opacity-80">
+                        <span>{resultLabel}</span>
+                        <span>•</span>
+                        <span>{durationStr}</span>
+                        <span>•</span>
+                        <Clock className="h-2.5 w-2.5 inline" />
+                        <span>{startTime} → {endTime}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
