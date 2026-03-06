@@ -524,6 +524,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [instances, fetchInstanceStats]);
 
+  // Initial load: automatically fetch conversations when context is ready
+  useEffect(() => {
+    if (!user || hasLoaded) return;
+
+    // Wait for instances if a specific one is selected
+    if (selectedInstanceId && selectedInstanceId !== 'all' && instances.length === 0) return;
+
+    fetchMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, hasLoaded, selectedInstanceId, instances]);
+
   // If conversations were already loaded, re-fetch when instance filter changes
   useEffect(() => {
     if (!hasLoaded) return;
