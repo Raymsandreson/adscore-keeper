@@ -396,6 +396,77 @@ export function PendingTransactionsList({
     }
   };
 
+  const sendWhatsAppNotification = async () => {
+    if (selectedIds.size === 0 || !user) return;
+    setSendingWhatsApp(true);
+    try {
+      const selectedTxs = transactions.filter(t => selectedIds.has(t.id));
+      const txsByCard: Record<string, typeof selectedTxs> = {};
+      selectedTxs.forEach(t => {
+        const card = t.card_last_digits || 'unknown';
+        if (!txsByCard[card]) txsByCard[card] = [];
+        txsByCard[card].push(t);
+      });
+      let sentCount = 0;
+      for (const [cardDigits, cardTxs] of Object.entries(txsByCard)) {
+        const assignment = getCardAssignment(cardDigits);
+        if (!assignment?.contact_id) {
+          toast.error(`Cartão ****${cardDigits} não tem contato responsável vinculado`);
+          continue;
+        }
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('phone, full_name')
+          .eq('id', assignment.contact_id)
+          .single();
+        if (!contact?.phone) {
+          toast.error(`Contato ${contact?.full_name || 'desconhecido'} não tem telefone cadastrado`);
+          continue;
+        }
+        const dates = cardTxs.map(t => t.transaction_date).sort();
+        const { data: tokenData, error: tokenError } = await supabase
+          .from('expense_form_tokens')
+          .insert({
+            card_last_digits: cardDigits,
+            date_from: dates[0],
+            date_to: dates[dates.length - 1],
+            created_by: user.id,
+            transaction_ids: cardTxs.map(t => t.pluggy_transaction_id),
+          })
+          .select('token')
+          .single();
+        if (tokenError) throw tokenError;
+        const link = buildExpenseFormUrl(tokenData.token);
+        const totalAmount = cardTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const formattedTotal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount);
+        const txSummary = cardTxs.slice(0, 5).map(t => {
+          const amt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(t.amount));
+          const desc = t.merchant_name || t.description || 'Sem descrição';
+          const dt = format(new Date(t.transaction_date + 'T12:00:00'), 'dd/MM');
+          return `• ${dt} - ${desc}: ${amt}`;
+        }).join('\n');
+        const moreText = cardTxs.length > 5 ? `\n... e mais ${cardTxs.length - 5} transações` : '';
+        const message = `📋 *Despesas pendentes de classificação*\n\nCartão: *${assignment.card_name || `****${cardDigits}`}*\nTotal: *${formattedTotal}* (${cardTxs.length} transações)\n\n${txSummary}${moreText}\n\nPor favor, cadastre o lead e a categoria de cada despesa no link abaixo:\n\n👉 ${link}`;
+        const { error: sendError } = await supabase.functions.invoke('send-whatsapp', {
+          body: { phone: contact.phone, message, contact_id: assignment.contact_id, lead_id: assignment.lead_id },
+        });
+        if (sendError) {
+          toast.error(`Erro ao enviar para ${contact.full_name}: ${sendError.message}`);
+        } else {
+          sentCount++;
+        }
+      }
+      if (sentCount > 0) {
+        toast.success(`WhatsApp enviado para ${sentCount} responsável(is)!`);
+        setSelectedIds(new Set());
+      }
+    } catch (err: any) {
+      toast.error('Erro ao enviar WhatsApp: ' + err.message);
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
