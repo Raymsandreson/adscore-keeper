@@ -727,25 +727,32 @@ export function WhatsAppInbox() {
 
             <div className="space-y-2">
               {disconnectedInstances.map(inst => (
-                <div key={inst.id} className="flex items-center justify-center gap-2 text-sm">
-                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                  <span className="font-medium">{inst.instance_name}</span>
-                  <span className="text-muted-foreground text-xs">— offline</span>
+                <div key={inst.id} className="flex items-center justify-between gap-2 text-sm px-3 py-2 rounded-lg bg-destructive/5 border border-destructive/20">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                    <span className="font-medium">{inst.instance_name}</span>
+                    <span className="text-muted-foreground text-xs">— offline</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setReconnectInstance({ id: inst.id, name: inst.instance_name })}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Reconectar
+                  </Button>
                 </div>
               ))}
             </div>
 
             <p className="text-sm text-muted-foreground">
-              As instâncias acima perderam conexão com o WhatsApp. Reconecte-as para continuar recebendo mensagens.
+              Clique em "Reconectar" para reiniciar a instância. Se necessário, escaneie o QR Code.
             </p>
 
             <div className="flex gap-2 justify-center pt-2">
               <Button variant="outline" size="sm" onClick={() => setDismissedAlert(true)}>
                 Fechar
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => { setDismissedAlert(true); setShowSetup(true); }}>
-                <Settings className="h-4 w-4 mr-1" />
-                Ir para Configuração
               </Button>
             </div>
           </div>
