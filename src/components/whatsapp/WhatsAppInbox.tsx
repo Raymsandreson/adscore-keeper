@@ -1015,6 +1015,19 @@ export function WhatsAppInbox() {
         boards={boards}
         onCreated={handleBulkCreated}
       />
+
+      {reconnectInstance && (
+        <WhatsAppReconnectDialog
+          open={!!reconnectInstance}
+          onOpenChange={(open) => !open && setReconnectInstance(null)}
+          instanceId={reconnectInstance.id}
+          instanceName={reconnectInstance.name}
+          onReconnected={() => {
+            refetchStatus();
+            setReconnectInstance(null);
+          }}
+        />
+      )}
     </div>
   );
 }
