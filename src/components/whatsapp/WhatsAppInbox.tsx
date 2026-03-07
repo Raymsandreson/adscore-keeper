@@ -726,24 +726,37 @@ export function WhatsAppInbox() {
             </h2>
 
             <div className="space-y-2">
-              {disconnectedInstances.map(inst => (
-                <div key={inst.id} className="flex items-center justify-between gap-2 text-sm px-3 py-2 rounded-lg bg-destructive/5 border border-destructive/20">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-                    <span className="font-medium">{inst.instance_name}</span>
-                    <span className="text-muted-foreground text-xs">— offline</span>
+              {disconnectedInstances.map(inst => {
+                const since = inst.disconnected_since;
+                const elapsedMs = since ? Date.now() - new Date(since).getTime() : 0;
+                const elapsedMin = Math.floor(elapsedMs / 60000);
+                const elapsedStr = elapsedMin < 1 ? 'agora' : elapsedMin < 60 ? `${elapsedMin}min` : `${Math.floor(elapsedMin / 60)}h ${elapsedMin % 60}min`;
+                const sinceStr = since ? new Date(since).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+                return (
+                  <div key={inst.id} className="flex flex-col gap-1 text-sm px-3 py-2 rounded-lg bg-destructive/5 border border-destructive/20">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
+                        <span className="font-medium">{inst.instance_name}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => setReconnectInstance({ id: inst.id, name: inst.instance_name })}
+                      >
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Reconectar
+                      </Button>
+                    </div>
+                    {sinceStr && (
+                      <p className="text-xs text-muted-foreground ml-6">
+                        Offline desde {sinceStr} — há {elapsedStr}
+                      </p>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => setReconnectInstance({ id: inst.id, name: inst.instance_name })}
-                  >
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Reconectar
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <p className="text-sm text-muted-foreground">
