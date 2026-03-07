@@ -2185,42 +2185,57 @@ export type Database = {
       expense_form_tokens: {
         Row: {
           card_last_digits: string
+          contact_name: string | null
+          contact_phone: string | null
           created_at: string
           created_by: string | null
           date_from: string
           date_to: string
           expires_at: string
           id: string
+          last_reminder_at: string | null
+          max_reminders: number
           notes: string | null
           pluggy_account_id: string | null
+          reminder_count: number
           submitted_at: string | null
           token: string
           transaction_ids: string[] | null
         }
         Insert: {
           card_last_digits: string
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           created_by?: string | null
           date_from: string
           date_to: string
           expires_at?: string
           id?: string
+          last_reminder_at?: string | null
+          max_reminders?: number
           notes?: string | null
           pluggy_account_id?: string | null
+          reminder_count?: number
           submitted_at?: string | null
           token?: string
           transaction_ids?: string[] | null
         }
         Update: {
           card_last_digits?: string
+          contact_name?: string | null
+          contact_phone?: string | null
           created_at?: string
           created_by?: string | null
           date_from?: string
           date_to?: string
           expires_at?: string
           id?: string
+          last_reminder_at?: string | null
+          max_reminders?: number
           notes?: string | null
           pluggy_account_id?: string | null
+          reminder_count?: number
           submitted_at?: string | null
           token?: string
           transaction_ids?: string[] | null
