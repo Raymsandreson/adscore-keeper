@@ -432,7 +432,11 @@ export function PendingTransactionsList({
             date_to: dates[dates.length - 1],
             created_by: user.id,
             transaction_ids: cardTxs.map(t => t.pluggy_transaction_id),
-          })
+            contact_phone: contact.phone,
+            contact_name: contact.full_name,
+            reminder_count: 1,
+            last_reminder_at: new Date().toISOString(),
+          } as any)
           .select('token')
           .single();
         if (tokenError) throw tokenError;
