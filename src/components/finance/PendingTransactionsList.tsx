@@ -624,8 +624,18 @@ export function PendingTransactionsList({
             onClick={generateLinkForSelected}
             disabled={generatingLink}
           >
-            <Link2 className="h-3.5 w-3.5" />
+            {generatingLink ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
             Gerar Link
+          </Button>
+          <Button 
+            size="sm" 
+            variant="secondary"
+            className="gap-1.5"
+            onClick={sendWhatsAppNotification}
+            disabled={sendingWhatsApp}
+          >
+            {sendingWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+            Notificar WhatsApp
           </Button>
           <Button 
             size="sm" 
