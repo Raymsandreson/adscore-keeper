@@ -32,7 +32,9 @@ import {
   Building2,
   Link2,
   Plus,
-  Eye
+  Eye,
+  MessageCircle,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
