@@ -60,6 +60,7 @@ export function WhatsAppInbox() {
   const { conversations, loading, instances, instanceStats, statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, markAsRead, linkToLead, linkToContact, refetch, refetchStats, fetchFullConversation } = useWhatsAppMessages(selectedInstanceId);
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
+  const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
   const { boards } = useKanbanBoards();
   const { canView } = useModulePermissions();
   const { user } = useAuthContext();
