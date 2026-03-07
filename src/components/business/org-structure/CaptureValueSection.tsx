@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, TrendingUp, Target } from 'lucide-react';
+import { Building2, TrendingUp, Target, Users, Radio } from 'lucide-react';
 import { Company } from '@/hooks/useCompanies';
 import { ProductService } from '@/hooks/useProductsServices';
 import { ValueFlowSection } from './ValueFlowSection';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CaptureValueSectionProps {
   companies: Company[];
