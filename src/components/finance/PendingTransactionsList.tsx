@@ -116,6 +116,7 @@ export function PendingTransactionsList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [generatingLink, setGeneratingLink] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [editData, setEditData] = useState<{
     categoryId: string | null;
     linkType: 'lead' | 'contact';
