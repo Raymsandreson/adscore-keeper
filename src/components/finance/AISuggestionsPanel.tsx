@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Sparkles, Check, X, Building2, Package, Shield, Lightbulb, TrendingUp, ChevronDown, ChevronRight, Pencil, Send, Loader2, Mic } from 'lucide-react';
+import { Sparkles, Check, X, Building2, Package, Shield, Lightbulb, TrendingUp, ChevronDown, ChevronRight, Pencil, Send, Loader2, Mic, Landmark } from 'lucide-react';
 import { VoiceInputButton } from '@/components/ui/voice-input-button';
 import { Company } from '@/hooks/useCompanies';
 import { useState, useCallback } from 'react';
@@ -17,6 +17,7 @@ interface Props {
     suggested_companies?: any[];
     equity_vs_cash_strategy?: string;
     tax_optimization_tips?: string;
+    asset_preservation_strategy?: string;
   };
   companies: Company[];
   onApplyProduct: (product: any) => Promise<void>;
@@ -156,11 +157,24 @@ export function AISuggestionsPanel({ suggestions, companies, onApplyProduct, onA
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
-              <Shield className="h-4 w-4" /> Otimização Tributária
+              <Shield className="h-4 w-4" /> Planejamento Tributário
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm whitespace-pre-wrap">{activeSuggestions.tax_optimization_tips}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeSuggestions.asset_preservation_strategy && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Landmark className="h-4 w-4" /> Preservação Patrimonial & Holdings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{activeSuggestions.asset_preservation_strategy}</p>
           </CardContent>
         </Card>
       )}
