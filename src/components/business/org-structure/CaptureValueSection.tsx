@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Building2, TrendingUp, Target } from 'lucide-react';
+import { Building2, TrendingUp, Target, Users, Radio } from 'lucide-react';
 import { Company } from '@/hooks/useCompanies';
 import { ProductService } from '@/hooks/useProductsServices';
 import { ValueFlowSection } from './ValueFlowSection';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CaptureValueSectionProps {
   companies: Company[];
@@ -13,6 +15,45 @@ interface CaptureValueSectionProps {
 export function CaptureValueSection({ companies, products }: CaptureValueSectionProps) {
   const activeCompanies = companies.filter(c => c.is_active);
   const activeProducts = products.filter(p => p.is_active);
+
+  const [audienceData, setAudienceData] = useState({ totalFollowers: 0, accountsCount: 0 });
+  const [communityData, setCommunityData] = useState({ totalContacts: 0, withLead: 0, engaged: 0 });
+
+  useEffect(() => {
+    async function fetchData() {
+      // Audiência: instagram accounts
+      const { data: accounts } = await supabase
+        .from('instagram_accounts')
+        .select('followers_count')
+        .eq('is_active', true);
+      if (accounts) {
+        setAudienceData({
+          totalFollowers: accounts.reduce((sum, a) => sum + (a.followers_count || 0), 0),
+          accountsCount: accounts.length,
+        });
+      }
+
+      // Comunidade: contacts
+      const { count: totalContacts } = await supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true });
+      const { count: withLead } = await supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .not('lead_id', 'is', null);
+      const { count: engaged } = await supabase
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .not('instagram_username', 'is', null);
+
+      setCommunityData({
+        totalContacts: totalContacts || 0,
+        withLead: withLead || 0,
+        engaged: engaged || 0,
+      });
+    }
+    fetchData();
+  }, []);
 
   // Derive ticket tiers and strategy focus
   const ticketTiers = {
@@ -27,6 +68,12 @@ export function CaptureValueSection({ companies, products }: CaptureValueSection
     hybrid: activeProducts.filter(p => p.strategy_focus === 'hybrid').length,
   };
 
+  const formatNumber = (n: number) => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return n.toString();
+  };
+
   return (
     <ValueFlowSection
       color="amber"
@@ -34,6 +81,62 @@ export function CaptureValueSection({ companies, products }: CaptureValueSection
       title="Capturar Valor"
       subtitle="Empresas como ativos de Equity — marca forte = premium pricing"
     >
+      {/* Audiência */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Radio className="h-4 w-4 text-amber-500" />
+            Audiência
+            <Badge variant="secondary" className="ml-auto">{audienceData.accountsCount} contas</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            Alcance total das marcas nas redes — audiência é o primeiro passo para captura de valor.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 rounded-lg border bg-card text-center">
+              <p className="text-2xl font-bold text-primary">{formatNumber(audienceData.totalFollowers)}</p>
+              <p className="text-xs text-muted-foreground">Seguidores totais</p>
+            </div>
+            <div className="p-3 rounded-lg border bg-card text-center">
+              <p className="text-2xl font-bold text-amber-500">{audienceData.accountsCount}</p>
+              <p className="text-xs text-muted-foreground">Perfis ativos</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Comunidade */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-amber-500" />
+            Comunidade
+            <Badge variant="secondary" className="ml-auto">{communityData.totalContacts} contatos</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">
+            Rede de relacionamento construída — comunidade engajada gera indicações e autoridade.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3 rounded-lg border bg-card text-center">
+              <p className="text-2xl font-bold text-primary">{communityData.totalContacts}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
+            </div>
+            <div className="p-3 rounded-lg border bg-card text-center">
+              <p className="text-2xl font-bold text-emerald-500">{communityData.withLead}</p>
+              <p className="text-xs text-muted-foreground">Com lead</p>
+            </div>
+            <div className="p-3 rounded-lg border bg-card text-center">
+              <p className="text-2xl font-bold text-blue-500">{communityData.engaged}</p>
+              <p className="text-xs text-muted-foreground">Com Instagram</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Empresas como veículos de Equity */}
       <Card>
         <CardHeader className="pb-3">
