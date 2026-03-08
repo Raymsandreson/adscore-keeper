@@ -76,7 +76,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         {/* Sidebar - lateral tabs (desktop) */}
         <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
           <nav className="p-3 space-y-1 flex-1">
