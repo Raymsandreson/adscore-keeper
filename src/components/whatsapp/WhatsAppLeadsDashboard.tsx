@@ -6,8 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
-import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch } from 'lucide-react';
+import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch, AlertTriangle, Send, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
+import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 
 interface LeadWithMessages {
@@ -70,8 +72,10 @@ export function WhatsAppLeadsDashboard() {
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; leads: { id: string; name: string; phone: string | null }[] }[]>([]);
-  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | null>(null);
+  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | 'slow_responses' | null>(null);
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
+  const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
+  const [sendingReport, setSendingReport] = useState(false);
 
   useEffect(() => {
     fetchData();
