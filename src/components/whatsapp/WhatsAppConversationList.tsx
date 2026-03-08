@@ -542,7 +542,12 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                 "text-[10px] flex-shrink-0",
                 isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
               )}>
-                {format(new Date(conv.last_message_at), 'HH:mm', { locale: ptBR })}
+                {(() => {
+                  const d = new Date(conv.last_message_at);
+                  if (isToday(d)) return format(d, 'HH:mm');
+                  if (isYesterday(d)) return 'Ontem';
+                  return format(d, 'dd/MM/yyyy');
+                })()}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
