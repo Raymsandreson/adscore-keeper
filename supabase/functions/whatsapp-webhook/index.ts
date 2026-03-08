@@ -1012,6 +1012,29 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // ========== AI AGENT AUTO-REPLY ==========
+    if (direction === 'inbound' && instanceName && phone) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+        const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+        // Fire-and-forget: don't await to avoid delaying webhook response
+        fetch(`${supabaseUrl}/functions/v1/whatsapp-ai-agent-reply`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            instance_name: instanceName,
+            message_text: messageText,
+          }),
+        }).catch(err => console.error('AI agent reply trigger error:', err))
+      } catch (e) {
+        console.error('AI agent trigger setup error:', e)
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 
