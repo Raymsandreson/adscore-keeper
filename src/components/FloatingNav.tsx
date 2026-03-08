@@ -60,7 +60,7 @@ export function FloatingNav() {
     return unsub;
   }, []);
 
-  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install', '/whatsapp'];
+  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   const isHidden = !user || hiddenRoutes.some(r => location.pathname.startsWith(r));
 
   // Close menu when clicking outside
