@@ -16,112 +16,237 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Load config
+    const { data: configData } = await supabase
+      .from("whatsapp_report_config")
+      .select("*")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
     // Determine report period (last 12 hours)
     const now = new Date();
     const periodStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-    const periodLabel = now.getHours() < 6 ? "Noturno (12h→00h)" : now.getHours() < 18 ? "Matutino (00h→12h)" : "Vespertino (12h→00h)";
-    const dateLabel = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const periodLabel = now.getUTCHours() < 6 ? "Noturno (12h→00h)" : now.getUTCHours() < 18 ? "Matutino (00h→12h)" : "Vespertino (12h→00h)";
+    const dateLabel = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
 
     // Get all active instances
-    const { data: instances, error: instErr } = await supabase
+    const { data: allInstances, error: instErr } = await supabase
       .from("whatsapp_instances")
-      .select("id, instance_name, owner_phone, is_paused")
+      .select("id, instance_name, owner_phone, is_paused, instance_token, base_url")
       .eq("is_active", true);
 
-    if (instErr || !instances?.length) {
+    if (instErr || !allInstances?.length) {
       console.error("No instances found:", instErr);
       return new Response(JSON.stringify({ error: "No instances" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Find raymsandreson instance for sending
-    const raymInstance = instances.find((i) =>
-      i.instance_name.toLowerCase().includes("raym")
-    );
-    if (!raymInstance) {
-      console.error("raymsandreson instance not found");
-      return new Response(JSON.stringify({ error: "Sender instance not found" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // Determine target instances (which ones to report on)
+    const targetIds = configData?.target_instance_ids?.length
+      ? configData.target_instance_ids
+      : allInstances.map((i: any) => i.id);
+    const targetInstances = allInstances.filter((i: any) => targetIds.includes(i.id));
+
+    // Determine sender instances
+    const senderIds = configData?.sender_instance_ids?.length
+      ? configData.sender_instance_ids
+      : allInstances.filter((i: any) => i.instance_name.toLowerCase().includes("raym")).map((i: any) => i.id);
+    const senderInstances = allInstances.filter((i: any) => senderIds.includes(i.id));
+
+    if (!senderInstances.length) {
+      // Fallback to raymsandreson
+      const raym = allInstances.find((i: any) => i.instance_name.toLowerCase().includes("raym"));
+      if (raym) senderInstances.push(raym);
+    }
+
+    if (!senderInstances.length) {
+      return new Response(JSON.stringify({ error: "No sender instance found" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Get raymsandreson credentials
-    const { data: raymCreds } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("id", raymInstance.id)
-      .single();
+    // Determine which metrics to include
+    const metrics = {
+      messages_inbound: configData?.include_messages_inbound ?? true,
+      messages_outbound: configData?.include_messages_outbound ?? true,
+      conversations: configData?.include_conversations ?? true,
+      unread: configData?.include_unread ?? true,
+      calls: configData?.include_calls ?? true,
+      new_leads: configData?.include_new_leads ?? true,
+      closed_leads: configData?.include_closed_leads ?? true,
+      new_contacts: configData?.include_new_contacts ?? true,
+      response_time: configData?.include_response_time ?? true,
+      ai_replies: configData?.include_ai_replies ?? false,
+    };
 
-    if (!raymCreds) {
-      return new Response(JSON.stringify({ error: "Sender credentials missing" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const baseUrl = raymCreds.base_url || "https://abraci.uazapi.com";
-    const token = raymCreds.instance_token;
-
-    // For each instance, gather stats
+    // For each target instance, gather stats
     const reports: string[] = [];
 
-    for (const inst of instances) {
-      // Messages in period
-      const { count: inboundCount } = await supabase
-        .from("whatsapp_messages")
-        .select("*", { count: "exact", head: true })
-        .eq("instance_name", inst.instance_name)
-        .eq("direction", "inbound")
-        .gte("created_at", periodStart.toISOString());
-
-      const { count: outboundCount } = await supabase
-        .from("whatsapp_messages")
-        .select("*", { count: "exact", head: true })
-        .eq("instance_name", inst.instance_name)
-        .eq("direction", "outbound")
-        .gte("created_at", periodStart.toISOString());
-
-      // Unique conversations
-      const { data: uniquePhones } = await supabase
-        .from("whatsapp_messages")
-        .select("phone")
-        .eq("instance_name", inst.instance_name)
-        .gte("created_at", periodStart.toISOString());
-
-      const uniqueConversations = new Set(uniquePhones?.map((m) => m.phone) || []).size;
-
-      // Unread messages
-      const { count: unreadCount } = await supabase
-        .from("whatsapp_messages")
-        .select("*", { count: "exact", head: true })
-        .eq("instance_name", inst.instance_name)
-        .eq("direction", "inbound")
-        .is("read_at", null)
-        .gte("created_at", periodStart.toISOString());
-
-      // Call records in period
-      const { count: callCount } = await supabase
-        .from("call_records")
-        .select("*", { count: "exact", head: true })
-        .eq("phone_used", inst.instance_name)
-        .gte("created_at", periodStart.toISOString());
-
+    for (const inst of targetInstances) {
+      const lines: string[] = [];
       const statusEmoji = inst.is_paused ? "⏸️" : "✅";
+      lines.push(`${statusEmoji} *${inst.instance_name}*`);
 
-      reports.push(
-        `${statusEmoji} *${inst.instance_name}*\n` +
-        `📥 Recebidas: ${inboundCount ?? 0}\n` +
-        `📤 Enviadas: ${outboundCount ?? 0}\n` +
-        `💬 Conversas: ${uniqueConversations}\n` +
-        `🔔 Não lidas: ${unreadCount ?? 0}\n` +
-        `📞 Chamadas: ${callCount ?? 0}`
-      );
+      if (metrics.messages_inbound) {
+        const { count } = await supabase
+          .from("whatsapp_messages")
+          .select("*", { count: "exact", head: true })
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "inbound")
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`📥 Recebidas: ${count ?? 0}`);
+      }
+
+      if (metrics.messages_outbound) {
+        const { count } = await supabase
+          .from("whatsapp_messages")
+          .select("*", { count: "exact", head: true })
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "outbound")
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`📤 Enviadas: ${count ?? 0}`);
+      }
+
+      if (metrics.conversations) {
+        const { data: uniquePhones } = await supabase
+          .from("whatsapp_messages")
+          .select("phone")
+          .eq("instance_name", inst.instance_name)
+          .gte("created_at", periodStart.toISOString());
+        const unique = new Set(uniquePhones?.map((m: any) => m.phone) || []).size;
+        lines.push(`💬 Conversas: ${unique}`);
+      }
+
+      if (metrics.unread) {
+        const { count } = await supabase
+          .from("whatsapp_messages")
+          .select("*", { count: "exact", head: true })
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "inbound")
+          .is("read_at", null)
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`🔔 Não lidas: ${count ?? 0}`);
+      }
+
+      if (metrics.calls) {
+        const { count } = await supabase
+          .from("call_records")
+          .select("*", { count: "exact", head: true })
+          .eq("phone_used", inst.instance_name)
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`📞 Chamadas: ${count ?? 0}`);
+      }
+
+      if (metrics.new_leads) {
+        // Count leads created in this period that came from this instance
+        const { count } = await supabase
+          .from("whatsapp_messages")
+          .select("lead_id", { count: "exact", head: true })
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "inbound")
+          .not("lead_id", "is", null)
+          .gte("created_at", periodStart.toISOString());
+        // Get unique leads created in period
+        const { data: leadsData } = await supabase
+          .from("leads")
+          .select("id")
+          .gte("created_at", periodStart.toISOString());
+        // Cross-reference with messages from this instance
+        const { data: instanceLeadMsgs } = await supabase
+          .from("whatsapp_messages")
+          .select("lead_id")
+          .eq("instance_name", inst.instance_name)
+          .not("lead_id", "is", null)
+          .gte("created_at", periodStart.toISOString());
+        const leadIds = new Set(instanceLeadMsgs?.map((m: any) => m.lead_id) || []);
+        const newLeads = leadsData?.filter((l: any) => leadIds.has(l.id))?.length ?? 0;
+        lines.push(`🆕 Novos leads: ${newLeads}`);
+      }
+
+      if (metrics.closed_leads) {
+        // Leads closed in period (have closed_at in period)
+        const { data: closedData } = await supabase
+          .from("leads")
+          .select("id")
+          .not("closed_at", "is", null)
+          .gte("closed_at", periodStart.toISOString());
+        // Cross with instance messages
+        const { data: instMsgs } = await supabase
+          .from("whatsapp_messages")
+          .select("lead_id")
+          .eq("instance_name", inst.instance_name)
+          .not("lead_id", "is", null);
+        const instLeadIds = new Set(instMsgs?.map((m: any) => m.lead_id) || []);
+        const closed = closedData?.filter((l: any) => instLeadIds.has(l.id))?.length ?? 0;
+        lines.push(`✅ Leads fechados: ${closed}`);
+      }
+
+      if (metrics.new_contacts) {
+        const { count } = await supabase
+          .from("contacts")
+          .select("*", { count: "exact", head: true })
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`👤 Contatos novos: ${count ?? 0}`);
+      }
+
+      if (metrics.response_time) {
+        // Average response time: time between inbound and next outbound
+        const { data: inboundMsgs } = await supabase
+          .from("whatsapp_messages")
+          .select("phone, created_at")
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "inbound")
+          .gte("created_at", periodStart.toISOString())
+          .order("created_at", { ascending: true })
+          .limit(100);
+
+        if (inboundMsgs?.length) {
+          const responseTimes: number[] = [];
+          for (const msg of inboundMsgs.slice(0, 20)) {
+            const { data: reply } = await supabase
+              .from("whatsapp_messages")
+              .select("created_at")
+              .eq("instance_name", inst.instance_name)
+              .eq("phone", msg.phone)
+              .eq("direction", "outbound")
+              .gt("created_at", msg.created_at)
+              .order("created_at", { ascending: true })
+              .limit(1)
+              .maybeSingle();
+            if (reply) {
+              const diff = new Date(reply.created_at).getTime() - new Date(msg.created_at).getTime();
+              responseTimes.push(diff);
+            }
+          }
+          if (responseTimes.length > 0) {
+            const avgMs = responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length;
+            const avgMin = Math.round(avgMs / 60000);
+            lines.push(`⏱️ Resp. média: ${avgMin < 60 ? `${avgMin}min` : `${Math.round(avgMin / 60)}h${avgMin % 60}min`}`);
+          } else {
+            lines.push(`⏱️ Resp. média: --`);
+          }
+        } else {
+          lines.push(`⏱️ Resp. média: --`);
+        }
+      }
+
+      if (metrics.ai_replies) {
+        const { count } = await supabase
+          .from("whatsapp_messages")
+          .select("*", { count: "exact", head: true })
+          .eq("instance_name", inst.instance_name)
+          .eq("direction", "outbound")
+          .not("metadata->ai_agent_id", "is", null)
+          .gte("created_at", periodStart.toISOString());
+        lines.push(`🤖 Respostas IA: ${count ?? 0}`);
+      }
+
+      reports.push(lines.join("\n"));
     }
 
-    // Build full report message
+    // Build full report
     const reportMessage =
       `📊 *Relatório WhatsApp*\n` +
       `📅 ${dateLabel} — ${periodLabel}\n` +
@@ -130,61 +255,59 @@ Deno.serve(async (req) => {
       `\n\n━━━━━━━━━━━━━━━━━━\n` +
       `🤖 Relatório automático`;
 
-    // Send report to each instance's owner via raymsandreson
-    const sentTo: string[] = [];
-    const ownerPhones = new Set<string>();
-
-    for (const inst of instances) {
-      if (inst.owner_phone) {
-        ownerPhones.add(inst.owner_phone.replace(/\D/g, ""));
+    // Determine recipients
+    const recipientPhones = new Set<string>();
+    if (configData?.recipient_phones?.length) {
+      for (const p of configData.recipient_phones) {
+        recipientPhones.add(p.replace(/\D/g, ""));
+      }
+    } else {
+      for (const inst of targetInstances) {
+        if (inst.owner_phone) {
+          recipientPhones.add(inst.owner_phone.replace(/\D/g, ""));
+        }
       }
     }
 
-    for (const phone of ownerPhones) {
-      try {
-        const sendRes = await fetch(`${baseUrl}/message/send-text`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            phone: phone,
-            message: reportMessage,
-          }),
-        });
+    // Send via each sender instance
+    const sentTo: string[] = [];
+    for (const sender of senderInstances) {
+      const baseUrl = sender.base_url || "https://abraci.uazapi.com";
+      const token = sender.instance_token;
 
-        if (sendRes.ok) {
-          sentTo.push(phone);
-          console.log(`Report sent to ${phone}`);
-        } else {
-          const errText = await sendRes.text();
-          console.error(`Failed to send to ${phone}:`, errText);
+      for (const phone of recipientPhones) {
+        try {
+          const sendRes = await fetch(`${baseUrl}/message/send-text`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ phone, message: reportMessage }),
+          });
+
+          if (sendRes.ok) {
+            sentTo.push(`${sender.instance_name} → ${phone}`);
+            console.log(`Report sent via ${sender.instance_name} to ${phone}`);
+          } else {
+            const errText = await sendRes.text();
+            console.error(`Failed via ${sender.instance_name} to ${phone}:`, errText);
+          }
+        } catch (e) {
+          console.error(`Error sending via ${sender.instance_name} to ${phone}:`, e);
         }
-      } catch (e) {
-        console.error(`Error sending to ${phone}:`, e);
       }
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        sent_to: sentTo,
-        instances_reported: instances.length,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: true, sent_to: sentTo, instances_reported: targetInstances.length }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Report error:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

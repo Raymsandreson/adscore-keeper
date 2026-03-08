@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
+import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 
 export function WhatsAppSetupGuide() {
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
@@ -169,6 +170,9 @@ export function WhatsAppSetupGuide() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Report Settings */}
+      <WhatsAppReportSettings />
 
       {/* Ad Link Settings */}
       <WhatsAppAdLinkSettings />
