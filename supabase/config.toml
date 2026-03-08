@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.generate-knowledge-content]
 verify_jwt = false
+
+[functions.generate-agent-prompt]
+verify_jwt = false
