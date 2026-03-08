@@ -290,6 +290,53 @@ export type Database = {
           },
         ]
       }
+      agent_knowledge_documents: {
+        Row: {
+          agent_id: string
+          created_at: string
+          error_message: string | null
+          extracted_text: string | null
+          file_name: string
+          file_size: number | null
+          file_url: string
+          id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          created_at?: string
+          error_message?: string | null
+          extracted_text?: string | null
+          file_name: string
+          file_size?: number | null
+          file_url: string
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          created_at?: string
+          error_message?: string | null
+          extracted_text?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_url?: string
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_documents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_conversation_history: {
         Row: {
           ad_account_id: string | null
