@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Menu, Phone, MessageCircle, Bot } from 'lucide-react';
+import { Menu, Phone, Bot, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+
+const DOCK_COLLAPSED_KEY = 'dock-collapsed';
 
 interface FloatingDockProps {
   onOpenNav: () => void;
@@ -14,6 +16,13 @@ interface FloatingDockProps {
 export function FloatingDock({ onOpenNav, onOpenWhatsApp, onOpenAIChat, navOpen }: FloatingDockProps) {
   const { user } = useAuthContext();
   const location = useLocation();
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(DOCK_COLLAPSED_KEY) === 'true'; } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(DOCK_COLLAPSED_KEY, String(collapsed)); } catch {}
+  }, [collapsed]);
 
   const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install', '/whatsapp'];
   if (!user || hiddenRoutes.some(r => location.pathname.startsWith(r))) return null;
@@ -43,6 +52,20 @@ export function FloatingDock({ onOpenNav, onOpenWhatsApp, onOpenAIChat, navOpen 
     },
   ];
 
+  if (collapsed) {
+    return (
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:bottom-6">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-3 py-1.5 shadow-2xl text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronUp className="h-3.5 w-3.5" />
+          Menu
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:bottom-6">
       <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2 py-1.5 shadow-2xl">
@@ -60,6 +83,14 @@ export function FloatingDock({ onOpenNav, onOpenWhatsApp, onOpenAIChat, navOpen 
             {item.icon}
           </button>
         ))}
+        {/* Minimize button */}
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Minimizar"
+          className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );
