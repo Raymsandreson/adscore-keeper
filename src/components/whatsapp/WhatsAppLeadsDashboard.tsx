@@ -201,6 +201,108 @@ export function WhatsAppLeadsDashboard() {
     }
   };
 
+  const fetchFunnelStages = async () => {
+    try {
+      // Get all boards with stages
+      const { data: boardsData } = await supabase
+        .from('kanban_boards')
+        .select('id, name, stages');
+
+      if (!boardsData || boardsData.length === 0) return;
+
+      // Get latest stage for each lead that has WhatsApp messages today
+      const todayStart = startOfDay(new Date()).toISOString();
+      
+      // Get leads with WhatsApp conversations
+      const { data: whatsappLeads } = await supabase
+        .from('whatsapp_messages')
+        .select('lead_id')
+        .not('lead_id', 'is', null)
+        .gte('created_at', todayStart)
+        .limit(1000);
+
+      if (!whatsappLeads || whatsappLeads.length === 0) {
+        setFunnelStages([]);
+        return;
+      }
+
+      const uniqueLeadIds = [...new Set(whatsappLeads.map(m => m.lead_id).filter(Boolean))];
+
+      // Get lead info with board_id
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('id, lead_name, lead_phone, board_id')
+        .in('id', uniqueLeadIds);
+
+      if (!leadsData) return;
+
+      // Get latest stage for each lead from history
+      const { data: stageHistory } = await supabase
+        .from('lead_stage_history')
+        .select('lead_id, to_stage, to_board_id, changed_at')
+        .in('lead_id', uniqueLeadIds)
+        .order('changed_at', { ascending: false });
+
+      // Build a map of lead_id -> latest stage
+      const leadStageMap = new Map<string, { stageId: string; boardId: string }>();
+      if (stageHistory) {
+        for (const h of stageHistory) {
+          if (!leadStageMap.has(h.lead_id)) {
+            leadStageMap.set(h.lead_id, { stageId: h.to_stage, boardId: h.to_board_id || '' });
+          }
+        }
+      }
+
+      // Build stage name map from boards
+      const stageInfoMap = new Map<string, { name: string; color: string }>();
+      for (const board of boardsData) {
+        const stages = board.stages as any[];
+        if (stages) {
+          for (const stage of stages) {
+            stageInfoMap.set(stage.id, { name: stage.name, color: stage.color || '#6b7280' });
+          }
+        }
+      }
+
+      // Group leads by stage
+      const stageGroups = new Map<string, { stageName: string; stageColor: string; leads: { id: string; name: string; phone: string | null }[] }>();
+      const noStageKey = '__no_stage__';
+
+      for (const lead of leadsData) {
+        const stageInfo = leadStageMap.get(lead.id);
+        let stageKey = noStageKey;
+        let stageName = 'Sem etapa';
+        let stageColor = '#6b7280';
+
+        if (stageInfo) {
+          const info = stageInfoMap.get(stageInfo.stageId);
+          if (info) {
+            stageKey = stageInfo.stageId;
+            stageName = info.name;
+            stageColor = info.color;
+          }
+        }
+
+        if (!stageGroups.has(stageKey)) {
+          stageGroups.set(stageKey, { stageName, stageColor, leads: [] });
+        }
+        stageGroups.get(stageKey)!.leads.push({
+          id: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          phone: lead.lead_phone,
+        });
+      }
+
+      const result = Array.from(stageGroups.values())
+        .map(g => ({ ...g, count: g.leads.length }))
+        .sort((a, b) => b.count - a.count);
+
+      setFunnelStages(result);
+    } catch (err) {
+      console.error('Error fetching funnel stages:', err);
+    }
+  };
+
   // Filter messages by selected instance
   const filteredMessages = useMemo(() => {
     if (selectedInstance === 'all') return messages;
