@@ -385,18 +385,18 @@ export function WhatsAppAIAgents() {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1"
-                      onClick={() => setEditingAgent({ ...editingAgent, _showAIPrompt: !editingAgent._showAIPrompt } as any)}
+                      onClick={() => setShowAIPrompt(!showAIPrompt)}
                     >
                       <Sparkles className="h-3 w-3" />
                       Gerar com IA
                     </Button>
                   </div>
-                  {(editingAgent as any)._showAIPrompt && (
+                  {showAIPrompt && (
                     <div className="mb-2">
                       <AIPromptGenerator
                         currentPrompt={editingAgent.base_prompt || ''}
-                        onApply={(prompt) => setEditingAgent({ ...editingAgent, base_prompt: prompt, _showAIPrompt: false } as any)}
-                        onClose={() => setEditingAgent({ ...editingAgent, _showAIPrompt: false } as any)}
+                        onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
+                        onClose={() => setShowAIPrompt(false)}
                       />
                     </div>
                   )}
