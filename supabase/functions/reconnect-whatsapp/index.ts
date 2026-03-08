@@ -193,7 +193,12 @@ serve(async (req) => {
             signal: AbortSignal.timeout(10000),
           });
           const statusData = await statusResp.json().catch(() => null);
-          ownerPhone = statusData?.owner || statusData?.phone || statusData?.number || null;
+          // UazAPI V2 returns nested instance object
+          ownerPhone = statusData?.instance?.owner || statusData?.instance?.phone || statusData?.owner || statusData?.phone || statusData?.number || null;
+          // Clean phone: remove @ suffix if present (e.g. "5511999@s.whatsapp.net")
+          if (ownerPhone && ownerPhone.includes('@')) {
+            ownerPhone = ownerPhone.split('@')[0];
+          }
           console.log("Fetched phone from status:", ownerPhone);
         } catch (e) {
           console.error("Error fetching instance status for phone:", e.message);
