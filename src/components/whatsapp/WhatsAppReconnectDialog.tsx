@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, QrCode, CheckCircle2, XCircle, Wifi } from 'lucide-react';
+import { Loader2, RefreshCw, QrCode, CheckCircle2, XCircle, Wifi, Smartphone, Copy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -14,7 +14,7 @@ interface WhatsAppReconnectDialogProps {
   onReconnected?: () => void;
 }
 
-type Step = 'idle' | 'connecting' | 'showing_qr' | 'connected' | 'error';
+type Step = 'idle' | 'connecting' | 'showing_qr' | 'showing_pairing' | 'connected' | 'error';
 
 export function WhatsAppReconnectDialog({
   open,
@@ -25,6 +25,7 @@ export function WhatsAppReconnectDialog({
 }: WhatsAppReconnectDialogProps) {
   const [step, setStep] = useState<Step>('idle');
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
 
@@ -32,12 +33,12 @@ export function WhatsAppReconnectDialog({
     if (open) {
       setStep('idle');
       setQrCode(null);
+      setPairingCode(null);
       setErrorMsg(null);
       setPollCount(0);
     }
   }, [open]);
 
-  // UazAPI V2: POST /instance/connect (sem phone = gera QR code)
   const handleConnect = useCallback(async () => {
     setStep('connecting');
     setErrorMsg(null);
@@ -61,13 +62,44 @@ export function WhatsAppReconnectDialog({
         setQrCode(data.qrCode);
         setStep('showing_qr');
       } else {
-        // QR not ready yet, start polling
         setStep('connecting');
         setPollCount(1);
       }
     } catch (err: any) {
       setStep('error');
       setErrorMsg(err.message || 'Erro ao conectar');
+    }
+  }, [instanceId, instanceName, onReconnected, onOpenChange]);
+
+  const handlePairingCode = useCallback(async () => {
+    setStep('connecting');
+    setErrorMsg(null);
+    setPairingCode(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', {
+        body: { instance_id: instanceId, action: 'pairing_code' },
+      });
+      if (error) throw error;
+
+      if (data?.already_connected) {
+        setStep('connected');
+        toast.success(`${instanceName} já está conectada!`);
+        onReconnected?.();
+        setTimeout(() => onOpenChange(false), 2000);
+        return;
+      }
+
+      if (data?.pairingCode) {
+        setPairingCode(data.pairingCode);
+        setStep('showing_pairing');
+        toast.success('Código enviado via WhatsApp!');
+      } else {
+        setStep('error');
+        setErrorMsg(data?.message || 'Não foi possível gerar o código de pareamento.');
+      }
+    } catch (err: any) {
+      setStep('error');
+      setErrorMsg(err.message || 'Erro ao gerar código');
     }
   }, [instanceId, instanceName, onReconnected, onOpenChange]);
 
@@ -80,13 +112,19 @@ export function WhatsAppReconnectDialog({
       });
       if (error) throw error;
       toast.success('Restart solicitado!');
-      // Wait 5s then try to connect
       setTimeout(() => handleConnect(), 5000);
     } catch (err: any) {
       setStep('error');
       setErrorMsg(err.message || 'Erro ao reiniciar');
     }
   }, [instanceId, handleConnect]);
+
+  const copyPairingCode = useCallback(() => {
+    if (pairingCode) {
+      navigator.clipboard.writeText(pairingCode);
+      toast.success('Código copiado!');
+    }
+  }, [pairingCode]);
 
   // Poll for QR when connecting and no QR yet
   useEffect(() => {
@@ -119,9 +157,9 @@ export function WhatsAppReconnectDialog({
     return () => clearTimeout(timer);
   }, [step, pollCount, instanceId, instanceName, onReconnected, onOpenChange]);
 
-  // When showing QR, poll status to detect connection
+  // Poll status when showing QR or pairing code
   useEffect(() => {
-    if (step !== 'showing_qr') return;
+    if (step !== 'showing_qr' && step !== 'showing_pairing') return;
     const checkConnection = async () => {
       try {
         const { data } = await supabase.functions.invoke('check-whatsapp-status');
@@ -138,7 +176,6 @@ export function WhatsAppReconnectDialog({
     return () => clearInterval(interval);
   }, [step, instanceId, instanceName, onReconnected, onOpenChange]);
 
-  // Refresh QR
   const refreshQr = useCallback(async () => {
     setQrCode(null);
     try {
@@ -160,7 +197,7 @@ export function WhatsAppReconnectDialog({
             Reconectar {instanceName}
           </DialogTitle>
           <DialogDescription>
-            Conecte a instância ao WhatsApp via QR Code.
+            Conecte a instância ao WhatsApp via QR Code ou Código de Pareamento.
           </DialogDescription>
         </DialogHeader>
 
@@ -175,17 +212,21 @@ export function WhatsAppReconnectDialog({
                 Escolha uma opção para reconectar a instância.
               </p>
               <div className="w-full space-y-2">
-                <Button onClick={handleConnect} className="w-full">
+                <Button onClick={handlePairingCode} className="w-full" variant="default">
+                  <Smartphone className="h-4 w-4 mr-2" />
+                  Código de Pareamento (WhatsApp)
+                </Button>
+                <Button onClick={handleConnect} variant="outline" className="w-full">
                   <QrCode className="h-4 w-4 mr-2" />
                   Gerar QR Code
                 </Button>
-                <Button onClick={handleRestart} variant="outline" className="w-full">
+                <Button onClick={handleRestart} variant="ghost" className="w-full text-muted-foreground">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Reiniciar e Conectar
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground text-center">
-                💡 Abra o WhatsApp no celular → <strong>Aparelhos Conectados</strong> → <strong>Conectar aparelho</strong> e escaneie o código.
+                📱 O código de pareamento será enviado via WhatsApp com instruções de uso.
               </p>
             </>
           )}
@@ -222,12 +263,39 @@ export function WhatsAppReconnectDialog({
                 )}
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Abra o WhatsApp no celular → <strong>Aparelhos Conectados</strong> → <strong>Conectar um aparelho</strong> e escaneie o código acima.
+                Abra o WhatsApp → <strong>Aparelhos Conectados</strong> → <strong>Conectar</strong> e escaneie o código.
               </p>
               <Button variant="outline" size="sm" onClick={refreshQr}>
                 <RefreshCw className="h-3 w-3 mr-1" />
                 Atualizar QR Code
               </Button>
+            </>
+          )}
+
+          {/* Step: Showing Pairing Code */}
+          {step === 'showing_pairing' && pairingCode && (
+            <>
+              <div className="border-2 border-primary rounded-xl p-6 bg-white text-center">
+                <p className="text-xs text-muted-foreground mb-2">Código de Pareamento</p>
+                <p className="text-3xl font-mono font-bold tracking-widest text-foreground">
+                  {pairingCode}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={copyPairingCode}>
+                <Copy className="h-3 w-3 mr-1" />
+                Copiar código
+              </Button>
+              <div className="text-sm text-muted-foreground text-center space-y-1">
+                <p className="font-medium text-foreground">📱 Instruções enviadas via WhatsApp!</p>
+                <p>1. Abra o WhatsApp no celular</p>
+                <p>2. ⋮ → <strong>Aparelhos conectados</strong></p>
+                <p>3. <strong>Conectar aparelho</strong></p>
+                <p>4. <strong>Conectar com número de telefone</strong></p>
+                <p>5. Digite o código acima</p>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                ⏰ Expira em 5 minutos
+              </Badge>
             </>
           )}
 
@@ -249,11 +317,15 @@ export function WhatsAppReconnectDialog({
               </div>
               <p className="text-sm text-destructive text-center">{errorMsg}</p>
               <div className="w-full space-y-2">
-                <Button onClick={handleConnect} className="w-full">
-                  <QrCode className="h-4 w-4 mr-2" />
-                  Tentar Gerar QR Code
+                <Button onClick={handlePairingCode} className="w-full">
+                  <Smartphone className="h-4 w-4 mr-2" />
+                  Código de Pareamento
                 </Button>
-                <Button onClick={handleRestart} variant="outline" className="w-full">
+                <Button onClick={handleConnect} variant="outline" className="w-full">
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Tentar QR Code
+                </Button>
+                <Button onClick={handleRestart} variant="ghost" className="w-full text-muted-foreground">
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Reiniciar e Conectar
                 </Button>

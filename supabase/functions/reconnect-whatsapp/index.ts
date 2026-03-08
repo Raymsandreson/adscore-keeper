@@ -27,7 +27,7 @@ serve(async (req) => {
 
     const { data: inst, error } = await supabase
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url")
+      .select("id, instance_name, instance_token, base_url, owner_phone")
       .eq("id", instance_id)
       .single();
 
@@ -180,7 +180,119 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ error: "Invalid action. Use 'restart', 'connect', 'qr', or 'status'" }), {
+    if (action === "pairing_code") {
+      // UazAPI V2: POST /instance/connect com phone = gera código de pareamento
+      const ownerPhone = inst.owner_phone;
+      if (!ownerPhone) {
+        return new Response(JSON.stringify({
+          success: false,
+          action: "pairing_code",
+          message: "Instância não possui telefone (owner_phone) cadastrado.",
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      try {
+        console.log(`Calling POST ${baseUrl}/instance/connect with phone=${ownerPhone} (pairing code)`);
+        const resp = await fetch(`${baseUrl}/instance/connect`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ phone: ownerPhone }),
+          signal: AbortSignal.timeout(30000),
+        });
+
+        const data = await resp.json().catch(() => null);
+        console.log(`/instance/connect (pairing) response status: ${resp.status}, data:`, JSON.stringify(data));
+
+        if (data?.status === "connected" || data?.connected === true) {
+          return new Response(JSON.stringify({
+            success: true,
+            action: "pairing_code",
+            already_connected: true,
+            message: "Instância já está conectada!",
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Extract pairing code from response
+        const pairingCode = data?.pairingCode || data?.pairing_code || data?.code || null;
+
+        if (!pairingCode) {
+          return new Response(JSON.stringify({
+            success: false,
+            action: "pairing_code",
+            message: "Não foi possível gerar o código de pareamento.",
+            raw: data,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Send pairing code via WhatsApp from raymsandreson instance
+        try {
+          const { data: raymInst } = await supabase
+            .from("whatsapp_instances")
+            .select("id, instance_token, base_url")
+            .ilike("instance_name", "%raym%")
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+
+          if (raymInst?.id) {
+            const raymBaseUrl = raymInst.base_url || "https://abraci.uazapi.com";
+            const raymHeaders = {
+              "Content-Type": "application/json",
+              "token": raymInst.instance_token,
+            };
+
+            const message = `🔗 *Código de Pareamento WhatsApp*\n\n` +
+              `Instância: *${inst.instance_name}*\n\n` +
+              `Seu código de pareamento é:\n\n` +
+              `*${pairingCode}*\n\n` +
+              `📱 *Como usar:*\n` +
+              `1. Abra o WhatsApp no celular\n` +
+              `2. Toque em ⋮ (3 pontos) → *Aparelhos conectados*\n` +
+              `3. Toque em *Conectar um aparelho*\n` +
+              `4. Toque em *Conectar com número de telefone*\n` +
+              `5. Digite o código: *${pairingCode}*\n\n` +
+              `⏰ O código expira em *5 minutos*.`;
+
+            await fetch(`${raymBaseUrl}/sendText`, {
+              method: "POST",
+              headers: raymHeaders,
+              body: JSON.stringify({ phone: ownerPhone, message }),
+              signal: AbortSignal.timeout(10000),
+            });
+            console.log(`Pairing code sent via WhatsApp to ${ownerPhone}`);
+          }
+        } catch (sendErr) {
+          console.error("Error sending pairing code via WhatsApp:", sendErr.message);
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          action: "pairing_code",
+          pairingCode,
+          message: `Código de pareamento gerado e enviado via WhatsApp para ${ownerPhone}.`,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("/instance/connect (pairing) error:", e.message);
+        return new Response(JSON.stringify({
+          success: false,
+          action: "pairing_code",
+          message: `Erro ao gerar código de pareamento: ${e.message}`,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    return new Response(JSON.stringify({ error: "Invalid action. Use 'restart', 'connect', 'qr', 'pairing_code', or 'status'" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
