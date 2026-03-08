@@ -735,6 +735,20 @@ Deno.serve(async (req) => {
       
       console.log('Instance:', instanceName, 'Token:', instanceToken?.substring(0, 8), 'BaseUrl:', baseUrl)
 
+      // Auto-save owner_phone from webhook data
+      const ownerFromWebhook = body.chat?.owner || body.owner || null
+      if (instanceName && ownerFromWebhook) {
+        const cleanOwnerPhone = ownerFromWebhook.replace('@s.whatsapp.net', '')
+        supabase
+          .from('whatsapp_instances')
+          .update({ owner_phone: cleanOwnerPhone })
+          .eq('instance_name', instanceName)
+          .is('owner_phone', null)
+          .then(({ error: upErr }) => {
+            if (!upErr) console.log(`Auto-saved owner_phone ${cleanOwnerPhone} for ${instanceName}`)
+          })
+      }
+
       // Check wa_lastMessageType for call events arriving as chats/messages
       const lastMsgType = (body.chat?.wa_lastMessageType || '').toLowerCase()
       const msgMessageType = (body.message?.messageType || '').toLowerCase()
