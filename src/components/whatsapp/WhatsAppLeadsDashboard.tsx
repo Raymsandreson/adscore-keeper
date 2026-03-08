@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,26 +6,31 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
-import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch, AlertTriangle, Send, Loader2 } from 'lucide-react';
+import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch, AlertTriangle, Send, Loader2, ChevronRight, Phone, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 interface LeadWithMessages {
   id: string;
   lead_name: string;
+  lead_phone: string | null;
   source: string;
   status: string;
   created_at: string;
   campaign_name: string | null;
   adset_name: string | null;
   ad_name: string | null;
+  board_id: string | null;
   first_response_at?: string | null;
 }
 
 interface ConversationSummary {
   phone: string;
+  contactName: string | null;
   firstMessageAt: string;
   inboundCount: number;
   outboundCount: number;
@@ -35,6 +40,19 @@ interface ConversationSummary {
   instanceName: string | null;
   leadId: string | null;
   leadName: string | null;
+  leadPhone: string | null;
+}
+
+interface LeadFollowupDetail {
+  leadId: string;
+  leadName: string;
+  leadPhone: string | null;
+  outboundCount: number;
+  inboundCount: number;
+  lastOutboundAt: string | null;
+  instanceName: string | null;
+  stageName: string | null;
+  stageColor: string | null;
 }
 
 const PERIOD_OPTIONS = [
@@ -59,7 +77,17 @@ function getTimePeriod(hour: number): string {
   return 'Madrugada (00h-6h)';
 }
 
+function formatResponseTime(minutes: number): string {
+  if (minutes < 60) return `${minutes}min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+type SheetType = 'new_convs' | 'followups' | 'documents' | 'funnel' | 'slow_responses' | 'conversations' | 'qualified' | 'converted' | 'lead_followups' | null;
+
 export function WhatsAppLeadsDashboard() {
+  const navigate = useNavigate();
   const [leads, setLeads] = useState<LeadWithMessages[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,11 +99,16 @@ export function WhatsAppLeadsDashboard() {
   const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
-  const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; leads: { id: string; name: string; phone: string | null }[] }[]>([]);
-  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | 'slow_responses' | null>(null);
+  const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }[]>([]);
+  const [sheetOpen, setSheetOpen] = useState<SheetType>(null);
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
   const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
   const [sendingReport, setSendingReport] = useState(false);
+  const [leadFollowupDetails, setLeadFollowupDetails] = useState<LeadFollowupDetail[]>([]);
+
+  // Stage info map for reuse
+  const [stageInfoMap, setStageInfoMap] = useState<Map<string, { name: string; color: string }>>(new Map());
+  const [leadStageMap, setLeadStageMap] = useState<Map<string, { stageId: string; boardId: string }>>(new Map());
 
   useEffect(() => {
     fetchData();
@@ -113,13 +146,13 @@ export function WhatsAppLeadsDashboard() {
 
     let leadsQuery = supabase
       .from('leads')
-      .select('id, lead_name, source, status, created_at, campaign_name, adset_name, ad_name')
+      .select('id, lead_name, lead_phone, source, status, created_at, campaign_name, adset_name, ad_name, board_id')
       .gte('created_at', since)
       .order('created_at', { ascending: false });
     
     let msgsQuery = supabase
       .from('whatsapp_messages')
-      .select('id, phone, direction, created_at, lead_id, instance_name')
+      .select('id, phone, direction, created_at, lead_id, instance_name, contact_name')
       .gte('created_at', since)
       .order('created_at', { ascending: true });
 
@@ -133,7 +166,7 @@ export function WhatsAppLeadsDashboard() {
       msgsQuery,
       supabase
         .from('whatsapp_instances')
-        .select('id, instance_name, receive_leads, ad_account_name')
+        .select('id, instance_name, receive_leads, ad_account_name, owner_phone')
         .eq('is_active', true),
     ]);
 
@@ -144,14 +177,13 @@ export function WhatsAppLeadsDashboard() {
 
     // Fetch today's metrics for new cards
     fetchTodayMetrics();
-    fetchFunnelStages();
+    fetchFunnelStages(msgsRes.data || []);
   };
 
   const fetchTodayMetrics = async () => {
     const todayStart = startOfDay(new Date()).toISOString();
 
     const [newConvsRes, followupsRes, docsRes] = await Promise.all([
-      // New inbound conversations today (first message per phone)
       supabase
         .from('whatsapp_messages')
         .select('phone, contact_name, created_at, instance_name')
@@ -159,7 +191,6 @@ export function WhatsAppLeadsDashboard() {
         .gte('created_at', todayStart)
         .order('created_at', { ascending: true })
         .limit(500),
-      // Outbound follow-ups today
       supabase
         .from('whatsapp_messages')
         .select('phone, contact_name, created_at, instance_name')
@@ -167,7 +198,6 @@ export function WhatsAppLeadsDashboard() {
         .gte('created_at', todayStart)
         .order('created_at', { ascending: false })
         .limit(500),
-      // Documents generated today
       supabase
         .from('zapsign_documents')
         .select('id, document_name, template_name, signer_name, status, created_at')
@@ -175,7 +205,6 @@ export function WhatsAppLeadsDashboard() {
         .order('created_at', { ascending: false }),
     ]);
 
-    // Build unique new conversations (first inbound per phone today)
     if (newConvsRes.data) {
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }>();
       for (const msg of newConvsRes.data) {
@@ -186,7 +215,6 @@ export function WhatsAppLeadsDashboard() {
       setTodayNewConvs(Array.from(phoneMap.values()));
     }
 
-    // Build follow-ups (outbound messages grouped by phone)
     if (followupsRes.data) {
       const phoneMap = new Map<string, { phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }>();
       for (const msg of followupsRes.data) {
@@ -205,22 +233,19 @@ export function WhatsAppLeadsDashboard() {
     }
   };
 
-  const fetchFunnelStages = async () => {
+  const fetchFunnelStages = async (periodMessages: any[]) => {
     try {
-      // Get all boards with stages
       const { data: boardsData } = await supabase
         .from('kanban_boards')
         .select('id, name, stages');
 
       if (!boardsData || boardsData.length === 0) return;
 
-      // Get latest stage for each lead that has WhatsApp messages today
       const todayStart = startOfDay(new Date()).toISOString();
       
-      // Get leads with WhatsApp conversations
       const { data: whatsappLeads } = await supabase
         .from('whatsapp_messages')
-        .select('lead_id')
+        .select('lead_id, phone, direction, instance_name')
         .not('lead_id', 'is', null)
         .gte('created_at', todayStart)
         .limit(1000);
@@ -232,7 +257,23 @@ export function WhatsAppLeadsDashboard() {
 
       const uniqueLeadIds = [...new Set(whatsappLeads.map(m => m.lead_id).filter(Boolean))];
 
-      // Get lead info with board_id
+      // Build per-lead message counts
+      const leadMsgCounts = new Map<string, { outbound: number; inbound: number; lastAt: string | null }>();
+      for (const m of whatsappLeads) {
+        if (!m.lead_id) continue;
+        const existing = leadMsgCounts.get(m.lead_id);
+        if (!existing) {
+          leadMsgCounts.set(m.lead_id, {
+            outbound: m.direction === 'outbound' ? 1 : 0,
+            inbound: m.direction === 'inbound' ? 1 : 0,
+            lastAt: null,
+          });
+        } else {
+          if (m.direction === 'outbound') existing.outbound++;
+          else existing.inbound++;
+        }
+      }
+
       const { data: leadsData } = await supabase
         .from('leads')
         .select('id, lead_name, lead_phone, board_id')
@@ -240,46 +281,43 @@ export function WhatsAppLeadsDashboard() {
 
       if (!leadsData) return;
 
-      // Get latest stage for each lead from history
       const { data: stageHistory } = await supabase
         .from('lead_stage_history')
         .select('lead_id, to_stage, to_board_id, changed_at')
         .in('lead_id', uniqueLeadIds)
         .order('changed_at', { ascending: false });
 
-      // Build a map of lead_id -> latest stage
-      const leadStageMap = new Map<string, { stageId: string; boardId: string }>();
+      const localLeadStageMap = new Map<string, { stageId: string; boardId: string }>();
       if (stageHistory) {
         for (const h of stageHistory) {
-          if (!leadStageMap.has(h.lead_id)) {
-            leadStageMap.set(h.lead_id, { stageId: h.to_stage, boardId: h.to_board_id || '' });
+          if (!localLeadStageMap.has(h.lead_id)) {
+            localLeadStageMap.set(h.lead_id, { stageId: h.to_stage, boardId: h.to_board_id || '' });
           }
         }
       }
+      setLeadStageMap(localLeadStageMap);
 
-      // Build stage name map from boards
-      const stageInfoMap = new Map<string, { name: string; color: string }>();
+      const localStageInfoMap = new Map<string, { name: string; color: string }>();
       for (const board of boardsData) {
         const stages = board.stages as any[];
         if (stages) {
           for (const stage of stages) {
-            stageInfoMap.set(stage.id, { name: stage.name, color: stage.color || '#6b7280' });
+            localStageInfoMap.set(stage.id, { name: stage.name, color: stage.color || '#6b7280' });
           }
         }
       }
+      setStageInfoMap(localStageInfoMap);
 
-      // Group leads by stage
-      const stageGroups = new Map<string, { stageName: string; stageColor: string; leads: { id: string; name: string; phone: string | null }[] }>();
-      const noStageKey = '__no_stage__';
+      const stageGroups = new Map<string, { stageName: string; stageColor: string; msgCount: number; followupCount: number; leads: { id: string; name: string; phone: string | null; outboundMsgs: number; inboundMsgs: number; lastActivity: string | null }[] }>();
 
       for (const lead of leadsData) {
-        const stageInfo = leadStageMap.get(lead.id);
-        let stageKey = noStageKey;
+        const stageInfo = localLeadStageMap.get(lead.id);
+        let stageKey = '__no_stage__';
         let stageName = 'Sem etapa';
         let stageColor = '#6b7280';
 
         if (stageInfo) {
-          const info = stageInfoMap.get(stageInfo.stageId);
+          const info = localStageInfoMap.get(stageInfo.stageId);
           if (info) {
             stageKey = stageInfo.stageId;
             stageName = info.name;
@@ -287,13 +325,21 @@ export function WhatsAppLeadsDashboard() {
           }
         }
 
+        const counts = leadMsgCounts.get(lead.id) || { outbound: 0, inbound: 0, lastAt: null };
+
         if (!stageGroups.has(stageKey)) {
-          stageGroups.set(stageKey, { stageName, stageColor, leads: [] });
+          stageGroups.set(stageKey, { stageName, stageColor, msgCount: 0, followupCount: 0, leads: [] });
         }
-        stageGroups.get(stageKey)!.leads.push({
+        const group = stageGroups.get(stageKey)!;
+        group.msgCount += counts.outbound + counts.inbound;
+        group.followupCount += counts.outbound;
+        group.leads.push({
           id: lead.id,
           name: lead.lead_name || 'Sem nome',
           phone: lead.lead_phone,
+          outboundMsgs: counts.outbound,
+          inboundMsgs: counts.inbound,
+          lastActivity: counts.lastAt,
         });
       }
 
@@ -306,6 +352,48 @@ export function WhatsAppLeadsDashboard() {
       console.error('Error fetching funnel stages:', err);
     }
   };
+
+  // Build lead follow-up details from messages
+  const buildLeadFollowupDetails = useCallback(() => {
+    const leadMap = new Map<string, LeadFollowupDetail>();
+    
+    for (const msg of messages) {
+      if (!msg.lead_id) continue;
+      const existing = leadMap.get(msg.lead_id);
+      if (!existing) {
+        const lead = leads.find(l => l.id === msg.lead_id);
+        const stageData = leadStageMap.get(msg.lead_id);
+        const stageInfo = stageData ? stageInfoMap.get(stageData.stageId) : null;
+        leadMap.set(msg.lead_id, {
+          leadId: msg.lead_id,
+          leadName: lead?.lead_name || msg.contact_name || msg.phone,
+          leadPhone: lead?.lead_phone || msg.phone,
+          outboundCount: msg.direction === 'outbound' ? 1 : 0,
+          inboundCount: msg.direction === 'inbound' ? 1 : 0,
+          lastOutboundAt: msg.direction === 'outbound' ? msg.created_at : null,
+          instanceName: msg.instance_name,
+          stageName: stageInfo?.name || null,
+          stageColor: stageInfo?.color || null,
+        });
+      } else {
+        if (msg.direction === 'outbound') {
+          existing.outboundCount++;
+          existing.lastOutboundAt = msg.created_at;
+        } else {
+          existing.inboundCount++;
+        }
+      }
+    }
+
+    const details = Array.from(leadMap.values()).sort((a, b) => b.outboundCount - a.outboundCount);
+    setLeadFollowupDetails(details);
+  }, [messages, leads, leadStageMap, stageInfoMap]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      buildLeadFollowupDetails();
+    }
+  }, [messages, leads, leadStageMap, stageInfoMap, buildLeadFollowupDetails]);
 
   // Filter messages by selected instance
   const filteredMessages = useMemo(() => {
@@ -321,6 +409,7 @@ export function WhatsAppLeadsDashboard() {
       if (!existing) {
         phoneMap.set(msg.phone, {
           phone: msg.phone,
+          contactName: msg.contact_name || null,
           firstMessageAt: msg.created_at,
           inboundCount: msg.direction === 'inbound' ? 1 : 0,
           outboundCount: msg.direction === 'outbound' ? 1 : 0,
@@ -329,7 +418,8 @@ export function WhatsAppLeadsDashboard() {
           firstOutboundAt: msg.direction === 'outbound' ? msg.created_at : null,
           instanceName: msg.instance_name,
           leadId: msg.lead_id,
-          leadName: null,
+          leadName: msg.contact_name || null,
+          leadPhone: msg.phone,
         });
       } else {
         if (msg.direction === 'inbound') {
@@ -341,17 +431,16 @@ export function WhatsAppLeadsDashboard() {
           if (!existing.firstOutboundAt) existing.firstOutboundAt = msg.created_at;
         }
         if (!existing.leadId && msg.lead_id) existing.leadId = msg.lead_id;
+        if (!existing.contactName && msg.contact_name) existing.contactName = msg.contact_name;
       }
     });
     return Array.from(phoneMap.values());
   }, [filteredMessages]);
 
-  // Only inbound conversations (new contacts reaching out)
   const inboundConversations = useMemo(() => {
     return conversations.filter(c => c.inboundCount > 0);
   }, [conversations]);
 
-  // Get lead IDs that have messages from selected instance
   const filteredLeadIds = useMemo(() => {
     if (selectedInstance === 'all') return null;
     const ids = new Set<string>();
@@ -364,7 +453,6 @@ export function WhatsAppLeadsDashboard() {
     return leads.filter(l => filteredLeadIds.has(l.id));
   }, [leads, filteredLeadIds]);
 
-  // Calculate response metrics based on conversations (by phone), not just leads
   const responseMetrics = useMemo(() => {
     const responseTimes: number[] = [];
     
@@ -386,7 +474,6 @@ export function WhatsAppLeadsDashboard() {
     return { avgResponseTime, responseRate, responseTimes, leadsWithResponse: conversationsWithReply, leadsWithInbound: totalInbound };
   }, [inboundConversations]);
 
-  // Conversations by day (using first inbound message time)
   const leadsByDay = useMemo(() => {
     const dayMap = new Map<string, number>();
     inboundConversations.forEach(c => {
@@ -398,7 +485,6 @@ export function WhatsAppLeadsDashboard() {
       .reverse();
   }, [inboundConversations]);
 
-  // Conversations by time period
   const leadsByTimePeriod = useMemo(() => {
     const periodMap = new Map<string, number>();
     ['Madrugada (00h-6h)', 'Manhã (6h-12h)', 'Tarde (12h-18h)', 'Noite (18h-00h)'].forEach(p => periodMap.set(p, 0));
@@ -411,7 +497,6 @@ export function WhatsAppLeadsDashboard() {
     return Array.from(periodMap.entries()).map(([name, value]) => ({ name, value }));
   }, [inboundConversations]);
 
-  // Conversations by hour
   const leadsByHour = useMemo(() => {
     const hourMap = new Map<number, number>();
     for (let i = 0; i < 24; i++) hourMap.set(i, 0);
@@ -425,7 +510,6 @@ export function WhatsAppLeadsDashboard() {
     }));
   }, [inboundConversations]);
 
-  // Conversion metrics
   const conversionMetrics = useMemo(() => {
     const total = filteredLeads.length;
     const qualified = filteredLeads.filter(l => l.status === 'qualified' || l.status === 'converted').length;
@@ -435,12 +519,13 @@ export function WhatsAppLeadsDashboard() {
       total,
       qualified,
       converted,
+      qualifiedLeads: filteredLeads.filter(l => l.status === 'qualified' || l.status === 'converted'),
+      convertedLeads: filteredLeads.filter(l => l.status === 'converted'),
       qualificationRate: total > 0 ? Math.round((qualified / total) * 100) : 0,
       conversionRate: total > 0 ? Math.round((converted / total) * 100) : 0,
     };
   }, [filteredLeads]);
 
-  // 80/20 - Top campaigns
   const topCampaigns = useMemo(() => {
     const campaignMap = new Map<string, { count: number; converted: number }>();
     filteredLeads.forEach(l => {
@@ -462,7 +547,6 @@ export function WhatsAppLeadsDashboard() {
       .slice(0, 10);
   }, [filteredLeads]);
 
-  // Slow response buckets: conversations where first response took > 10min, 20min, 30min, 1h
   const slowResponseBuckets = useMemo(() => {
     const buckets = [
       { label: '> 10min', min: 10, conversations: [] as (ConversationSummary & { responseTime: number })[] },
@@ -482,7 +566,6 @@ export function WhatsAppLeadsDashboard() {
           });
         }
       } else if (conv.firstInboundAt && !conv.firstOutboundAt) {
-        // No response at all — add to all buckets
         const diff = differenceInMinutes(new Date(), parseISO(conv.firstInboundAt));
         buckets.forEach(b => {
           if (diff >= b.min) {
@@ -495,17 +578,34 @@ export function WhatsAppLeadsDashboard() {
     return buckets;
   }, [inboundConversations]);
 
-  // Send report via WhatsApp
+  // Navigate to lead
+  const openLead = (leadId: string, boardId?: string | null) => {
+    if (boardId) {
+      navigate(`/kanban?board=${boardId}&openLead=${leadId}`);
+    } else {
+      navigate(`/kanban?openLead=${leadId}`);
+    }
+  };
+
+  // Total follow-ups count
+  const totalFollowups = useMemo(() => {
+    return leadFollowupDetails.reduce((acc, l) => acc + l.outboundCount, 0);
+  }, [leadFollowupDetails]);
+
+  // Send enhanced report via WhatsApp
   const sendReport = async () => {
     setSendingReport(true);
     try {
-      // Find raymsandreson instance
       const rayInstance = instances.find(i => i.instance_name?.toLowerCase() === 'raymsandreson');
       if (!rayInstance) {
         toast.error('Instância "raymsandreson" não encontrada');
         setSendingReport(false);
         return;
       }
+
+      // Determine which instance the report is about
+      const reportInstanceName = selectedInstance === 'all' ? 'Todas' : selectedInstance;
+      const reportInstance = selectedInstance !== 'all' ? instances.find(i => i.instance_name === selectedInstance) : null;
 
       // Get all active instances with owner_phone
       const { data: allInstances } = await supabase
@@ -519,54 +619,141 @@ export function WhatsAppLeadsDashboard() {
         return;
       }
 
-      // Build report text
       const now = format(new Date(), 'dd/MM/yyyy HH:mm');
+      const periodLabel = PERIOD_OPTIONS.find(p => p.value === period)?.label || period;
+      
       const reportLines = [
-        `📊 *Relatório WhatsApp - ${now}*`,
+        `📊 *RELATÓRIO DE ATENDIMENTO*`,
+        `📅 ${periodLabel} — ${now}`,
+        `📱 Instância: *${reportInstanceName}*`,
         '',
-        `📱 *Conversas:* ${inboundConversations.length}`,
-        `💬 *Msgs totais:* ${filteredMessages.length}`,
-        `✅ *Taxa de Resposta:* ${responseMetrics.responseRate}% (${responseMetrics.leadsWithResponse}/${responseMetrics.leadsWithInbound})`,
-        `⏱ *Tempo Médio 1ª Resp:* ${responseMetrics.avgResponseTime < 60 ? `${responseMetrics.avgResponseTime}min` : `${Math.round(responseMetrics.avgResponseTime / 60)}h`}`,
-        `⚡ *Resp. < 5min:* ${responseMetrics.responseTimes.length > 0 ? Math.round((responseMetrics.responseTimes.filter(t => t < 5).length / responseMetrics.responseTimes.length) * 100) : 0}%`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `📈 *RESUMO GERAL*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `👥 Conversas: *${inboundConversations.length}*`,
+        `💬 Msgs totais: *${filteredMessages.length}*`,
+        `📤 Follow-ups enviados: *${totalFollowups}*`,
+        `✅ Taxa de Resposta: *${responseMetrics.responseRate}%* (${responseMetrics.leadsWithResponse}/${responseMetrics.leadsWithInbound})`,
+        `⏱ Tempo Médio 1ª Resp: *${formatResponseTime(responseMetrics.avgResponseTime)}*`,
+        `⚡ Resp. < 5min: *${responseMetrics.responseTimes.length > 0 ? Math.round((responseMetrics.responseTimes.filter(t => t < 5).length / responseMetrics.responseTimes.length) * 100) : 0}%*`,
         '',
-        `🔴 *Respostas Lentas:*`,
-        ...slowResponseBuckets.map(b => `  ${b.label}: ${b.conversations.length} conversas`),
-        '',
-        `🎯 *Qualificados:* ${conversionMetrics.qualified} (${conversionMetrics.qualificationRate}%)`,
-        `📈 *Convertidos:* ${conversionMetrics.converted} (${conversionMetrics.conversionRate}%)`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `🎯 *QUALIFICAÇÃO*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `✅ Qualificados: *${conversionMetrics.qualified}* (${conversionMetrics.qualificationRate}%)`,
+        `📈 Convertidos: *${conversionMetrics.converted}* (${conversionMetrics.conversionRate}%)`,
       ];
 
+      // Slow responses
+      const slowWithData = slowResponseBuckets.filter(b => b.conversations.length > 0);
+      if (slowWithData.length > 0) {
+        reportLines.push(
+          '',
+          `━━━━━━━━━━━━━━━━━━`,
+          `🔴 *RESPOSTAS LENTAS*`,
+          `━━━━━━━━━━━━━━━━━━`,
+        );
+        slowResponseBuckets.forEach(b => {
+          reportLines.push(`  ${b.label}: *${b.conversations.length}* conversas`);
+        });
+
+        // List leads without response
+        const noResponseConvs = slowResponseBuckets[3]?.conversations.filter(c => !c.firstOutboundAt) || [];
+        if (noResponseConvs.length > 0) {
+          reportLines.push('', '⚠️ *Sem resposta:*');
+          noResponseConvs.slice(0, 10).forEach(c => {
+            reportLines.push(`  • ${c.contactName || c.phone}`);
+          });
+        }
+      }
+
+      // Funnel stages with messages
       if (funnelStages.length > 0) {
-        reportLines.push('', '📊 *Funil Hoje:*');
+        reportLines.push(
+          '',
+          `━━━━━━━━━━━━━━━━━━`,
+          `📊 *FUNIL - POR ETAPA*`,
+          `━━━━━━━━━━━━━━━━━━`,
+        );
         funnelStages.forEach(s => {
-          reportLines.push(`  ${s.stageName}: ${s.count}`);
+          reportLines.push(`📍 *${s.stageName}:* ${s.count} leads | ${s.msgCount} msgs | ${s.followupCount} follow-ups`);
+          // List leads in each stage
+          s.leads.slice(0, 5).forEach(l => {
+            reportLines.push(`   └ ${l.name}${l.outboundMsgs > 0 ? ` (${l.outboundMsgs} enviadas, ${l.inboundMsgs} recebidas)` : ''}`);
+          });
+          if (s.leads.length > 5) {
+            reportLines.push(`   └ ... e mais ${s.leads.length - 5}`);
+          }
         });
       }
 
+      // Lead follow-up details (top 15)
+      if (leadFollowupDetails.length > 0) {
+        reportLines.push(
+          '',
+          `━━━━━━━━━━━━━━━━━━`,
+          `📞 *FOLLOW-UPS POR LEAD*`,
+          `━━━━━━━━━━━━━━━━━━`,
+        );
+        leadFollowupDetails.slice(0, 15).forEach((l, i) => {
+          const stageLabel = l.stageName ? ` [${l.stageName}]` : '';
+          reportLines.push(`${i + 1}. ${l.leadName}${stageLabel}: ${l.outboundCount} enviadas, ${l.inboundCount} recebidas`);
+        });
+        if (leadFollowupDetails.length > 15) {
+          reportLines.push(`... e mais ${leadFollowupDetails.length - 15} leads`);
+        }
+      }
+
+      // Today metrics
+      reportLines.push(
+        '',
+        `━━━━━━━━━━━━━━━━━━`,
+        `📅 *HOJE*`,
+        `━━━━━━━━━━━━━━━━━━`,
+        `🆕 Conversas Novas: *${todayNewConvs.length}*`,
+        `📤 Follow-ups: *${todayFollowups.length}* contatos`,
+        `📄 Documentos: *${todayDocs.length}*`,
+      );
+
       const reportText = reportLines.join('\n');
 
+      // Send logic: if a specific instance is selected, send to its owner; otherwise send to all
       let sentCount = 0;
       const sentPhones = new Set<string>();
 
-      for (const inst of allInstances) {
-        if (!inst.owner_phone || sentPhones.has(inst.owner_phone)) continue;
-        if (inst.id === rayInstance.id) continue; // Don't send to self
-        sentPhones.add(inst.owner_phone);
-
-        const personalReport = `${reportText}\n\n_Instância: ${inst.instance_name}_`;
-
+      if (reportInstance && reportInstance.owner_phone) {
+        // Send to the selected instance's owner
         try {
           await supabase.functions.invoke('send-whatsapp', {
             body: {
-              phone: inst.owner_phone,
-              message: personalReport,
+              phone: reportInstance.owner_phone,
+              message: reportText,
               instance_id: rayInstance.id,
             },
           });
           sentCount++;
         } catch (e) {
-          console.error(`Error sending report to ${inst.owner_phone}:`, e);
+          console.error(`Error sending report to ${reportInstance.owner_phone}:`, e);
+        }
+      } else {
+        // Send to all instance owners
+        for (const inst of allInstances) {
+          if (!inst.owner_phone || sentPhones.has(inst.owner_phone)) continue;
+          if (inst.id === rayInstance.id) continue;
+          sentPhones.add(inst.owner_phone);
+
+          try {
+            await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                phone: inst.owner_phone,
+                message: reportText,
+                instance_id: rayInstance.id,
+              },
+            });
+            sentCount++;
+          } catch (e) {
+            console.error(`Error sending report to ${inst.owner_phone}:`, e);
+          }
         }
       }
 
@@ -579,7 +766,6 @@ export function WhatsAppLeadsDashboard() {
     }
   };
 
-  // Leads by instance (for receiving instances)
   const leadsByInstance = useMemo(() => {
     const receiveInstances = instances.filter(i => i.receive_leads);
     if (receiveInstances.length === 0) return [];
@@ -597,7 +783,6 @@ export function WhatsAppLeadsDashboard() {
     }));
   }, [instances, messages]);
 
-  // Response time distribution
   const responseTimeDistribution = useMemo(() => {
     const buckets = [
       { label: '< 5min', max: 5, count: 0 },
@@ -613,6 +798,23 @@ export function WhatsAppLeadsDashboard() {
     });
     return buckets.map(b => ({ name: b.label, value: b.count }));
   }, [responseMetrics]);
+
+  // Clickable lead row component
+  const LeadRow = ({ lead, extra }: { lead: { id: string; name?: string; lead_name?: string; phone?: string | null; lead_phone?: string | null }; extra?: React.ReactNode }) => (
+    <div
+      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer group"
+      onClick={() => openLead(lead.id)}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate">{lead.name || lead.lead_name || 'Sem nome'}</p>
+        {(lead.phone || lead.lead_phone) && <p className="text-xs text-muted-foreground">{lead.phone || lead.lead_phone}</p>}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {extra}
+        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </div>
+  );
 
   if (loading) {
     return <div className="flex items-center justify-center py-12 text-muted-foreground">Carregando dashboard...</div>;
@@ -656,9 +858,9 @@ export function WhatsAppLeadsDashboard() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards - all clickable */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        <Card>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all" onClick={() => setSheetOpen('conversations')}>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
@@ -668,7 +870,7 @@ export function WhatsAppLeadsDashboard() {
             <p className="text-xs text-muted-foreground">{filteredMessages.length} msgs | {conversionMetrics.total} leads</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-green-500/30 transition-all" onClick={() => setSheetOpen('qualified')}>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <Target className="h-4 w-4 text-green-500" />
@@ -678,7 +880,7 @@ export function WhatsAppLeadsDashboard() {
             <Badge variant="outline" className="text-xs">{conversionMetrics.qualificationRate}%</Badge>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-blue-500/30 transition-all" onClick={() => setSheetOpen('converted')}>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <TrendingUp className="h-4 w-4 text-blue-500" />
@@ -704,12 +906,7 @@ export function WhatsAppLeadsDashboard() {
               <Timer className="h-4 w-4 text-purple-500" />
               <span className="text-xs text-muted-foreground">Tempo Médio</span>
             </div>
-            <p className="text-2xl font-bold">
-              {responseMetrics.avgResponseTime < 60
-                ? `${responseMetrics.avgResponseTime}min`
-                : `${Math.round(responseMetrics.avgResponseTime / 60)}h`
-              }
-            </p>
+            <p className="text-2xl font-bold">{formatResponseTime(responseMetrics.avgResponseTime)}</p>
             <p className="text-xs text-muted-foreground">1ª resposta</p>
           </CardContent>
         </Card>
@@ -730,7 +927,7 @@ export function WhatsAppLeadsDashboard() {
       </div>
 
       {/* Today's Action Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <Card 
           className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
           onClick={() => setSheetOpen('new_convs')}
@@ -741,7 +938,20 @@ export function WhatsAppLeadsDashboard() {
               <span className="text-xs text-muted-foreground">Conversas Novas Hoje</span>
             </div>
             <p className="text-2xl font-bold">{todayNewConvs.length}</p>
-            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+            <p className="text-xs text-muted-foreground">Clique para ver</p>
+          </CardContent>
+        </Card>
+        <Card 
+          className="cursor-pointer hover:ring-2 hover:ring-emerald-500/30 transition-all"
+          onClick={() => setSheetOpen('lead_followups')}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <PhoneForwarded className="h-4 w-4 text-emerald-500" />
+              <span className="text-xs text-muted-foreground">Follow-ups</span>
+            </div>
+            <p className="text-2xl font-bold">{totalFollowups}</p>
+            <p className="text-xs text-muted-foreground">{leadFollowupDetails.length} leads contactados</p>
           </CardContent>
         </Card>
         <Card 
@@ -750,29 +960,29 @@ export function WhatsAppLeadsDashboard() {
         >
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
-              <PhoneForwarded className="h-4 w-4 text-emerald-500" />
-              <span className="text-xs text-muted-foreground">Follow-ups Hoje</span>
+              <Phone className="h-4 w-4 text-blue-500" />
+              <span className="text-xs text-muted-foreground">Contatos Hoje</span>
             </div>
             <p className="text-2xl font-bold">{todayFollowups.length}</p>
-            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+            <p className="text-xs text-muted-foreground">telefones contatados</p>
           </CardContent>
         </Card>
         <Card 
-          className="cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+          className="cursor-pointer hover:ring-2 hover:ring-amber-500/30 transition-all"
           onClick={() => setSheetOpen('documents')}
         >
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">
               <FileSignature className="h-4 w-4 text-amber-500" />
-              <span className="text-xs text-muted-foreground">Documentos Gerados Hoje</span>
+              <span className="text-xs text-muted-foreground">Documentos Hoje</span>
             </div>
             <p className="text-2xl font-bold">{todayDocs.length}</p>
-            <p className="text-xs text-muted-foreground">Clique para ver a lista</p>
+            <p className="text-xs text-muted-foreground">Clique para ver</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Slow Response Cards */}
+      {/* Slow Response Cards + Report Button */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -788,7 +998,7 @@ export function WhatsAppLeadsDashboard() {
               disabled={sendingReport}
             >
               {sendingReport ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-              Enviar Relatório
+              Enviar Relatório {selectedInstance !== 'all' ? `(${selectedInstance})` : ''}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">Conversas com tempo de resposta acima do ideal</p>
@@ -815,7 +1025,7 @@ export function WhatsAppLeadsDashboard() {
         </CardContent>
       </Card>
 
-
+      {/* Funnel Stages with messages per stage */}
       {funnelStages.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -823,7 +1033,7 @@ export function WhatsAppLeadsDashboard() {
               <GitBranch className="h-4 w-4 text-primary" />
               Conversas por Etapa do Funil (Hoje)
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Leads com conversas ativas agrupados por etapa</p>
+            <p className="text-xs text-muted-foreground">Leads com conversas ativas · msgs enviadas · follow-ups</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -844,7 +1054,13 @@ export function WhatsAppLeadsDashboard() {
                       style={{ backgroundColor: stage.stageColor }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{stage.stageName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{stage.stageName}</p>
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span>💬 {stage.msgCount}</span>
+                          <span>📤 {stage.followupCount}</span>
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                           <div
@@ -858,6 +1074,7 @@ export function WhatsAppLeadsDashboard() {
                     <Badge variant="outline" className="text-xs font-bold">
                       {stage.count}
                     </Badge>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                 );
               })}
@@ -867,7 +1084,6 @@ export function WhatsAppLeadsDashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Leads por Dia */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Leads por Dia</CardTitle>
@@ -885,7 +1101,6 @@ export function WhatsAppLeadsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Leads por Período do Dia */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Leads por Período do Dia</CardTitle>
@@ -915,9 +1130,7 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
-      {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Leads por Hora */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Distribuição por Hora</CardTitle>
@@ -937,7 +1150,6 @@ export function WhatsAppLeadsDashboard() {
           </CardContent>
         </Card>
 
-        {/* Tempo de Resposta */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Distribuição do Tempo de Resposta</CardTitle>
@@ -1028,7 +1240,142 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       )}
 
-      {/* Side Panel Sheets */}
+      {/* ===== SHEETS ===== */}
+
+      {/* Conversations Sheet */}
+      <Sheet open={sheetOpen === 'conversations'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[500px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Conversas ({inboundConversations.length})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {inboundConversations.map((conv, i) => (
+                <div
+                  key={`${conv.phone}-${i}`}
+                  className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${conv.leadId ? 'cursor-pointer' : ''}`}
+                  onClick={() => conv.leadId && openLead(conv.leadId)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{conv.contactName || conv.phone}</p>
+                    <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-muted-foreground">📥 {conv.inboundCount}</span>
+                      <span className="text-[10px] text-muted-foreground">📤 {conv.outboundCount}</span>
+                      {conv.instanceName && <span className="text-[10px] text-muted-foreground">📱 {conv.instanceName}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {conv.hasOutboundReply ? (
+                      <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700 border-green-200">Respondida</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">Pendente</Badge>
+                    )}
+                    {conv.leadId && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                  </div>
+                </div>
+              ))}
+              {inboundConversations.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa no período</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Qualified Leads Sheet */}
+      <Sheet open={sheetOpen === 'qualified'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[500px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-green-500" />
+              Qualificados ({conversionMetrics.qualified})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {conversionMetrics.qualifiedLeads.map((lead) => (
+                <LeadRow key={lead.id} lead={lead} extra={
+                  <Badge variant="outline" className="text-[10px]">{lead.status}</Badge>
+                } />
+              ))}
+              {conversionMetrics.qualifiedLeads.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead qualificado no período</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Converted Leads Sheet */}
+      <Sheet open={sheetOpen === 'converted'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[500px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-blue-500" />
+              Convertidos ({conversionMetrics.converted})
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {conversionMetrics.convertedLeads.map((lead) => (
+                <LeadRow key={lead.id} lead={lead} />
+              ))}
+              {conversionMetrics.convertedLeads.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead convertido no período</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Lead Follow-ups Detail Sheet */}
+      <Sheet open={sheetOpen === 'lead_followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[500px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <PhoneForwarded className="h-5 w-5 text-emerald-500" />
+              Follow-ups por Lead ({totalFollowups} msgs)
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {leadFollowupDetails.map((detail) => (
+                <div
+                  key={detail.leadId}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer group"
+                  onClick={() => openLead(detail.leadId)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{detail.leadName}</p>
+                      {detail.stageName && (
+                        <Badge variant="outline" className="text-[10px] shrink-0" style={{ borderColor: detail.stageColor || undefined }}>
+                          {detail.stageName}
+                        </Badge>
+                      )}
+                    </div>
+                    {detail.leadPhone && <p className="text-xs text-muted-foreground">{detail.leadPhone}</p>}
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-[10px] text-emerald-600 font-medium">📤 {detail.outboundCount} enviadas</span>
+                      <span className="text-[10px] text-blue-600">📥 {detail.inboundCount} recebidas</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
+              ))}
+              {leadFollowupDetails.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum follow-up no período</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* New Conversations Today Sheet */}
       <Sheet open={sheetOpen === 'new_convs'} onOpenChange={(open) => !open && setSheetOpen(null)}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
@@ -1059,12 +1406,13 @@ export function WhatsAppLeadsDashboard() {
         </SheetContent>
       </Sheet>
 
+      {/* Follow-ups Today Sheet (by phone) */}
       <Sheet open={sheetOpen === 'followups'} onOpenChange={(open) => !open && setSheetOpen(null)}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
-              <PhoneForwarded className="h-5 w-5 text-emerald-500" />
-              Follow-ups Hoje ({todayFollowups.length})
+              <Phone className="h-5 w-5 text-blue-500" />
+              Contatos Hoje ({todayFollowups.length})
             </SheetTitle>
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
@@ -1092,6 +1440,7 @@ export function WhatsAppLeadsDashboard() {
         </SheetContent>
       </Sheet>
 
+      {/* Documents Sheet */}
       <Sheet open={sheetOpen === 'documents'} onOpenChange={(open) => !open && setSheetOpen(null)}>
         <SheetContent className="w-[400px] sm:w-[450px]">
           <SheetHeader>
@@ -1102,7 +1451,6 @@ export function WhatsAppLeadsDashboard() {
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
             <div className="space-y-2 pr-4">
-              {/* Group by template_name */}
               {(() => {
                 const grouped = new Map<string, typeof todayDocs>();
                 for (const doc of todayDocs) {
@@ -1143,9 +1491,9 @@ export function WhatsAppLeadsDashboard() {
         </SheetContent>
       </Sheet>
 
-      {/* Funnel Stage Sheet */}
+      {/* Funnel Stage Sheet - with lead details */}
       <Sheet open={sheetOpen === 'funnel'} onOpenChange={(open) => !open && setSheetOpen(null)}>
-        <SheetContent className="w-[400px] sm:w-[450px]">
+        <SheetContent className="w-[400px] sm:w-[500px]">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <GitBranch className="h-5 w-5 text-primary" />
@@ -1154,17 +1502,47 @@ export function WhatsAppLeadsDashboard() {
           </SheetHeader>
           <ScrollArea className="h-[calc(100vh-100px)] mt-4">
             <div className="space-y-2 pr-4">
-              {funnelStages
-                .filter(s => s.stageName === selectedFunnelStage)
-                .flatMap(s => s.leads)
-                .map((lead, i) => (
-                  <div key={`${lead.id}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{lead.name}</p>
-                      {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+              {(() => {
+                const stageData = funnelStages.find(s => s.stageName === selectedFunnelStage);
+                if (!stageData) return null;
+                return (
+                  <>
+                    <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 mb-3">
+                      <div className="text-center">
+                        <p className="text-lg font-bold">{stageData.count}</p>
+                        <p className="text-[10px] text-muted-foreground">leads</p>
+                      </div>
+                      <Separator orientation="vertical" className="h-8" />
+                      <div className="text-center">
+                        <p className="text-lg font-bold">{stageData.msgCount}</p>
+                        <p className="text-[10px] text-muted-foreground">msgs totais</p>
+                      </div>
+                      <Separator orientation="vertical" className="h-8" />
+                      <div className="text-center">
+                        <p className="text-lg font-bold">{stageData.followupCount}</p>
+                        <p className="text-[10px] text-muted-foreground">follow-ups</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                    {stageData.leads.map((lead, i) => (
+                      <div
+                        key={`${lead.id}-${i}`}
+                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer group"
+                        onClick={() => openLead(lead.id)}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{lead.name}</p>
+                          {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-[10px] text-emerald-600">📤 {lead.outboundMsgs}</span>
+                            <span className="text-[10px] text-blue-600">📥 {lead.inboundMsgs}</span>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
               {funnelStages.filter(s => s.stageName === selectedFunnelStage).flatMap(s => s.leads).length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead nesta etapa</p>
               )}
@@ -1189,15 +1567,19 @@ export function WhatsAppLeadsDashboard() {
                 ?.conversations
                 .sort((a, b) => b.responseTime - a.responseTime)
                 .map((conv, i) => (
-                  <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div
+                    key={`${conv.phone}-${i}`}
+                    className={`flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${conv.leadId ? 'cursor-pointer' : ''}`}
+                    onClick={() => conv.leadId && openLead(conv.leadId)}
+                  >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{conv.leadName || conv.phone}</p>
+                      <p className="text-sm font-medium truncate">{conv.contactName || conv.leadName || conv.phone}</p>
                       <p className="text-xs text-muted-foreground">{conv.phone}</p>
                       {conv.instanceName && <p className="text-[10px] text-muted-foreground">{conv.instanceName}</p>}
                     </div>
                     <div className="text-right shrink-0 ml-2">
                       <Badge variant={conv.responseTime >= 60 ? 'destructive' : 'outline'} className="text-xs">
-                        {conv.responseTime >= 60 ? `${Math.round(conv.responseTime / 60)}h${conv.responseTime % 60 > 0 ? `${conv.responseTime % 60}m` : ''}` : `${conv.responseTime}min`}
+                        {formatResponseTime(conv.responseTime)}
                       </Badge>
                       {!conv.firstOutboundAt && (
                         <p className="text-[10px] text-destructive mt-0.5">Sem resposta</p>
