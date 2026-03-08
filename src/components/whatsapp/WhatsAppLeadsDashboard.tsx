@@ -114,6 +114,11 @@ export function WhatsAppLeadsDashboard() {
     fetchData();
   }, [period]);
 
+  // Re-fetch today metrics when instance filter changes
+  useEffect(() => {
+    fetchTodayMetrics();
+  }, [selectedInstance]);
+
   const fetchData = async () => {
     setLoading(true);
     const now = new Date();
