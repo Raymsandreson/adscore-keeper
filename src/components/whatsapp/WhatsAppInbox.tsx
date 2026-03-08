@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot } from 'lucide-react';
+import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -107,6 +108,7 @@ export function WhatsAppInbox() {
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
