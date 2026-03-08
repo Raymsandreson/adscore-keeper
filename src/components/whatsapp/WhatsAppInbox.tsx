@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot } from 'lucide-react';
+import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -107,6 +108,7 @@ export function WhatsAppInbox() {
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
+  const [showAgents, setShowAgents] = useState(false);
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -589,6 +591,20 @@ export function WhatsAppInbox() {
     );
   }
 
+  if (showAgents) {
+    return (
+      <div className="h-screen flex flex-col">
+        <div className="flex items-center gap-3 p-4 border-b bg-card">
+          <Button variant="ghost" size="sm" onClick={() => setShowAgents(false)}>← Voltar</Button>
+          <h1 className="text-lg font-semibold">Agentes IA</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
+          <WhatsAppAIAgents />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col relative">
       {/* Header */}
@@ -704,6 +720,9 @@ export function WhatsAppInbox() {
             disabled={loading}
           >
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => setShowAgents(true)} title="Agentes IA">
+            <Bot className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowSetup(true)} title="Configuração">
             <Settings className="h-4 w-4" />

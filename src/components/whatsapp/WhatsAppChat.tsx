@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle } from 'lucide-react';
+import { WhatsAppAgentToggle } from './WhatsAppAgentToggle';
 import { ZapSignDocumentDialog } from './ZapSignDocumentDialog';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
@@ -674,6 +675,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           </CopyableText>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {conversation.instance_name && (
+            <WhatsAppAgentToggle phone={conversation.phone} instanceName={conversation.instance_name} />
+          )}
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {conversation.lead_id && <Badge variant="outline" className="text-[10px] gap-1 text-blue-600 px-1.5 py-0"><Link2 className="h-3 w-3" /> Lead</Badge>}
           <DropdownMenu>
