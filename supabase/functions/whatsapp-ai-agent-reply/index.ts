@@ -142,6 +142,35 @@ serve(async (req) => {
         });
       }
 
+      // Get knowledge base documents for this agent
+      const { data: knowledgeDocs } = await supabase
+        .from("agent_knowledge_documents")
+        .select("file_name, extracted_text")
+        .eq("agent_id", (agent as any).id)
+        .eq("status", "ready");
+
+      let knowledgeContext = "";
+      if (knowledgeDocs && knowledgeDocs.length > 0) {
+        const docTexts = (knowledgeDocs as any[])
+          .filter((d: any) => d.extracted_text?.trim())
+          .map((d: any) => `--- Documento: ${d.file_name} ---\n${d.extracted_text}`)
+          .join("\n\n");
+        
+        if (docTexts) {
+          // Limit total knowledge context to ~30k chars to stay within token limits
+          const maxKnowledgeChars = 30000;
+          knowledgeContext = docTexts.length > maxKnowledgeChars 
+            ? docTexts.substring(0, maxKnowledgeChars) + "\n[... base de conhecimento truncada]"
+            : docTexts;
+        }
+      }
+
+      // Build system prompt with knowledge base
+      let systemPrompt = (agent as any).base_prompt;
+      if (knowledgeContext) {
+        systemPrompt += "\n\n=== BASE DE CONHECIMENTO ===\nUse as informações abaixo como referência para responder perguntas. Baseie suas respostas nestes documentos quando relevante:\n\n" + knowledgeContext + "\n\n=== FIM DA BASE DE CONHECIMENTO ===";
+      }
+
       // Get recent context
       const { data: recentMessages } = await supabase
         .from("whatsapp_messages")
@@ -165,7 +194,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: (agent as any).model,
           messages: [
-            { role: "system", content: (agent as any).base_prompt },
+            { role: "system", content: systemPrompt },
             ...contextMessages,
           ],
           max_tokens: (agent as any).max_tokens,
