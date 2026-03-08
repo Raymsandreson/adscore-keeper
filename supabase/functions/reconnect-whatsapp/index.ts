@@ -16,7 +16,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { instance_id, action } = await req.json();
+    const { instance_id, action, phone: inputPhone } = await req.json();
 
     if (!instance_id) {
       return new Response(JSON.stringify({ error: "instance_id required" }), {
@@ -182,9 +182,9 @@ serve(async (req) => {
 
     if (action === "pairing_code") {
       // UazAPI V2: POST /instance/connect com phone = gera código de pareamento
-      let ownerPhone = inst.owner_phone;
+      let ownerPhone = inst.owner_phone || inputPhone || null;
       
-      // Se não tem owner_phone cadastrado, tenta buscar do status da instância
+      // Se não tem owner_phone, tenta buscar do status da instância
       if (!ownerPhone) {
         try {
           const statusResp = await fetch(`${baseUrl}/instance/status`, {
@@ -193,9 +193,7 @@ serve(async (req) => {
             signal: AbortSignal.timeout(10000),
           });
           const statusData = await statusResp.json().catch(() => null);
-          // UazAPI V2 returns nested instance object
-          ownerPhone = statusData?.instance?.owner || statusData?.instance?.phone || statusData?.owner || statusData?.phone || statusData?.number || null;
-          // Clean phone: remove @ suffix if present (e.g. "5511999@s.whatsapp.net")
+          ownerPhone = statusData?.instance?.owner || statusData?.instance?.phone || statusData?.owner || statusData?.phone || null;
           if (ownerPhone && ownerPhone.includes('@')) {
             ownerPhone = ownerPhone.split('@')[0];
           }
@@ -209,11 +207,24 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: false,
           action: "pairing_code",
-          message: "Instância não possui telefone cadastrado. Cadastre o owner_phone primeiro.",
+          needs_phone: true,
+          message: "Informe o número do telefone desta instância para gerar o código de pareamento.",
         }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+
+      // Clean phone
+      ownerPhone = ownerPhone.replace(/\D/g, '');
+
+      // Save owner_phone for future use
+      if (!inst.owner_phone && ownerPhone) {
+        await supabase
+          .from("whatsapp_instances")
+          .update({ owner_phone: ownerPhone })
+          .eq("id", instance_id);
+        console.log(`Saved owner_phone ${ownerPhone} for instance ${inst.instance_name}`);
       }
 
       try {
