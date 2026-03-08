@@ -24,7 +24,7 @@ export function FloatingDock({ onOpenNav, onOpenWhatsApp, onOpenAIChat, navOpen 
     try { localStorage.setItem(DOCK_COLLAPSED_KEY, String(collapsed)); } catch {}
   }, [collapsed]);
 
-  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install', '/whatsapp'];
+  const hiddenRoutes = ['/login', '/reset-password', '/privacy', '/expense-form', '/install'];
   if (!user || hiddenRoutes.some(r => location.pathname.startsWith(r))) return null;
 
   const items = [
