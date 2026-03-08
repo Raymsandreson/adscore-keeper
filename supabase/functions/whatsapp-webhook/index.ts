@@ -1028,6 +1028,7 @@ Deno.serve(async (req) => {
             phone,
             instance_name: instanceName,
             message_text: messageText,
+            lead_id: leadId || null,
           }),
         }).catch(err => console.error('AI agent reply trigger error:', err))
       } catch (e) {
