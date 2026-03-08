@@ -260,6 +260,84 @@ Deno.serve(async (req) => {
         } catch (whatsappErr) {
           console.error('Error sending PDF via WhatsApp:', whatsappErr)
         }
+
+        // ====================================================
+        // SEND MEETING SCHEDULING SLOTS via WhatsApp
+        // ====================================================
+        try {
+          // Get available slots from Google Calendar
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+          const slotsRes = await fetch(`${supabaseUrl}/functions/v1/get-available-slots`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+            },
+            body: JSON.stringify({
+              user_id: localDoc.created_by,
+              days_ahead: 5,
+              slot_duration_minutes: 30,
+            }),
+          })
+
+          const slotsData = await slotsRes.json()
+
+          if (slotsData?.slots?.length > 0) {
+            const docName = localDoc.document_name || 'Procuração'
+            const signerName = localDoc.signer_name || 'Cliente'
+
+            // Group slots by date
+            const slotsByDate: Record<string, string[]> = {}
+            for (const slot of slotsData.slots) {
+              if (!slotsByDate[slot.date]) slotsByDate[slot.date] = []
+              slotsByDate[slot.date].push(slot.time)
+            }
+
+            let slotsText = ''
+            for (const [date, times] of Object.entries(slotsByDate)) {
+              slotsText += `\n📅 *${date}*: ${(times as string[]).join(' | ')}`
+            }
+
+            const meetingMessage = `🤝 *Reunião de Boas-Vindas*\n\nOlá! Agora que a *${docName}* foi assinada, gostaríamos de agendar sua reunião de boas-vindas.\n\n⏰ *Horários disponíveis:*${slotsText}\n\n✅ Responda com o *dia e horário* de sua preferência e confirmaremos o agendamento!\n\n_Prudência Advocacia_`
+
+            const { data: instForMeeting } = await supabase
+              .from('whatsapp_instances')
+              .select('*')
+              .eq('is_active', true)
+              .limit(1)
+              .single()
+
+            if (instForMeeting) {
+              const meetBaseUrl = instForMeeting.base_url || 'https://abraci.uazapi.com'
+              await fetch(`${meetBaseUrl}/send/text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'token': instForMeeting.instance_token },
+                body: JSON.stringify({
+                  number: localDoc.whatsapp_phone,
+                  text: meetingMessage,
+                }),
+              })
+
+              await supabase.from('whatsapp_messages').insert({
+                phone: localDoc.whatsapp_phone,
+                message_text: meetingMessage,
+                message_type: 'text',
+                direction: 'outbound',
+                status: 'sent',
+                contact_id: localDoc.contact_id || null,
+                lead_id: localDoc.lead_id || null,
+                instance_name: instForMeeting.instance_name,
+                instance_token: instForMeeting.instance_token,
+              })
+
+              console.log('Meeting scheduling message sent to:', localDoc.whatsapp_phone)
+            }
+          } else {
+            console.log('No available slots found or Google not connected, skipping meeting message')
+          }
+        } catch (meetingErr) {
+          console.error('Error sending meeting scheduling message:', meetingErr)
+        }
       }
     }
 
