@@ -5425,6 +5425,60 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_ai_agents: {
+        Row: {
+          base_prompt: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          max_tokens: number
+          model: string
+          name: string
+          provider: string
+          read_messages: boolean
+          sign_messages: boolean
+          temperature: number
+          uazapi_agent_id: string | null
+          uazapi_config: Json | null
+          updated_at: string
+        }
+        Insert: {
+          base_prompt?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model?: string
+          name: string
+          provider?: string
+          read_messages?: boolean
+          sign_messages?: boolean
+          temperature?: number
+          uazapi_agent_id?: string | null
+          uazapi_config?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          base_prompt?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_tokens?: number
+          model?: string
+          name?: string
+          provider?: string
+          read_messages?: boolean
+          sign_messages?: boolean
+          temperature?: number
+          uazapi_agent_id?: string | null
+          uazapi_config?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_broadcast_list_contacts: {
         Row: {
           contact_id: string | null
@@ -5615,6 +5669,47 @@ export type Database = {
             columns: ["broadcast_list_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_broadcast_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversation_agents: {
+        Row: {
+          activated_by: string | null
+          agent_id: string
+          created_at: string
+          id: string
+          instance_name: string
+          is_active: boolean
+          phone: string
+          updated_at: string
+        }
+        Insert: {
+          activated_by?: string | null
+          agent_id: string
+          created_at?: string
+          id?: string
+          instance_name: string
+          is_active?: boolean
+          phone: string
+          updated_at?: string
+        }
+        Update: {
+          activated_by?: string | null
+          agent_id?: string
+          created_at?: string
+          id?: string
+          instance_name?: string
+          is_active?: boolean
+          phone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversation_agents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
             referencedColumns: ["id"]
           },
         ]
