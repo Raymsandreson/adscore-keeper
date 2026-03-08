@@ -1,0 +1,179 @@
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { 
+  Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
+  ChevronRight, Shield, Zap
+} from 'lucide-react';
+import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
+import { WhatsAppReportSettings } from './WhatsAppReportSettings';
+import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
+import { WhatsAppAIAgents } from './WhatsAppAIAgents';
+
+interface Tab {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  description: string;
+  badge?: string;
+  badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
+  accentColor: string;
+}
+
+const tabs: Tab[] = [
+  {
+    id: 'agents',
+    label: 'Agentes IA',
+    icon: <Bot className="h-5 w-5" />,
+    description: 'Configure assistentes inteligentes',
+    badge: '✨ Popular',
+    badgeVariant: 'default',
+    accentColor: 'text-violet-500',
+  },
+  {
+    id: 'reports',
+    label: 'Relatórios',
+    icon: <BarChart3 className="h-5 w-5" />,
+    description: 'Automatize envios periódicos',
+    accentColor: 'text-blue-500',
+  },
+  {
+    id: 'ads',
+    label: 'Anúncios',
+    icon: <Megaphone className="h-5 w-5" />,
+    description: 'Vincule instâncias a contas de anúncios',
+    accentColor: 'text-orange-500',
+  },
+  {
+    id: 'integration',
+    label: 'Integração',
+    icon: <Webhook className="h-5 w-5" />,
+    description: 'Webhooks, payload e n8n',
+    accentColor: 'text-emerald-500',
+  },
+];
+
+interface Props {
+  onBack: () => void;
+  initialTab?: string;
+}
+
+export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  return (
+    <div className="h-screen flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+          <ArrowLeft className="h-4 w-4" />
+          Voltar
+        </Button>
+        <div className="flex items-center gap-2">
+          <Shield className="h-5 w-5 text-primary" />
+          <h1 className="text-lg font-semibold">Configurações</h1>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Sidebar - lateral tabs (desktop) */}
+        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+          <nav className="p-3 space-y-1 flex-1">
+            <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider px-3 mb-3">
+              WhatsApp
+            </p>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 group',
+                  activeTab === tab.id
+                    ? 'bg-primary/10 text-primary shadow-sm border border-primary/20'
+                    : 'hover:bg-muted/80 text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <div className={cn(
+                  'shrink-0 transition-colors',
+                  activeTab === tab.id ? 'text-primary' : tab.accentColor
+                )}>
+                  {tab.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{tab.label}</span>
+                    {tab.badge && (
+                      <Badge variant={tab.badgeVariant || 'secondary'} className="text-[9px] h-4 px-1.5 shrink-0">
+                        {tab.badge}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                    {tab.description}
+                  </p>
+                </div>
+                <ChevronRight className={cn(
+                  'h-4 w-4 shrink-0 transition-transform',
+                  activeTab === tab.id ? 'text-primary rotate-90' : 'text-muted-foreground/40'
+                )} />
+              </button>
+            ))}
+          </nav>
+
+          {/* Social proof / Bandwagon Effect */}
+          <div className="mx-3 mb-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Zap className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-semibold text-primary">Dica Pro</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Configure um Agente IA para responder leads automaticamente e aumente em até 3x sua taxa de conversão.
+            </p>
+          </div>
+        </aside>
+
+        {/* Mobile horizontal tabs */}
+        <div className="md:hidden border-b bg-muted/30 shrink-0 w-full absolute z-10 overflow-x-auto">
+          <div className="flex p-2 gap-1 min-w-max">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all',
+                  activeTab === tab.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content area */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-6 max-w-3xl mx-auto w-full md:pt-6 pt-16">
+            <div className="mb-6">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                {tabs.find(t => t.id === activeTab)?.icon}
+                {tabs.find(t => t.id === activeTab)?.label}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {tabs.find(t => t.id === activeTab)?.description}
+              </p>
+            </div>
+
+            {activeTab === 'agents' && <WhatsAppAIAgents />}
+            {activeTab === 'reports' && <WhatsAppReportSettings />}
+            {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
+            {activeTab === 'integration' && <WhatsAppSetupGuide />}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}

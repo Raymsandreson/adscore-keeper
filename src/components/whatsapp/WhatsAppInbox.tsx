@@ -4,6 +4,7 @@ import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
 import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppChat } from './WhatsAppChat';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
+import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot } from 'lucide-react';
-import { WhatsAppAIAgents } from './WhatsAppAIAgents';
+
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { supabase } from '@/integrations/supabase/client';
@@ -109,6 +110,7 @@ export function WhatsAppInbox() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
   const [showAgents, setShowAgents] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<string>('agents');
   // Side panel state
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
@@ -549,59 +551,12 @@ export function WhatsAppInbox() {
     refetch();
   };
 
-  if (showSetup) {
+  if (showSetup || showAgents) {
     return (
-      <div className="h-screen flex flex-col">
-        <div className="flex items-center gap-3 p-4 border-b bg-card">
-          <Button variant="ghost" size="sm" onClick={() => setShowSetup(false)}>← Voltar</Button>
-          <h1 className="text-lg font-semibold">Configuração WhatsApp</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <WhatsAppSetupGuide />
-        </div>
-      </div>
-    );
-  }
-
-  if (showDashboard) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="flex items-center gap-3 p-4 border-b bg-card">
-          <Button variant="ghost" size="sm" onClick={() => setShowDashboard(false)}>← Voltar</Button>
-          <h1 className="text-lg font-semibold">Dashboard de Leads</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          <WhatsAppLeadsDashboard />
-        </div>
-      </div>
-    );
-  }
-
-  if (showGooglePanel) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="flex items-center gap-3 p-4 border-b bg-card">
-          <Button variant="ghost" size="sm" onClick={() => setShowGooglePanel(false)}>← Voltar</Button>
-          <h1 className="text-lg font-semibold">Google Workspace</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 max-w-xl mx-auto w-full">
-          <GoogleIntegrationPanel />
-        </div>
-      </div>
-    );
-  }
-
-  if (showAgents) {
-    return (
-      <div className="h-screen flex flex-col">
-        <div className="flex items-center gap-3 p-4 border-b bg-card">
-          <Button variant="ghost" size="sm" onClick={() => setShowAgents(false)}>← Voltar</Button>
-          <h1 className="text-lg font-semibold">Agentes IA</h1>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
-          <WhatsAppAIAgents />
-        </div>
-      </div>
+      <WhatsAppSettingsPage 
+        onBack={() => { setShowSetup(false); setShowAgents(false); }} 
+        initialTab={showAgents ? 'agents' : settingsTab}
+      />
     );
   }
 
@@ -724,7 +679,7 @@ export function WhatsAppInbox() {
           <Button variant="ghost" size="icon" onClick={() => setShowAgents(true)} title="Agentes IA">
             <Bot className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowSetup(true)} title="Configuração">
+          <Button variant="ghost" size="icon" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }} title="Configuração">
             <Settings className="h-4 w-4" />
           </Button>
         </div>
@@ -955,7 +910,7 @@ export function WhatsAppInbox() {
                     {conversations.length === 0 && !loading && (
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">Nenhuma mensagem encontrada</p>
-                        <Button variant="outline" size="sm" onClick={() => setShowSetup(true)}>
+                        <Button variant="outline" size="sm" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }}>
                           Configurar integração
                         </Button>
                       </div>
