@@ -31,7 +31,8 @@ serve(async (req) => {
         }
         try {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          const resp = await fetch(`${baseUrl}/status?token=${inst.instance_token}`, {
+          const resp = await fetch(`${baseUrl}/status`, {
+            headers: { "token": inst.instance_token },
             signal: AbortSignal.timeout(5000),
           });
           if (!resp.ok) {
