@@ -207,9 +207,9 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       </div>
 
       {/* Action buttons */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div 
-          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+          className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
           onClick={() => fileInputRef.current?.click()}
         >
           <input
@@ -221,29 +221,46 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
           />
           {uploading ? (
             <div className="flex flex-col items-center gap-1">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <p className="text-[10px] text-muted-foreground">Enviando...</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-1">
-              <Upload className="h-6 w-6 text-muted-foreground" />
-              <p className="text-xs font-medium">Upload PDF</p>
-              <p className="text-[10px] text-muted-foreground">Máx 20MB</p>
+              <Upload className="h-5 w-5 text-muted-foreground" />
+              <p className="text-[10px] font-medium">Upload PDF</p>
             </div>
           )}
         </div>
 
         <div 
-          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
-          onClick={() => setShowTextInput(!showTextInput)}
+          className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+          onClick={() => { setShowTextInput(!showTextInput); setShowAIGenerator(false); }}
         >
           <div className="flex flex-col items-center gap-1">
-            <Type className="h-6 w-6 text-muted-foreground" />
-            <p className="text-xs font-medium">Colar Texto</p>
-            <p className="text-[10px] text-emerald-600 font-medium">⚡ Recomendado</p>
+            <Type className="h-5 w-5 text-muted-foreground" />
+            <p className="text-[10px] font-medium">Colar Texto</p>
+          </div>
+        </div>
+
+        <div 
+          className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors bg-primary/5"
+          onClick={() => { setShowAIGenerator(!showAIGenerator); setShowTextInput(false); }}
+        >
+          <div className="flex flex-col items-center gap-1">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <p className="text-[10px] font-medium text-primary">Gerar com IA</p>
           </div>
         </div>
       </div>
+
+      {/* AI Generator */}
+      {showAIGenerator && (
+        <AIKnowledgeGenerator
+          agentId={agentId}
+          onSaved={fetchDocs}
+          onClose={() => setShowAIGenerator(false)}
+        />
+      )}
 
       {/* Text input area */}
       {showTextInput && (
