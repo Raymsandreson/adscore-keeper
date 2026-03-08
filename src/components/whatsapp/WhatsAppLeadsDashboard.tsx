@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
-import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink } from 'lucide-react';
+import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -69,7 +69,9 @@ export function WhatsAppLeadsDashboard() {
   const [todayNewConvs, setTodayNewConvs] = useState<{ phone: string; contact_name: string | null; first_message_at: string; instance_name: string | null }[]>([]);
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
-  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | null>(null);
+  const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; leads: { id: string; name: string; phone: string | null }[] }[]>([]);
+  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | null>(null);
+  const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -138,6 +140,7 @@ export function WhatsAppLeadsDashboard() {
 
     // Fetch today's metrics for new cards
     fetchTodayMetrics();
+    fetchFunnelStages();
   };
 
   const fetchTodayMetrics = async () => {
@@ -195,6 +198,108 @@ export function WhatsAppLeadsDashboard() {
 
     if (docsRes.data) {
       setTodayDocs(docsRes.data as any[]);
+    }
+  };
+
+  const fetchFunnelStages = async () => {
+    try {
+      // Get all boards with stages
+      const { data: boardsData } = await supabase
+        .from('kanban_boards')
+        .select('id, name, stages');
+
+      if (!boardsData || boardsData.length === 0) return;
+
+      // Get latest stage for each lead that has WhatsApp messages today
+      const todayStart = startOfDay(new Date()).toISOString();
+      
+      // Get leads with WhatsApp conversations
+      const { data: whatsappLeads } = await supabase
+        .from('whatsapp_messages')
+        .select('lead_id')
+        .not('lead_id', 'is', null)
+        .gte('created_at', todayStart)
+        .limit(1000);
+
+      if (!whatsappLeads || whatsappLeads.length === 0) {
+        setFunnelStages([]);
+        return;
+      }
+
+      const uniqueLeadIds = [...new Set(whatsappLeads.map(m => m.lead_id).filter(Boolean))];
+
+      // Get lead info with board_id
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('id, lead_name, lead_phone, board_id')
+        .in('id', uniqueLeadIds);
+
+      if (!leadsData) return;
+
+      // Get latest stage for each lead from history
+      const { data: stageHistory } = await supabase
+        .from('lead_stage_history')
+        .select('lead_id, to_stage, to_board_id, changed_at')
+        .in('lead_id', uniqueLeadIds)
+        .order('changed_at', { ascending: false });
+
+      // Build a map of lead_id -> latest stage
+      const leadStageMap = new Map<string, { stageId: string; boardId: string }>();
+      if (stageHistory) {
+        for (const h of stageHistory) {
+          if (!leadStageMap.has(h.lead_id)) {
+            leadStageMap.set(h.lead_id, { stageId: h.to_stage, boardId: h.to_board_id || '' });
+          }
+        }
+      }
+
+      // Build stage name map from boards
+      const stageInfoMap = new Map<string, { name: string; color: string }>();
+      for (const board of boardsData) {
+        const stages = board.stages as any[];
+        if (stages) {
+          for (const stage of stages) {
+            stageInfoMap.set(stage.id, { name: stage.name, color: stage.color || '#6b7280' });
+          }
+        }
+      }
+
+      // Group leads by stage
+      const stageGroups = new Map<string, { stageName: string; stageColor: string; leads: { id: string; name: string; phone: string | null }[] }>();
+      const noStageKey = '__no_stage__';
+
+      for (const lead of leadsData) {
+        const stageInfo = leadStageMap.get(lead.id);
+        let stageKey = noStageKey;
+        let stageName = 'Sem etapa';
+        let stageColor = '#6b7280';
+
+        if (stageInfo) {
+          const info = stageInfoMap.get(stageInfo.stageId);
+          if (info) {
+            stageKey = stageInfo.stageId;
+            stageName = info.name;
+            stageColor = info.color;
+          }
+        }
+
+        if (!stageGroups.has(stageKey)) {
+          stageGroups.set(stageKey, { stageName, stageColor, leads: [] });
+        }
+        stageGroups.get(stageKey)!.leads.push({
+          id: lead.id,
+          name: lead.lead_name || 'Sem nome',
+          phone: lead.lead_phone,
+        });
+      }
+
+      const result = Array.from(stageGroups.values())
+        .map(g => ({ ...g, count: g.leads.length }))
+        .sort((a, b) => b.count - a.count);
+
+      setFunnelStages(result);
+    } catch (err) {
+      console.error('Error fetching funnel stages:', err);
     }
   };
 
@@ -546,6 +651,57 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
+      {/* Conversas por Etapa do Funil */}
+      {funnelStages.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-primary" />
+              Conversas por Etapa do Funil (Hoje)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Leads com conversas ativas agrupados por etapa</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {funnelStages.map((stage, i) => {
+                const totalFunnel = funnelStages.reduce((a, s) => a + s.count, 0);
+                const percent = totalFunnel > 0 ? Math.round((stage.count / totalFunnel) * 100) : 0;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setSelectedFunnelStage(stage.stageName);
+                      setSheetOpen('funnel');
+                    }}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: stage.stageColor }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{stage.stageName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${percent}%`, backgroundColor: stage.stageColor }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{percent}%</span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs font-bold">
+                      {stage.count}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Leads por Dia */}
         <Card>
@@ -817,6 +973,36 @@ export function WhatsAppLeadsDashboard() {
               })()}
               {todayDocs.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhum documento gerado hoje</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Funnel Stage Sheet */}
+      <Sheet open={sheetOpen === 'funnel'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-primary" />
+              {selectedFunnelStage || 'Etapa do Funil'}
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {funnelStages
+                .filter(s => s.stageName === selectedFunnelStage)
+                .flatMap(s => s.leads)
+                .map((lead, i) => (
+                  <div key={`${lead.id}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{lead.name}</p>
+                      {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+                    </div>
+                  </div>
+                ))}
+              {funnelStages.filter(s => s.stageName === selectedFunnelStage).flatMap(s => s.leads).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead nesta etapa</p>
               )}
             </div>
           </ScrollArea>
