@@ -183,21 +183,31 @@ export function WhatsAppLeadsDashboard() {
   const fetchTodayMetrics = async () => {
     const todayStart = startOfDay(new Date()).toISOString();
 
+    let inboundQuery = supabase
+      .from('whatsapp_messages')
+      .select('phone, contact_name, created_at, instance_name')
+      .eq('direction', 'inbound')
+      .gte('created_at', todayStart)
+      .order('created_at', { ascending: true })
+      .limit(500);
+
+    let outboundQuery = supabase
+      .from('whatsapp_messages')
+      .select('phone, contact_name, created_at, instance_name')
+      .eq('direction', 'outbound')
+      .gte('created_at', todayStart)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Apply instance filter to today metrics too
+    if (selectedInstance !== 'all') {
+      inboundQuery = inboundQuery.eq('instance_name', selectedInstance);
+      outboundQuery = outboundQuery.eq('instance_name', selectedInstance);
+    }
+
     const [newConvsRes, followupsRes, docsRes] = await Promise.all([
-      supabase
-        .from('whatsapp_messages')
-        .select('phone, contact_name, created_at, instance_name')
-        .eq('direction', 'inbound')
-        .gte('created_at', todayStart)
-        .order('created_at', { ascending: true })
-        .limit(500),
-      supabase
-        .from('whatsapp_messages')
-        .select('phone, contact_name, created_at, instance_name')
-        .eq('direction', 'outbound')
-        .gte('created_at', todayStart)
-        .order('created_at', { ascending: false })
-        .limit(500),
+      inboundQuery,
+      outboundQuery,
       supabase
         .from('zapsign_documents')
         .select('id, document_name, template_name, signer_name, status, created_at')
