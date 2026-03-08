@@ -171,6 +171,9 @@ export function WhatsAppSetupGuide() {
         </CardContent>
       </Card>
 
+      {/* Report Settings */}
+      <WhatsAppReportSettings />
+
       {/* Ad Link Settings */}
       <WhatsAppAdLinkSettings />
     </div>
