@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { AIPromptGenerator } from './AIPromptGenerator';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -376,7 +377,28 @@ export function WhatsAppAIAgents() {
                   </div>
                 </div>
                 <div>
-                  <Label>Prompt Base *</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label>Prompt Base *</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setEditingAgent({ ...editingAgent, _showAIPrompt: !editingAgent._showAIPrompt } as any)}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Gerar com IA
+                    </Button>
+                  </div>
+                  {(editingAgent as any)._showAIPrompt && (
+                    <div className="mb-2">
+                      <AIPromptGenerator
+                        currentPrompt={editingAgent.base_prompt || ''}
+                        onApply={(prompt) => setEditingAgent({ ...editingAgent, base_prompt: prompt, _showAIPrompt: false } as any)}
+                        onClose={() => setEditingAgent({ ...editingAgent, _showAIPrompt: false } as any)}
+                      />
+                    </div>
+                  )}
                   <Textarea value={editingAgent.base_prompt || ''} onChange={e => setEditingAgent({ ...editingAgent, base_prompt: e.target.value })} placeholder="Instruções do agente..." rows={5} />
                 </div>
                 <div>
