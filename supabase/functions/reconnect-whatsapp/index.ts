@@ -182,12 +182,29 @@ serve(async (req) => {
 
     if (action === "pairing_code") {
       // UazAPI V2: POST /instance/connect com phone = gera código de pareamento
-      const ownerPhone = inst.owner_phone;
+      let ownerPhone = inst.owner_phone;
+      
+      // Se não tem owner_phone cadastrado, tenta buscar do status da instância
+      if (!ownerPhone) {
+        try {
+          const statusResp = await fetch(`${baseUrl}/instance/status`, {
+            method: "GET",
+            headers,
+            signal: AbortSignal.timeout(10000),
+          });
+          const statusData = await statusResp.json().catch(() => null);
+          ownerPhone = statusData?.owner || statusData?.phone || statusData?.number || null;
+          console.log("Fetched phone from status:", ownerPhone);
+        } catch (e) {
+          console.error("Error fetching instance status for phone:", e.message);
+        }
+      }
+
       if (!ownerPhone) {
         return new Response(JSON.stringify({
           success: false,
           action: "pairing_code",
-          message: "Instância não possui telefone (owner_phone) cadastrado.",
+          message: "Instância não possui telefone cadastrado. Cadastre o owner_phone primeiro.",
         }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
