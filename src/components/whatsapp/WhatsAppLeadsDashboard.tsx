@@ -507,17 +507,14 @@ export function WhatsAppLeadsDashboard() {
         return;
       }
 
-      // Get users linked to each instance with their phones
-      const { data: instanceUsers } = await supabase
-        .from('whatsapp_instance_users')
-        .select('instance_id, user_id');
+      // Get all active instances with owner_phone
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, owner_phone')
+        .eq('is_active', true);
 
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, phone');
-
-      if (!instanceUsers || !profiles) {
-        toast.error('Erro ao carregar usuários');
+      if (!allInstances) {
+        toast.error('Erro ao carregar instâncias');
         setSendingReport(false);
         return;
       }
@@ -549,38 +546,27 @@ export function WhatsAppLeadsDashboard() {
 
       const reportText = reportLines.join('\n');
 
-      // Group users by instance and send
-      const userInstanceMap = new Map<string, string[]>();
-      for (const iu of instanceUsers) {
-        const inst = instances.find(i => i.id === iu.instance_id);
-        if (!inst) continue;
-        if (!userInstanceMap.has(inst.instance_name)) userInstanceMap.set(inst.instance_name, []);
-        userInstanceMap.get(inst.instance_name)!.push(iu.user_id);
-      }
-
       let sentCount = 0;
       const sentPhones = new Set<string>();
 
-      for (const [instName, userIds] of userInstanceMap) {
-        for (const userId of userIds) {
-          const profile = profiles.find(p => p.user_id === userId);
-          if (!profile?.phone || sentPhones.has(profile.phone)) continue;
-          sentPhones.add(profile.phone);
+      for (const inst of allInstances) {
+        if (!inst.owner_phone || sentPhones.has(inst.owner_phone)) continue;
+        if (inst.id === rayInstance.id) continue; // Don't send to self
+        sentPhones.add(inst.owner_phone);
 
-          const personalReport = `${reportText}\n\n_Instância: ${instName}_\n_Enviado para: ${profile.full_name || 'Usuário'}_`;
+        const personalReport = `${reportText}\n\n_Instância: ${inst.instance_name}_`;
 
-          try {
-            await supabase.functions.invoke('send-whatsapp', {
-              body: {
-                phone: profile.phone,
-                message: personalReport,
-                instance_id: rayInstance.id,
-              },
-            });
-            sentCount++;
-          } catch (e) {
-            console.error(`Error sending report to ${profile.phone}:`, e);
-          }
+        try {
+          await supabase.functions.invoke('send-whatsapp', {
+            body: {
+              phone: inst.owner_phone,
+              message: personalReport,
+              instance_id: rayInstance.id,
+            },
+          });
+          sentCount++;
+        } catch (e) {
+          console.error(`Error sending report to ${inst.owner_phone}:`, e);
         }
       }
 
