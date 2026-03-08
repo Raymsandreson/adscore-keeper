@@ -462,6 +462,137 @@ export function WhatsAppLeadsDashboard() {
       .slice(0, 10);
   }, [filteredLeads]);
 
+  // Slow response buckets: conversations where first response took > 10min, 20min, 30min, 1h
+  const slowResponseBuckets = useMemo(() => {
+    const buckets = [
+      { label: '> 10min', min: 10, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 20min', min: 20, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 30min', min: 30, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 1h', min: 60, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+    ];
+
+    inboundConversations.forEach(conv => {
+      if (conv.firstInboundAt && conv.firstOutboundAt) {
+        const diff = differenceInMinutes(parseISO(conv.firstOutboundAt), parseISO(conv.firstInboundAt));
+        if (diff >= 0 && diff < 1440) {
+          buckets.forEach(b => {
+            if (diff >= b.min) {
+              b.conversations.push({ ...conv, responseTime: diff });
+            }
+          });
+        }
+      } else if (conv.firstInboundAt && !conv.firstOutboundAt) {
+        // No response at all — add to all buckets
+        const diff = differenceInMinutes(new Date(), parseISO(conv.firstInboundAt));
+        buckets.forEach(b => {
+          if (diff >= b.min) {
+            b.conversations.push({ ...conv, responseTime: diff });
+          }
+        });
+      }
+    });
+
+    return buckets;
+  }, [inboundConversations]);
+
+  // Send report via WhatsApp
+  const sendReport = async () => {
+    setSendingReport(true);
+    try {
+      // Find raymsandreson instance
+      const rayInstance = instances.find(i => i.instance_name?.toLowerCase() === 'raymsandreson');
+      if (!rayInstance) {
+        toast.error('Instância "raymsandreson" não encontrada');
+        setSendingReport(false);
+        return;
+      }
+
+      // Get users linked to each instance with their phones
+      const { data: instanceUsers } = await supabase
+        .from('whatsapp_instance_users')
+        .select('instance_id, user_id');
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name, phone');
+
+      if (!instanceUsers || !profiles) {
+        toast.error('Erro ao carregar usuários');
+        setSendingReport(false);
+        return;
+      }
+
+      // Build report text
+      const now = format(new Date(), 'dd/MM/yyyy HH:mm');
+      const reportLines = [
+        `📊 *Relatório WhatsApp - ${now}*`,
+        '',
+        `📱 *Conversas:* ${inboundConversations.length}`,
+        `💬 *Msgs totais:* ${filteredMessages.length}`,
+        `✅ *Taxa de Resposta:* ${responseMetrics.responseRate}% (${responseMetrics.leadsWithResponse}/${responseMetrics.leadsWithInbound})`,
+        `⏱ *Tempo Médio 1ª Resp:* ${responseMetrics.avgResponseTime < 60 ? `${responseMetrics.avgResponseTime}min` : `${Math.round(responseMetrics.avgResponseTime / 60)}h`}`,
+        `⚡ *Resp. < 5min:* ${responseMetrics.responseTimes.length > 0 ? Math.round((responseMetrics.responseTimes.filter(t => t < 5).length / responseMetrics.responseTimes.length) * 100) : 0}%`,
+        '',
+        `🔴 *Respostas Lentas:*`,
+        ...slowResponseBuckets.map(b => `  ${b.label}: ${b.conversations.length} conversas`),
+        '',
+        `🎯 *Qualificados:* ${conversionMetrics.qualified} (${conversionMetrics.qualificationRate}%)`,
+        `📈 *Convertidos:* ${conversionMetrics.converted} (${conversionMetrics.conversionRate}%)`,
+      ];
+
+      if (funnelStages.length > 0) {
+        reportLines.push('', '📊 *Funil Hoje:*');
+        funnelStages.forEach(s => {
+          reportLines.push(`  ${s.stageName}: ${s.count}`);
+        });
+      }
+
+      const reportText = reportLines.join('\n');
+
+      // Group users by instance and send
+      const userInstanceMap = new Map<string, string[]>();
+      for (const iu of instanceUsers) {
+        const inst = instances.find(i => i.id === iu.instance_id);
+        if (!inst) continue;
+        if (!userInstanceMap.has(inst.instance_name)) userInstanceMap.set(inst.instance_name, []);
+        userInstanceMap.get(inst.instance_name)!.push(iu.user_id);
+      }
+
+      let sentCount = 0;
+      const sentPhones = new Set<string>();
+
+      for (const [instName, userIds] of userInstanceMap) {
+        for (const userId of userIds) {
+          const profile = profiles.find(p => p.user_id === userId);
+          if (!profile?.phone || sentPhones.has(profile.phone)) continue;
+          sentPhones.add(profile.phone);
+
+          const personalReport = `${reportText}\n\n_Instância: ${instName}_\n_Enviado para: ${profile.full_name || 'Usuário'}_`;
+
+          try {
+            await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                phone: profile.phone,
+                message: personalReport,
+                instance_id: rayInstance.id,
+              },
+            });
+            sentCount++;
+          } catch (e) {
+            console.error(`Error sending report to ${profile.phone}:`, e);
+          }
+        }
+      }
+
+      toast.success(`Relatório enviado para ${sentCount} usuário(s)`);
+    } catch (error) {
+      console.error('Error sending report:', error);
+      toast.error('Erro ao enviar relatório');
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
   // Leads by instance (for receiving instances)
   const leadsByInstance = useMemo(() => {
     const receiveInstances = instances.filter(i => i.receive_leads);
