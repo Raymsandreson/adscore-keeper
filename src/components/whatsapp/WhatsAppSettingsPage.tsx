@@ -134,7 +134,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
         </aside>
 
         {/* Mobile horizontal tabs */}
-        <div className="md:hidden border-b bg-muted/30 shrink-0 w-full absolute z-10 overflow-x-auto">
+        <div className="md:hidden border-b bg-muted/30 shrink-0 w-full z-10 overflow-x-auto">
           <div className="flex p-2 gap-1 min-w-max">
             {tabs.map((tab) => (
               <button
@@ -156,7 +156,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
 
         {/* Content area */}
         <main className="flex-1 overflow-y-auto">
-          <div className="p-4 md:p-6 max-w-3xl mx-auto w-full md:pt-6 pt-16">
+          <div className="p-4 md:p-6 max-w-3xl mx-auto w-full pt-4 md:pt-6">
             <div className="mb-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 {tabs.find(t => t.id === activeTab)?.icon}
