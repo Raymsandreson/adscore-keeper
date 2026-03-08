@@ -402,6 +402,17 @@ export function WhatsAppAIAgents() {
                 </div>
               </TabsContent>
 
+              {/* TAB: Knowledge Base */}
+              <TabsContent value="knowledge" className="mt-4">
+                {editingAgent.id ? (
+                  <AgentKnowledgeDocs agentId={editingAgent.id} />
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Salve o agente primeiro para adicionar documentos à base de conhecimento</p>
+                  </div>
+                )}
+
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
                 <div>
