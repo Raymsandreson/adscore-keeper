@@ -79,6 +79,7 @@ Deno.serve(async (req) => {
       new_contacts: configData?.include_new_contacts ?? true,
       response_time: configData?.include_response_time ?? true,
       ai_replies: configData?.include_ai_replies ?? false,
+      followups: configData?.include_followups ?? true,
     };
 
     // For each target instance, gather stats
@@ -241,6 +242,64 @@ Deno.serve(async (req) => {
           .not("metadata->ai_agent_id", "is", null)
           .gte("created_at", periodStart.toISOString());
         lines.push(`🤖 Respostas IA: ${count ?? 0}`);
+      }
+
+      if (metrics.followups) {
+        // Follow-ups registered in the period
+        const { count: followupCount } = await supabase
+          .from("lead_followups")
+          .select("*", { count: "exact", head: true })
+          .gte("created_at", periodStart.toISOString());
+
+        // Follow-ups by type
+        const { data: followupsByType } = await supabase
+          .from("lead_followups")
+          .select("followup_type")
+          .gte("created_at", periodStart.toISOString());
+
+        const typeCounts: Record<string, number> = {};
+        const typeLabels: Record<string, string> = {
+          whatsapp: "💬 WhatsApp",
+          call: "📞 Ligação",
+          email: "📧 E-mail",
+          visit: "🏠 Visita",
+          meeting: "🤝 Reunião",
+        };
+        (followupsByType || []).forEach((f: any) => {
+          typeCounts[f.followup_type] = (typeCounts[f.followup_type] || 0) + 1;
+        });
+
+        // Follow-ups by outcome
+        const { data: followupsByOutcome } = await supabase
+          .from("lead_followups")
+          .select("outcome")
+          .gte("created_at", periodStart.toISOString())
+          .not("outcome", "is", null);
+
+        const outcomeCounts: Record<string, number> = {};
+        const outcomeLabels: Record<string, string> = {
+          positive: "✅ Positivo",
+          neutral: "➖ Neutro",
+          negative: "❌ Negativo",
+          no_answer: "📵 Sem resposta",
+        };
+        (followupsByOutcome || []).forEach((f: any) => {
+          if (f.outcome) outcomeCounts[f.outcome] = (outcomeCounts[f.outcome] || 0) + 1;
+        });
+
+        lines.push(`\n📋 *Follow-ups: ${followupCount ?? 0}*`);
+        if (Object.keys(typeCounts).length > 0) {
+          const typeDetails = Object.entries(typeCounts)
+            .map(([k, v]) => `  ${typeLabels[k] || k}: ${v}`)
+            .join("\n");
+          lines.push(typeDetails);
+        }
+        if (Object.keys(outcomeCounts).length > 0) {
+          const outcomeDetails = Object.entries(outcomeCounts)
+            .map(([k, v]) => `  ${outcomeLabels[k] || k}: ${v}`)
+            .join("\n");
+          lines.push(outcomeDetails);
+        }
       }
 
       reports.push(lines.join("\n"));
