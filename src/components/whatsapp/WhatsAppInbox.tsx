@@ -591,6 +591,20 @@ export function WhatsAppInbox() {
     );
   }
 
+  if (showAgents) {
+    return (
+      <div className="h-screen flex flex-col">
+        <div className="flex items-center gap-3 p-4 border-b bg-card">
+          <Button variant="ghost" size="sm" onClick={() => setShowAgents(false)}>← Voltar</Button>
+          <h1 className="text-lg font-semibold">Agentes IA</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
+          <WhatsAppAIAgents />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col relative">
       {/* Header */}
