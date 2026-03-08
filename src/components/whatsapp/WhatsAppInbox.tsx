@@ -711,6 +711,35 @@ export function WhatsAppInbox() {
         </div>
       </div>
 
+      {/* Reconnect Bar - always visible when offline */}
+      {disconnectedInstances.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b bg-destructive/10 shrink-0 animate-in slide-in-from-top">
+          <WifiOff className="h-4 w-4 text-destructive flex-shrink-0" />
+          <span className="text-sm font-medium text-destructive flex-1">
+            {disconnectedInstances.length === 1 
+              ? `${disconnectedInstances[0].instance_name} está offline`
+              : `${disconnectedInstances.length} instâncias offline`
+            }
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => {
+              if (disconnectedInstances.length === 1) {
+                const inst = disconnectedInstances[0];
+                setReconnectInstance({ id: inst.id, name: inst.instance_name });
+              } else {
+                setDismissedAlert(false);
+              }
+            }}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Reconectar
+          </Button>
+        </div>
+      )}
+
       {/* Bulk action bar */}
       {bulkMode && (
         <div className="flex items-center gap-3 px-4 py-2 border-b bg-accent/40 shrink-0">
