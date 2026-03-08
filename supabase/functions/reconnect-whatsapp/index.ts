@@ -54,7 +54,7 @@ serve(async (req) => {
     };
 
     if (action === "restart") {
-      // UazAPI V2: restart via header token
+      // UazAPI V2: restart instance
       const resp = await fetch(`${baseUrl}/restart`, {
         method: "POST",
         headers,
@@ -73,83 +73,114 @@ serve(async (req) => {
       });
     }
 
-    if (action === "qr") {
-      // Try multiple known QR code endpoints for UazAPI V2
-      const qrEndpoints = [
-        { url: `${baseUrl}/qrcode`, method: "GET" },
-        { url: `${baseUrl}/v1/instance/qr`, method: "GET" },
-        { url: `${baseUrl}/status`, method: "GET" },
-      ];
+    if (action === "connect" || action === "qr") {
+      // UazAPI V2: POST /instance/connect - gera QR code quando não passa phone
+      // Documentação: https://docs.uazapi.com/endpoint/post/instance~connect
+      try {
+        console.log(`Calling POST ${baseUrl}/instance/connect (no phone = QR code)`);
+        const resp = await fetch(`${baseUrl}/instance/connect`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({}), // sem phone = gera QR code
+          signal: AbortSignal.timeout(30000), // timeout de 30s pois pode demorar
+        });
 
-      let qrCode = null;
-      let rawData = null;
+        const data = await resp.json().catch(() => null);
+        console.log(`/instance/connect response status: ${resp.status}, keys:`, data ? Object.keys(data) : 'null');
 
-      for (const ep of qrEndpoints) {
-        try {
-          console.log(`Trying QR endpoint: ${ep.url}`);
-          const resp = await fetch(ep.url, {
-            method: ep.method,
-            headers,
-            signal: AbortSignal.timeout(10000),
-          });
-
-          if (!resp.ok) {
-            console.log(`QR endpoint ${ep.url} returned ${resp.status}`);
-            continue;
-          }
-
-          const data = await resp.json().catch(() => null);
-          if (!data) continue;
-
-          rawData = data;
-          console.log(`QR endpoint ${ep.url} response keys:`, Object.keys(data));
-
-          // Extract QR from various possible response structures
-          qrCode = data?.qrcode ||
-            data?.qr ||
-            data?.value ||
-            data?.qr_code ||
-            data?.base64 ||
-            data?.status?.qr ||
-            data?.status?.qrcode ||
-            data?.data?.qrcode ||
-            null;
-
-          if (qrCode) {
-            console.log(`QR code found from endpoint: ${ep.url}`);
-            break;
-          }
-
-          // Check if status shows we need QR (disconnected state)
-          const connStatus = data?.status?.checked_instance?.connection_status?.toLowerCase();
-          if (connStatus === "connected") {
+        if (!resp.ok) {
+          // Check if already connected
+          if (resp.status === 429) {
             return new Response(JSON.stringify({
-              success: true,
-              action: "qr",
-              qrCode: null,
-              already_connected: true,
-              message: "Instância já está conectada!",
+              success: false,
+              action: "connect",
+              message: "Limite de conexões simultâneas atingido. Tente novamente em alguns segundos.",
             }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
-        } catch (e) {
-          console.log(`QR endpoint ${ep.url} error:`, e.message);
+          return new Response(JSON.stringify({
+            success: false,
+            action: "connect",
+            message: data?.message || "Erro ao conectar instância",
+            raw: data,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
-      }
 
-      return new Response(JSON.stringify({
-        success: true,
-        action: "qr",
-        qrCode,
-        raw: rawData,
-        message: qrCode ? "QR Code obtido" : "QR Code não disponível. A instância pode precisar ser reiniciada primeiro.",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        // Extract QR code from response
+        const qrCode = data?.qrcode || data?.qr || data?.value || data?.qr_code || data?.base64 || null;
+
+        // Check if already connected
+        if (data?.status === "connected" || data?.connected === true) {
+          return new Response(JSON.stringify({
+            success: true,
+            action: "connect",
+            qrCode: null,
+            already_connected: true,
+            message: "Instância já está conectada!",
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          action: "connect",
+          qrCode,
+          raw: data,
+          message: qrCode ? "QR Code obtido! Escaneie no WhatsApp." : "Aguardando QR Code...",
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("/instance/connect error:", e.message);
+        return new Response(JSON.stringify({
+          success: false,
+          action: "connect",
+          message: `Erro ao conectar: ${e.message}`,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    return new Response(JSON.stringify({ error: "Invalid action. Use 'restart' or 'qr'" }), {
+    if (action === "status") {
+      // Check current status
+      try {
+        const resp = await fetch(`${baseUrl}/instance/status`, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+        const data = await resp.json().catch(() => null);
+        console.log("Status response:", JSON.stringify(data));
+        
+        const status = data?.status || data?.connection_status || data?.state;
+        const connected = status === "connected";
+
+        return new Response(JSON.stringify({
+          success: true,
+          action: "status",
+          connected,
+          status_raw: status,
+          raw: data,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({
+          success: false,
+          action: "status",
+          message: e.message,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    return new Response(JSON.stringify({ error: "Invalid action. Use 'restart', 'connect', 'qr', or 'status'" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
