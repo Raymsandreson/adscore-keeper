@@ -1172,6 +1172,46 @@ export function WhatsAppLeadsDashboard() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* Slow Responses Sheet */}
+      <Sheet open={sheetOpen === 'slow_responses'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Respostas Lentas {selectedSlowBucket}
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {slowResponseBuckets
+                .find(b => b.label === selectedSlowBucket)
+                ?.conversations
+                .sort((a, b) => b.responseTime - a.responseTime)
+                .map((conv, i) => (
+                  <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{conv.leadName || conv.phone}</p>
+                      <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                      {conv.instanceName && <p className="text-[10px] text-muted-foreground">{conv.instanceName}</p>}
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <Badge variant={conv.responseTime >= 60 ? 'destructive' : 'outline'} className="text-xs">
+                        {conv.responseTime >= 60 ? `${Math.round(conv.responseTime / 60)}h${conv.responseTime % 60 > 0 ? `${conv.responseTime % 60}m` : ''}` : `${conv.responseTime}min`}
+                      </Badge>
+                      {!conv.firstOutboundAt && (
+                        <p className="text-[10px] text-destructive mt-0.5">Sem resposta</p>
+                      )}
+                    </div>
+                  </div>
+                )) || null}
+              {(slowResponseBuckets.find(b => b.label === selectedSlowBucket)?.conversations.length || 0) === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nesta faixa</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
