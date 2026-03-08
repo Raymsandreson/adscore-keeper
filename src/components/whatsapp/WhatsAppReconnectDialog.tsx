@@ -48,7 +48,6 @@ export function WhatsAppReconnectDialog({
       });
       if (error) throw error;
       toast.success('Restart solicitado!');
-      // Wait a few seconds then check if it needs QR
       setTimeout(() => {
         setStep('waiting_qr');
       }, 3000);
@@ -57,6 +56,11 @@ export function WhatsAppReconnectDialog({
       setErrorMsg(err.message || 'Erro ao reiniciar');
     }
   }, [instanceId]);
+
+  const handleDirectQr = useCallback(async () => {
+    setStep('waiting_qr');
+    setPollCount(0);
+  }, []);
 
   const fetchQr = useCallback(async () => {
     try {
@@ -68,7 +72,6 @@ export function WhatsAppReconnectDialog({
         setQrCode(data.qrCode);
         setStep('showing_qr');
       } else {
-        // No QR means it might already be connected or still initializing
         setPollCount(prev => prev + 1);
       }
     } catch (err: any) {
@@ -139,12 +142,21 @@ export function WhatsAppReconnectDialog({
                 <RefreshCw className="h-10 w-10 text-muted-foreground" />
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Clique abaixo para tentar reconectar a instância. Se a sessão expirou, será necessário escanear o QR Code novamente.
+                Escolha uma opção para reconectar a instância.
               </p>
-              <Button onClick={handleRestart} className="w-full">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Reiniciar Instância
-              </Button>
+              <div className="w-full space-y-2">
+                <Button onClick={handleRestart} className="w-full">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reiniciar Instância
+                </Button>
+                <Button onClick={handleDirectQr} variant="outline" className="w-full">
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Obter QR Code Direto
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                💡 Se a sessão expirou, escaneie o QR Code no WhatsApp do celular em <strong>Aparelhos Conectados → Conectar aparelho</strong>.
+              </p>
             </>
           )}
 
@@ -160,7 +172,7 @@ export function WhatsAppReconnectDialog({
           {step === 'waiting_qr' && (
             <>
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Verificando se precisa de QR Code...</p>
+              <p className="text-sm text-muted-foreground">Obtendo QR Code...</p>
               <Badge variant="outline" className="text-xs">
                 Tentativa {pollCount}/12
               </Badge>
@@ -210,10 +222,16 @@ export function WhatsAppReconnectDialog({
                 <XCircle className="h-10 w-10 text-destructive" />
               </div>
               <p className="text-sm text-destructive text-center">{errorMsg}</p>
-              <Button onClick={handleRestart} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Tentar Novamente
-              </Button>
+              <div className="w-full space-y-2">
+                <Button onClick={handleRestart} variant="outline" className="w-full">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Tentar Novamente
+                </Button>
+                <Button onClick={handleDirectQr} variant="outline" className="w-full">
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Obter QR Code Direto
+                </Button>
+              </div>
             </>
           )}
         </div>
