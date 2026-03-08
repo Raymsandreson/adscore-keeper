@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Loader2, RefreshCw, QrCode, CheckCircle2, XCircle, Wifi, Smartphone, Copy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,7 +15,7 @@ interface WhatsAppReconnectDialogProps {
   onReconnected?: () => void;
 }
 
-type Step = 'idle' | 'connecting' | 'showing_qr' | 'showing_pairing' | 'connected' | 'error';
+type Step = 'idle' | 'connecting' | 'showing_qr' | 'showing_pairing' | 'ask_phone' | 'connected' | 'error';
 
 export function WhatsAppReconnectDialog({
   open,
@@ -28,6 +29,7 @@ export function WhatsAppReconnectDialog({
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pollCount, setPollCount] = useState(0);
+  const [phoneInput, setPhoneInput] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -36,6 +38,7 @@ export function WhatsAppReconnectDialog({
       setPairingCode(null);
       setErrorMsg(null);
       setPollCount(0);
+      setPhoneInput('');
     }
   }, [open]);
 
@@ -71,14 +74,15 @@ export function WhatsAppReconnectDialog({
     }
   }, [instanceId, instanceName, onReconnected, onOpenChange]);
 
-  const handlePairingCode = useCallback(async () => {
+  const handlePairingCode = useCallback(async (phone?: string) => {
     setStep('connecting');
     setErrorMsg(null);
     setPairingCode(null);
     try {
-      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', {
-        body: { instance_id: instanceId, action: 'pairing_code' },
-      });
+      const body: any = { instance_id: instanceId, action: 'pairing_code' };
+      if (phone) body.phone = phone;
+
+      const { data, error } = await supabase.functions.invoke('reconnect-whatsapp', { body });
       if (error) throw error;
 
       if (data?.already_connected) {
@@ -89,19 +93,38 @@ export function WhatsAppReconnectDialog({
         return;
       }
 
+      if (data?.needs_phone) {
+        setStep('ask_phone');
+        return;
+      }
+
       if (data?.pairingCode) {
         setPairingCode(data.pairingCode);
         setStep('showing_pairing');
-        toast.success('Código enviado via WhatsApp!');
+        toast.success('Código gerado!');
       } else {
         setStep('error');
         setErrorMsg(data?.message || 'Não foi possível gerar o código de pareamento.');
       }
     } catch (err: any) {
+      // Check if needs_phone from error response
+      if (err.message?.includes('needs_phone') || err.message?.includes('Informe o número')) {
+        setStep('ask_phone');
+        return;
+      }
       setStep('error');
       setErrorMsg(err.message || 'Erro ao gerar código');
     }
   }, [instanceId, instanceName, onReconnected, onOpenChange]);
+
+  const handleSubmitPhone = useCallback(() => {
+    const cleaned = phoneInput.replace(/\D/g, '');
+    if (cleaned.length < 10) {
+      toast.error('Informe um número válido com DDD');
+      return;
+    }
+    handlePairingCode(cleaned);
+  }, [phoneInput, handlePairingCode]);
 
   const handleRestart = useCallback(async () => {
     setStep('connecting');
@@ -212,7 +235,7 @@ export function WhatsAppReconnectDialog({
                 Escolha uma opção para reconectar a instância.
               </p>
               <div className="w-full space-y-2">
-                <Button onClick={handlePairingCode} className="w-full" variant="default">
+                <Button onClick={() => handlePairingCode()} className="w-full" variant="default">
                   <Smartphone className="h-4 w-4 mr-2" />
                   Código de Pareamento (WhatsApp)
                 </Button>
@@ -227,6 +250,42 @@ export function WhatsAppReconnectDialog({
               </div>
               <p className="text-xs text-muted-foreground text-center">
                 📱 O código de pareamento será enviado via WhatsApp com instruções de uso.
+              </p>
+            </>
+          )}
+
+          {/* Step: Ask Phone */}
+          {step === 'ask_phone' && (
+            <>
+              <div className="h-16 w-16 rounded-full bg-amber-500/10 flex items-center justify-center">
+                <Smartphone className="h-8 w-8 text-amber-500" />
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                Informe o número do WhatsApp vinculado a esta instância para gerar o código de pareamento.
+              </p>
+              <div className="w-full space-y-3">
+                <Input
+                  placeholder="Ex: 5586999999999"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSubmitPhone()}
+                  className="text-center text-lg font-mono"
+                  type="tel"
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  Formato: código do país + DDD + número (ex: 55 86 99999-9999)
+                </p>
+                <Button onClick={handleSubmitPhone} className="w-full">
+                  <Smartphone className="h-4 w-4 mr-2" />
+                  Gerar Código de Pareamento
+                </Button>
+                <Button onClick={handleConnect} variant="outline" className="w-full">
+                  <QrCode className="h-4 w-4 mr-2" />
+                  Usar QR Code em vez disso
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                💾 O número será salvo automaticamente para uso futuro.
               </p>
             </>
           )}
@@ -286,7 +345,7 @@ export function WhatsAppReconnectDialog({
                 Copiar código
               </Button>
               <div className="text-sm text-muted-foreground text-center space-y-1">
-                <p className="font-medium text-foreground">📱 Instruções enviadas via WhatsApp!</p>
+                <p className="font-medium text-foreground">📱 Como usar:</p>
                 <p>1. Abra o WhatsApp no celular</p>
                 <p>2. ⋮ → <strong>Aparelhos conectados</strong></p>
                 <p>3. <strong>Conectar aparelho</strong></p>
@@ -317,7 +376,7 @@ export function WhatsAppReconnectDialog({
               </div>
               <p className="text-sm text-destructive text-center">{errorMsg}</p>
               <div className="w-full space-y-2">
-                <Button onClick={handlePairingCode} className="w-full">
+                <Button onClick={() => handlePairingCode()} className="w-full">
                   <Smartphone className="h-4 w-4 mr-2" />
                   Código de Pareamento
                 </Button>
