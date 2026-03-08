@@ -3,8 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { FileText, Upload, Trash2, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { FileText, Upload, Trash2, Loader2, CheckCircle2, AlertCircle, Clock, Type, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 
 interface KnowledgeDoc {
   id: string;
@@ -26,6 +28,10 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textTitle, setTextTitle] = useState('');
+  const [textContent, setTextContent] = useState('');
+  const [savingText, setSavingText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,6 +46,41 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       .order('created_at', { ascending: false });
     setDocs((data as any[]) || []);
     setLoading(false);
+  };
+
+  const handleSaveText = async () => {
+    if (!textContent.trim()) {
+      toast.error('Cole ou digite o conteúdo');
+      return;
+    }
+
+    const title = textTitle.trim() || `Texto ${new Date().toLocaleDateString('pt-BR')}`;
+    setSavingText(true);
+
+    try {
+      const { error } = await supabase
+        .from('agent_knowledge_documents')
+        .insert({
+          agent_id: agentId,
+          file_name: `📝 ${title}`,
+          file_url: '',
+          file_size: new TextEncoder().encode(textContent).length,
+          extracted_text: textContent.trim(),
+          status: 'ready',
+        } as any);
+
+      if (error) throw error;
+
+      toast.success('✅ Texto adicionado à base de conhecimento!');
+      setTextTitle('');
+      setTextContent('');
+      setShowTextInput(false);
+      fetchDocs();
+    } catch (err: any) {
+      toast.error('Erro ao salvar: ' + (err.message || ''));
+    } finally {
+      setSavingText(false);
+    }
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,7 +99,6 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
 
     setUploading(true);
     try {
-      // Upload to storage
       const filePath = `${agentId}/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('agent-knowledge')
@@ -66,12 +106,10 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: urlData } = supabase.storage
         .from('agent-knowledge')
         .getPublicUrl(filePath);
 
-      // Create document record
       const { data: docData, error: insertError } = await supabase
         .from('agent_knowledge_documents')
         .insert({
@@ -89,15 +127,9 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
       toast.success('📄 Documento enviado! Processando...');
       fetchDocs();
 
-      // Trigger parsing
       supabase.functions.invoke('parse-knowledge-document', {
         body: { document_id: (docData as any).id },
-      }).then(() => {
-        fetchDocs(); // Refresh after processing
-      }).catch(err => {
-        console.error('Parse error:', err);
-        fetchDocs();
-      });
+      }).then(() => fetchDocs()).catch(() => fetchDocs());
 
     } catch (err: any) {
       toast.error('Erro no upload: ' + (err.message || ''));
@@ -110,13 +142,13 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
   const handleDelete = async (doc: KnowledgeDoc) => {
     if (!confirm(`Excluir "${doc.file_name}"?`)) return;
 
-    // Delete from storage
-    const path = doc.file_url.split('/agent-knowledge/')[1];
-    if (path) {
-      await supabase.storage.from('agent-knowledge').remove([path]);
+    if (doc.file_url) {
+      const path = doc.file_url.split('/agent-knowledge/')[1];
+      if (path) {
+        await supabase.storage.from('agent-knowledge').remove([path]);
+      }
     }
 
-    // Delete record
     await supabase.from('agent_knowledge_documents').delete().eq('id', doc.id);
     toast.success('Documento excluído');
     fetchDocs();
@@ -160,8 +192,8 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
     <div className="space-y-4">
       <div>
         <p className="text-[10px] text-muted-foreground mb-3">
-          Faça upload de PDFs (petições, laudos, regulamentos) para o agente usar como base de conhecimento ao responder clientes.
-          O conteúdo será extraído e injetado no contexto da IA.
+          Adicione PDFs ou cole textos (petições, laudos, regulamentos) para o agente usar como base de conhecimento.
+          <strong> Texto puro é o formato mais eficiente</strong> — a IA entende 100% sem perda.
         </p>
 
         {totalChars > 0 && (
@@ -172,43 +204,96 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
         )}
       </div>
 
-      {/* Upload area */}
-      <div 
-        className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf"
-          onChange={handleUpload}
-          className="hidden"
-        />
-        {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Enviando...</p>
+      {/* Action buttons */}
+      <div className="grid grid-cols-2 gap-2">
+        <div 
+          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={handleUpload}
+            className="hidden"
+          />
+          {uploading ? (
+            <div className="flex flex-col items-center gap-1">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <p className="text-[10px] text-muted-foreground">Enviando...</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1">
+              <Upload className="h-6 w-6 text-muted-foreground" />
+              <p className="text-xs font-medium">Upload PDF</p>
+              <p className="text-[10px] text-muted-foreground">Máx 20MB</p>
+            </div>
+          )}
+        </div>
+
+        <div 
+          className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+          onClick={() => setShowTextInput(!showTextInput)}
+        >
+          <div className="flex flex-col items-center gap-1">
+            <Type className="h-6 w-6 text-muted-foreground" />
+            <p className="text-xs font-medium">Colar Texto</p>
+            <p className="text-[10px] text-emerald-600 font-medium">⚡ Recomendado</p>
           </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <Upload className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium">Clique para enviar PDF</p>
-            <p className="text-[10px] text-muted-foreground">Máximo 20MB por arquivo</p>
-          </div>
-        )}
+        </div>
       </div>
+
+      {/* Text input area */}
+      {showTextInput && (
+        <Card>
+          <CardContent className="p-3 space-y-2">
+            <Input
+              placeholder="Título (ex: Tabela INSS 2025, Petição modelo...)"
+              value={textTitle}
+              onChange={e => setTextTitle(e.target.value)}
+              className="text-sm"
+            />
+            <Textarea
+              placeholder="Cole aqui o texto completo: petições, regulamentos, tabelas, instruções, regras de negócio..."
+              value={textContent}
+              onChange={e => setTextContent(e.target.value)}
+              rows={8}
+              className="text-sm resize-y"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">
+                {textContent.length > 0 ? `${(textContent.length / 1000).toFixed(1)}k caracteres` : ''}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => { setShowTextInput(false); setTextContent(''); setTextTitle(''); }}>
+                  Cancelar
+                </Button>
+                <Button size="sm" onClick={handleSaveText} disabled={savingText || !textContent.trim()}>
+                  {savingText ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Plus className="h-3.5 w-3.5 mr-1" />}
+                  Adicionar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Document list */}
       {docs.length > 0 && (
         <div className="space-y-2">
           {docs.map(doc => {
             const status = statusConfig[doc.status] || statusConfig.pending;
+            const isText = doc.file_name.startsWith('📝');
             return (
               <Card key={doc.id}>
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2 min-w-0 flex-1">
-                      <FileText className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                      {isText ? (
+                        <Type className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                      )}
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{doc.file_name}</p>
                         <div className="flex items-center gap-2 mt-0.5">
@@ -247,9 +332,9 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
         </div>
       )}
 
-      {docs.length === 0 && (
+      {docs.length === 0 && !showTextInput && (
         <p className="text-xs text-muted-foreground text-center py-4">
-          Nenhum documento adicionado. Envie PDFs para enriquecer as respostas do agente.
+          Nenhum documento adicionado. Cole textos ou envie PDFs para enriquecer as respostas do agente.
         </p>
       )}
     </div>
