@@ -651,6 +651,57 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
+      {/* Conversas por Etapa do Funil */}
+      {funnelStages.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-primary" />
+              Conversas por Etapa do Funil (Hoje)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Leads com conversas ativas agrupados por etapa</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {funnelStages.map((stage, i) => {
+                const totalFunnel = funnelStages.reduce((a, s) => a + s.count, 0);
+                const percent = totalFunnel > 0 ? Math.round((stage.count / totalFunnel) * 100) : 0;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-2.5 rounded-lg border hover:bg-accent/50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setSelectedFunnelStage(stage.stageName);
+                      setSheetOpen('funnel');
+                    }}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: stage.stageColor }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{stage.stageName}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${percent}%`, backgroundColor: stage.stageColor }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{percent}%</span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs font-bold">
+                      {stage.count}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Leads por Dia */}
         <Card>
