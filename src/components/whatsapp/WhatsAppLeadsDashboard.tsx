@@ -772,7 +772,50 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
-      {/* Conversas por Etapa do Funil */}
+      {/* Slow Response Cards */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              Respostas Lentas
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={sendReport}
+              disabled={sendingReport}
+            >
+              {sendingReport ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              Enviar Relatório
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Conversas com tempo de resposta acima do ideal</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {slowResponseBuckets.map((bucket) => (
+              <div
+                key={bucket.label}
+                className="p-3 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors text-center"
+                onClick={() => {
+                  setSelectedSlowBucket(bucket.label);
+                  setSheetOpen('slow_responses');
+                }}
+              >
+                <p className="text-xs text-muted-foreground">{bucket.label}</p>
+                <p className={`text-2xl font-bold ${bucket.conversations.length > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {bucket.conversations.length}
+                </p>
+                <p className="text-[10px] text-muted-foreground">conversas</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+
       {funnelStages.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
