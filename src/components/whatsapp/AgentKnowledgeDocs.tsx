@@ -30,6 +30,7 @@ export function AgentKnowledgeDocs({ agentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [showTextInput, setShowTextInput] = useState(false);
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [textTitle, setTextTitle] = useState('');
   const [textContent, setTextContent] = useState('');
   const [savingText, setSavingText] = useState(false);
