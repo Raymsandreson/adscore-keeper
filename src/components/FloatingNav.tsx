@@ -228,8 +228,8 @@ export function FloatingNav() {
         {/* Collapsed state - small pill to expand */}
         {dockCollapsed ? (
           <button
-            onClick={() => setDockCollapsed(false)}
-            className="flex items-center gap-1.5 bg-card/80 backdrop-blur-xl border border-border/60 rounded-full px-3 py-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
+            onClick={() => { setDockCollapsed(false); try { localStorage.setItem('dock_collapsed', '0'); } catch {} }}
+            className="flex items-center gap-1.5 bg-card/80 backdrop-blur-xl border border-border/60 rounded-full px-4 py-2.5 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
           >
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground font-medium">Menu</span>
@@ -242,7 +242,7 @@ export function FloatingNav() {
           <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2.5 py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
             {/* Collapse button */}
             <button
-              onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); }}
+              onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); try { localStorage.setItem('dock_collapsed', '1'); } catch {} }}
               title="Minimizar"
               className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted/50 text-muted-foreground hover:bg-muted"
             >
