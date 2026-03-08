@@ -1012,6 +1012,46 @@ Deno.serve(async (req) => {
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName, 'StoredMedia:', storedMediaUrl ? 'yes' : 'no')
 
+    // ========== HUMAN PAUSE: detect human outbound messages ==========
+    if (direction === 'outbound' && instanceName && phone) {
+      // Check if this outbound message is from a human (not AI-generated)
+      const isAiMessage = body?.metadata?.ai_agent || body?.metadata?.ai_agent_id;
+      if (!isAiMessage) {
+        // Human sent a message - pause the AI agent
+        try {
+          const { data: assignment } = await supabase
+            .from('whatsapp_conversation_agents')
+            .select('agent_id, is_active')
+            .eq('phone', phone)
+            .eq('instance_name', instanceName)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (assignment) {
+            // Get the agent's human_pause_minutes config
+            const { data: agentConfig } = await supabase
+              .from('whatsapp_ai_agents')
+              .select('human_pause_minutes')
+              .eq('id', (assignment as any).agent_id)
+              .maybeSingle();
+
+            const pauseMinutes = (agentConfig as any)?.human_pause_minutes || 30;
+            const pauseUntil = new Date(Date.now() + pauseMinutes * 60 * 1000).toISOString();
+            
+            await supabase
+              .from('whatsapp_conversation_agents')
+              .update({ human_paused_until: pauseUntil } as any)
+              .eq('phone', phone)
+              .eq('instance_name', instanceName);
+
+            console.log(`Human message detected - AI paused until ${pauseUntil} (${pauseMinutes}min)`);
+          }
+        } catch (e) {
+          console.error('Human pause error:', e);
+        }
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {

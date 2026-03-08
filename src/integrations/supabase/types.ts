@@ -5515,6 +5515,7 @@ export type Database = {
           followup_interval_minutes: number
           followup_max_attempts: number
           followup_message: string | null
+          human_pause_minutes: number
           id: string
           is_active: boolean
           max_tokens: number
@@ -5542,6 +5543,7 @@ export type Database = {
           followup_interval_minutes?: number
           followup_max_attempts?: number
           followup_message?: string | null
+          human_pause_minutes?: number
           id?: string
           is_active?: boolean
           max_tokens?: number
@@ -5569,6 +5571,7 @@ export type Database = {
           followup_interval_minutes?: number
           followup_max_attempts?: number
           followup_message?: string | null
+          human_pause_minutes?: number
           id?: string
           is_active?: boolean
           max_tokens?: number
@@ -5849,6 +5852,7 @@ export type Database = {
           activated_by: string | null
           agent_id: string
           created_at: string
+          human_paused_until: string | null
           id: string
           instance_name: string
           is_active: boolean
@@ -5859,6 +5863,7 @@ export type Database = {
           activated_by?: string | null
           agent_id: string
           created_at?: string
+          human_paused_until?: string | null
           id?: string
           instance_name: string
           is_active?: boolean
@@ -5869,6 +5874,7 @@ export type Database = {
           activated_by?: string | null
           agent_id?: string
           created_at?: string
+          human_paused_until?: string | null
           id?: string
           instance_name?: string
           is_active?: boolean

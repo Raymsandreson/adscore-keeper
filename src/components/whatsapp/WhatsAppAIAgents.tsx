@@ -37,6 +37,7 @@ interface AIAgent {
   auto_call_delay_seconds: number;
   auto_call_no_response_minutes: number;
   auto_call_instance_name: string | null;
+  human_pause_minutes: number;
   created_at: string;
 }
 
@@ -162,6 +163,7 @@ export function WhatsAppAIAgents() {
       followup_max_attempts: 3, followup_message: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
+      human_pause_minutes: 30,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -199,6 +201,7 @@ export function WhatsAppAIAgents() {
         auto_call_delay_seconds: editingAgent.auto_call_delay_seconds ?? 0,
         auto_call_no_response_minutes: editingAgent.auto_call_no_response_minutes ?? 30,
         auto_call_instance_name: editingAgent.auto_call_instance_name || null,
+        human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
       };
 
       if (editingAgent.id) {
@@ -430,6 +433,16 @@ export function WhatsAppAIAgents() {
                       </div>
                     </>
                   )}
+                </div>
+                <div className="border rounded-lg p-3 space-y-3">
+                  <div>
+                    <Label className="text-sm">Pausa quando humano entra</Label>
+                    <p className="text-[10px] text-muted-foreground mb-1">Quando alguém da equipe envia uma mensagem manual, o agente IA pausa por este tempo para não atrapalhar a conversa</p>
+                    <div className="flex items-center gap-2">
+                      <Input type="number" value={editingAgent.human_pause_minutes ?? 30} onChange={e => setEditingAgent({ ...editingAgent, human_pause_minutes: parseInt(e.target.value) || 30 })} min={1} max={1440} className="w-24" />
+                      <span className="text-xs text-muted-foreground">minutos</span>
+                    </div>
+                  </div>
                 </div>
               </TabsContent>
 

@@ -90,6 +90,30 @@ serve(async (req) => {
       });
     }
 
+    // Check human pause
+    const { data: pauseCheck } = await supabase
+      .from("whatsapp_conversation_agents")
+      .select("human_paused_until")
+      .eq("phone", phone)
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+
+    if ((pauseCheck as any)?.human_paused_until) {
+      const pausedUntil = new Date((pauseCheck as any).human_paused_until);
+      if (pausedUntil > new Date()) {
+        console.log(`Agent paused until ${pausedUntil.toISOString()} due to human intervention`);
+        return new Response(JSON.stringify({ skipped: true, reason: "Human pause active", paused_until: pausedUntil.toISOString() }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // Pause expired, clear it
+      await supabase
+        .from("whatsapp_conversation_agents")
+        .update({ human_paused_until: null } as any)
+        .eq("phone", phone)
+        .eq("instance_name", instance_name);
+    }
+
     // Get agent config
     const { data: agent } = await supabase
       .from("whatsapp_ai_agents")
