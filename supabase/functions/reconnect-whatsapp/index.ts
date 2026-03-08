@@ -109,11 +109,11 @@ serve(async (req) => {
           });
         }
 
-        // Extract QR code from response
-        const qrCode = data?.qrcode || data?.qr || data?.value || data?.qr_code || data?.base64 || null;
+        // Extract QR code from response - UazAPI returns instance.qrcode
+        const qrCode = data?.instance?.qrcode || data?.qrcode || data?.qr || data?.value || data?.qr_code || data?.base64 || null;
 
         // Check if already connected
-        if (data?.status === "connected" || data?.connected === true) {
+        if (data?.instance?.status === "connected" || data?.status === "connected" || data?.connected === true) {
           return new Response(JSON.stringify({
             success: true,
             action: "connect",
@@ -223,7 +223,7 @@ serve(async (req) => {
         const data = await resp.json().catch(() => null);
         console.log(`/instance/connect (pairing) response status: ${resp.status}, data:`, JSON.stringify(data));
 
-        if (data?.status === "connected" || data?.connected === true) {
+        if (data?.instance?.status === "connected" || data?.connected === true) {
           return new Response(JSON.stringify({
             success: true,
             action: "pairing_code",
@@ -234,8 +234,8 @@ serve(async (req) => {
           });
         }
 
-        // Extract pairing code from response
-        const pairingCode = data?.pairingCode || data?.pairing_code || data?.code || null;
+        // Extract pairing code from response - UazAPI returns instance.paircode
+        const pairingCode = data?.instance?.paircode || data?.pairingCode || data?.pairing_code || data?.code || null;
 
         if (!pairingCode) {
           return new Response(JSON.stringify({
