@@ -4,17 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  CheckCircle2, ChevronRight, Sparkles, Shield, Zap
+  ChevronRight, Shield, Zap
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
+import { WhatsAppReportSettings } from './WhatsAppReportSettings';
+import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppAIAgents } from './WhatsAppAIAgents';
-
-// Cognitive biases applied:
-// - Serial Position Effect: most used items first (Agentes IA) and last (Integração)
-// - Completion Bias: checkmarks for configured sections
-// - Anchoring: status badges showing what's active
-// - Progressive Disclosure: one section at a time
-// - Default Effect: pre-select the most actionable tab
 
 interface Tab {
   id: string;
@@ -82,9 +77,9 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - lateral tabs */}
-        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:block">
-          <nav className="p-3 space-y-1">
+        {/* Sidebar - lateral tabs (desktop) */}
+        <aside className="w-64 border-r bg-muted/30 overflow-y-auto shrink-0 hidden md:flex md:flex-col">
+          <nav className="p-3 space-y-1 flex-1">
             <p className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wider px-3 mb-3">
               WhatsApp
             </p>
@@ -114,7 +109,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground truncate mt-0.5 group-hover:text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                     {tab.description}
                   </p>
                 </div>
@@ -126,8 +121,8 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
             ))}
           </nav>
 
-          {/* Social proof / motivation (Bandwagon Effect) */}
-          <div className="mx-3 mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10">
+          {/* Social proof / Bandwagon Effect */}
+          <div className="mx-3 mb-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
             <div className="flex items-center gap-2 mb-1.5">
               <Zap className="h-3.5 w-3.5 text-primary" />
               <span className="text-[11px] font-semibold text-primary">Dica Pro</span>
@@ -138,8 +133,8 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
           </div>
         </aside>
 
-        {/* Mobile tabs */}
-        <div className="md:hidden border-b bg-muted/30 overflow-x-auto shrink-0 w-full absolute z-10">
+        {/* Mobile horizontal tabs */}
+        <div className="md:hidden border-b bg-muted/30 shrink-0 w-full absolute z-10 overflow-x-auto">
           <div className="flex p-2 gap-1 min-w-max">
             {tabs.map((tab) => (
               <button
@@ -162,7 +157,6 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
         {/* Content area */}
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 md:p-6 max-w-3xl mx-auto w-full md:pt-6 pt-16">
-            {/* Section header with anchoring */}
             <div className="mb-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 {tabs.find(t => t.id === activeTab)?.icon}
@@ -173,25 +167,13 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
               </p>
             </div>
 
-            {/* Render active section */}
             {activeTab === 'agents' && <WhatsAppAIAgents />}
-            {activeTab === 'reports' && <ReportSection />}
-            {activeTab === 'ads' && <AdSection />}
+            {activeTab === 'reports' && <WhatsAppReportSettings />}
+            {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
           </div>
         </main>
       </div>
     </div>
   );
-}
-
-// Lazy-loaded wrappers to keep imports clean
-function ReportSection() {
-  const { WhatsAppReportSettings } = require('./WhatsAppReportSettings');
-  return <WhatsAppReportSettings />;
-}
-
-function AdSection() {
-  const { WhatsAppAdLinkSettings } = require('./WhatsAppAdLinkSettings');
-  return <WhatsAppAdLinkSettings />;
 }
