@@ -412,6 +412,7 @@ export function WhatsAppAIAgents() {
                     <p className="text-sm text-muted-foreground">Salve o agente primeiro para adicionar documentos à base de conhecimento</p>
                   </div>
                 )}
+              </TabsContent>
 
               {/* TAB: Timing */}
               <TabsContent value="timing" className="space-y-4 mt-4">
