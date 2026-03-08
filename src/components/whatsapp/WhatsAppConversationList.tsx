@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useMemo, useRef } from 'react';
