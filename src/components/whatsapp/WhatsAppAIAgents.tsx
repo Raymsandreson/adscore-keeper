@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { AIPromptGenerator } from './AIPromptGenerator';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -97,6 +98,7 @@ export function WhatsAppAIAgents() {
   const [editingAgent, setEditingAgent] = useState<Partial<AIAgent> | null>(null);
   const [saving, setSaving] = useState(false);
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
+  const [showAIPrompt, setShowAIPrompt] = useState(false);
   const [campaignLinks, setCampaignLinks] = useState<CampaignLink[]>([]);
   const [availableCampaigns, setAvailableCampaigns] = useState<{ campaign_id: string; campaign_name: string }[]>([]);
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
@@ -376,7 +378,28 @@ export function WhatsAppAIAgents() {
                   </div>
                 </div>
                 <div>
-                  <Label>Prompt Base *</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label>Prompt Base *</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setShowAIPrompt(!showAIPrompt)}
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      Gerar com IA
+                    </Button>
+                  </div>
+                  {showAIPrompt && (
+                    <div className="mb-2">
+                      <AIPromptGenerator
+                        currentPrompt={editingAgent.base_prompt || ''}
+                        onApply={(prompt) => { setEditingAgent({ ...editingAgent, base_prompt: prompt }); setShowAIPrompt(false); }}
+                        onClose={() => setShowAIPrompt(false)}
+                      />
+                    </div>
+                  )}
                   <Textarea value={editingAgent.base_prompt || ''} onChange={e => setEditingAgent({ ...editingAgent, base_prompt: e.target.value })} placeholder="Instruções do agente..." rows={5} />
                 </div>
                 <div>
