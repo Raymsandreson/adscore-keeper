@@ -6100,6 +6100,72 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_report_config: {
+        Row: {
+          created_at: string
+          id: string
+          include_ai_replies: boolean
+          include_calls: boolean
+          include_closed_leads: boolean
+          include_conversations: boolean
+          include_messages_inbound: boolean
+          include_messages_outbound: boolean
+          include_new_contacts: boolean
+          include_new_leads: boolean
+          include_response_time: boolean
+          include_unread: boolean
+          is_active: boolean
+          recipient_phones: string[]
+          report_name: string
+          schedule_times: string[]
+          sender_instance_ids: string[]
+          target_instance_ids: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          include_ai_replies?: boolean
+          include_calls?: boolean
+          include_closed_leads?: boolean
+          include_conversations?: boolean
+          include_messages_inbound?: boolean
+          include_messages_outbound?: boolean
+          include_new_contacts?: boolean
+          include_new_leads?: boolean
+          include_response_time?: boolean
+          include_unread?: boolean
+          is_active?: boolean
+          recipient_phones?: string[]
+          report_name?: string
+          schedule_times?: string[]
+          sender_instance_ids?: string[]
+          target_instance_ids?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          include_ai_replies?: boolean
+          include_calls?: boolean
+          include_closed_leads?: boolean
+          include_conversations?: boolean
+          include_messages_inbound?: boolean
+          include_messages_outbound?: boolean
+          include_new_contacts?: boolean
+          include_new_leads?: boolean
+          include_response_time?: boolean
+          include_unread?: boolean
+          is_active?: boolean
+          recipient_phones?: string[]
+          report_name?: string
+          schedule_times?: string[]
+          sender_instance_ids?: string[]
+          target_instance_ids?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       workflow_daily_goals: {
         Row: {
           created_at: string
