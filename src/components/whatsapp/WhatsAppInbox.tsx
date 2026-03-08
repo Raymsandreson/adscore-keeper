@@ -73,10 +73,7 @@ export function WhatsAppInbox() {
   );
 
   useEffect(() => {
-    if (!disconnectedSignature) {
-      setDismissedAlert(false);
-      return;
-    }
+    setDismissedAlert(false);
   }, [disconnectedSignature]);
 
   // Auto-select default instance on mount
