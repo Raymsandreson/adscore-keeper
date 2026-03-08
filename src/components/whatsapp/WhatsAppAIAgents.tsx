@@ -11,7 +11,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, Power, PowerOff, Sparkles, Loader2, Phone, Clock, Megaphone, X, FileText } from 'lucide-react';
+import { AgentKnowledgeDocs } from './AgentKnowledgeDocs';
 import { toast } from 'sonner';
 
 interface AIAgent {
@@ -341,8 +342,9 @@ export function WhatsAppAIAgents() {
           </DialogHeader>
           {editingAgent && (
             <Tabs defaultValue="general" className="w-full">
-              <TabsList className="w-full grid grid-cols-4">
+              <TabsList className="w-full grid grid-cols-5">
                 <TabsTrigger value="general" className="text-xs">Geral</TabsTrigger>
+                <TabsTrigger value="knowledge" className="text-xs">📚 Base</TabsTrigger>
                 <TabsTrigger value="timing" className="text-xs">Tempos</TabsTrigger>
                 <TabsTrigger value="calls" className="text-xs">Chamadas</TabsTrigger>
                 <TabsTrigger value="campaigns" className="text-xs">Campanhas</TabsTrigger>
