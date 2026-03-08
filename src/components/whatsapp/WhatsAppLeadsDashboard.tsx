@@ -6,8 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, LabelList } from 'recharts';
-import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch } from 'lucide-react';
+import { Users, Clock, TrendingUp, MessageSquare, Zap, Target, Timer, BarChart3, PhoneForwarded, FileSignature, ExternalLink, GitBranch, AlertTriangle, Send, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { format, subDays, startOfDay, endOfDay, differenceInMinutes, parseISO } from 'date-fns';
+import { toast } from 'sonner';
 import { ptBR } from 'date-fns/locale';
 
 interface LeadWithMessages {
@@ -70,8 +72,10 @@ export function WhatsAppLeadsDashboard() {
   const [todayFollowups, setTodayFollowups] = useState<{ phone: string; contact_name: string | null; outbound_count: number; last_outbound_at: string; instance_name: string | null }[]>([]);
   const [todayDocs, setTodayDocs] = useState<{ id: string; document_name: string; template_name: string | null; signer_name: string | null; status: string; created_at: string }[]>([]);
   const [funnelStages, setFunnelStages] = useState<{ stageName: string; stageColor: string; count: number; leads: { id: string; name: string; phone: string | null }[] }[]>([]);
-  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | null>(null);
+  const [sheetOpen, setSheetOpen] = useState<'new_convs' | 'followups' | 'documents' | 'funnel' | 'slow_responses' | null>(null);
   const [selectedFunnelStage, setSelectedFunnelStage] = useState<string | null>(null);
+  const [selectedSlowBucket, setSelectedSlowBucket] = useState<string | null>(null);
+  const [sendingReport, setSendingReport] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -458,6 +462,123 @@ export function WhatsAppLeadsDashboard() {
       .slice(0, 10);
   }, [filteredLeads]);
 
+  // Slow response buckets: conversations where first response took > 10min, 20min, 30min, 1h
+  const slowResponseBuckets = useMemo(() => {
+    const buckets = [
+      { label: '> 10min', min: 10, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 20min', min: 20, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 30min', min: 30, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+      { label: '> 1h', min: 60, conversations: [] as (ConversationSummary & { responseTime: number })[] },
+    ];
+
+    inboundConversations.forEach(conv => {
+      if (conv.firstInboundAt && conv.firstOutboundAt) {
+        const diff = differenceInMinutes(parseISO(conv.firstOutboundAt), parseISO(conv.firstInboundAt));
+        if (diff >= 0 && diff < 1440) {
+          buckets.forEach(b => {
+            if (diff >= b.min) {
+              b.conversations.push({ ...conv, responseTime: diff });
+            }
+          });
+        }
+      } else if (conv.firstInboundAt && !conv.firstOutboundAt) {
+        // No response at all — add to all buckets
+        const diff = differenceInMinutes(new Date(), parseISO(conv.firstInboundAt));
+        buckets.forEach(b => {
+          if (diff >= b.min) {
+            b.conversations.push({ ...conv, responseTime: diff });
+          }
+        });
+      }
+    });
+
+    return buckets;
+  }, [inboundConversations]);
+
+  // Send report via WhatsApp
+  const sendReport = async () => {
+    setSendingReport(true);
+    try {
+      // Find raymsandreson instance
+      const rayInstance = instances.find(i => i.instance_name?.toLowerCase() === 'raymsandreson');
+      if (!rayInstance) {
+        toast.error('Instância "raymsandreson" não encontrada');
+        setSendingReport(false);
+        return;
+      }
+
+      // Get all active instances with owner_phone
+      const { data: allInstances } = await supabase
+        .from('whatsapp_instances')
+        .select('id, instance_name, owner_phone')
+        .eq('is_active', true);
+
+      if (!allInstances) {
+        toast.error('Erro ao carregar instâncias');
+        setSendingReport(false);
+        return;
+      }
+
+      // Build report text
+      const now = format(new Date(), 'dd/MM/yyyy HH:mm');
+      const reportLines = [
+        `📊 *Relatório WhatsApp - ${now}*`,
+        '',
+        `📱 *Conversas:* ${inboundConversations.length}`,
+        `💬 *Msgs totais:* ${filteredMessages.length}`,
+        `✅ *Taxa de Resposta:* ${responseMetrics.responseRate}% (${responseMetrics.leadsWithResponse}/${responseMetrics.leadsWithInbound})`,
+        `⏱ *Tempo Médio 1ª Resp:* ${responseMetrics.avgResponseTime < 60 ? `${responseMetrics.avgResponseTime}min` : `${Math.round(responseMetrics.avgResponseTime / 60)}h`}`,
+        `⚡ *Resp. < 5min:* ${responseMetrics.responseTimes.length > 0 ? Math.round((responseMetrics.responseTimes.filter(t => t < 5).length / responseMetrics.responseTimes.length) * 100) : 0}%`,
+        '',
+        `🔴 *Respostas Lentas:*`,
+        ...slowResponseBuckets.map(b => `  ${b.label}: ${b.conversations.length} conversas`),
+        '',
+        `🎯 *Qualificados:* ${conversionMetrics.qualified} (${conversionMetrics.qualificationRate}%)`,
+        `📈 *Convertidos:* ${conversionMetrics.converted} (${conversionMetrics.conversionRate}%)`,
+      ];
+
+      if (funnelStages.length > 0) {
+        reportLines.push('', '📊 *Funil Hoje:*');
+        funnelStages.forEach(s => {
+          reportLines.push(`  ${s.stageName}: ${s.count}`);
+        });
+      }
+
+      const reportText = reportLines.join('\n');
+
+      let sentCount = 0;
+      const sentPhones = new Set<string>();
+
+      for (const inst of allInstances) {
+        if (!inst.owner_phone || sentPhones.has(inst.owner_phone)) continue;
+        if (inst.id === rayInstance.id) continue; // Don't send to self
+        sentPhones.add(inst.owner_phone);
+
+        const personalReport = `${reportText}\n\n_Instância: ${inst.instance_name}_`;
+
+        try {
+          await supabase.functions.invoke('send-whatsapp', {
+            body: {
+              phone: inst.owner_phone,
+              message: personalReport,
+              instance_id: rayInstance.id,
+            },
+          });
+          sentCount++;
+        } catch (e) {
+          console.error(`Error sending report to ${inst.owner_phone}:`, e);
+        }
+      }
+
+      toast.success(`Relatório enviado para ${sentCount} usuário(s)`);
+    } catch (error) {
+      console.error('Error sending report:', error);
+      toast.error('Erro ao enviar relatório');
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
   // Leads by instance (for receiving instances)
   const leadsByInstance = useMemo(() => {
     const receiveInstances = instances.filter(i => i.receive_leads);
@@ -651,7 +772,50 @@ export function WhatsAppLeadsDashboard() {
         </Card>
       </div>
 
-      {/* Conversas por Etapa do Funil */}
+      {/* Slow Response Cards */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              Respostas Lentas
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={sendReport}
+              disabled={sendingReport}
+            >
+              {sendingReport ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              Enviar Relatório
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Conversas com tempo de resposta acima do ideal</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {slowResponseBuckets.map((bucket) => (
+              <div
+                key={bucket.label}
+                className="p-3 rounded-lg border cursor-pointer hover:bg-accent/50 transition-colors text-center"
+                onClick={() => {
+                  setSelectedSlowBucket(bucket.label);
+                  setSheetOpen('slow_responses');
+                }}
+              >
+                <p className="text-xs text-muted-foreground">{bucket.label}</p>
+                <p className={`text-2xl font-bold ${bucket.conversations.length > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {bucket.conversations.length}
+                </p>
+                <p className="text-[10px] text-muted-foreground">conversas</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+
       {funnelStages.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -1003,6 +1167,46 @@ export function WhatsAppLeadsDashboard() {
                 ))}
               {funnelStages.filter(s => s.stageName === selectedFunnelStage).flatMap(s => s.leads).length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead nesta etapa</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* Slow Responses Sheet */}
+      <Sheet open={sheetOpen === 'slow_responses'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Respostas Lentas {selectedSlowBucket}
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {slowResponseBuckets
+                .find(b => b.label === selectedSlowBucket)
+                ?.conversations
+                .sort((a, b) => b.responseTime - a.responseTime)
+                .map((conv, i) => (
+                  <div key={`${conv.phone}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{conv.leadName || conv.phone}</p>
+                      <p className="text-xs text-muted-foreground">{conv.phone}</p>
+                      {conv.instanceName && <p className="text-[10px] text-muted-foreground">{conv.instanceName}</p>}
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <Badge variant={conv.responseTime >= 60 ? 'destructive' : 'outline'} className="text-xs">
+                        {conv.responseTime >= 60 ? `${Math.round(conv.responseTime / 60)}h${conv.responseTime % 60 > 0 ? `${conv.responseTime % 60}m` : ''}` : `${conv.responseTime}min`}
+                      </Badge>
+                      {!conv.firstOutboundAt && (
+                        <p className="text-[10px] text-destructive mt-0.5">Sem resposta</p>
+                      )}
+                    </div>
+                  </div>
+                )) || null}
+              {(slowResponseBuckets.find(b => b.label === selectedSlowBucket)?.conversations.length || 0) === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conversa nesta faixa</p>
               )}
             </div>
           </ScrollArea>
