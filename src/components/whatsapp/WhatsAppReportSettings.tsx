@@ -37,6 +37,7 @@ interface ReportConfig {
   include_new_contacts: boolean;
   include_response_time: boolean;
   include_ai_replies: boolean;
+  include_followups: boolean;
 }
 
 const defaultConfig: ReportConfig = {
@@ -56,6 +57,7 @@ const defaultConfig: ReportConfig = {
   include_new_contacts: true,
   include_response_time: true,
   include_ai_replies: false,
+  include_followups: true,
 };
 
 const metricOptions = [
@@ -69,6 +71,7 @@ const metricOptions = [
   { key: 'include_new_contacts', label: '👤 Contatos Cadastrados' },
   { key: 'include_response_time', label: '⏱️ Tempo Médio de Resposta' },
   { key: 'include_ai_replies', label: '🤖 Respostas da IA' },
+  { key: 'include_followups', label: '📋 Follow-ups (por tipo e resultado)' },
 ] as const;
 
 export function WhatsAppReportSettings() {
@@ -117,6 +120,7 @@ export function WhatsAppReportSettings() {
         include_new_contacts: configRes.data.include_new_contacts,
         include_response_time: configRes.data.include_response_time,
         include_ai_replies: configRes.data.include_ai_replies,
+        include_followups: configRes.data.include_followups ?? true,
       });
     }
     setLoading(false);
@@ -142,6 +146,7 @@ export function WhatsAppReportSettings() {
         include_new_contacts: config.include_new_contacts,
         include_response_time: config.include_response_time,
         include_ai_replies: config.include_ai_replies,
+        include_followups: config.include_followups,
         updated_at: new Date().toISOString(),
       };
 
