@@ -41,6 +41,7 @@ export function FloatingNav() {
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
+  const [dockCollapsed, setDockCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
   const [hasUpdate, setHasUpdate] = useState(false);
