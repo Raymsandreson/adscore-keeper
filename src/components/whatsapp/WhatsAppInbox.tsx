@@ -67,6 +67,18 @@ export function WhatsAppInbox() {
   const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
   const [importingGoogle, setImportingGoogle] = useState(false);
 
+  const disconnectedSignature = useMemo(
+    () => disconnectedInstances.map((inst) => inst.id).sort().join('|'),
+    [disconnectedInstances]
+  );
+
+  useEffect(() => {
+    if (!disconnectedSignature) {
+      setDismissedAlert(false);
+      return;
+    }
+  }, [disconnectedSignature]);
+
   // Auto-select default instance on mount
   const [defaultInstanceApplied, setDefaultInstanceApplied] = useState(false);
   useEffect(() => {
@@ -625,6 +637,25 @@ export function WhatsAppInbox() {
         )}
 
         <div className="ml-auto flex gap-2">
+          {disconnectedInstances.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-8"
+              onClick={() => {
+                if (disconnectedInstances.length === 1) {
+                  const inst = disconnectedInstances[0];
+                  setReconnectInstance({ id: inst.id, name: inst.instance_name });
+                  return;
+                }
+                setDismissedAlert(false);
+              }}
+              title="Reconectar instância"
+            >
+              <WifiOff className="h-3.5 w-3.5 mr-1.5" />
+              Reconectar
+            </Button>
+          )}
           <Button
             variant={bulkMode ? "default" : "ghost"}
             size={bulkMode ? "sm" : "icon"}
