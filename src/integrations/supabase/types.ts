@@ -5425,11 +5425,96 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_agent_campaign_links: {
+        Row: {
+          agent_id: string
+          campaign_id: string
+          campaign_name: string | null
+          created_at: string
+          id: string
+        }
+        Insert: {
+          agent_id: string
+          campaign_id: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          agent_id?: string
+          campaign_id?: string
+          campaign_name?: string | null
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_campaign_links_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_agent_followups: {
+        Row: {
+          agent_id: string
+          attempt_number: number
+          created_at: string
+          id: string
+          instance_name: string
+          phone: string
+          scheduled_at: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          agent_id: string
+          attempt_number?: number
+          created_at?: string
+          id?: string
+          instance_name: string
+          phone: string
+          scheduled_at: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          agent_id?: string
+          attempt_number?: number
+          created_at?: string
+          id?: string
+          instance_name?: string
+          phone?: string
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_agent_followups_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_ai_agents: {
         Row: {
+          auto_call_delay_seconds: number
+          auto_call_enabled: boolean
+          auto_call_instance_name: string | null
+          auto_call_mode: string
+          auto_call_no_response_minutes: number
           base_prompt: string
           created_at: string
           created_by: string | null
+          followup_enabled: boolean
+          followup_interval_minutes: number
+          followup_max_attempts: number
+          followup_message: string | null
           id: string
           is_active: boolean
           max_tokens: number
@@ -5437,6 +5522,7 @@ export type Database = {
           name: string
           provider: string
           read_messages: boolean
+          response_delay_seconds: number
           sign_messages: boolean
           temperature: number
           uazapi_agent_id: string | null
@@ -5444,9 +5530,18 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_call_delay_seconds?: number
+          auto_call_enabled?: boolean
+          auto_call_instance_name?: string | null
+          auto_call_mode?: string
+          auto_call_no_response_minutes?: number
           base_prompt?: string
           created_at?: string
           created_by?: string | null
+          followup_enabled?: boolean
+          followup_interval_minutes?: number
+          followup_max_attempts?: number
+          followup_message?: string | null
           id?: string
           is_active?: boolean
           max_tokens?: number
@@ -5454,6 +5549,7 @@ export type Database = {
           name: string
           provider?: string
           read_messages?: boolean
+          response_delay_seconds?: number
           sign_messages?: boolean
           temperature?: number
           uazapi_agent_id?: string | null
@@ -5461,9 +5557,18 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_call_delay_seconds?: number
+          auto_call_enabled?: boolean
+          auto_call_instance_name?: string | null
+          auto_call_mode?: string
+          auto_call_no_response_minutes?: number
           base_prompt?: string
           created_at?: string
           created_by?: string | null
+          followup_enabled?: boolean
+          followup_interval_minutes?: number
+          followup_max_attempts?: number
+          followup_message?: string | null
           id?: string
           is_active?: boolean
           max_tokens?: number
@@ -5471,6 +5576,7 @@ export type Database = {
           name?: string
           provider?: string
           read_messages?: boolean
+          response_delay_seconds?: number
           sign_messages?: boolean
           temperature?: number
           uazapi_agent_id?: string | null
@@ -5550,6 +5656,71 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      whatsapp_call_queue: {
+        Row: {
+          agent_id: string | null
+          attempts: number
+          contact_name: string | null
+          created_at: string
+          id: string
+          instance_name: string
+          last_attempt_at: string | null
+          last_result: string | null
+          lead_id: string | null
+          lead_name: string | null
+          max_attempts: number
+          phone: string
+          priority: number
+          scheduled_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agent_id?: string | null
+          attempts?: number
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          instance_name: string
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id?: string | null
+          lead_name?: string | null
+          max_attempts?: number
+          phone: string
+          priority?: number
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string | null
+          attempts?: number
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          instance_name?: string
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id?: string | null
+          lead_name?: string | null
+          max_attempts?: number
+          phone?: string
+          priority?: number
+          scheduled_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_call_queue_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_campaign_messages: {
         Row: {
