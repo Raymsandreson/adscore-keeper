@@ -910,7 +910,7 @@ export function WhatsAppInbox() {
                     {conversations.length === 0 && !loading && (
                       <div className="space-y-2">
                         <p className="text-sm text-muted-foreground">Nenhuma mensagem encontrada</p>
-                        <Button variant="outline" size="sm" onClick={() => setShowSetup(true)}>
+                        <Button variant="outline" size="sm" onClick={() => { setSettingsTab('integration'); setShowSetup(true); }}>
                           Configurar integração
                         </Button>
                       </div>
