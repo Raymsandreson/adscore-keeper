@@ -978,6 +978,36 @@ export function WhatsAppLeadsDashboard() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* Funnel Stage Sheet */}
+      <Sheet open={sheetOpen === 'funnel'} onOpenChange={(open) => !open && setSheetOpen(null)}>
+        <SheetContent className="w-[400px] sm:w-[450px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5 text-primary" />
+              {selectedFunnelStage || 'Etapa do Funil'}
+            </SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-100px)] mt-4">
+            <div className="space-y-2 pr-4">
+              {funnelStages
+                .filter(s => s.stageName === selectedFunnelStage)
+                .flatMap(s => s.leads)
+                .map((lead, i) => (
+                  <div key={`${lead.id}-${i}`} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{lead.name}</p>
+                      {lead.phone && <p className="text-xs text-muted-foreground">{lead.phone}</p>}
+                    </div>
+                  </div>
+                ))}
+              {funnelStages.filter(s => s.stageName === selectedFunnelStage).flatMap(s => s.leads).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">Nenhum lead nesta etapa</p>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
