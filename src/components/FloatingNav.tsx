@@ -6,6 +6,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
+  ChevronUp, ChevronDown,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
@@ -41,6 +42,7 @@ export function FloatingNav() {
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [mentionsOpen, setMentionsOpen] = useState(false);
+  const [dockCollapsed, setDockCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const unreadMentions = useUnreadMentionsCount();
   const [hasUpdate, setHasUpdate] = useState(false);
@@ -149,7 +151,7 @@ export function FloatingNav() {
     <>
       <div ref={containerRef} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:bottom-6">
         {/* Menu Panel - appears above the dock */}
-        {menuOpen && (
+        {menuOpen && !dockCollapsed && (
           <div
             className="mb-2 w-56 mx-auto bg-card/95 backdrop-blur-lg border border-border/60 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
           >
@@ -221,112 +223,126 @@ export function FloatingNav() {
           </div>
         )}
 
-        {/* Dock Bar */}
-        <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2.5 py-2 shadow-2xl">
-          {/* Menu button */}
+        {/* Collapsed state - small pill to expand */}
+        {dockCollapsed ? (
           <button
-            onClick={() => { setMenuOpen(v => !v); setExpandedSection(null); }}
-            title="Menu"
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
-              "bg-primary text-primary-foreground",
-              menuOpen && "ring-2 ring-primary/50 scale-110"
-            )}
+            onClick={() => setDockCollapsed(false)}
+            className="flex items-center gap-1.5 bg-card/80 backdrop-blur-xl border border-border/60 rounded-full px-3 py-2 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95"
           >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-
-          {/* Search button */}
-          <button
-            onClick={() => {
-              setMenuOpen(false);
-              const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
-              document.dispatchEvent(event);
-            }}
-            title="Buscar"
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
-              "bg-muted text-muted-foreground hover:bg-muted/80"
-            )}
-          >
-            <Search className="h-5 w-5" />
-          </button>
-
-          {/* WhatsApp Call button */}
-          <button
-            onClick={() => {
-              setWhatsAppOpen(v => !v);
-              setMenuOpen(false);
-            }}
-            title="WhatsApp Call"
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
-              "bg-green-600 text-white hover:bg-green-700",
-              whatsAppOpen && "ring-2 ring-green-400/50 scale-110"
-            )}
-          >
-            <Phone className="h-5 w-5" />
-          </button>
-
-          {/* AI Chat button */}
-          <button
-            onClick={() => {
-              setAiChatOpen(true);
-              setMenuOpen(false);
-            }}
-            title="Chat IA"
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
-              "bg-accent text-accent-foreground hover:bg-accent/80"
-            )}
-          >
-            <Bot className="h-5 w-5" />
-          </button>
-
-          {/* Mentions button */}
-          <button
-            onClick={() => {
-              setMentionsOpen(true);
-              setMenuOpen(false);
-            }}
-            title="Menções"
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
-              "bg-muted text-muted-foreground hover:bg-muted/80"
-            )}
-          >
-            <AtSign className="h-5 w-5" />
-            {unreadMentions > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-                {unreadMentions > 9 ? '9+' : unreadMentions}
-              </span>
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground font-medium">Menu</span>
+            {(unreadMentions > 0 || hasUpdate) && (
+              <span className="w-2 h-2 rounded-full bg-destructive" />
             )}
           </button>
+        ) : (
+          /* Dock Bar */
+          <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2.5 py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
+            {/* Collapse button */}
+            <button
+              onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); }}
+              title="Minimizar"
+              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted/50 text-muted-foreground hover:bg-muted"
+            >
+              <ChevronDown className="h-5 w-5" />
+            </button>
 
-          {/* Update button - always visible */}
-          <button
-            onClick={() => {
-              if (hasUpdate) {
-                setUpdateNotesOpen(true);
+            {/* Menu button */}
+            <button
+              onClick={() => { setMenuOpen(v => !v); setExpandedSection(null); }}
+              title="Menu"
+              className={cn(
+                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "bg-primary text-primary-foreground",
+                menuOpen && "ring-2 ring-primary/50 scale-110"
+              )}
+            >
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+
+            {/* Search button */}
+            <button
+              onClick={() => {
                 setMenuOpen(false);
-              } else {
-                setChecking(true);
-                checkForUpdates();
-                setTimeout(() => setChecking(false), 3000);
-              }
-            }}
-            title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
-            className={cn(
-              "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
-              hasUpdate
-                ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
-                : "bg-muted text-muted-foreground hover:bg-accent"
-            )}
-          >
-            <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
-            {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
-          </button>
-        </div>
+                const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
+                document.dispatchEvent(event);
+              }}
+              title="Buscar"
+              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
+            {/* WhatsApp Call button */}
+            <button
+              onClick={() => {
+                setWhatsAppOpen(v => !v);
+                setMenuOpen(false);
+              }}
+              title="WhatsApp Call"
+              className={cn(
+                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "bg-green-600 text-white hover:bg-green-700",
+                whatsAppOpen && "ring-2 ring-green-400/50 scale-110"
+              )}
+            >
+              <Phone className="h-5 w-5" />
+            </button>
+
+            {/* AI Chat button */}
+            <button
+              onClick={() => {
+                setAiChatOpen(true);
+                setMenuOpen(false);
+              }}
+              title="Chat IA"
+              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-accent text-accent-foreground hover:bg-accent/80"
+            >
+              <Bot className="h-5 w-5" />
+            </button>
+
+            {/* Mentions button */}
+            <button
+              onClick={() => {
+                setMentionsOpen(true);
+                setMenuOpen(false);
+              }}
+              title="Menções"
+              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
+            >
+              <AtSign className="h-5 w-5" />
+              {unreadMentions > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                  {unreadMentions > 9 ? '9+' : unreadMentions}
+                </span>
+              )}
+            </button>
+
+            {/* Update button */}
+            <button
+              onClick={() => {
+                if (hasUpdate) {
+                  setUpdateNotesOpen(true);
+                  setMenuOpen(false);
+                } else {
+                  setChecking(true);
+                  checkForUpdates();
+                  setTimeout(() => setChecking(false), 3000);
+                }
+              }}
+              title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
+              className={cn(
+                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+                hasUpdate
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+                  : "bg-muted text-muted-foreground hover:bg-accent"
+              )}
+            >
+              <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
+              {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* AI Chat Sheet */}
