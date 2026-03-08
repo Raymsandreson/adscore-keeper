@@ -6108,6 +6108,7 @@ export type Database = {
           include_calls: boolean
           include_closed_leads: boolean
           include_conversations: boolean
+          include_followups: boolean
           include_messages_inbound: boolean
           include_messages_outbound: boolean
           include_new_contacts: boolean
@@ -6129,6 +6130,7 @@ export type Database = {
           include_calls?: boolean
           include_closed_leads?: boolean
           include_conversations?: boolean
+          include_followups?: boolean
           include_messages_inbound?: boolean
           include_messages_outbound?: boolean
           include_new_contacts?: boolean
@@ -6150,6 +6152,7 @@ export type Database = {
           include_calls?: boolean
           include_closed_leads?: boolean
           include_conversations?: boolean
+          include_followups?: boolean
           include_messages_inbound?: boolean
           include_messages_outbound?: boolean
           include_new_contacts?: boolean

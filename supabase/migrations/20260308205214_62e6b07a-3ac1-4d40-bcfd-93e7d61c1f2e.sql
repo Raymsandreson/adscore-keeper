@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_report_config ADD COLUMN IF NOT EXISTS include_followups boolean NOT NULL DEFAULT true;
