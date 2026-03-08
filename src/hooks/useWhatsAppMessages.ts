@@ -543,7 +543,71 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     fetchMessages();
   }, [selectedInstanceId, hasLoaded, fetchMessages]);
 
-  // Lightweight auto-refresh to keep inbox updated without heavy UI churn
+  // Realtime subscription — lightweight, no polling needed
+  useEffect(() => {
+    if (!hasLoaded) return;
+
+    const channel = supabase
+      .channel('whatsapp-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+        (payload) => {
+          const newMsg = payload.new as WhatsAppMessage;
+
+          // If filtering by instance, skip irrelevant messages
+          if (selectedInstanceId && selectedInstanceId !== 'all') {
+            const inst = instances.find(i => i.id === selectedInstanceId);
+            if (inst && newMsg.instance_name !== inst.instance_name) return;
+          }
+
+          setMessages(prev => [newMsg, ...prev]);
+          setConversations(prev => {
+            const existing = prev.find(c => c.phone === newMsg.phone);
+            if (existing) {
+              // Deduplicate
+              const msgId = newMsg.external_message_id?.split(':').pop();
+              const isDuplicate = msgId && existing.messages.some(m => {
+                const existingMsgId = m.external_message_id?.split(':').pop();
+                return existingMsgId === msgId && m.created_at === newMsg.created_at;
+              });
+              if (isDuplicate) return prev;
+
+              return prev.map(c => {
+                if (c.phone !== newMsg.phone) return c;
+                return {
+                  ...c,
+                  last_message: newMsg.message_text || c.last_message,
+                  last_message_at: newMsg.created_at,
+                  unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? c.unread_count + 1 : c.unread_count,
+                  messages: [...c.messages, newMsg],
+                  contact_name: newMsg.contact_name || c.contact_name,
+                };
+              }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+            } else {
+              // New conversation
+              const newConv: WhatsAppConversation = {
+                phone: newMsg.phone,
+                contact_name: newMsg.contact_name,
+                contact_id: newMsg.contact_id,
+                lead_id: newMsg.lead_id,
+                last_message: newMsg.message_text,
+                last_message_at: newMsg.created_at,
+                unread_count: !newMsg.read_at && newMsg.direction === 'inbound' ? 1 : 0,
+                messages: [newMsg],
+                instance_name: newMsg.instance_name,
+              };
+              return [newConv, ...prev];
+            }
+          });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [hasLoaded, selectedInstanceId, instances]);
+
+  // Fallback auto-refresh every 5 min (keeps stats and missed messages in sync)
   useEffect(() => {
     if (!hasLoaded) return;
 
