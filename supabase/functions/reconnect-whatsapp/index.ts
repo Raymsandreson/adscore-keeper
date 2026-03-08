@@ -27,7 +27,7 @@ serve(async (req) => {
 
     const { data: inst, error } = await supabase
       .from("whatsapp_instances")
-      .select("id, instance_name, instance_token, base_url")
+      .select("id, instance_name, instance_token, base_url, owner_phone")
       .eq("id", instance_id)
       .single();
 
