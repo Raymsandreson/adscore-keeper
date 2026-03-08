@@ -140,6 +140,7 @@ export function WhatsAppLeadsDashboard() {
 
     // Fetch today's metrics for new cards
     fetchTodayMetrics();
+    fetchFunnelStages();
   };
 
   const fetchTodayMetrics = async () => {
