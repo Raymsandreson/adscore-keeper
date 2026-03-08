@@ -721,6 +721,9 @@ export function WhatsAppInbox() {
           >
             <RefreshCw className={"h-4 w-4" + (loading ? " animate-spin" : "")} />
           </Button>
+          <Button variant="ghost" size="icon" onClick={() => setShowAgents(true)} title="Agentes IA">
+            <Bot className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowSetup(true)} title="Configuração">
             <Settings className="h-4 w-4" />
           </Button>
