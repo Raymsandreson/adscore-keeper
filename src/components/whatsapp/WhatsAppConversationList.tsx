@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Search, User, Link2, Smartphone, PhoneCall, Unlink, Clock, CheckSquare, ChevronDown, ArrowDownAZ, ArrowDownUp, ArrowDown, Lock, ArrowUpFromLine, ArrowDownToLine, Users, UserCheck } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -542,7 +542,12 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
                 "text-[10px] flex-shrink-0",
                 isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
               )}>
-                {format(new Date(conv.last_message_at), 'HH:mm', { locale: ptBR })}
+                {(() => {
+                  const d = new Date(conv.last_message_at);
+                  if (isToday(d)) return format(d, 'HH:mm');
+                  if (isYesterday(d)) return 'Ontem';
+                  return format(d, 'dd/MM/yyyy');
+                })()}
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 mt-0.5">
