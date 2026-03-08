@@ -98,6 +98,7 @@ export function WhatsAppAIAgents() {
   const [editingAgent, setEditingAgent] = useState<Partial<AIAgent> | null>(null);
   const [saving, setSaving] = useState(false);
   const [conversationCounts, setConversationCounts] = useState<Record<string, number>>({});
+  const [showAIPrompt, setShowAIPrompt] = useState(false);
   const [campaignLinks, setCampaignLinks] = useState<CampaignLink[]>([]);
   const [availableCampaigns, setAvailableCampaigns] = useState<{ campaign_id: string; campaign_name: string }[]>([]);
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
