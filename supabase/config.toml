@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.analyze-petition]
 verify_jwt = false
+
+[functions.generate-knowledge-content]
+verify_jwt = false
