@@ -109,11 +109,11 @@ serve(async (req) => {
           });
         }
 
-        // Extract QR code from response
-        const qrCode = data?.qrcode || data?.qr || data?.value || data?.qr_code || data?.base64 || null;
+        // Extract QR code from response - UazAPI returns instance.qrcode
+        const qrCode = data?.instance?.qrcode || data?.qrcode || data?.qr || data?.value || data?.qr_code || data?.base64 || null;
 
         // Check if already connected
-        if (data?.status === "connected" || data?.connected === true) {
+        if (data?.instance?.status === "connected" || data?.status === "connected" || data?.connected === true) {
           return new Response(JSON.stringify({
             success: true,
             action: "connect",
