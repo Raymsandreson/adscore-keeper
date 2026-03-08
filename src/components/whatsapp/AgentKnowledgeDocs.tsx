@@ -3,10 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { FileText, Upload, Trash2, Loader2, CheckCircle2, AlertCircle, Clock, Type, Plus } from 'lucide-react';
+import { FileText, Upload, Trash2, Loader2, CheckCircle2, AlertCircle, Clock, Type, Plus, Sparkles, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { AIKnowledgeGenerator } from './AIKnowledgeGenerator';
 
 interface KnowledgeDoc {
   id: string;
