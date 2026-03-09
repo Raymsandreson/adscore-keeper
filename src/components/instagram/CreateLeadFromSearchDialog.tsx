@@ -107,7 +107,14 @@ function SearchContentExtractor({
 
       if (error) {
         console.error('Error extracting data:', error);
-        toast.error('Erro ao extrair dados');
+        try {
+          const errorBody = typeof error === 'object' && error.context ? await error.context.json() : null;
+          if (errorBody?.error) {
+            toast.error(errorBody.error);
+            return;
+          }
+        } catch {}
+        toast.error('Erro ao extrair dados. Tente novamente.');
         return;
       }
 
