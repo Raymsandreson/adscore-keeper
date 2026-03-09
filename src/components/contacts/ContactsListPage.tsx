@@ -454,15 +454,6 @@ export function ContactsListPage() {
               </Select>
             </div>
             <div>
-              <Label>Mensagem</Label>
-              <Textarea
-                value={sendMessage}
-                onChange={e => setSendMessage(e.target.value)}
-                placeholder="Digite a mensagem para todos os contatos..."
-                rows={5}
-              />
-            </div>
-            <div>
               <Label>Foto / Mídia (opcional)</Label>
               {sendMediaFile ? (
                 <div className="mt-2 flex items-center gap-3 p-2 border rounded-md bg-muted/50">
@@ -485,6 +476,15 @@ export function ContactsListPage() {
                   <input type="file" accept="image/*,video/*,application/pdf" className="hidden" onChange={handleMediaSelect} />
                 </label>
               )}
+            </div>
+            <div>
+              <Label>Mensagem</Label>
+              <Textarea
+                value={sendMessage}
+                onChange={e => setSendMessage(e.target.value)}
+                placeholder="Digite a mensagem para todos os contatos..."
+                rows={3}
+              />
             </div>
           </div>
           <DialogFooter>
