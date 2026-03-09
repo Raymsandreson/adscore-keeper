@@ -42,6 +42,7 @@ interface AIAgent {
   auto_call_instance_name: string | null;
   call_assigned_to: string | null;
   split_messages: boolean;
+  split_delay_seconds: number;
   human_pause_minutes: number;
   created_at: string;
 }
