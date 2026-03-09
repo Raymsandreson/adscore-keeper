@@ -114,6 +114,9 @@ Deno.serve(async (req) => {
 
     const token = `${signingInput}.${signatureB64}`
 
+    console.log('[TWILIO-TOKEN] Token generated successfully, length:', token.length)
+    console.log('[TWILIO-TOKEN] Token payload:', JSON.stringify(payload))
+
     return new Response(JSON.stringify({ token, identity }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
