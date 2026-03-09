@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot, Users, List } from 'lucide-react';
+import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Bot, Users, List, Contact2 } from 'lucide-react';
 
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
@@ -664,7 +664,6 @@ export function WhatsAppInbox() {
             disabled={importingWhatsApp}
             title="Importar Contatos do WhatsApp"
             onClick={async () => {
-              // Find the selected instance or default to first connected
               const targetInstance = selectedInstanceId !== 'all' 
                 ? instances.find(i => i.id === selectedInstanceId)
                 : instances[0];
@@ -700,8 +699,9 @@ export function WhatsAppInbox() {
           >
             {importingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/contacts')} title="Contatos & Transmissão">
-            <List className="h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => navigate('/contacts')} title="Contatos & Lista de Transmissão" className="gap-1.5 h-8 text-xs">
+            <Contact2 className="h-3.5 w-3.5" />
+            Contatos
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
