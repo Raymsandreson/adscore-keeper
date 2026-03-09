@@ -444,6 +444,13 @@ export function WhatsAppAIAgents() {
                     </div>
                     <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
                   </div>
+                  {editingAgent.split_messages && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs">Delay entre partes: {editingAgent.split_delay_seconds ?? 2}s</Label>
+                      <Slider min={1} max={10} step={1} value={[editingAgent.split_delay_seconds ?? 2]} onValueChange={v => setEditingAgent({ ...editingAgent, split_delay_seconds: v[0] })} />
+                      <p className="text-[10px] text-muted-foreground">Tempo de espera entre cada parte da mensagem</p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 
