@@ -116,72 +116,32 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     }
   }, []);
 
-  // Load Twilio SDK
-  const loadTwilioSdk = useCallback((): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (window.Twilio?.Device) { sdkLoadedRef.current = true; resolve(); return; }
-      if (sdkLoadedRef.current) { resolve(); return; }
-      const script = document.createElement('script');
-      script.src = 'https://sdk.twilio.com/js/client/v1.14/twilio.min.js';
-      script.async = true;
-      script.onload = () => { sdkLoadedRef.current = true; resolve(); };
-      script.onerror = () => reject(new Error('Falha ao carregar SDK Twilio'));
-      document.head.appendChild(script);
-    });
-  }, []);
-
   const makeCall = useCallback(async (): Promise<string | null> => {
     try {
-      await loadTwilioSdk();
-
-      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('twilio-token');
-      if (tokenError) throw tokenError;
-      if (!tokenData?.token) throw new Error('Token Twilio não recebido');
-
-      const device = new window.Twilio.Device(tokenData.token, {
-        codecPreferences: ['opus', 'pcmu'],
-        closeProtection: true,
-        enableRingingState: true,
-      });
-      twilioDeviceRef.current = device;
-
-      await new Promise<void>((resolve, reject) => {
-        device.on('ready', () => resolve());
-        device.on('error', (err: any) => reject(err));
-        setTimeout(() => reject(new Error('Timeout ao conectar Twilio')), 10000);
-      });
-
-      const cleanPhone = phone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-      const conn = device.connect({ phone: formattedPhone });
-      twilioConnectionRef.current = conn;
-
-      let recordId: string | null = null;
-      if (user) {
-        const { data: insertData } = await supabase.from('call_records').insert({
-          user_id: user.id,
-          call_type: 'realizada',
-          call_result: 'em_andamento',
-          contact_phone: phone,
+      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
+        body: {
+          phone,
           contact_name: contactName || null,
           contact_id: contactId || null,
           lead_id: leadId || null,
           lead_name: leadName || null,
-          phone_used: 'twilio-softphone',
-          notes: 'Chamada via Softphone Twilio (WebRTC)',
-          tags: ['twilio', 'softphone', 'webrtc'],
-        } as any).select('id').single();
-        recordId = insertData?.id || null;
-      }
+          instance_id: instanceId || null,
+          instance_name: instanceName || null,
+        },
+      });
 
-      toast.success(`Ligando para ${contactName || phone} via Softphone...`);
-      return recordId;
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao iniciar chamada');
+
+      callActiveRef.current = true;
+      toast.success(`Ligando para ${contactName || phone} via WhatsApp...`);
+      return data.call_record_id || null;
     } catch (err: any) {
-      console.error('Twilio call error:', err);
-      toast.error(err?.message || 'Erro ao ligar via Twilio Softphone');
+      console.error('WhatsApp call error:', err);
+      toast.error(err?.message || 'Erro ao ligar via WhatsApp');
       return null;
     }
-  }, [phone, contactName, contactId, leadId, leadName, user, loadTwilioSdk]);
+  }, [phone, contactName, contactId, leadId, leadName, instanceId, instanceName]);
 
   const startRecording = useCallback(async () => {
     const recordId = await makeCall();
