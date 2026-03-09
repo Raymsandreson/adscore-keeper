@@ -105,6 +105,7 @@ export function WhatsAppAIAgents() {
   const [availableCampaigns, setAvailableCampaigns] = useState<{ campaign_id: string; campaign_name: string }[]>([]);
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [callQueueCount, setCallQueueCount] = useState(0);
+  const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
     fetchAgents();
