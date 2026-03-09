@@ -39,11 +39,29 @@ Deno.serve(async (req) => {
     const apiKeySecret = Deno.env.get('TWILIO_API_KEY_SECRET')
     const twimlAppSid = Deno.env.get('TWILIO_TWIML_APP_SID')
 
+    console.log('[TWILIO-TOKEN] Credentials check:', {
+      accountSid: accountSid ? `${accountSid.substring(0, 6)}...${accountSid.substring(accountSid.length - 4)}` : 'MISSING',
+      apiKeySid: apiKeySid ? `${apiKeySid.substring(0, 6)}...${apiKeySid.substring(apiKeySid.length - 4)}` : 'MISSING',
+      apiKeySecret: apiKeySecret ? `length=${apiKeySecret.length}` : 'MISSING',
+      twimlAppSid: twimlAppSid ? `${twimlAppSid.substring(0, 6)}...${twimlAppSid.substring(twimlAppSid.length - 4)}` : 'MISSING',
+    })
+
     if (!accountSid || !apiKeySid || !apiKeySecret || !twimlAppSid) {
       console.error('Missing Twilio credentials')
       return new Response(JSON.stringify({ error: 'Twilio not configured' }), {
         status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
+    }
+
+    // Validate credential formats
+    if (!accountSid.startsWith('AC')) {
+      console.error('TWILIO_ACCOUNT_SID should start with AC')
+    }
+    if (!apiKeySid.startsWith('SK')) {
+      console.error('TWILIO_API_KEY_SID should start with SK')
+    }
+    if (!twimlAppSid.startsWith('AP')) {
+      console.error('TWILIO_TWIML_APP_SID should start with AP')
     }
 
     // Generate AccessToken with Voice grant using Twilio REST API approach
