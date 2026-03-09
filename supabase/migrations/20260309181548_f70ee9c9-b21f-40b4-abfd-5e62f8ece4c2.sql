@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_ai_agents ADD COLUMN IF NOT EXISTS split_messages boolean DEFAULT false;
