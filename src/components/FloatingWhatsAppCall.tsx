@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, Loader2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { TwilioSoftphone } from '@/components/TwilioSoftphone';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
