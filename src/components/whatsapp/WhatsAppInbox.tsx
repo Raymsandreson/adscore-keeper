@@ -561,7 +561,7 @@ export function WhatsAppInbox() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex flex-col relative">
+    <div className="h-screen h-[100dvh] flex flex-col relative overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <MessageSquare className="h-6 w-6 text-green-600" />
