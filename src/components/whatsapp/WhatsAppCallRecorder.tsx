@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Device, Call } from '@twilio/voice-sdk';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -8,8 +9,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Save, Sparkles, User, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Uses UazAPI via make-whatsapp-call edge function
 
 interface Props {
   phone: string;
