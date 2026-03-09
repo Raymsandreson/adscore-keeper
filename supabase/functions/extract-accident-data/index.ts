@@ -157,6 +157,12 @@ serve(async (req) => {
     const hasImages = (images && Array.isArray(images) && images.length > 0) || imageContent.length > 0;
     const allImages = [...(images || []), ...imageContent];
 
+    const MAX_TEXT_LENGTH = 30000;
+    if (textContent.length > MAX_TEXT_LENGTH) {
+      console.log(`Text content too long (${textContent.length}), truncating to ${MAX_TEXT_LENGTH}`);
+      textContent = textContent.slice(0, MAX_TEXT_LENGTH);
+    }
+
     const currentYear = new Date().getFullYear();
     
     const imageAnalysisInstructions = hasImages ? `
@@ -290,7 +296,17 @@ IMPORTANTE:
     if (!response.ok) {
       const errorText = await response.text();
       console.error('AI API error:', response.status, errorText);
-      
+
+      let apiErrorMessage = 'Erro ao processar com IA';
+      try {
+        const parsed = JSON.parse(errorText);
+        apiErrorMessage = parsed?.error?.message || parsed?.error || parsed?.message || apiErrorMessage;
+      } catch {
+        if (errorText) {
+          apiErrorMessage = errorText.slice(0, 220);
+        }
+      }
+
       if (response.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Limite de requisições excedido. Tente novamente em alguns minutos.' }),
@@ -303,10 +319,16 @@ IMPORTANTE:
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
+      if (response.status === 413) {
+        return new Response(
+          JSON.stringify({ error: 'Conteúdo muito grande para análise. Cole um trecho menor do texto.' }),
+          { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       return new Response(
-        JSON.stringify({ error: 'Erro ao processar com IA' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: apiErrorMessage }),
+        { status: response.status >= 400 && response.status < 600 ? response.status : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
