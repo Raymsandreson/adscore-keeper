@@ -218,19 +218,13 @@ serve(async (req) => {
         });
       }
 
-      if ((agent as any).sign_messages) {
-        reply = `${reply}\n\n_🤖 ${(agent as any).name}_`;
-      }
-
-      // Split message into parts if enabled
+      // Split message into parts if enabled, then add signature to last part
       const splitMessages = (agent as any).split_messages === true;
-      let messageParts: string[] = [reply];
+      let messageParts: string[] = [];
 
       if (splitMessages) {
-        // Split by double newline (paragraphs), then group small ones
-        const paragraphs = reply.split(/\n\n+/).filter(p => p.trim());
+        const paragraphs = reply.split(/\n\n+/).filter((p: string) => p.trim());
         if (paragraphs.length > 1) {
-          messageParts = [];
           let current = "";
           for (const p of paragraphs) {
             if (current && (current.length + p.length > 300)) {
@@ -241,19 +235,19 @@ serve(async (req) => {
             }
           }
           if (current.trim()) messageParts.push(current.trim());
+        } else {
+          messageParts = [reply];
         }
+      } else {
+        messageParts = [reply];
       }
 
-      // Add signature to the last part only
-      if ((agent as any).sign_messages && messageParts.length > 0) {
-        // Remove signature added earlier if splitting
-        const sigSuffix = `\n\n_🤖 ${(agent as any).name}_`;
+      // Add signature to last part only
+      if ((agent as any).sign_messages) {
         const lastIdx = messageParts.length - 1;
-        // The signature was already appended to the full reply, 
-        // so if we split, the last part already has it. But if split happened,
-        // we need to re-check. Since we split BEFORE signing was applied above,
-        // let's just re-apply:
-        // Actually signature was applied to `reply` before split. Let's handle it:
+        messageParts[lastIdx] = `${messageParts[lastIdx]}\n\n_🤖 ${(agent as any).name}_`;
+        // Also update full reply for DB storage
+        reply = messageParts.join("\n\n");
       }
 
       // Send via UazAPI v2
