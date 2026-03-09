@@ -274,7 +274,7 @@ serve(async (req) => {
         }
       }
 
-      // ========== SCHEDULE AUTO-CALL ==========
+      // ========== SCHEDULE AUTO-CALL (creates activity for assigned user) ==========
       if ((agent as any).auto_call_enabled) {
         const callInstanceName = (agent as any).auto_call_instance_name || instance_name;
         let scheduledAt: string;
@@ -317,6 +317,35 @@ serve(async (req) => {
             max_attempts: 3,
           });
           console.log(`Queued auto-call for ${phone} at ${scheduledAt} (mode: ${(agent as any).auto_call_mode})`);
+
+          // Create activity for assigned user if configured
+          const callAssignedTo = (agent as any).call_assigned_to;
+          if (callAssignedTo) {
+            // Get assigned user name
+            const { data: profileData } = await supabase
+              .from("profiles")
+              .select("full_name")
+              .eq("user_id", callAssignedTo)
+              .maybeSingle();
+
+            const assignedName = profileData?.full_name || "Responsável";
+            const contactLabel = leadName || phone;
+
+            await supabase.from("lead_activities").insert({
+              title: `Ligar para ${contactLabel}`,
+              description: `A IA identificou a necessidade de ligar para ${contactLabel} (${phone}). Motivo: interação via WhatsApp requer contato telefônico.`,
+              activity_type: "ligacao",
+              status: "pendente",
+              priority: (agent as any).auto_call_mode === "immediate" ? "urgente" : "normal",
+              assigned_to: callAssignedTo,
+              assigned_to_name: assignedName,
+              created_by: callAssignedTo,
+              lead_id: lead_id || null,
+              lead_name: leadName,
+              deadline: new Date(scheduledAt).toISOString().split("T")[0],
+            });
+            console.log(`Created call activity for user ${assignedName} (${callAssignedTo})`);
+          }
         }
       }
 

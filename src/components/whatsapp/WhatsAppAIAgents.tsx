@@ -40,6 +40,7 @@ interface AIAgent {
   auto_call_delay_seconds: number;
   auto_call_no_response_minutes: number;
   auto_call_instance_name: string | null;
+  call_assigned_to: string | null;
   human_pause_minutes: number;
   created_at: string;
 }
@@ -104,11 +105,13 @@ export function WhatsAppAIAgents() {
   const [availableCampaigns, setAvailableCampaigns] = useState<{ campaign_id: string; campaign_name: string }[]>([]);
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [callQueueCount, setCallQueueCount] = useState(0);
+  const [teamMembers, setTeamMembers] = useState<{ user_id: string; full_name: string }[]>([]);
 
   useEffect(() => {
     fetchAgents();
     fetchInstances();
     fetchCallQueueCount();
+    fetchTeamMembers();
   }, []);
 
   const fetchAgents = async () => {
@@ -143,6 +146,11 @@ export function WhatsAppAIAgents() {
     setCallQueueCount(count || 0);
   };
 
+  const fetchTeamMembers = async () => {
+    const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
+    setTeamMembers((data as any[]) || []);
+  };
+
   const fetchAvailableCampaigns = async () => {
     const { data } = await supabase
       .from('leads')
@@ -167,7 +175,7 @@ export function WhatsAppAIAgents() {
       followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
-      human_pause_minutes: 30,
+      call_assigned_to: null, human_pause_minutes: 30,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -206,6 +214,7 @@ export function WhatsAppAIAgents() {
         auto_call_delay_seconds: editingAgent.auto_call_delay_seconds ?? 0,
         auto_call_no_response_minutes: editingAgent.auto_call_no_response_minutes ?? 30,
         auto_call_instance_name: editingAgent.auto_call_instance_name || null,
+        call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
       };
 
@@ -565,6 +574,16 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                           <SelectTrigger><SelectValue placeholder="Selecionar instância" /></SelectTrigger>
                           <SelectContent>
                             {instances.map(i => <SelectItem key={i.id} value={i.instance_name}>{i.instance_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Responsável pela ligação</Label>
+                        <p className="text-[10px] text-muted-foreground mb-1">Quando a IA identificar necessidade de ligar, uma atividade será criada para este usuário</p>
+                        <Select value={editingAgent.call_assigned_to || ''} onValueChange={v => setEditingAgent({ ...editingAgent, call_assigned_to: v || null })}>
+                          <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                          <SelectContent>
+                            {teamMembers.map(m => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </div>
