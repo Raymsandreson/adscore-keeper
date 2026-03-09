@@ -44,6 +44,9 @@ export function ContactsListPage() {
   const [sendInstanceId, setSendInstanceId] = useState('');
   const [sending, setSending] = useState(false);
   const [sendFromList, setSendFromList] = useState<BroadcastList | null>(null);
+  const [sendMediaFile, setSendMediaFile] = useState<File | null>(null);
+  const [sendMediaPreview, setSendMediaPreview] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   // Instances
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
