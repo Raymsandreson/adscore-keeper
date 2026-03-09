@@ -49,7 +49,7 @@ export function ContactsListPage() {
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
 
   useEffect(() => {
-    fetchContacts({ page: 1, pageSize: 1000 });
+    fetchContacts(1, 1000);
     const loadInstances = async () => {
       const { data } = await supabase
         .from('whatsapp_instances')
