@@ -58,6 +58,7 @@ const CasesPage = lazyRetry(() => import("./pages/CasesPage"));
 const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"));
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"));
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
+const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"));
 
 const queryClient = new QueryClient();
 
