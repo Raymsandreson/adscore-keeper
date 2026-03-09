@@ -486,6 +486,7 @@ export function ContactsListPage() {
                 rows={3}
               />
             </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendFromList(null); handleRemoveMedia(); }}>
               Cancelar
