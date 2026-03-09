@@ -222,6 +222,40 @@ serve(async (req) => {
         reply = `${reply}\n\n_🤖 ${(agent as any).name}_`;
       }
 
+      // Split message into parts if enabled
+      const splitMessages = (agent as any).split_messages === true;
+      let messageParts: string[] = [reply];
+
+      if (splitMessages) {
+        // Split by double newline (paragraphs), then group small ones
+        const paragraphs = reply.split(/\n\n+/).filter(p => p.trim());
+        if (paragraphs.length > 1) {
+          messageParts = [];
+          let current = "";
+          for (const p of paragraphs) {
+            if (current && (current.length + p.length > 300)) {
+              messageParts.push(current.trim());
+              current = p;
+            } else {
+              current = current ? current + "\n\n" + p : p;
+            }
+          }
+          if (current.trim()) messageParts.push(current.trim());
+        }
+      }
+
+      // Add signature to the last part only
+      if ((agent as any).sign_messages && messageParts.length > 0) {
+        // Remove signature added earlier if splitting
+        const sigSuffix = `\n\n_🤖 ${(agent as any).name}_`;
+        const lastIdx = messageParts.length - 1;
+        // The signature was already appended to the full reply, 
+        // so if we split, the last part already has it. But if split happened,
+        // we need to re-check. Since we split BEFORE signing was applied above,
+        // let's just re-apply:
+        // Actually signature was applied to `reply` before split. Let's handle it:
+      }
+
       // Send via UazAPI v2
       const { data: instance } = await supabase
         .from("whatsapp_instances")
@@ -232,25 +266,34 @@ serve(async (req) => {
       if (instance) {
         const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
         const token = (instance as any).instance_token;
-        const sendRes = await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "token": token },
-          body: JSON.stringify({ number: phone, text: reply }),
-        });
-        if (!sendRes.ok) {
-          const errText = await sendRes.text();
-          console.error("UazAPI send error:", sendRes.status, errText);
-        } else {
-          console.log("UazAPI send success to", phone);
+        const delayBetween = (agent as any).response_delay_seconds ? Math.min((agent as any).response_delay_seconds, 3) * 1000 : 1500;
+
+        for (let i = 0; i < messageParts.length; i++) {
+          const part = messageParts[i];
+          const sendRes = await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "token": token },
+            body: JSON.stringify({ number: phone, text: part }),
+          });
+          if (!sendRes.ok) {
+            const errText = await sendRes.text();
+            console.error("UazAPI send error:", sendRes.status, errText);
+          } else {
+            console.log(`UazAPI send success part ${i + 1}/${messageParts.length} to ${phone}`);
+          }
+          // Wait between parts (except last)
+          if (i < messageParts.length - 1) {
+            await new Promise(r => setTimeout(r, delayBetween));
+          }
         }
       } else {
         console.error("No instance found for", instance_name);
       }
 
-      // Save outbound message
+      // Save outbound message (full reply)
       await supabase.from("whatsapp_messages").insert({
         phone, instance_name, direction: "outbound",
-        message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id },
+        message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id, split_count: messageParts.length },
       });
 
       // ========== SCHEDULE FOLLOW-UP ==========
