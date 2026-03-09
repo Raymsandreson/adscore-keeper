@@ -111,6 +111,7 @@ export function WhatsAppAIAgents() {
     fetchAgents();
     fetchInstances();
     fetchCallQueueCount();
+    fetchTeamMembers();
   }, []);
 
   const fetchAgents = async () => {
