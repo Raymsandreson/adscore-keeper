@@ -700,7 +700,7 @@ export function WhatsAppInbox() {
             {importingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
           </Button>
           <Button variant="outline" size="sm" onClick={() => navigate('/contacts')} title="Contatos & Lista de Transmissão" className="gap-1.5 h-8 text-xs">
-            <Contact className="h-3.5 w-3.5" />
+            <Contact2 className="h-3.5 w-3.5" />
             Contatos
           </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
