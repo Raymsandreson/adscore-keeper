@@ -660,25 +660,14 @@ export function ZapSignDocumentDialog({
                           className="text-sm"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">E-mail</Label>
-                          <Input
-                            placeholder="email@exemplo.com"
-                            value={signer.email}
-                            onChange={e => updateSigner(idx, 'email', e.target.value)}
-                            className="text-sm"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Celular</Label>
-                          <Input
-                            placeholder="(00) 00000-0000"
-                            value={signer.phone}
-                            onChange={e => updateSigner(idx, 'phone', e.target.value)}
-                            className="text-sm"
-                          />
-                        </div>
+                      <div>
+                        <Label className="text-xs">Celular</Label>
+                        <Input
+                          placeholder="5511999999999"
+                          value={signer.phone}
+                          onChange={e => updateSigner(idx, 'phone', e.target.value)}
+                          className="text-sm"
+                        />
                       </div>
                       {idx > 0 && (
                         <div>
