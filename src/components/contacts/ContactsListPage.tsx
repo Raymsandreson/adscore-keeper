@@ -133,8 +133,28 @@ export function ContactsListPage() {
     setShowSendDialog(true);
   };
 
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSendMediaFile(file);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setSendMediaPreview(url);
+    } else {
+      setSendMediaPreview(null);
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    setSendMediaFile(null);
+    if (sendMediaPreview) {
+      URL.revokeObjectURL(sendMediaPreview);
+      setSendMediaPreview(null);
+    }
+  };
+
   const handleSend = async () => {
-    if (!sendMessage.trim() || !sendInstanceId) return;
+    if ((!sendMessage.trim() && !sendMediaFile) || !sendInstanceId) return;
     setSending(true);
     try {
       let contactIds: string[];
@@ -145,15 +165,35 @@ export function ContactsListPage() {
         contactIds = Array.from(selectedContacts);
       }
 
+      let mediaUrl: string | undefined;
+      let mediaType: string | undefined;
+
+      if (sendMediaFile) {
+        setUploadingMedia(true);
+        const ext = sendMediaFile.name.split('.').pop() || 'bin';
+        const path = `broadcast/${Date.now()}.${ext}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('whatsapp-media')
+          .upload(path, sendMediaFile, { contentType: sendMediaFile.type });
+        setUploadingMedia(false);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(uploadData.path);
+        mediaUrl = urlData.publicUrl;
+        mediaType = sendMediaFile.type;
+      }
+
       await sendBroadcast({
         listId: sendFromList?.id,
         contactIds,
         message: sendMessage.trim(),
         instanceId: sendInstanceId,
+        mediaUrl,
+        mediaType,
       });
       setShowSendDialog(false);
       setSendMessage('');
       setSendFromList(null);
+      handleRemoveMedia();
     } catch {
       // handled in hook
     } finally {
