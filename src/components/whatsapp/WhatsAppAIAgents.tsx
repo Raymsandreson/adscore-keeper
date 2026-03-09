@@ -219,6 +219,7 @@ export function WhatsAppAIAgents() {
         call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
         split_messages: editingAgent.split_messages ?? false,
+        split_delay_seconds: editingAgent.split_delay_seconds ?? 2,
       };
 
       if (editingAgent.id) {
