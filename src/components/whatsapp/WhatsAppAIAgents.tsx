@@ -501,8 +501,8 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                           Prompt específico para a IA gerar mensagens de follow-up contextualizadas. O objetivo é retomar ou manter o relacionamento.
                         </p>
                         <Textarea 
-                          value={(editingAgent as any).followup_prompt || ''} 
-                          onChange={e => setEditingAgent({ ...editingAgent, followup_prompt: e.target.value } as any)} 
+                          value={editingAgent.followup_prompt || ''} 
+                          onChange={e => setEditingAgent({ ...editingAgent, followup_prompt: e.target.value })} 
                           placeholder="Instruções para a IA gerar mensagens de follow-up personalizadas..." 
                           rows={4} 
                         />
