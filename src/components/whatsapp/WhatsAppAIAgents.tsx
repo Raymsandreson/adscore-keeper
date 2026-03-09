@@ -146,6 +146,11 @@ export function WhatsAppAIAgents() {
     setCallQueueCount(count || 0);
   };
 
+  const fetchTeamMembers = async () => {
+    const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
+    setTeamMembers((data as any[]) || []);
+  };
+
   const fetchAvailableCampaigns = async () => {
     const { data } = await supabase
       .from('leads')
