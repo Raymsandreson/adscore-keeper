@@ -222,21 +222,29 @@ serve(async (req) => {
         reply = `${reply}\n\n_🤖 ${(agent as any).name}_`;
       }
 
-      // Send via UazAPI
+      // Send via UazAPI v2
       const { data: instance } = await supabase
         .from("whatsapp_instances")
-        .select("api_url, api_token, base_url, instance_token")
+        .select("base_url, instance_token, instance_name")
         .eq("instance_name", instance_name)
         .maybeSingle();
 
       if (instance) {
-        const baseUrl = (instance as any).base_url || (instance as any).api_url;
-        const token = (instance as any).instance_token || (instance as any).api_token;
-        await fetch(`${baseUrl}/message/send-text`, {
+        const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
+        const token = (instance as any).instance_token;
+        const sendRes = await fetch(`${baseUrl}/send/text`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", token },
-          body: JSON.stringify({ phone, message: reply }),
-        }).catch(err => console.error("Send error:", err));
+          headers: { "Content-Type": "application/json", "token": token },
+          body: JSON.stringify({ number: phone, text: reply }),
+        });
+        if (!sendRes.ok) {
+          const errText = await sendRes.text();
+          console.error("UazAPI send error:", sendRes.status, errText);
+        } else {
+          console.log("UazAPI send success to", phone);
+        }
+      } else {
+        console.error("No instance found for", instance_name);
       }
 
       // Save outbound message
