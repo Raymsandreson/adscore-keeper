@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Device, Call } from '@twilio/voice-sdk';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -8,8 +9,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Save, Sparkles, User, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Uses UazAPI via make-whatsapp-call edge function
 
 interface Props {
   phone: string;
@@ -46,15 +45,23 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // UazAPI call refs
-  const callActiveRef = useRef(false);
+  // Twilio SDK v2.x refs
+  const twilioDeviceRef = useRef<Device | null>(null);
+  const twilioCallRef = useRef<Call | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       recognitionRef.current?.stop();
-      callActiveRef.current = false;
+      if (twilioCallRef.current) {
+        try { twilioCallRef.current.disconnect(); } catch {}
+        twilioCallRef.current = null;
+      }
+      if (twilioDeviceRef.current) {
+        twilioDeviceRef.current.destroy();
+        twilioDeviceRef.current = null;
+      }
     };
   }, []);
 
@@ -118,30 +125,88 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
 
   const makeCall = useCallback(async (): Promise<string | null> => {
     try {
-      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
-        body: {
-          phone,
+      // Get Twilio token
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('twilio-token');
+      if (tokenError) throw tokenError;
+      if (!tokenData?.token) throw new Error('Token Twilio não recebido');
+
+      console.log('[Twilio] Token received, initializing Device v2.x');
+
+      const device = new Device(tokenData.token, {
+        codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+        closeProtection: true,
+        logLevel: 1,
+      });
+
+      device.on('error', (err: any) => {
+        console.error('[Twilio] Device error:', err);
+      });
+
+      device.on('tokenWillExpire', async () => {
+        try {
+          const { data: refreshData } = await supabase.functions.invoke('twilio-token');
+          if (refreshData?.token) device.updateToken(refreshData.token);
+        } catch (e) {
+          console.error('[Twilio] Token refresh failed:', e);
+        }
+      });
+
+      await device.register();
+      twilioDeviceRef.current = device;
+
+      const cleanPhone = phone.replace(/\D/g, '');
+      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+      // SDK v2.x: connect returns Promise<Call>
+      const call = await device.connect({ params: { phone: formattedPhone } });
+      twilioCallRef.current = call;
+
+      call.on('accept', () => {
+        console.log('[Twilio] Call connected (accept)');
+      });
+
+      call.on('disconnect', () => {
+        console.log('[Twilio] Call disconnected');
+        twilioCallRef.current = null;
+      });
+
+      call.on('error', (error: any) => {
+        console.error('[Twilio] Call error:', error);
+        toast.error(error.message || 'Erro na chamada Twilio');
+      });
+
+      // Handle race: call may already be open
+      if (call.status() === 'open') {
+        console.log('[Twilio] Call already open');
+      }
+
+      // Create call record
+      let recordId: string | null = null;
+      if (user) {
+        const { data: insertData } = await supabase.from('call_records').insert({
+          user_id: user.id,
+          call_type: 'realizada',
+          call_result: 'em_andamento',
+          contact_phone: phone,
           contact_name: contactName || null,
           contact_id: contactId || null,
           lead_id: leadId || null,
           lead_name: leadName || null,
-          instance_id: instanceId || null,
-          instance_name: instanceName || null,
-        },
-      });
+          phone_used: 'twilio-softphone',
+          notes: 'Chamada via Softphone Twilio (WebRTC)',
+          tags: ['twilio', 'softphone', 'webrtc'],
+        } as any).select('id').single();
+        recordId = insertData?.id || null;
+      }
 
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao iniciar chamada');
-
-      callActiveRef.current = true;
-      toast.success(`Ligando para ${contactName || phone} via WhatsApp...`);
-      return data.call_record_id || null;
+      toast.success(`Ligando para ${contactName || phone} via Softphone...`);
+      return recordId;
     } catch (err: any) {
-      console.error('WhatsApp call error:', err);
-      toast.error(err?.message || 'Erro ao ligar via WhatsApp');
+      console.error('Twilio call error:', err);
+      toast.error(err?.message || 'Erro ao ligar via Twilio Softphone');
       return null;
     }
-  }, [phone, contactName, contactId, leadId, leadName, instanceId, instanceName]);
+  }, [phone, contactName, contactId, leadId, leadName, user]);
 
   const startRecording = useCallback(async () => {
     const recordId = await makeCall();
@@ -187,8 +252,11 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     if (timerRef.current) clearInterval(timerRef.current);
     stopSpeechRecognition();
 
-    // Mark call as inactive
-    callActiveRef.current = false;
+    // Disconnect Twilio call
+    if (twilioCallRef.current) {
+      try { twilioCallRef.current.disconnect(); } catch {}
+      twilioCallRef.current = null;
+    }
 
     const currentDuration = recordingTime;
     const recorder = mediaRecorderRef.current;
