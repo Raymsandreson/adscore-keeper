@@ -252,8 +252,11 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     if (timerRef.current) clearInterval(timerRef.current);
     stopSpeechRecognition();
 
-    // Mark call as inactive
-    callActiveRef.current = false;
+    // Disconnect Twilio call
+    if (twilioCallRef.current) {
+      try { twilioCallRef.current.disconnect(); } catch {}
+      twilioCallRef.current = null;
+    }
 
     const currentDuration = recordingTime;
     const recorder = mediaRecorderRef.current;
