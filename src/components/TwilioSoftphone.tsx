@@ -201,6 +201,15 @@ export function TwilioSoftphone({
       activeCallRef.current = call;
       setupCallListeners(call);
 
+      // Handle race condition: accept may have fired before listeners attached
+      const callStatus = call.status();
+      console.log('[Twilio] Call status after connect:', callStatus);
+      if (callStatus === 'open') {
+        console.log('[Twilio] Call already open, starting timer');
+        setStatus('in-call');
+        startTimer();
+      }
+
       // Record call in database
       if (user) {
         await supabase.from('call_records').insert({
