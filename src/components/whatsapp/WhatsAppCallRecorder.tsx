@@ -50,11 +50,20 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Twilio refs
+  const twilioDeviceRef = useRef<any>(null);
+  const twilioConnectionRef = useRef<any>(null);
+  const sdkLoadedRef = useRef(false);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       recognitionRef.current?.stop();
+      if (twilioDeviceRef.current) {
+        twilioDeviceRef.current.destroy();
+        twilioDeviceRef.current = null;
+      }
     };
   }, []);
 
