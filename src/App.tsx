@@ -117,6 +117,7 @@ function AppRoutes() {
           <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
           <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
           <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+          <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
           <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
           <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
           <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
