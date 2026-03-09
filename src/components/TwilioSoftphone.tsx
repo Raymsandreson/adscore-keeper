@@ -1,19 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Device, Call } from '@twilio/voice-sdk';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Phone, PhoneOff, PhoneCall, Mic, MicOff, X, Volume2, Loader2 } from 'lucide-react';
+import { Phone, PhoneOff, PhoneCall, Mic, MicOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-
-// Twilio Client JS SDK loaded via CDN
-declare global {
-  interface Window {
-    Twilio: any;
-  }
-}
 
 type SoftphoneStatus = 'idle' | 'loading' | 'ready' | 'connecting' | 'ringing' | 'in-call' | 'error';
 
@@ -42,127 +36,139 @@ export function TwilioSoftphone({
   const [muted, setMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  const deviceRef = useRef<any>(null);
-  const activeCallRef = useRef<any>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sdkLoadedRef = useRef(false);
 
-  // Update dial number when prop changes
+  const deviceRef = useRef<Device | null>(null);
+  const activeCallRef = useRef<Call | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     if (phoneNumber) setDialNumber(phoneNumber);
   }, [phoneNumber]);
 
-  // Load Twilio Client JS SDK
-  const loadTwilioSdk = useCallback((): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (window.Twilio?.Device) {
-        sdkLoadedRef.current = true;
-        resolve();
-        return;
-      }
-      if (sdkLoadedRef.current) {
-        resolve();
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://sdk.twilio.com/js/client/v1.14/twilio.min.js';
-      script.async = true;
-      script.onload = () => {
-        sdkLoadedRef.current = true;
-        resolve();
-      };
-      script.onerror = () => reject(new Error('Failed to load Twilio SDK'));
-      document.head.appendChild(script);
-    });
-  }, []);
-
-  // Initialize Twilio Device
-  const initDevice = useCallback(async () => {
-    if (!user) return;
-    
-    setStatus('loading');
-    setErrorMsg(null);
-
-    try {
-      await loadTwilioSdk();
-
-      // Get token from edge function
-      const { data, error } = await supabase.functions.invoke('twilio-token');
-      if (error) throw error;
-      if (!data?.token) throw new Error('No token received');
-
-      const device = new window.Twilio.Device(data.token, {
-        codecPreferences: ['opus', 'pcmu'],
-        closeProtection: true,
-        enableRingingState: true,
-      });
-
-      device.on('ready', () => {
-        console.log('Twilio Device ready');
-        setStatus('ready');
-      });
-
-      device.on('error', (err: any) => {
-        console.error('Twilio Device error:', err);
-        setErrorMsg(err.message || 'Erro no dispositivo');
-        setStatus('error');
-      });
-
-      device.on('connect', (conn: any) => {
-        console.log('Call connected');
-        setStatus('in-call');
-        activeCallRef.current = conn;
-        startTimer();
-      });
-
-      device.on('disconnect', () => {
-        console.log('Call disconnected');
-        stopTimer();
-        setStatus('ready');
-        activeCallRef.current = null;
-        onCallEnd?.();
-      });
-
-      device.on('cancel', () => {
-        console.log('Call cancelled');
-        stopTimer();
-        setStatus('ready');
-        activeCallRef.current = null;
-      });
-
-      device.on('incoming', (conn: any) => {
-        console.log('Incoming call from:', conn.parameters.From);
-        setStatus('ringing');
-        activeCallRef.current = conn;
-        // Auto-accept for now
-        conn.accept();
-      });
-
-      deviceRef.current = device;
-    } catch (err: any) {
-      console.error('Init error:', err);
-      setErrorMsg(err.message || 'Erro ao inicializar');
-      setStatus('error');
-    }
-  }, [user, loadTwilioSdk, onCallEnd]);
-
-  // Timer
-  const startTimer = () => {
+  // Timer helpers
+  const startTimer = useCallback(() => {
     setCallDuration(0);
     timerRef.current = setInterval(() => {
       setCallDuration(prev => prev + 1);
     }, 1000);
-  };
+  }, []);
 
-  const stopTimer = () => {
+  const stopTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setCallDuration(0);
-  };
+  }, []);
+
+  // Setup call event listeners (SDK v2.x uses Call object events)
+  const setupCallListeners = useCallback((call: Call) => {
+    call.on('accept', () => {
+      console.log('[Twilio] Call accepted / connected');
+      setStatus('in-call');
+      startTimer();
+    });
+
+    call.on('ringing', (hasEarlyMedia: boolean) => {
+      console.log('[Twilio] Call ringing, earlyMedia:', hasEarlyMedia);
+      setStatus('ringing');
+    });
+
+    call.on('disconnect', () => {
+      console.log('[Twilio] Call disconnected');
+      stopTimer();
+      setStatus('ready');
+      activeCallRef.current = null;
+      onCallEnd?.();
+    });
+
+    call.on('cancel', () => {
+      console.log('[Twilio] Call cancelled');
+      stopTimer();
+      setStatus('ready');
+      activeCallRef.current = null;
+    });
+
+    call.on('reject', () => {
+      console.log('[Twilio] Call rejected');
+      stopTimer();
+      setStatus('ready');
+      activeCallRef.current = null;
+    });
+
+    call.on('error', (error: any) => {
+      console.error('[Twilio] Call error:', error);
+      setErrorMsg(error.message || 'Erro na chamada');
+      stopTimer();
+      setStatus('error');
+      activeCallRef.current = null;
+    });
+  }, [startTimer, stopTimer, onCallEnd]);
+
+  // Initialize Twilio Device (SDK v2.x)
+  const initDevice = useCallback(async () => {
+    if (!user) return;
+
+    setStatus('loading');
+    setErrorMsg(null);
+
+    try {
+      // Get token from edge function
+      const { data, error } = await supabase.functions.invoke('twilio-token');
+      if (error) throw error;
+      if (!data?.token) throw new Error('No token received');
+
+      console.log('[Twilio] Token received, initializing Device v2.x');
+
+      const device = new Device(data.token, {
+        codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+        closeProtection: true,
+        logLevel: 1, // warnings
+      });
+
+      // Device events (v2.x)
+      device.on('registered', () => {
+        console.log('[Twilio] Device registered');
+        setStatus('ready');
+      });
+
+      device.on('error', (err: any) => {
+        console.error('[Twilio] Device error:', err);
+        setErrorMsg(err.message || 'Erro no dispositivo');
+        setStatus('error');
+      });
+
+      device.on('incoming', (call: Call) => {
+        console.log('[Twilio] Incoming call from:', call.parameters.From);
+        setStatus('ringing');
+        activeCallRef.current = call;
+        setupCallListeners(call);
+        call.accept();
+      });
+
+      device.on('tokenWillExpire', async () => {
+        console.log('[Twilio] Token expiring, refreshing...');
+        try {
+          const { data: refreshData } = await supabase.functions.invoke('twilio-token');
+          if (refreshData?.token) {
+            device.updateToken(refreshData.token);
+          }
+        } catch (e) {
+          console.error('[Twilio] Token refresh failed:', e);
+        }
+      });
+
+      // Register for incoming calls (opens signaling websocket)
+      await device.register();
+
+      deviceRef.current = device;
+      console.log('[Twilio] Device initialized and registered');
+    } catch (err: any) {
+      console.error('[Twilio] Init error:', err);
+      setErrorMsg(err.message || 'Erro ao inicializar');
+      setStatus('error');
+    }
+  }, [user, setupCallListeners]);
 
   // Make call
   const handleCall = useCallback(async () => {
@@ -174,8 +180,8 @@ export function TwilioSoftphone({
 
     if (!deviceRef.current) {
       await initDevice();
-      // Wait a bit for device to be ready
-      await new Promise(r => setTimeout(r, 1500));
+      // Small delay for registration
+      await new Promise(r => setTimeout(r, 1000));
     }
 
     if (!deviceRef.current) {
@@ -186,8 +192,14 @@ export function TwilioSoftphone({
     setStatus('connecting');
     try {
       const phone = clean.startsWith('55') ? clean : `55${clean}`;
-      const conn = deviceRef.current.connect({ phone });
-      activeCallRef.current = conn;
+
+      // SDK v2.x: connect returns a Promise<Call>
+      const call = await deviceRef.current.connect({
+        params: { phone },
+      });
+
+      activeCallRef.current = call;
+      setupCallListeners(call);
 
       // Record call in database
       if (user) {
@@ -208,24 +220,21 @@ export function TwilioSoftphone({
 
       toast.success(`Ligando para ${contactName || dialNumber}...`);
     } catch (err: any) {
-      console.error('Call error:', err);
+      console.error('[Twilio] Call error:', err);
       toast.error(err.message || 'Erro ao ligar');
       setStatus('ready');
     }
-  }, [dialNumber, initDevice, user, contactName, contactId, leadId, leadName]);
+  }, [dialNumber, initDevice, user, contactName, contactId, leadId, leadName, setupCallListeners]);
 
   // Hang up
   const handleHangup = useCallback(() => {
     if (activeCallRef.current) {
       activeCallRef.current.disconnect();
     }
-    if (deviceRef.current) {
-      deviceRef.current.disconnectAll();
-    }
     stopTimer();
     setStatus('ready');
     activeCallRef.current = null;
-  }, []);
+  }, [stopTimer]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
@@ -252,9 +261,9 @@ export function TwilioSoftphone({
         deviceRef.current = null;
       }
     };
-  }, []);
+  }, [stopTimer]);
 
-  // Auto-init when component mounts
+  // Auto-init
   useEffect(() => {
     if (user && status === 'idle') {
       initDevice();
