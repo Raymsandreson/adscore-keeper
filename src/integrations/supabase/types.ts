@@ -5672,6 +5672,7 @@ export type Database = {
           auto_call_mode: string
           auto_call_no_response_minutes: number
           base_prompt: string
+          call_assigned_to: string | null
           created_at: string
           created_by: string | null
           followup_enabled: boolean
@@ -5701,6 +5702,7 @@ export type Database = {
           auto_call_mode?: string
           auto_call_no_response_minutes?: number
           base_prompt?: string
+          call_assigned_to?: string | null
           created_at?: string
           created_by?: string | null
           followup_enabled?: boolean
@@ -5730,6 +5732,7 @@ export type Database = {
           auto_call_mode?: string
           auto_call_no_response_minutes?: number
           base_prompt?: string
+          call_assigned_to?: string | null
           created_at?: string
           created_by?: string | null
           followup_enabled?: boolean
