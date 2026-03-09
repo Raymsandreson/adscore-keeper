@@ -469,6 +469,122 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_list_members: {
+        Row: {
+          broadcast_list_id: string
+          contact_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          broadcast_list_id: string
+          contact_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          broadcast_list_id?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_list_members_broadcast_list_id_fkey"
+            columns: ["broadcast_list_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_list_members_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broadcast_lists: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      broadcast_sends: {
+        Row: {
+          broadcast_list_id: string | null
+          created_at: string
+          failed_count: number
+          id: string
+          instance_name: string | null
+          media_type: string | null
+          media_url: string | null
+          message_text: string | null
+          sent_by: string | null
+          sent_count: number
+          status: string
+          total_recipients: number
+        }
+        Insert: {
+          broadcast_list_id?: string | null
+          created_at?: string
+          failed_count?: number
+          id?: string
+          instance_name?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message_text?: string | null
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          total_recipients?: number
+        }
+        Update: {
+          broadcast_list_id?: string | null
+          created_at?: string
+          failed_count?: number
+          id?: string
+          instance_name?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          message_text?: string | null
+          sent_by?: string | null
+          sent_count?: number
+          status?: string
+          total_recipients?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_sends_broadcast_list_id_fkey"
+            columns: ["broadcast_list_id"]
+            isOneToOne: false
+            referencedRelation: "broadcast_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_events_pending: {
         Row: {
           call_id: string
