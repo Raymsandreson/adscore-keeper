@@ -41,6 +41,7 @@ interface AIAgent {
   auto_call_no_response_minutes: number;
   auto_call_instance_name: string | null;
   call_assigned_to: string | null;
+  split_messages: boolean;
   human_pause_minutes: number;
   created_at: string;
 }
@@ -175,7 +176,7 @@ export function WhatsAppAIAgents() {
       followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
-      call_assigned_to: null, human_pause_minutes: 30,
+      call_assigned_to: null, human_pause_minutes: 30, split_messages: false,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -216,6 +217,7 @@ export function WhatsAppAIAgents() {
         auto_call_instance_name: editingAgent.auto_call_instance_name || null,
         call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
+        split_messages: editingAgent.split_messages ?? false,
       };
 
       if (editingAgent.id) {
@@ -432,6 +434,13 @@ export function WhatsAppAIAgents() {
                   <div className="flex items-center justify-between">
                     <Label className="text-xs">Agente ativo</Label>
                     <Switch checked={editingAgent.is_active ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, is_active: v })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Dividir mensagens longas</Label>
+                      <p className="text-[10px] text-muted-foreground">Quebra a resposta em partes menores para parecer mais natural</p>
+                    </div>
+                    <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
                   </div>
                 </div>
               </TabsContent>

@@ -218,8 +218,36 @@ serve(async (req) => {
         });
       }
 
+      // Split message into parts if enabled, then add signature to last part
+      const splitMessages = (agent as any).split_messages === true;
+      let messageParts: string[] = [];
+
+      if (splitMessages) {
+        const paragraphs = reply.split(/\n\n+/).filter((p: string) => p.trim());
+        if (paragraphs.length > 1) {
+          let current = "";
+          for (const p of paragraphs) {
+            if (current && (current.length + p.length > 300)) {
+              messageParts.push(current.trim());
+              current = p;
+            } else {
+              current = current ? current + "\n\n" + p : p;
+            }
+          }
+          if (current.trim()) messageParts.push(current.trim());
+        } else {
+          messageParts = [reply];
+        }
+      } else {
+        messageParts = [reply];
+      }
+
+      // Add signature to last part only
       if ((agent as any).sign_messages) {
-        reply = `${reply}\n\n_🤖 ${(agent as any).name}_`;
+        const lastIdx = messageParts.length - 1;
+        messageParts[lastIdx] = `${messageParts[lastIdx]}\n\n_🤖 ${(agent as any).name}_`;
+        // Also update full reply for DB storage
+        reply = messageParts.join("\n\n");
       }
 
       // Send via UazAPI v2
@@ -232,25 +260,34 @@ serve(async (req) => {
       if (instance) {
         const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
         const token = (instance as any).instance_token;
-        const sendRes = await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "token": token },
-          body: JSON.stringify({ number: phone, text: reply }),
-        });
-        if (!sendRes.ok) {
-          const errText = await sendRes.text();
-          console.error("UazAPI send error:", sendRes.status, errText);
-        } else {
-          console.log("UazAPI send success to", phone);
+        const delayBetween = (agent as any).response_delay_seconds ? Math.min((agent as any).response_delay_seconds, 3) * 1000 : 1500;
+
+        for (let i = 0; i < messageParts.length; i++) {
+          const part = messageParts[i];
+          const sendRes = await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "token": token },
+            body: JSON.stringify({ number: phone, text: part }),
+          });
+          if (!sendRes.ok) {
+            const errText = await sendRes.text();
+            console.error("UazAPI send error:", sendRes.status, errText);
+          } else {
+            console.log(`UazAPI send success part ${i + 1}/${messageParts.length} to ${phone}`);
+          }
+          // Wait between parts (except last)
+          if (i < messageParts.length - 1) {
+            await new Promise(r => setTimeout(r, delayBetween));
+          }
         }
       } else {
         console.error("No instance found for", instance_name);
       }
 
-      // Save outbound message
+      // Save outbound message (full reply)
       await supabase.from("whatsapp_messages").insert({
         phone, instance_name, direction: "outbound",
-        message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id },
+        message_text: reply, metadata: { ai_agent: (agent as any).name, ai_agent_id: (agent as any).id, split_count: messageParts.length },
       });
 
       // ========== SCHEDULE FOLLOW-UP ==========

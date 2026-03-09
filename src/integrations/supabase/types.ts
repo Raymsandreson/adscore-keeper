@@ -5690,6 +5690,7 @@ export type Database = {
           read_messages: boolean
           response_delay_seconds: number
           sign_messages: boolean
+          split_messages: boolean | null
           temperature: number
           uazapi_agent_id: string | null
           uazapi_config: Json | null
@@ -5720,6 +5721,7 @@ export type Database = {
           read_messages?: boolean
           response_delay_seconds?: number
           sign_messages?: boolean
+          split_messages?: boolean | null
           temperature?: number
           uazapi_agent_id?: string | null
           uazapi_config?: Json | null
@@ -5750,6 +5752,7 @@ export type Database = {
           read_messages?: boolean
           response_delay_seconds?: number
           sign_messages?: boolean
+          split_messages?: boolean | null
           temperature?: number
           uazapi_agent_id?: string | null
           uazapi_config?: Json | null
