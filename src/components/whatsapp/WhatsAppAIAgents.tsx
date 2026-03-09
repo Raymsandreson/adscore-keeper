@@ -42,6 +42,7 @@ interface AIAgent {
   auto_call_instance_name: string | null;
   call_assigned_to: string | null;
   split_messages: boolean;
+  split_delay_seconds: number;
   human_pause_minutes: number;
   created_at: string;
 }
@@ -176,7 +177,7 @@ export function WhatsAppAIAgents() {
       followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
-      call_assigned_to: null, human_pause_minutes: 30, split_messages: false,
+      call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
@@ -218,6 +219,7 @@ export function WhatsAppAIAgents() {
         call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
         split_messages: editingAgent.split_messages ?? false,
+        split_delay_seconds: editingAgent.split_delay_seconds ?? 2,
       };
 
       if (editingAgent.id) {
@@ -442,6 +444,13 @@ export function WhatsAppAIAgents() {
                     </div>
                     <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
                   </div>
+                  {editingAgent.split_messages && (
+                    <div className="space-y-1 pl-2 border-l-2 border-primary/20">
+                      <Label className="text-xs">Delay entre partes: {editingAgent.split_delay_seconds ?? 2}s</Label>
+                      <Slider min={1} max={10} step={1} value={[editingAgent.split_delay_seconds ?? 2]} onValueChange={v => setEditingAgent({ ...editingAgent, split_delay_seconds: v[0] })} />
+                      <p className="text-[10px] text-muted-foreground">Tempo de espera entre cada parte da mensagem</p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 

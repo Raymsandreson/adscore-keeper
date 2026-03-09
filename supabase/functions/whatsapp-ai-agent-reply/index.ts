@@ -260,7 +260,7 @@ serve(async (req) => {
       if (instance) {
         const baseUrl = (instance as any).base_url || "https://abraci.uazapi.com";
         const token = (instance as any).instance_token;
-        const delayBetween = (agent as any).response_delay_seconds ? Math.min((agent as any).response_delay_seconds, 3) * 1000 : 1500;
+        const delayBetween = ((agent as any).split_delay_seconds || 2) * 1000;
 
         for (let i = 0; i < messageParts.length; i++) {
           const part = messageParts[i];
