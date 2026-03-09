@@ -189,33 +189,11 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
     }
   }, [open, selectedInstance, contactsFetched, fetchContacts]);
 
-  const handleMakeCall = async (phone: string, contactName?: string | null) => {
-    if (!selectedInstance || !phone || calling) return;
-    setCalling(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('make-whatsapp-call', {
-        body: {
-          phone,
-          contact_name: contactName || undefined,
-          instance_id: selectedInstance.id,
-          instance_name: selectedInstance.instance_name,
-        },
-      });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao ligar');
-      
-      // Pending call tracking is now handled server-side to avoid duplicated events
-      toast.success(`Ligação iniciada para ${contactName || phone}`);
-      setOpen(false);
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || 'Erro ao iniciar chamada');
-      const clean = phone.replace(/\D/g, '');
-      const tel = clean.startsWith('55') ? `tel:+${clean}` : `tel:+55${clean}`;
-      window.open(tel);
-    } finally {
-      setCalling(false);
-    }
+  const handleMakeCall = (phone: string, _contactName?: string | null) => {
+    if (!phone) return;
+    // Set the dial number so TwilioSoftphone can make the call via WebRTC
+    setDialNumber(phone.replace(/\D/g, ''));
+    toast.info('Número preenchido no softphone. Clique em "Ligar" para conectar via Twilio.');
   };
 
   const handleDialDirect = () => {
