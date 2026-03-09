@@ -157,6 +157,12 @@ serve(async (req) => {
     const hasImages = (images && Array.isArray(images) && images.length > 0) || imageContent.length > 0;
     const allImages = [...(images || []), ...imageContent];
 
+    const MAX_TEXT_LENGTH = 30000;
+    if (textContent.length > MAX_TEXT_LENGTH) {
+      console.log(`Text content too long (${textContent.length}), truncating to ${MAX_TEXT_LENGTH}`);
+      textContent = textContent.slice(0, MAX_TEXT_LENGTH);
+    }
+
     const currentYear = new Date().getFullYear();
     
     const imageAnalysisInstructions = hasImages ? `
