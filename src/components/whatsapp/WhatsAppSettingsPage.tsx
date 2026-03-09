@@ -63,7 +63,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="min-h-screen min-h-[100dvh] flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0">
         <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">

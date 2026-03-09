@@ -151,7 +151,7 @@ export function FloatingNav() {
 
   return (
     <>
-      <div ref={containerRef} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:bottom-6">
+      <div ref={containerRef} className="fixed left-1/2 -translate-x-1/2 z-50 bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:bottom-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         {/* Menu Panel - appears above the dock */}
         {menuOpen && !dockCollapsed && (
           <div
