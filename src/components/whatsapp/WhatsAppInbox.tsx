@@ -658,6 +658,48 @@ export function WhatsAppInbox() {
               {importingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={importingWhatsApp}
+            title="Importar Contatos do WhatsApp"
+            onClick={async () => {
+              // Find the selected instance or default to first connected
+              const targetInstance = selectedInstanceId !== 'all' 
+                ? instances.find(i => i.id === selectedInstanceId)
+                : instances[0];
+              
+              if (!targetInstance) {
+                toast.error('Nenhuma instância encontrada');
+                return;
+              }
+
+              setImportingWhatsApp(true);
+              try {
+                const { data: session } = await supabase.auth.getSession();
+                const res = await supabase.functions.invoke('import-whatsapp-contacts', {
+                  body: { instance_name: targetInstance.instance_name },
+                });
+                
+                if (res.error) throw res.error;
+                const result = res.data;
+                
+                if (result.error) {
+                  toast.error(result.message || 'Erro ao importar contatos');
+                  return;
+                }
+                
+                toast.success(`WhatsApp (${result.instance}): ${result.imported} importados, ${result.skipped} já existentes`);
+              } catch (err: any) {
+                console.error('WhatsApp import error:', err);
+                toast.error('Erro ao importar contatos do WhatsApp');
+              } finally {
+                setImportingWhatsApp(false);
+              }
+            }}
+          >
+            {importingWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Users className="h-4 w-4" />}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setShowDashboard(true)} title="Dashboard">
             <BarChart3 className="h-4 w-4" />
           </Button>
