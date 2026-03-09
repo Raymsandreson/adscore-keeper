@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Edit2, Radio, UserPlus,
-  Phone, Loader2, ChevronRight, X, List
+  Phone, Loader2, ChevronRight, X, List, ImagePlus
 } from 'lucide-react';
 
 export function ContactsListPage() {
