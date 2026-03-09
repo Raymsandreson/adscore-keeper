@@ -9,6 +9,12 @@ import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Sav
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+declare global {
+  interface Window {
+    Twilio: any;
+  }
+}
+
 interface Props {
   phone: string;
   contactName: string | null;
