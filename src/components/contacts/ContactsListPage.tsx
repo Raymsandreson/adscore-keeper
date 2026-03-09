@@ -426,20 +426,21 @@ export function ContactsListPage() {
 
       {/* Send Broadcast Dialog */}
       <Dialog open={showSendDialog} onOpenChange={open => { if (!open) { setShowSendDialog(false); setSendFromList(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto" key="broadcast-send-dialog">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-5 w-5 text-primary" />
               Enviar Transmissão
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <p className="text-sm text-muted-foreground">
               {sendFromList
                 ? `Enviando para lista "${sendFromList.name}" (${sendFromList.member_count} contatos)`
                 : `Enviando para ${selectedContacts.size} contato(s) selecionado(s)`
               }
-            </div>
+            </p>
+
             <div>
               <Label>Instância WhatsApp</Label>
               <Select value={sendInstanceId} onValueChange={setSendInstanceId}>
@@ -453,14 +454,18 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
             </div>
+
             <div>
-              <Label>Foto / Mídia (opcional)</Label>
+              <Label className="flex items-center gap-1.5">
+                <ImagePlus className="h-4 w-4" />
+                Foto / Mídia (opcional)
+              </Label>
               {sendMediaFile ? (
-                <div className="mt-2 flex items-center gap-3 p-2 border rounded-md bg-muted/50">
+                <div className="mt-1.5 flex items-center gap-3 p-2 border rounded-md bg-muted/50">
                   {sendMediaPreview ? (
-                    <img src={sendMediaPreview} alt="Preview" className="h-16 w-16 rounded object-cover" />
+                    <img src={sendMediaPreview} alt="Preview" className="h-14 w-14 rounded object-cover" />
                   ) : (
-                    <div className="h-16 w-16 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                    <div className="h-14 w-14 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
                       {sendMediaFile.name.split('.').pop()?.toUpperCase()}
                     </div>
                   )}
@@ -470,13 +475,14 @@ export function ContactsListPage() {
                   </Button>
                 </div>
               ) : (
-                <label className="mt-2 flex items-center gap-2 p-3 border border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                <label className="mt-1.5 flex items-center gap-2 p-2.5 border border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
                   <ImagePlus className="h-5 w-5 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">Clique para adicionar imagem ou arquivo</span>
                   <input type="file" accept="image/*,video/*,application/pdf" className="hidden" onChange={handleMediaSelect} />
                 </label>
               )}
             </div>
+
             <div>
               <Label>Mensagem</Label>
               <Textarea
