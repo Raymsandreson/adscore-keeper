@@ -45,8 +45,9 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // UazAPI call refs
-  const callActiveRef = useRef(false);
+  // Twilio SDK v2.x refs
+  const twilioDeviceRef = useRef<Device | null>(null);
+  const twilioCallRef = useRef<Call | null>(null);
 
   useEffect(() => {
     return () => {
