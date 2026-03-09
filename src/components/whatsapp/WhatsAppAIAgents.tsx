@@ -214,6 +214,7 @@ export function WhatsAppAIAgents() {
         auto_call_delay_seconds: editingAgent.auto_call_delay_seconds ?? 0,
         auto_call_no_response_minutes: editingAgent.auto_call_no_response_minutes ?? 30,
         auto_call_instance_name: editingAgent.auto_call_instance_name || null,
+        call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
       };
 
