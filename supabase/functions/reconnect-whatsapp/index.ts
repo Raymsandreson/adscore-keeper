@@ -42,8 +42,12 @@ serve(async (req) => {
     const token = inst.instance_token;
 
     if (!token) {
-      return new Response(JSON.stringify({ error: "Instance has no token" }), {
-        status: 400,
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Instance has no token",
+        message: `A instância "${inst.instance_name}" não possui token configurado. Verifique as configurações da instância.`
+      }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
