@@ -875,9 +875,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           const showDateSeparator = idx === 0 || (prevItemDate && !isSameDay(itemDate, prevItemDate));
           
           const dateSeparator = showDateSeparator ? (
-            <div key={`date-${item.timestamp}`} className="flex items-center justify-center my-3">
-              <div className="bg-muted/80 text-muted-foreground text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
-                {isToday(itemDate) ? 'Hoje' : isYesterday(itemDate) ? 'Ontem' : format(itemDate, "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+            <div key={`date-${item.timestamp}`} className="flex items-center justify-center my-4">
+              <div className="bg-muted text-muted-foreground text-xs font-semibold px-4 py-1.5 rounded-lg shadow-sm border">
+                {isToday(itemDate) ? 'Hoje' : isYesterday(itemDate) ? 'Ontem' : format(itemDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
               </div>
             </div>
           ) : null;
