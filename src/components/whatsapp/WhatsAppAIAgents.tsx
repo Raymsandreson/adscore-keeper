@@ -34,6 +34,7 @@ interface AIAgent {
   followup_interval_minutes: number;
   followup_max_attempts: number;
   followup_message: string | null;
+  followup_prompt: string | null;
   auto_call_enabled: boolean;
   auto_call_mode: string;
   auto_call_delay_seconds: number;
