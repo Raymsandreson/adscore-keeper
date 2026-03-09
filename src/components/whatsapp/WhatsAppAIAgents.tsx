@@ -40,6 +40,7 @@ interface AIAgent {
   auto_call_delay_seconds: number;
   auto_call_no_response_minutes: number;
   auto_call_instance_name: string | null;
+  call_assigned_to: string | null;
   human_pause_minutes: number;
   created_at: string;
 }
