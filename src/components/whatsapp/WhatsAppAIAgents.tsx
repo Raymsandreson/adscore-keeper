@@ -434,6 +434,13 @@ export function WhatsAppAIAgents() {
                     <Label className="text-xs">Agente ativo</Label>
                     <Switch checked={editingAgent.is_active ?? true} onCheckedChange={v => setEditingAgent({ ...editingAgent, is_active: v })} />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-xs">Dividir mensagens longas</Label>
+                      <p className="text-[10px] text-muted-foreground">Quebra a resposta em partes menores para parecer mais natural</p>
+                    </div>
+                    <Switch checked={editingAgent.split_messages ?? false} onCheckedChange={v => setEditingAgent({ ...editingAgent, split_messages: v })} />
+                  </div>
                 </div>
               </TabsContent>
 
