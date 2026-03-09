@@ -251,11 +251,20 @@ export function AccidentDataExtractor({
               type: 'document',
               mimeType: uploadedFile.type,
             };
-          } else if (documentText.trim()) {
-            requestBody = { content: documentText.trim(), type: 'text' };
           } else {
-            toast.error('Cole o texto ou faça upload de um arquivo');
-            return;
+            const sanitizedText = documentText.replace(/\u0000/g, '').trim();
+            if (!sanitizedText) {
+              toast.error('Cole o texto ou faça upload de um arquivo');
+              return;
+            }
+            const MAX_TEXT_LENGTH = 30000;
+            const truncatedText = sanitizedText.length > MAX_TEXT_LENGTH
+              ? sanitizedText.slice(0, MAX_TEXT_LENGTH)
+              : sanitizedText;
+            if (sanitizedText.length > MAX_TEXT_LENGTH) {
+              toast.info('Texto muito grande: analisando apenas os primeiros 30.000 caracteres');
+            }
+            requestBody = { content: truncatedText, type: 'text' };
           }
           break;
 

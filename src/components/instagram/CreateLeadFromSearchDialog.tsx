@@ -92,9 +92,19 @@ function SearchContentExtractor({
   }, [open, initialContent]);
 
   const handleExtract = async () => {
-    if (!documentText.trim()) {
+    const sanitizedText = documentText.replace(/\u0000/g, '').trim();
+    if (!sanitizedText) {
       toast.error('Cole o texto do documento');
       return;
+    }
+
+    const MAX_TEXT_LENGTH = 30000;
+    const truncatedText = sanitizedText.length > MAX_TEXT_LENGTH
+      ? sanitizedText.slice(0, MAX_TEXT_LENGTH)
+      : sanitizedText;
+
+    if (sanitizedText.length > MAX_TEXT_LENGTH) {
+      toast.info('Texto muito grande: analisando apenas os primeiros 30.000 caracteres');
     }
 
     setIsExtracting(true);
@@ -102,7 +112,7 @@ function SearchContentExtractor({
 
     try {
       const { data, error } = await supabase.functions.invoke('extract-accident-data', {
-        body: { content: documentText, type: 'text' },
+        body: { content: truncatedText, type: 'text' },
       });
 
       if (error) {
@@ -114,6 +124,13 @@ function SearchContentExtractor({
             return;
           }
         } catch {}
+
+        const status = typeof error === 'object' && error.context ? error.context.status : null;
+        if (status === 413) {
+          toast.error('Texto muito grande para processamento. Tente com um trecho menor.');
+          return;
+        }
+
         toast.error('Erro ao extrair dados. Tente novamente.');
         return;
       }
