@@ -5678,6 +5678,7 @@ export type Database = {
           followup_interval_minutes: number
           followup_max_attempts: number
           followup_message: string | null
+          followup_prompt: string | null
           human_pause_minutes: number
           id: string
           is_active: boolean
@@ -5706,6 +5707,7 @@ export type Database = {
           followup_interval_minutes?: number
           followup_max_attempts?: number
           followup_message?: string | null
+          followup_prompt?: string | null
           human_pause_minutes?: number
           id?: string
           is_active?: boolean
@@ -5734,6 +5736,7 @@ export type Database = {
           followup_interval_minutes?: number
           followup_max_attempts?: number
           followup_message?: string | null
+          followup_prompt?: string | null
           human_pause_minutes?: number
           id?: string
           is_active?: boolean

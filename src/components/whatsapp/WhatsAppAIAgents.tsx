@@ -34,6 +34,7 @@ interface AIAgent {
   followup_interval_minutes: number;
   followup_max_attempts: number;
   followup_message: string | null;
+  followup_prompt: string | null;
   auto_call_enabled: boolean;
   auto_call_mode: string;
   auto_call_delay_seconds: number;
@@ -163,7 +164,7 @@ export function WhatsAppAIAgents() {
       base_prompt: '', temperature: 50, max_tokens: 2000, sign_messages: true,
       read_messages: true, is_active: true, uazapi_config: {},
       response_delay_seconds: 0, followup_enabled: false, followup_interval_minutes: 60,
-      followup_max_attempts: 3, followup_message: '', auto_call_enabled: false,
+      followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       human_pause_minutes: 30,
@@ -199,6 +200,7 @@ export function WhatsAppAIAgents() {
         followup_interval_minutes: editingAgent.followup_interval_minutes ?? 60,
         followup_max_attempts: editingAgent.followup_max_attempts ?? 3,
         followup_message: editingAgent.followup_message || null,
+        followup_prompt: editingAgent.followup_prompt || null,
         auto_call_enabled: editingAgent.auto_call_enabled ?? false,
         auto_call_mode: editingAgent.auto_call_mode || 'on_no_response',
         auto_call_delay_seconds: editingAgent.auto_call_delay_seconds ?? 0,
@@ -466,7 +468,44 @@ export function WhatsAppAIAgents() {
                       </div>
                       <div>
                         <Label className="text-xs">Mensagem de follow-up (opcional)</Label>
-                        <Textarea value={editingAgent.followup_message || ''} onChange={e => setEditingAgent({ ...editingAgent, followup_message: e.target.value })} placeholder="Deixe vazio para a IA gerar automaticamente..." rows={2} />
+                        <Textarea value={editingAgent.followup_message || ''} onChange={e => setEditingAgent({ ...editingAgent, followup_message: e.target.value })} placeholder="Mensagem fixa de follow-up (deixe vazio para usar o prompt IA)..." rows={2} />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <Label className="text-xs">Prompt de Follow-up (IA)</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[10px] gap-1"
+                            onClick={() => {
+                              const suggestion = `Você é um assistente de follow-up. Seu objetivo é retomar o contato com o lead de forma amigável e natural, sem ser invasivo. 
+
+Diretrizes:
+- Relembre brevemente o assunto da última conversa
+- Demonstre interesse genuíno em ajudar
+- Faça uma pergunta aberta para reengajar
+- Mantenha o tom profissional mas acolhedor
+- Varie a abordagem a cada tentativa (não repita a mesma mensagem)
+- Na primeira tentativa, seja mais casual. Na segunda, mais direto. Na terceira, ofereça uma última oportunidade.
+
+Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`;
+                              setEditingAgent({ ...editingAgent, followup_prompt: suggestion });
+                            }}
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            Gerar sugestão
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mb-1">
+                          Prompt específico para a IA gerar mensagens de follow-up contextualizadas. O objetivo é retomar ou manter o relacionamento.
+                        </p>
+                        <Textarea 
+                          value={editingAgent.followup_prompt || ''} 
+                          onChange={e => setEditingAgent({ ...editingAgent, followup_prompt: e.target.value })} 
+                          placeholder="Instruções para a IA gerar mensagens de follow-up personalizadas..." 
+                          rows={4} 
+                        />
                       </div>
                     </>
                   )}
