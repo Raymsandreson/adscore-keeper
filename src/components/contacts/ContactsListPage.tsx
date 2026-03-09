@@ -462,14 +462,38 @@ export function ContactsListPage() {
                 rows={5}
               />
             </div>
+            <div>
+              <Label>Foto / Mídia (opcional)</Label>
+              {sendMediaFile ? (
+                <div className="mt-2 flex items-center gap-3 p-2 border rounded-md bg-muted/50">
+                  {sendMediaPreview ? (
+                    <img src={sendMediaPreview} alt="Preview" className="h-16 w-16 rounded object-cover" />
+                  ) : (
+                    <div className="h-16 w-16 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                      {sendMediaFile.name.split('.').pop()?.toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-sm truncate flex-1">{sendMediaFile.name}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleRemoveMedia}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <label className="mt-2 flex items-center gap-2 p-3 border border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                  <ImagePlus className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Clique para adicionar imagem ou arquivo</span>
+                  <input type="file" accept="image/*,video/*,application/pdf" className="hidden" onChange={handleMediaSelect} />
+                </label>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendFromList(null); }}>
+            <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendFromList(null); handleRemoveMedia(); }}>
               Cancelar
             </Button>
-            <Button onClick={handleSend} disabled={!sendMessage.trim() || !sendInstanceId || sending}>
+            <Button onClick={handleSend} disabled={(!sendMessage.trim() && !sendMediaFile) || !sendInstanceId || sending || uploadingMedia}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
-              {sending ? 'Enviando...' : 'Enviar'}
+              {uploadingMedia ? 'Enviando mídia...' : sending ? 'Enviando...' : 'Enviar'}
             </Button>
           </DialogFooter>
         </DialogContent>
