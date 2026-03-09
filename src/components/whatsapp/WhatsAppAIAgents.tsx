@@ -577,6 +577,16 @@ Contexto: Use o histórico da conversa para personalizar a mensagem de retorno.`
                           </SelectContent>
                         </Select>
                       </div>
+                      <div>
+                        <Label className="text-xs">Responsável pela ligação</Label>
+                        <p className="text-[10px] text-muted-foreground mb-1">Quando a IA identificar necessidade de ligar, uma atividade será criada para este usuário</p>
+                        <Select value={editingAgent.call_assigned_to || ''} onValueChange={v => setEditingAgent({ ...editingAgent, call_assigned_to: v || null })}>
+                          <SelectTrigger><SelectValue placeholder="Selecionar responsável" /></SelectTrigger>
+                          <SelectContent>
+                            {teamMembers.map(m => <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </>
                   )}
                 </div>
