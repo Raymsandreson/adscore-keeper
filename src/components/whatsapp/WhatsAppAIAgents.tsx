@@ -200,6 +200,7 @@ export function WhatsAppAIAgents() {
         followup_interval_minutes: editingAgent.followup_interval_minutes ?? 60,
         followup_max_attempts: editingAgent.followup_max_attempts ?? 3,
         followup_message: editingAgent.followup_message || null,
+        followup_prompt: editingAgent.followup_prompt || null,
         auto_call_enabled: editingAgent.auto_call_enabled ?? false,
         auto_call_mode: editingAgent.auto_call_mode || 'on_no_response',
         auto_call_delay_seconds: editingAgent.auto_call_delay_seconds ?? 0,
