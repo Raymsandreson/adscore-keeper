@@ -131,7 +131,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
       if (window.Twilio?.Device) { sdkLoadedRef.current = true; resolve(); return; }
       if (sdkLoadedRef.current) { resolve(); return; }
       const script = document.createElement('script');
-      script.src = 'https://sdk.twilio.com/js/client/releases/1.14.3/twilio.min.js';
+      script.src = 'https://sdk.twilio.com/js/client/v1.14/twilio.min.js';
       script.async = true;
       script.onload = () => { sdkLoadedRef.current = true; resolve(); };
       script.onerror = () => reject(new Error('Falha ao carregar SDK Twilio'));
