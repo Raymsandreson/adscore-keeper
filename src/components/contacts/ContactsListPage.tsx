@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Edit2, Radio, UserPlus,
-  Phone, Loader2, ChevronRight, X, List
+  Phone, Loader2, ChevronRight, X, List, ImagePlus
 } from 'lucide-react';
 
 export function ContactsListPage() {
@@ -44,6 +44,9 @@ export function ContactsListPage() {
   const [sendInstanceId, setSendInstanceId] = useState('');
   const [sending, setSending] = useState(false);
   const [sendFromList, setSendFromList] = useState<BroadcastList | null>(null);
+  const [sendMediaFile, setSendMediaFile] = useState<File | null>(null);
+  const [sendMediaPreview, setSendMediaPreview] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
   // Instances
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
@@ -130,8 +133,28 @@ export function ContactsListPage() {
     setShowSendDialog(true);
   };
 
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSendMediaFile(file);
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      setSendMediaPreview(url);
+    } else {
+      setSendMediaPreview(null);
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    setSendMediaFile(null);
+    if (sendMediaPreview) {
+      URL.revokeObjectURL(sendMediaPreview);
+      setSendMediaPreview(null);
+    }
+  };
+
   const handleSend = async () => {
-    if (!sendMessage.trim() || !sendInstanceId) return;
+    if ((!sendMessage.trim() && !sendMediaFile) || !sendInstanceId) return;
     setSending(true);
     try {
       let contactIds: string[];
@@ -142,15 +165,35 @@ export function ContactsListPage() {
         contactIds = Array.from(selectedContacts);
       }
 
+      let mediaUrl: string | undefined;
+      let mediaType: string | undefined;
+
+      if (sendMediaFile) {
+        setUploadingMedia(true);
+        const ext = sendMediaFile.name.split('.').pop() || 'bin';
+        const path = `broadcast/${Date.now()}.${ext}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('whatsapp-media')
+          .upload(path, sendMediaFile, { contentType: sendMediaFile.type });
+        setUploadingMedia(false);
+        if (uploadError) throw uploadError;
+        const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(uploadData.path);
+        mediaUrl = urlData.publicUrl;
+        mediaType = sendMediaFile.type;
+      }
+
       await sendBroadcast({
         listId: sendFromList?.id,
         contactIds,
         message: sendMessage.trim(),
         instanceId: sendInstanceId,
+        mediaUrl,
+        mediaType,
       });
       setShowSendDialog(false);
       setSendMessage('');
       setSendFromList(null);
+      handleRemoveMedia();
     } catch {
       // handled in hook
     } finally {
@@ -419,14 +462,38 @@ export function ContactsListPage() {
                 rows={5}
               />
             </div>
+            <div>
+              <Label>Foto / Mídia (opcional)</Label>
+              {sendMediaFile ? (
+                <div className="mt-2 flex items-center gap-3 p-2 border rounded-md bg-muted/50">
+                  {sendMediaPreview ? (
+                    <img src={sendMediaPreview} alt="Preview" className="h-16 w-16 rounded object-cover" />
+                  ) : (
+                    <div className="h-16 w-16 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                      {sendMediaFile.name.split('.').pop()?.toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-sm truncate flex-1">{sendMediaFile.name}</span>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleRemoveMedia}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <label className="mt-2 flex items-center gap-2 p-3 border border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors">
+                  <ImagePlus className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Clique para adicionar imagem ou arquivo</span>
+                  <input type="file" accept="image/*,video/*,application/pdf" className="hidden" onChange={handleMediaSelect} />
+                </label>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendFromList(null); }}>
+            <Button variant="outline" onClick={() => { setShowSendDialog(false); setSendFromList(null); handleRemoveMedia(); }}>
               Cancelar
             </Button>
-            <Button onClick={handleSend} disabled={!sendMessage.trim() || !sendInstanceId || sending}>
+            <Button onClick={handleSend} disabled={(!sendMessage.trim() && !sendMediaFile) || !sendInstanceId || sending || uploadingMedia}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Send className="h-4 w-4 mr-1.5" />}
-              {sending ? 'Enviando...' : 'Enviar'}
+              {uploadingMedia ? 'Enviando mídia...' : sending ? 'Enviando...' : 'Enviar'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -184,6 +184,8 @@ export function useBroadcastLists() {
     contactIds: string[];
     message: string;
     instanceId: string;
+    mediaUrl?: string;
+    mediaType?: string;
   }) => {
     try {
       // Get instance details
@@ -213,7 +215,9 @@ export function useBroadcastLists() {
         .from('broadcast_sends')
         .insert({
           broadcast_list_id: params.listId || null,
-          message_text: params.message,
+          message_text: params.message || null,
+          media_url: params.mediaUrl || null,
+          media_type: params.mediaType || null,
           instance_name: instance.instance_name,
           total_recipients: validContacts.length,
           status: 'sending',
@@ -225,27 +229,41 @@ export function useBroadcastLists() {
       let sentCount = 0;
       let failedCount = 0;
 
-      // Send messages one by one with delay
       for (const contact of validContacts) {
         try {
-          const { error } = await supabase.functions.invoke('send-whatsapp', {
-            body: {
-              phone: contact.phone,
-              message: params.message,
-              contact_id: contact.id,
-              instance_id: params.instanceId,
-            },
-          });
-          if (error) throw error;
+          if (params.mediaUrl) {
+            // Send media message
+            const { error } = await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                action: 'send_media',
+                phone: contact.phone,
+                media_url: params.mediaUrl,
+                media_type: params.mediaType,
+                caption: params.message || undefined,
+                contact_id: contact.id,
+                instance_id: params.instanceId,
+              },
+            });
+            if (error) throw error;
+          } else {
+            // Send text message
+            const { error } = await supabase.functions.invoke('send-whatsapp', {
+              body: {
+                phone: contact.phone,
+                message: params.message,
+                contact_id: contact.id,
+                instance_id: params.instanceId,
+              },
+            });
+            if (error) throw error;
+          }
           sentCount++;
         } catch {
           failedCount++;
         }
-        // Small delay to avoid rate limiting
         await new Promise(r => setTimeout(r, 1500));
       }
 
-      // Update send record
       if (sendRecord) {
         await supabase.from('broadcast_sends').update({
           sent_count: sentCount,
