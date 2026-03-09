@@ -171,19 +171,87 @@ serve(async (req) => {
         systemPrompt += "\n\n=== BASE DE CONHECIMENTO ===\nUse as informações abaixo como referência para responder perguntas. Baseie suas respostas nestes documentos quando relevante:\n\n" + knowledgeContext + "\n\n=== FIM DA BASE DE CONHECIMENTO ===";
       }
 
-      // Get recent context
+      // Get recent context (include media info)
       const { data: recentMessages } = await supabase
         .from("whatsapp_messages")
-        .select("direction, message_text, created_at")
+        .select("direction, message_text, message_type, media_url, created_at")
         .eq("phone", phone)
         .eq("instance_name", instance_name)
         .order("created_at", { ascending: false })
         .limit(20);
 
-      const contextMessages = (recentMessages || []).reverse().map((m: any) => ({
-        role: m.direction === "inbound" ? "user" : "assistant",
-        content: m.message_text || "",
-      })).filter((m: any) => m.content.trim());
+      // Process messages handling different types (audio, image, document, etc.)
+      const contextMessages: any[] = [];
+      const audioTranscriptions: { url: string; transcription: string }[] = [];
+
+      for (const m of (recentMessages || []).reverse()) {
+        const role = (m as any).direction === "inbound" ? "user" : "assistant";
+        const msgType = (m as any).message_type || "text";
+        const mediaUrl = (m as any).media_url;
+        const msgText = (m as any).message_text;
+
+        if (msgType === "audio" && mediaUrl) {
+          // Transcribe audio using Lovable AI
+          try {
+            const transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash",
+                messages: [
+                  { role: "user", content: [
+                    { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                    { type: "image_url", image_url: { url: mediaUrl } }
+                  ]}
+                ],
+                max_tokens: 500,
+                temperature: 0.1,
+              }),
+            });
+
+            if (transcribeRes.ok) {
+              const transcribeData = await transcribeRes.json();
+              const transcription = transcribeData.choices?.[0]?.message?.content?.trim();
+              if (transcription && transcription !== "[áudio inaudível]") {
+                contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
+                console.log(`Transcribed audio: ${transcription.substring(0, 50)}...`);
+              } else {
+                contextMessages.push({ role, content: msgText || "[Mensagem de voz não transcrita]" });
+              }
+            } else {
+              console.error("Audio transcription failed:", transcribeRes.status);
+              contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
+            }
+          } catch (e) {
+            console.error("Audio transcription error:", e);
+            contextMessages.push({ role, content: msgText || "[Mensagem de voz]" });
+          }
+        } else if (msgType === "image" && mediaUrl) {
+          // Use multimodal content for images
+          const textPart = msgText ? `${msgText} [com imagem anexada]` : "Olhe esta imagem:";
+          contextMessages.push({
+            role,
+            content: [
+              { type: "text", text: textPart },
+              { type: "image_url", image_url: { url: mediaUrl } }
+            ]
+          });
+        } else if (msgType === "document" && mediaUrl) {
+          // Note document was sent
+          const fileName = mediaUrl.split("/").pop() || "documento";
+          const docNote = msgText || `[Documento enviado: ${decodeURIComponent(fileName)}]`;
+          contextMessages.push({ role, content: docNote });
+        } else if (msgType === "video" && mediaUrl) {
+          contextMessages.push({ role, content: msgText || "[Vídeo enviado]" });
+        } else if (msgType === "sticker") {
+          contextMessages.push({ role, content: "[Figurinha/Sticker enviado]" });
+        } else if (msgText?.trim()) {
+          contextMessages.push({ role, content: msgText });
+        }
+      }
 
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
