@@ -217,6 +217,7 @@ export function WhatsAppAIAgents() {
         auto_call_instance_name: editingAgent.auto_call_instance_name || null,
         call_assigned_to: editingAgent.call_assigned_to || null,
         human_pause_minutes: editingAgent.human_pause_minutes ?? 30,
+        split_messages: editingAgent.split_messages ?? false,
       };
 
       if (editingAgent.id) {
