@@ -177,7 +177,7 @@ export function WhatsAppAIAgents() {
       followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
-      call_assigned_to: null, human_pause_minutes: 30, split_messages: false,
+      call_assigned_to: null, human_pause_minutes: 30, split_messages: false, split_delay_seconds: 2,
     });
     fetchAvailableCampaigns();
     setShowEditor(true);
