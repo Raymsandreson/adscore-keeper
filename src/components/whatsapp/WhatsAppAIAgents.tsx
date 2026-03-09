@@ -164,7 +164,7 @@ export function WhatsAppAIAgents() {
       base_prompt: '', temperature: 50, max_tokens: 2000, sign_messages: true,
       read_messages: true, is_active: true, uazapi_config: {},
       response_delay_seconds: 0, followup_enabled: false, followup_interval_minutes: 60,
-      followup_max_attempts: 3, followup_message: '', auto_call_enabled: false,
+      followup_max_attempts: 3, followup_message: '', followup_prompt: '', auto_call_enabled: false,
       auto_call_mode: 'on_no_response', auto_call_delay_seconds: 0,
       auto_call_no_response_minutes: 30, auto_call_instance_name: null,
       human_pause_minutes: 30,
