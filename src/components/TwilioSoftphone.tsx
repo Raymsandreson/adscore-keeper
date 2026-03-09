@@ -67,7 +67,7 @@ export function TwilioSoftphone({
       }
 
       const script = document.createElement('script');
-      script.src = 'https://sdk.twilio.com/js/client/v1.14/twilio.min.js';
+      script.src = 'https://sdk.twilio.com/js/client/releases/1.14.3/twilio.min.js';
       script.async = true;
       script.onload = () => {
         sdkLoadedRef.current = true;
