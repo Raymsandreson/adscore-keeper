@@ -439,6 +439,14 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
 
 
 
+                {/* Twilio Softphone */}
+                <div className="px-4 py-2 border-b">
+                  <TwilioSoftphone
+                    phoneNumber={dialNumber}
+                    compact={false}
+                  />
+                </div>
+
                 <ScrollArea className="max-h-[45vh]">
                   {/* Recent Conversations */}
                   <div className="px-4 py-2">
