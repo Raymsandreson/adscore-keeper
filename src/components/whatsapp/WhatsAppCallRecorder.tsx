@@ -9,11 +9,7 @@ import { Phone, Mic, MicOff, Square, Loader2, PhoneOff, PhoneCall, FileText, Sav
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-declare global {
-  interface Window {
-    Twilio: any;
-  }
-}
+// Uses UazAPI via make-whatsapp-call edge function
 
 interface Props {
   phone: string;
