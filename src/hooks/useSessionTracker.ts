@@ -239,8 +239,8 @@ export function useSessionTracker() {
         clearInterval(heartbeatTimerRef.current);
       }
 
-      // End session on cleanup
-      endSession('logout');
+      // Cleanup should only remove listeners/timers.
+      // Session finalization is handled by inactivity, beforeunload and auth state transitions.
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // only re-run when user ID changes, not on every render
