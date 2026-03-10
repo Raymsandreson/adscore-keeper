@@ -129,10 +129,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const callAudioChunksRef = useRef<Blob[]>([]);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStreamsRef = useRef<MediaStream[]>([]);
   const recordingTimeRef = useRef(0);
   const callRecordingTimeRef = useRef(0);
@@ -1085,7 +1085,7 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
               )}
 
               {/* Follow-up suggestion chips - only on last AI message */}
-              {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).at(-1)?.id && (
+              {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).slice(-1)[0]?.id && (
                 <div className="flex flex-wrap gap-1.5 pl-1">
                   {rawSuggestion.follow_up_suggestions.map((s: FollowUpSuggestion, i: number) => (
                     <button

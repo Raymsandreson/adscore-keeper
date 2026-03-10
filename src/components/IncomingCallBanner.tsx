@@ -19,7 +19,7 @@ export function IncomingCallBanner() {
   const [autoStarted, setAutoStarted] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lastAutoStartCallId = useRef<string | null>(null);
 

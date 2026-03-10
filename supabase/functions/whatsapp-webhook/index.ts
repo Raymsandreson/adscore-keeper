@@ -370,6 +370,38 @@ async function handleCallEvent(supabase: any, body: any) {
       console.log(`Saved ${eventType} event for call:`, callId);
     }
 
+    // Auto-activate recording when call is accepted/answered
+    if (isAccept && instanceName) {
+      try {
+        const { data: inst } = await supabase
+          .from('whatsapp_instances')
+          .select('instance_token, base_url')
+          .eq('instance_name', instanceName)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+
+        if (inst?.instance_token) {
+          const recBaseUrl = inst.base_url || 'https://abraci.uazapi.com';
+          const recordUrl = `${recBaseUrl}/call/record`;
+          console.log('Auto-activating call recording via UazAPI:', recordUrl, 'callId:', callId);
+
+          const recResp = await fetch(recordUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': inst.instance_token },
+            body: JSON.stringify({ callId, number: phone }),
+          });
+
+          const recData = await recResp.json().catch(() => ({}));
+          console.log('UazAPI record response:', recResp.status, JSON.stringify(recData));
+        } else {
+          console.warn('No instance token found for recording, instance:', instanceName);
+        }
+      } catch (recErr) {
+        console.error('Error activating call recording:', recErr);
+      }
+    }
+
     return null;
   }
 

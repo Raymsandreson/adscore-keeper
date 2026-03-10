@@ -68,7 +68,7 @@ export function EntityAIChat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimeRef = useRef(0);
 
   useEffect(() => {
@@ -517,7 +517,7 @@ export function EntityAIChat({
             )}
 
             {/* Follow-up suggestion chips */}
-            {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).at(-1)?.id && (
+            {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).slice(-1)[0]?.id && (
               <div className="flex flex-wrap gap-1.5 pl-1">
                 {rawSuggestion.follow_up_suggestions.map((s: any, i: number) => (
                   <button
