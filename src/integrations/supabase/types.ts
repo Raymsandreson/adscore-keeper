@@ -469,6 +469,48 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_list_agents: {
+        Row: {
+          agent_id: string
+          broadcast_list_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+        }
+        Insert: {
+          agent_id: string
+          broadcast_list_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Update: {
+          agent_id?: string
+          broadcast_list_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broadcast_list_agents_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_ai_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broadcast_list_agents_broadcast_list_id_fkey"
+            columns: ["broadcast_list_id"]
+            isOneToOne: true
+            referencedRelation: "broadcast_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broadcast_list_members: {
         Row: {
           broadcast_list_id: string

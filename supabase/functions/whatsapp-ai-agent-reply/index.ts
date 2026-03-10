@@ -84,6 +84,44 @@ serve(async (req) => {
       }
     }
 
+    // 4) If no assignment, check broadcast list agents
+    if (!assignment) {
+      // Find if this phone belongs to any broadcast list with an active agent
+      const normalizedPhone = phone.replace(/\D/g, '');
+      const phoneSuffix = normalizedPhone.slice(-8);
+      
+      const { data: contactsInLists } = await supabase
+        .from("broadcast_list_members")
+        .select("broadcast_list_id, contact_id, contacts!inner(phone)")
+        .filter("contacts.phone", "ilike", `%${phoneSuffix}%`)
+        .limit(50);
+
+      if (contactsInLists && contactsInLists.length > 0) {
+        const listIds = [...new Set(contactsInLists.map((c: any) => c.broadcast_list_id))];
+        
+        const { data: listAgent } = await supabase
+          .from("broadcast_list_agents")
+          .select("agent_id, broadcast_list_id")
+          .in("broadcast_list_id", listIds)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+
+        if (listAgent) {
+          // Auto-assign this agent to the conversation
+          await supabase.from("whatsapp_conversation_agents").upsert({
+            phone,
+            instance_name,
+            agent_id: listAgent.agent_id,
+            is_active: true,
+            activated_by: "broadcast_list_auto",
+          }, { onConflict: "phone,instance_name" });
+          assignment = { agent_id: listAgent.agent_id, is_active: true };
+          console.log(`Auto-assigned agent ${listAgent.agent_id} via broadcast list ${listAgent.broadcast_list_id}`);
+        }
+      }
+    }
+
     if (!assignment) {
       return new Response(JSON.stringify({ skipped: true, reason: "No active agent" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
