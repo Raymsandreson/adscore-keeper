@@ -244,8 +244,8 @@ export function useSessionTracker() {
   }, [user?.id]); // only re-run when user ID changes, not on every render
 
   return {
-    sessionId: sessionIdRef.current,
-    sessionStartedAt: sessionStartedAtRef.current,
+    sessionId: sessionIdState,
+    sessionStartedAt: sessionStartedAtState,
     logPageVisit,
     updateActivity,
     endSession,
