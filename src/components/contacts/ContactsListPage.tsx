@@ -48,6 +48,52 @@ export function ContactsListPage() {
   const [sendMediaPreview, setSendMediaPreview] = useState<string | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
+  // Agent assignment state
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [listAgentMap, setListAgentMap] = useState<Record<string, { agent_id: string; agent_name: string; is_active: boolean }>>({});
+
+  useEffect(() => {
+    fetchAgentsAndAssignments();
+  }, []);
+
+  const fetchAgentsAndAssignments = async () => {
+    const [{ data: agentsData }, { data: assignmentsData }] = await Promise.all([
+      supabase.from('whatsapp_ai_agents').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('broadcast_list_agents').select('broadcast_list_id, agent_id, is_active, whatsapp_ai_agents(name)') as any,
+    ]);
+    setAgents((agentsData || []) as any);
+    const map: Record<string, any> = {};
+    (assignmentsData || []).forEach((a: any) => {
+      map[a.broadcast_list_id] = {
+        agent_id: a.agent_id,
+        agent_name: a.whatsapp_ai_agents?.name || '',
+        is_active: a.is_active,
+      };
+    });
+    setListAgentMap(map);
+  };
+
+  const handleAssignAgentToList = async (listId: string, agentId: string | null) => {
+    if (!agentId) {
+      await supabase.from('broadcast_list_agents').delete().eq('broadcast_list_id', listId);
+      setListAgentMap(prev => { const n = { ...prev }; delete n[listId]; return n; });
+      toast.success('Agente removido da lista');
+      return;
+    }
+    const { error } = await (supabase.from('broadcast_list_agents') as any).upsert({
+      broadcast_list_id: listId,
+      agent_id: agentId,
+      is_active: true,
+    }, { onConflict: 'broadcast_list_id' });
+    if (error) { toast.error('Erro: ' + error.message); return; }
+    const agent = agents.find(a => a.id === agentId);
+    setListAgentMap(prev => ({
+      ...prev,
+      [listId]: { agent_id: agentId, agent_name: agent?.name || '', is_active: true },
+    }));
+    toast.success(`🤖 Agente "${agent?.name}" ativado para esta lista`);
+  };
+
   // Instances
   const [instances, setInstances] = useState<{ id: string; instance_name: string }[]>([]);
 
