@@ -17,6 +17,8 @@ export function useSessionTracker() {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasRecentActivityRef = useRef<boolean>(false);
+  const isStartingSessionRef = useRef<boolean>(false);
+  const previousUserIdRef = useRef<string | null>(null);
 
   // Start a new session
   const startSession = useCallback(async () => {
