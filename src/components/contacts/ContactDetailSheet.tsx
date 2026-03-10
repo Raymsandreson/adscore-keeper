@@ -765,12 +765,26 @@ export function ContactDetailSheet({
                 <div className="space-y-4">
                   {/* Display mode */}
                   <div className="space-y-3">
-                    {contact.phone && (
+                     {contact.phone && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Phone className="h-4 w-4 text-muted-foreground" />
                         <CopyableText copyValue={contact.phone} label="Telefone" className="flex-1">
-                          {contact.phone}
+                          <a href={`tel:${contact.phone?.replace(/\D/g, '')}`} className="hover:underline">
+                            {contact.phone}
+                          </a>
                         </CopyableText>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            // Click tel: link to trigger CallFace extension
+                            window.location.href = `tel:${contact.phone?.replace(/\D/g, '')}`;
+                          }}
+                          title="Ligar via CallFace"
+                        >
+                          <PhoneCall className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
