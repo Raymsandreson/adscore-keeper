@@ -760,8 +760,10 @@ Deno.serve(async (req) => {
     if (isCallEvent) {
       console.log('Detected CALL event, processing...')
       const callRecord = await handleCallEvent(supabase, body);
+      const resp = { success: true, type: 'call', call_record_id: callRecord?.id || null }
+      await logWebhook('call_processed', resp)
       return new Response(
-        JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
+        JSON.stringify(resp),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
