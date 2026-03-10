@@ -605,7 +605,7 @@ export function WhatsAppInbox() {
           </Select>
         )}
 
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-1 items-center flex-shrink-0">
           {disconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
