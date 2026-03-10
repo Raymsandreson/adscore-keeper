@@ -832,6 +832,7 @@ Deno.serve(async (req) => {
           );
         }
         console.log('SKIPPING non-message, non-call EventType:', body.EventType, 'Full type field:', body.type, 'Keys:', Object.keys(body).join(','));
+        await logWebhook('skipped_' + (body.EventType || 'unknown'))
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: `EventType ${body.EventType} ignored` }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
