@@ -17,6 +17,7 @@ serve(async (req) => {
       deal_id,
       contact_id,
       summarization,
+      transcription,
       user_email,
       user_name,
       destination_number,
@@ -24,6 +25,8 @@ serve(async (req) => {
       call_link,
       call_date,
       call_duration,
+      call_type,
+      call_status,
       credentials,
     } = payload;
 
@@ -32,13 +35,14 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Try to find the user by email
+    // Try to find the user by email (from credentials or direct field)
     let userId: string | null = null;
-    if (user_email) {
+    const resolvedEmail = user_email || credentials?.user_email;
+    if (resolvedEmail) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('user_id')
-        .eq('email', user_email)
+        .select('user_id, full_name')
+        .eq('email', resolvedEmail)
         .maybeSingle();
       userId = profile?.user_id || null;
     }
@@ -53,10 +57,11 @@ serve(async (req) => {
     let contactName: string | null = null;
 
     if (normalizedPhone) {
+      const phoneSuffix = normalizedPhone.slice(-8);
       const { data: contacts } = await supabase
         .from('contacts')
         .select('id, full_name, lead_id')
-        .or(`phone.ilike.%${normalizedPhone.slice(-8)}%`)
+        .or(`phone.ilike.%${phoneSuffix}%`)
         .limit(1);
 
       if (contacts && contacts.length > 0) {
@@ -70,7 +75,7 @@ serve(async (req) => {
         const { data: leads } = await supabase
           .from('leads')
           .select('id, lead_name')
-          .or(`lead_phone.ilike.%${normalizedPhone.slice(-8)}%`)
+          .or(`lead_phone.ilike.%${phoneSuffix}%`)
           .limit(1);
 
         if (leads && leads.length > 0) {
@@ -97,27 +102,37 @@ serve(async (req) => {
       formattedPhone = `+55 (${ddd}) ${rest.length === 9 ? rest.slice(0, 5) + '-' + rest.slice(5) : rest.slice(0, 4) + '-' + rest.slice(4)}`;
     }
 
+    // Determine call result
+    const resolvedResult = call_status === 'answered' || call_status === 'completed' ? 'completed' 
+      : call_status === 'no_answer' ? 'nao_atendeu'
+      : call_status === 'busy' ? 'ocupado'
+      : call_status || 'completed';
+
+    // Build notes
+    const notesParts = [
+      call_link ? `🔗 CallFace: ${call_link}` : null,
+      deal_id ? `Deal ID: ${deal_id}` : null,
+      contact_id ? `Contact ID: ${contact_id}` : null,
+      user_name ? `Vendedor: ${user_name}` : null,
+    ].filter(Boolean);
+
     // Create call record with CallFace insights
     const { error: insertError } = await supabase
       .from('call_records')
       .insert({
         user_id: userId || '00000000-0000-0000-0000-000000000000',
-        call_type: 'outbound',
-        call_result: 'completed',
+        call_type: call_type || 'outbound',
+        call_result: resolvedResult,
         contact_id: contactDbId,
-        contact_name: contactName || user_name || null,
+        contact_name: contactName || null,
         contact_phone: formattedPhone,
         lead_id: leadId,
         lead_name: leadName,
         duration_seconds: call_duration || null,
         ai_summary: summarization || null,
+        ai_transcript: transcription || null,
         audio_url: call_audio_url || null,
-        notes: [
-          call_link ? `🔗 CallFace: ${call_link}` : null,
-          deal_id ? `Deal ID: ${deal_id}` : null,
-          contact_id ? `Contact ID: ${contact_id}` : null,
-          user_name ? `Vendedor: ${user_name}` : null,
-        ].filter(Boolean).join('\n'),
+        notes: notesParts.length > 0 ? notesParts.join('\n') : null,
         phone_used: 'callface',
         tags: ['callface'],
       });
@@ -135,13 +150,12 @@ serve(async (req) => {
       await supabase
         .from('leads')
         .update({
-          followup_count: supabase.rpc ? undefined : undefined,
           last_followup_at: new Date().toISOString(),
         })
         .eq('id', leadId);
     }
 
-    console.log('CallFace insight saved successfully');
+    console.log('CallFace insight saved successfully', { contactDbId, leadId, userId });
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

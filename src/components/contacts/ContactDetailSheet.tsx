@@ -69,7 +69,8 @@ import { ShareMenu } from '@/components/ShareMenu';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { EntityAIChat } from '@/components/activities/EntityAIChat';
-import { Sparkles } from 'lucide-react';
+import { ContactCallHistory } from './ContactCallHistory';
+import { Sparkles, PhoneCall } from 'lucide-react';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
@@ -539,30 +540,34 @@ export function ContactDetailSheet({
         </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="info" className="text-xs">
+          <TabsList className="grid w-full grid-cols-7">
+            <TabsTrigger value="info" className="text-xs px-1">
               <User className="h-3 w-3 mr-1" />
               Info
             </TabsTrigger>
-            <TabsTrigger value="history" className="text-xs">
+            <TabsTrigger value="calls" className="text-xs px-1">
+              <PhoneCall className="h-3 w-3 mr-1" />
+              Chamadas
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs px-1">
               <History className="h-3 w-3 mr-1" />
               Histórico
             </TabsTrigger>
-            <TabsTrigger value="location" className="text-xs">
+            <TabsTrigger value="location" className="text-xs px-1">
               <MapPin className="h-3 w-3 mr-1" />
               Local
             </TabsTrigger>
-            <TabsTrigger value="relationships" className="text-xs">
+            <TabsTrigger value="relationships" className="text-xs px-1">
               <Users className="h-3 w-3 mr-1" />
               Vínculos
             </TabsTrigger>
-            <TabsTrigger value="leads" className="text-xs">
+            <TabsTrigger value="leads" className="text-xs px-1">
               <Link2 className="h-3 w-3 mr-1" />
               Leads
             </TabsTrigger>
-            <TabsTrigger value="ai_chat" className="text-xs">
+            <TabsTrigger value="ai_chat" className="text-xs px-1">
               <Sparkles className="h-3 w-3 mr-1" />
-              Chat IA
+              IA
             </TabsTrigger>
           </TabsList>
 
@@ -760,12 +765,26 @@ export function ContactDetailSheet({
                 <div className="space-y-4">
                   {/* Display mode */}
                   <div className="space-y-3">
-                    {contact.phone && (
+                     {contact.phone && (
                       <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
                         <Phone className="h-4 w-4 text-muted-foreground" />
                         <CopyableText copyValue={contact.phone} label="Telefone" className="flex-1">
-                          {contact.phone}
+                          <a href={`tel:${contact.phone?.replace(/\D/g, '')}`} className="hover:underline">
+                            {contact.phone}
+                          </a>
                         </CopyableText>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => {
+                            // Click tel: link to trigger CallFace extension
+                            window.location.href = `tel:${contact.phone?.replace(/\D/g, '')}`;
+                          }}
+                          title="Ligar via CallFace"
+                        >
+                          <PhoneCall className="h-4 w-4 text-primary" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -846,6 +865,11 @@ export function ContactDetailSheet({
                   )}
                 </div>
               )}
+            </TabsContent>
+
+            {/* Calls Tab */}
+            <TabsContent value="calls" className="mt-0">
+              <ContactCallHistory contactId={contact.id} contactPhone={contact.phone} />
             </TabsContent>
 
             {/* History Tab */}
