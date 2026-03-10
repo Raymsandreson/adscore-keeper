@@ -746,25 +746,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ========== LOG ALL INCOMING WEBHOOKS (before any filtering) ==========
-    // This ensures we can debug what UazAPI is actually sending
-    logWebhook('received', { 
-      detected_event_type: eventType, 
-      body_type: bodyType, 
-      body_event_str: bodyEventStr,
-      message_type_hint: messageTypeHint,
-      has_call_payload: hasCallPayload,
-      is_call_event: isCallEvent,
-      keys: Object.keys(body).join(','),
-    })
-
-    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
+    // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
+    const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack', 'chats']
     if (skippableEvents.includes(eventType) && !isCallEvent) {
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Log only meaningful events to webhook_logs
+    logWebhook('received', { 
+      detected_event_type: eventType, 
+      body_type: bodyType, 
+      is_call_event: isCallEvent,
+      keys: Object.keys(body).join(','),
+    })
 
     // 2) Skip group messages (high-volume) unless it is a call event
     const chatId = body.chat?.wa_chatid || body.message?.chatid || ''
