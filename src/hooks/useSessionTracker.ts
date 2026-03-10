@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -9,11 +9,14 @@ export function useSessionTracker() {
   const { user } = useAuthContext();
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedAtRef = useRef<number | null>(null);
+  // State versions so consumers get re-renders when session starts/ends
+  const [sessionIdState, setSessionIdState] = useState<string | null>(null);
+  const [sessionStartedAtState, setSessionStartedAtState] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
-  const lastHeartbeatActivityRef = useRef<number>(Date.now()); // tracks last real interaction sent to DB
+  const lastHeartbeatActivityRef = useRef<number>(Date.now());
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const hasRecentActivityRef = useRef<boolean>(false); // true if user interacted since last heartbeat
+  const hasRecentActivityRef = useRef<boolean>(false);
 
   // Start a new session
   const startSession = useCallback(async () => {
@@ -41,7 +44,9 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = data.id;
+      setSessionIdState(data.id);
       sessionStartedAtRef.current = Date.now();
+      setSessionStartedAtState(Date.now());
       lastActivityRef.current = Date.now();
       console.log('[Session] Started:', data.id);
     } catch (error) {
@@ -84,7 +89,9 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = null;
+      setSessionIdState(null);
       sessionStartedAtRef.current = null;
+      setSessionStartedAtState(null);
     } catch (error) {
       console.error('Error ending session:', error);
     }
@@ -237,8 +244,8 @@ export function useSessionTracker() {
   }, [user?.id]); // only re-run when user ID changes, not on every render
 
   return {
-    sessionId: sessionIdRef.current,
-    sessionStartedAt: sessionStartedAtRef.current,
+    sessionId: sessionIdState,
+    sessionStartedAt: sessionStartedAtState,
     logPageVisit,
     updateActivity,
     endSession,
