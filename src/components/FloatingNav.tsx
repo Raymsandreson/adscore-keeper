@@ -55,6 +55,15 @@ export function FloatingNav() {
 
   const noop = useCallback(() => {}, []);
 
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast.error('Erro ao sair', { description: error.message });
+    } else {
+      toast.success('Você saiu da conta');
+    }
+  };
+
   // Listen for PWA updates
   useEffect(() => {
     const unsub = onUpdateAvailable(() => setHasUpdate(true));
