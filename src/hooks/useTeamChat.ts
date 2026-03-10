@@ -209,6 +209,28 @@ export function useMyMentions() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime: listen for new mentions or updates
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`mentions-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'team_chat_mentions',
+          filter: `mentioned_user_id=eq.${user.id}`,
+        },
+        () => {
+          load();
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, load]);
+
   const markAsRead = useCallback(async (mentionId: string) => {
     await supabase
       .from('team_chat_mentions')
