@@ -6691,6 +6691,7 @@ export type Database = {
         Returns: boolean
       }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
+      cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
       has_role: {
         Args: {
