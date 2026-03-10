@@ -231,10 +231,20 @@ export function FloatingNav() {
                   )}
                 </div>
               ))}
+
+              {/* Sair */}
+              <div className="border-t border-border/30">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10 font-medium"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </button>
+              </div>
             </div>
           </div>
         )}
-
         {/* Collapsed state - small pill to expand */}
         {dockCollapsed ? (
           <button
