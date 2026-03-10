@@ -42,21 +42,13 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  // Call state (no longer needs Twilio SDK refs)
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       recognitionRef.current?.stop();
-      if (twilioCallRef.current) {
-        try { twilioCallRef.current.disconnect(); } catch {}
-        twilioCallRef.current = null;
-      }
-      if (twilioDeviceRef.current) {
-        twilioDeviceRef.current.destroy();
-        twilioDeviceRef.current = null;
-      }
     };
   }, []);
 
