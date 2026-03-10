@@ -9,11 +9,14 @@ export function useSessionTracker() {
   const { user } = useAuthContext();
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartedAtRef = useRef<number | null>(null);
+  // State versions so consumers get re-renders when session starts/ends
+  const [sessionIdState, setSessionIdState] = useState<string | null>(null);
+  const [sessionStartedAtState, setSessionStartedAtState] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
-  const lastHeartbeatActivityRef = useRef<number>(Date.now()); // tracks last real interaction sent to DB
+  const lastHeartbeatActivityRef = useRef<number>(Date.now());
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const hasRecentActivityRef = useRef<boolean>(false); // true if user interacted since last heartbeat
+  const hasRecentActivityRef = useRef<boolean>(false);
 
   // Start a new session
   const startSession = useCallback(async () => {
