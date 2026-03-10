@@ -415,10 +415,12 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
 
 
 
-                {/* Twilio Softphone */}
+                {/* WhatsApp Call */}
                 <div className="px-4 py-2 border-b">
-                  <TwilioSoftphone
+                  <WhatsAppCallButton
                     phoneNumber={dialNumber}
+                    instanceName={selectedInstance?.instance_name}
+                    instanceId={selectedInstance?.id}
                     compact={false}
                   />
                 </div>
