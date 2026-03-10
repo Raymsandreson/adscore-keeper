@@ -43,11 +43,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-
-  // Twilio SDK v2.x refs
-  const twilioDeviceRef = useRef<Device | null>(null);
-  const twilioCallRef = useRef<Call | null>(null);
+  // Call state (no longer needs Twilio SDK refs)
 
   useEffect(() => {
     return () => {
