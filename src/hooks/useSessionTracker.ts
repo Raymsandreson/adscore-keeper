@@ -22,20 +22,20 @@ export function useSessionTracker() {
 
   // Start a new session
   const startSession = useCallback(async () => {
-    if (!user) return;
+    if (!user || sessionIdRef.current || isStartingSessionRef.current) return;
+
+    isStartingSessionRef.current = true;
 
     try {
-      // End any existing active session first
-      if (sessionIdRef.current) {
-        await endSession('new_session');
-      }
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
 
       const { data, error } = await supabase
         .from('user_sessions')
         .insert({
           user_id: user.id,
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
+          started_at: nowIso,
+          last_activity_at: nowIso,
         })
         .select('id')
         .single();
@@ -47,12 +47,15 @@ export function useSessionTracker() {
 
       sessionIdRef.current = data.id;
       setSessionIdState(data.id);
-      sessionStartedAtRef.current = Date.now();
-      setSessionStartedAtState(Date.now());
-      lastActivityRef.current = Date.now();
+      sessionStartedAtRef.current = now;
+      setSessionStartedAtState(now);
+      lastActivityRef.current = now;
+      hasRecentActivityRef.current = true;
       console.log('[Session] Started:', data.id);
     } catch (error) {
       console.error('Error starting session:', error);
+    } finally {
+      isStartingSessionRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // use user.id to avoid recreating on object reference changes
