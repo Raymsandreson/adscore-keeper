@@ -6,13 +6,14 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, LogOut,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 import { MentionsPanel } from "@/components/chat/MentionsPanel";
 import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
@@ -36,7 +37,7 @@ export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin } = useUserRole();
-  const { user } = useAuthContext();
+  const { user, signOut } = useAuthContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
@@ -53,6 +54,15 @@ export function FloatingNav() {
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
 
   const noop = useCallback(() => {}, []);
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast.error('Erro ao sair', { description: error.message });
+    } else {
+      toast.success('Você saiu da conta');
+    }
+  };
 
   // Listen for PWA updates
   useEffect(() => {
@@ -221,10 +231,20 @@ export function FloatingNav() {
                   )}
                 </div>
               ))}
+
+              {/* Sair */}
+              <div className="border-t border-border/30">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10 font-medium"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </button>
+              </div>
             </div>
           </div>
         )}
-
         {/* Collapsed state - small pill to expand */}
         {dockCollapsed ? (
           <button
