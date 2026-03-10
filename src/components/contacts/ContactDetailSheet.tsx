@@ -540,30 +540,34 @@ export function ContactDetailSheet({
         </Header>
 
         <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="info" className="text-xs">
+          <TabsList className="grid w-full grid-cols-7">
+            <TabsTrigger value="info" className="text-xs px-1">
               <User className="h-3 w-3 mr-1" />
               Info
             </TabsTrigger>
-            <TabsTrigger value="history" className="text-xs">
+            <TabsTrigger value="calls" className="text-xs px-1">
+              <PhoneCall className="h-3 w-3 mr-1" />
+              Chamadas
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-xs px-1">
               <History className="h-3 w-3 mr-1" />
               Histórico
             </TabsTrigger>
-            <TabsTrigger value="location" className="text-xs">
+            <TabsTrigger value="location" className="text-xs px-1">
               <MapPin className="h-3 w-3 mr-1" />
               Local
             </TabsTrigger>
-            <TabsTrigger value="relationships" className="text-xs">
+            <TabsTrigger value="relationships" className="text-xs px-1">
               <Users className="h-3 w-3 mr-1" />
               Vínculos
             </TabsTrigger>
-            <TabsTrigger value="leads" className="text-xs">
+            <TabsTrigger value="leads" className="text-xs px-1">
               <Link2 className="h-3 w-3 mr-1" />
               Leads
             </TabsTrigger>
-            <TabsTrigger value="ai_chat" className="text-xs">
+            <TabsTrigger value="ai_chat" className="text-xs px-1">
               <Sparkles className="h-3 w-3 mr-1" />
-              Chat IA
+              IA
             </TabsTrigger>
           </TabsList>
 
