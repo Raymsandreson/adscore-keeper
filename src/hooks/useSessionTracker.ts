@@ -44,7 +44,9 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = data.id;
+      setSessionIdState(data.id);
       sessionStartedAtRef.current = Date.now();
+      setSessionStartedAtState(Date.now());
       lastActivityRef.current = Date.now();
       console.log('[Session] Started:', data.id);
     } catch (error) {
