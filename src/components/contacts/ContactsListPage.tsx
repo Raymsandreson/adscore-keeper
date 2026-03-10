@@ -351,44 +351,78 @@ export function ContactsListPage() {
               ) : lists.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">Nenhuma lista criada</p>
               ) : (
-                lists.map(list => (
-                  <div
-                    key={list.id}
-                    className="flex items-center gap-3 p-4 rounded-lg border bg-card hover:bg-accent/30 transition-colors"
-                  >
-                    <Radio className="h-5 w-5 text-primary shrink-0" />
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleViewList(list)}>
-                      <p className="font-medium text-sm">{list.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {list.member_count || 0} contatos
-                        {list.description && ` • ${list.description}`}
-                      </p>
+                lists.map(list => {
+                  const listAgent = listAgentMap[list.id];
+                  return (
+                    <div
+                      key={list.id}
+                      className="flex items-center gap-3 p-4 rounded-lg border bg-card hover:bg-accent/30 transition-colors"
+                    >
+                      <Radio className="h-5 w-5 text-primary shrink-0" />
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleViewList(list)}>
+                        <p className="font-medium text-sm">{list.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {list.member_count || 0} contatos
+                          {list.description && ` • ${list.description}`}
+                        </p>
+                        {listAgent && (
+                          <p className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5">
+                            <Bot className="h-3 w-3" />
+                            {listAgent.agent_name}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        {/* Agent selector */}
+                        <Select
+                          value={listAgent?.agent_id || ''}
+                          onValueChange={(val) => handleAssignAgentToList(list.id, val === '__remove__' ? null : val)}
+                        >
+                          <SelectTrigger className="h-8 w-8 p-0 border-0 bg-transparent [&>svg]:hidden justify-center" title="Agente IA">
+                            {listAgent ? (
+                              <Bot className="h-4 w-4 text-emerald-600" />
+                            ) : (
+                              <BotOff className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {agents.map(agent => (
+                              <SelectItem key={agent.id} value={agent.id}>
+                                🤖 {agent.name}
+                              </SelectItem>
+                            ))}
+                            {listAgent && (
+                              <SelectItem value="__remove__" className="text-destructive">
+                                Remover agente
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost" size="icon" className="h-8 w-8"
+                          onClick={() => handleAddSelectedToList(list.id)}
+                          title="Adicionar selecionados"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-8 w-8"
+                          onClick={() => handleOpenSend(list)}
+                          title="Enviar transmissão"
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                          onClick={() => deleteList(list.id)}
+                          title="Excluir lista"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        variant="ghost" size="icon" className="h-8 w-8"
-                        onClick={() => handleAddSelectedToList(list.id)}
-                        title="Adicionar selecionados"
-                      >
-                        <UserPlus className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon" className="h-8 w-8"
-                        onClick={() => handleOpenSend(list)}
-                        title="Enviar transmissão"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon" className="h-8 w-8 text-destructive"
-                        onClick={() => deleteList(list.id)}
-                        title="Excluir lista"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </ScrollArea>
