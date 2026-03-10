@@ -1132,22 +1132,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    const respData = { 
+      success: true, 
+      message_id: message.id, 
+      contact_id: contactId,
+      lead_id: leadId,
+      is_new_contact: !contactId,
+      instance_name: instanceName,
+      media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
+    }
+    await logWebhook('message_processed', respData)
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message_id: message.id, 
-        contact_id: contactId,
-        lead_id: leadId,
-        is_new_contact: !contactId,
-        instance_name: instanceName,
-        media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
-      }),
+      JSON.stringify(respData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     console.error('Webhook error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    // Try to log the error
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      const supabase = createClient(supabaseUrl, supabaseKey)
+      await supabase.from('webhook_logs').insert({
+        source: 'whatsapp',
+        event_type: 'error',
+        status: 'error',
+        error_message: errorMessage,
+        payload: null,
+      })
+    } catch (_) {}
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
