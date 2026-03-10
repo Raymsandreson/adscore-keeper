@@ -853,6 +853,11 @@ export function ContactDetailSheet({
               )}
             </TabsContent>
 
+            {/* Calls Tab */}
+            <TabsContent value="calls" className="mt-0">
+              <ContactCallHistory contactId={contact.id} contactPhone={contact.phone} />
+            </TabsContent>
+
             {/* History Tab */}
             <TabsContent value="history" className="mt-0">
               <ContactInteractionHistory instagramUsername={contact.instagram_username} />
