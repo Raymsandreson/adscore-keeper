@@ -17,23 +17,25 @@ export function useSessionTracker() {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasRecentActivityRef = useRef<boolean>(false);
+  const isStartingSessionRef = useRef<boolean>(false);
+  const previousUserIdRef = useRef<string | null>(null);
 
   // Start a new session
   const startSession = useCallback(async () => {
-    if (!user) return;
+    if (!user || sessionIdRef.current || isStartingSessionRef.current) return;
+
+    isStartingSessionRef.current = true;
 
     try {
-      // End any existing active session first
-      if (sessionIdRef.current) {
-        await endSession('new_session');
-      }
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
 
       const { data, error } = await supabase
         .from('user_sessions')
         .insert({
           user_id: user.id,
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
+          started_at: nowIso,
+          last_activity_at: nowIso,
         })
         .select('id')
         .single();
@@ -45,12 +47,15 @@ export function useSessionTracker() {
 
       sessionIdRef.current = data.id;
       setSessionIdState(data.id);
-      sessionStartedAtRef.current = Date.now();
-      setSessionStartedAtState(Date.now());
-      lastActivityRef.current = Date.now();
+      sessionStartedAtRef.current = now;
+      setSessionStartedAtState(now);
+      lastActivityRef.current = now;
+      hasRecentActivityRef.current = true;
       console.log('[Session] Started:', data.id);
     } catch (error) {
       console.error('Error starting session:', error);
+    } finally {
+      isStartingSessionRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // use user.id to avoid recreating on object reference changes
@@ -143,6 +148,21 @@ export function useSessionTracker() {
 
     updateActivity();
   }, [user, updateActivity]);
+
+  // Finalize session only when auth state actually changes (prevents StrictMode remount 0s sessions)
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+
+    if (
+      previousUserIdRef.current &&
+      previousUserIdRef.current !== currentUserId &&
+      sessionIdRef.current
+    ) {
+      endSession('logout');
+    }
+
+    previousUserIdRef.current = currentUserId;
+  }, [user?.id, endSession]);
 
   // Setup event listeners for activity detection
   useEffect(() => {
@@ -237,8 +257,8 @@ export function useSessionTracker() {
         clearInterval(heartbeatTimerRef.current);
       }
 
-      // End session on cleanup
-      endSession('logout');
+      // Cleanup should only remove listeners/timers.
+      // Session finalization is handled by inactivity, beforeunload and auth state transitions.
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]); // only re-run when user ID changes, not on every render
