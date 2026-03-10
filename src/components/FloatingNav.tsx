@@ -6,13 +6,14 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, LogOut,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { ActivityChatSheet } from "@/components/activities/ActivityChatSheet";
 import { MentionsPanel } from "@/components/chat/MentionsPanel";
 import { useUnreadMentionsCount } from "@/hooks/useTeamChat";
