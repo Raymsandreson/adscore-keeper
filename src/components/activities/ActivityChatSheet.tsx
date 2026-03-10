@@ -129,10 +129,10 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const callAudioChunksRef = useRef<Blob[]>([]);
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callStreamsRef = useRef<MediaStream[]>([]);
   const recordingTimeRef = useRef(0);
   const callRecordingTimeRef = useRef(0);
