@@ -675,7 +675,7 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               className="text-xs text-muted-foreground cursor-default callface-phone-number"
               data-phone={conversation.phone.replace(/\D/g, '')}
             >
-              📞 +{conversation.phone.replace(/\D/g, '')}
+              📞 {formatPhone(conversation.phone)}
             </span>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
               📋
