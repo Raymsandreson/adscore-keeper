@@ -163,6 +163,7 @@ export function WebhookLogsViewer() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos status</SelectItem>
+            <SelectItem value="received">Recebido (raw)</SelectItem>
             <SelectItem value="message_processed">Processado</SelectItem>
             <SelectItem value="call_processed">Chamada</SelectItem>
             <SelectItem value="error">Erro</SelectItem>
