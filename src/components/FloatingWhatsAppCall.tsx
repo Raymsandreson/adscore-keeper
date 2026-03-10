@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Phone, X, MessageSquare, PhoneCall, PhoneIncoming, PhoneOutgoing, Search, Smartphone, Clock, User, Users, Loader2, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { TwilioSoftphone } from '@/components/TwilioSoftphone';
+import { WhatsAppCallButton } from '@/components/WhatsAppCallButton';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -191,9 +191,7 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
 
   const handleMakeCall = (phone: string, _contactName?: string | null) => {
     if (!phone) return;
-    // Set the dial number so TwilioSoftphone can make the call via WebRTC
     setDialNumber(phone.replace(/\D/g, ''));
-    toast.info('Número preenchido no softphone. Clique em "Ligar" para conectar via Twilio.');
   };
 
   const handleDialDirect = () => {
@@ -417,10 +415,12 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
 
 
 
-                {/* Twilio Softphone */}
+                {/* WhatsApp Call */}
                 <div className="px-4 py-2 border-b">
-                  <TwilioSoftphone
+                  <WhatsAppCallButton
                     phoneNumber={dialNumber}
+                    instanceName={selectedInstance?.instance_name}
+                    instanceId={selectedInstance?.id}
                     compact={false}
                   />
                 </div>
