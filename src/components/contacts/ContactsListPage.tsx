@@ -378,7 +378,7 @@ export function ContactsListPage() {
                           value={listAgent?.agent_id || ''}
                           onValueChange={(val) => handleAssignAgentToList(list.id, val === '__remove__' ? null : val)}
                         >
-                          <SelectTrigger className="h-8 w-8 p-0 border-0 bg-transparent [&>svg]:hidden justify-center" title="Agente IA">
+                          <SelectTrigger className="h-8 w-8 p-0 border-0 bg-transparent [&>svg.lucide-chevron-down]:hidden justify-center" title="Agente IA">
                             {listAgent ? (
                               <Bot className="h-4 w-4 text-emerald-600" />
                             ) : (
