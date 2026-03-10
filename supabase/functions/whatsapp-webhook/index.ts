@@ -661,6 +661,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    const startTime = Date.now()
     const body = await req.json()
 
     // ========== EARLY FILTERS (no DB queries) ==========
@@ -669,24 +670,44 @@ Deno.serve(async (req) => {
     // 1) Event classification + call detection
     const eventType = String(body.EventType || '').toLowerCase()
     const bodyType = String(body.type || '').toLowerCase()
-    const bodyEvent = String(body.event || '').toLowerCase()
+    // body.event can be an object (UazAPI call data) — only treat as string if it IS a string
+    const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : ''
     const messageTypeHint = String(body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
     const hasCallPayload = Boolean(
       body.call
       || body.call_id
       || body.callId
-      || body.event?.CallID
-      || body.event?.call_id
-      || body.event?.Data?.Tag
+      || (typeof body.event === 'object' && body.event !== null && (body.event.CallID || body.event.call_id || body.event.Data?.Tag))
       || body.message?.call_id
       || body.message?.callId
     )
 
     const isCallEvent = ['call', 'calls', 'call_log'].includes(eventType)
-      || bodyEvent === 'call'
+      || bodyEventStr === 'call'
       || bodyType.includes('call')
       || messageTypeHint.includes('call')
       || hasCallPayload
+
+    // Helper to log webhook payload to DB (fire-and-forget)
+    const logWebhook = async (status: string, responseData?: any, errorMsg?: string) => {
+      try {
+        const phone = body.chat?.phone || body.message?.chatid?.replace('@s.whatsapp.net', '') || ''
+        await supabase.from('webhook_logs').insert({
+          source: 'whatsapp',
+          event_type: eventType || bodyType || bodyEventStr || 'unknown',
+          instance_name: webhookInstanceName,
+          phone: phone.replace(/\D/g, '').slice(0, 20),
+          direction: body.message?.fromMe ? 'outbound' : 'inbound',
+          status,
+          payload: body,
+          response: responseData || null,
+          error_message: errorMsg || null,
+          processing_ms: Date.now() - startTime,
+        })
+      } catch (e) {
+        // Silent fail — logging should never break webhook
+      }
+    }
 
     const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
     if (skippableEvents.includes(eventType) && !isCallEvent) {
