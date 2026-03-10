@@ -181,6 +181,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
+            {activeTab === 'logs' && <WebhookLogsViewer />}
           </div>
         </main>
       </div>
