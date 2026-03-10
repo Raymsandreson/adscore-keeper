@@ -149,6 +149,21 @@ export function useSessionTracker() {
     updateActivity();
   }, [user, updateActivity]);
 
+  // Finalize session only when auth state actually changes (prevents StrictMode remount 0s sessions)
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+
+    if (
+      previousUserIdRef.current &&
+      previousUserIdRef.current !== currentUserId &&
+      sessionIdRef.current
+    ) {
+      endSession('logout');
+    }
+
+    previousUserIdRef.current = currentUserId;
+  }, [user?.id, endSession]);
+
   // Setup event listeners for activity detection
   useEffect(() => {
     if (!user) return;
