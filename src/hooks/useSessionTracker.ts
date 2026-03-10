@@ -89,7 +89,9 @@ export function useSessionTracker() {
       }
 
       sessionIdRef.current = null;
+      setSessionIdState(null);
       sessionStartedAtRef.current = null;
+      setSessionStartedAtState(null);
     } catch (error) {
       console.error('Error ending session:', error);
     }
