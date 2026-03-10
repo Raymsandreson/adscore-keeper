@@ -671,15 +671,12 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5">
-            <a 
-              href={`tel:${conversation.phone.replace(/\D/g, '')}`}
-              onClick={(e) => e.preventDefault()}
-              className="callface-phone-number text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
-              data-phone={conversation.phone.replace(/\D/g, '')}
+            <span 
+              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
               title="Clique para ligar via CallFace"
             >
-              📞 {formatPhone(conversation.phone)}
-            </a>
+              📞 {conversation.phone.replace(/\D/g, '')}
+            </span>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
               📋
             </CopyableText>
