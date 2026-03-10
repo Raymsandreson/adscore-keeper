@@ -662,7 +662,44 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     const startTime = Date.now()
-    const body = await req.json()
+
+    // Handle GET requests (UazAPI may send call events via GET)
+    let body: any
+    if (req.method === 'GET') {
+      const url = new URL(req.url)
+      body = Object.fromEntries(url.searchParams.entries())
+      // Try to parse JSON fields that might be URL-encoded
+      for (const key of Object.keys(body)) {
+        try {
+          const parsed = JSON.parse(body[key])
+          if (typeof parsed === 'object') body[key] = parsed
+        } catch (_) { /* keep as string */ }
+      }
+      // Log GET request for debugging
+      console.log('GET webhook received, params:', JSON.stringify(body).substring(0, 2000))
+      
+      // If GET has no meaningful data, just acknowledge
+      if (Object.keys(body).length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, method: 'GET', message: 'Webhook active' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Log GET events to webhook_logs for debugging
+      await supabase.from('webhook_logs').insert({
+        source: 'whatsapp',
+        event_type: 'GET_' + (body.EventType || body.event || body.type || 'unknown'),
+        instance_name: body.instanceName || body.instance_name || null,
+        phone: (body.phone || body.from || '').replace(/\D/g, '').slice(0, 20),
+        direction: 'inbound',
+        status: 'received_get',
+        payload: body,
+        processing_ms: Date.now() - startTime,
+      }).catch(() => {})
+    } else {
+      body = await req.json()
+    }
 
     // ========== EARLY FILTERS (no DB queries) ==========
     const webhookInstanceName = body.instanceName || body.chat?.instanceName || body.instance_name || null
