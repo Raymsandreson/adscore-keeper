@@ -18,6 +18,19 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "2.9.0",
+    date: "2026-03-10",
+    title: "Menções em tempo real",
+    features: [
+      {
+        title: "Menções atualizadas instantaneamente",
+        description: "As menções no chat da equipe agora aparecem em tempo real, sem precisar recarregar a página.",
+        icon: "🔔",
+        howToUse: "Quando alguém te mencionar no chat da equipe, a notificação aparecerá automaticamente no painel de menções — sem delay!",
+      },
+    ],
+  },
+  {
     version: "2.8.0",
     date: "2026-03-05",
     title: "Melhorias na experiência do Lead",
