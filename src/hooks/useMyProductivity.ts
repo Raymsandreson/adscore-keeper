@@ -152,7 +152,10 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         const lastActivityMs = s.last_activity_at ? new Date(s.last_activity_at).getTime() : null;
         const inferredEndMs = lastActivityMs ? lastActivityMs + SESSION_INACTIVITY_GRACE_MS : nowMs;
 
-        const rawEnd = durationEndMs ?? endedAtMs ?? Math.min(inferredEndMs, nowMs);
+        // If session is still open, count until now; if closed, prefer persisted duration/end timestamps
+        const rawEnd = endedAtMs === null
+          ? nowMs
+          : (durationEndMs ?? endedAtMs ?? Math.min(inferredEndMs, nowMs));
         const boundedStart = Math.max(start, dayStartMs);
         const boundedEnd = Math.min(rawEnd, dayEndMs, nowMs);
 
