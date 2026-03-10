@@ -172,9 +172,10 @@ export function WebhookLogsViewer() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
           { label: 'Total', value: logs.length, color: 'text-foreground' },
+          { label: 'Recebidos', value: logs.filter(l => l.status === 'received').length, color: 'text-amber-600' },
           { label: 'Mensagens', value: logs.filter(l => l.status?.includes('message')).length, color: 'text-green-600' },
           { label: 'Chamadas', value: logs.filter(l => l.status?.includes('call')).length, color: 'text-blue-600' },
           { label: 'Erros', value: logs.filter(l => l.status === 'error').length, color: 'text-destructive' },
