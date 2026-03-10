@@ -37,7 +37,7 @@ export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin } = useUserRole();
-  const { user } = useAuthContext();
+  const { user, signOut } = useAuthContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
