@@ -5570,6 +5570,51 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_logs: {
+        Row: {
+          created_at: string
+          direction: string | null
+          error_message: string | null
+          event_type: string | null
+          id: string
+          instance_name: string | null
+          payload: Json | null
+          phone: string | null
+          processing_ms: number | null
+          response: Json | null
+          source: string
+          status: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_name?: string | null
+          payload?: Json | null
+          phone?: string | null
+          processing_ms?: number | null
+          response?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string | null
+          error_message?: string | null
+          event_type?: string | null
+          id?: string
+          instance_name?: string | null
+          payload?: Json | null
+          phone?: string | null
+          processing_ms?: number | null
+          response?: Json | null
+          source?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       weekly_evaluations: {
         Row: {
           comments: string | null
@@ -6645,6 +6690,7 @@ export type Database = {
         Args: { _pluggy_account_id: string; _user_id: string }
         Returns: boolean
       }
+      cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
       has_role: {
         Args: {

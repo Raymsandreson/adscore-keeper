@@ -661,6 +661,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
+    const startTime = Date.now()
     const body = await req.json()
 
     // ========== EARLY FILTERS (no DB queries) ==========
@@ -669,27 +670,48 @@ Deno.serve(async (req) => {
     // 1) Event classification + call detection
     const eventType = String(body.EventType || '').toLowerCase()
     const bodyType = String(body.type || '').toLowerCase()
-    const bodyEvent = String(body.event || '').toLowerCase()
+    // body.event can be an object (UazAPI call data) — only treat as string if it IS a string
+    const bodyEventStr = (typeof body.event === 'string') ? body.event.toLowerCase() : ''
     const messageTypeHint = String(body.message?.messageType || body.chat?.wa_lastMessageType || '').toLowerCase()
     const hasCallPayload = Boolean(
       body.call
       || body.call_id
       || body.callId
-      || body.event?.CallID
-      || body.event?.call_id
-      || body.event?.Data?.Tag
+      || (typeof body.event === 'object' && body.event !== null && (body.event.CallID || body.event.call_id || body.event.Data?.Tag))
       || body.message?.call_id
       || body.message?.callId
     )
 
     const isCallEvent = ['call', 'calls', 'call_log'].includes(eventType)
-      || bodyEvent === 'call'
+      || bodyEventStr === 'call'
       || bodyType.includes('call')
       || messageTypeHint.includes('call')
       || hasCallPayload
 
+    // Helper to log webhook payload to DB (fire-and-forget)
+    const logWebhook = async (status: string, responseData?: any, errorMsg?: string) => {
+      try {
+        const phone = body.chat?.phone || body.message?.chatid?.replace('@s.whatsapp.net', '') || ''
+        await supabase.from('webhook_logs').insert({
+          source: 'whatsapp',
+          event_type: eventType || bodyType || bodyEventStr || 'unknown',
+          instance_name: webhookInstanceName,
+          phone: phone.replace(/\D/g, '').slice(0, 20),
+          direction: body.message?.fromMe ? 'outbound' : 'inbound',
+          status,
+          payload: body,
+          response: responseData || null,
+          error_message: errorMsg || null,
+          processing_ms: Date.now() - startTime,
+        })
+      } catch (e) {
+        // Silent fail — logging should never break webhook
+      }
+    }
+
     const skippableEvents = ['messages_update', 'presence', 'chats_update', 'chats_delete', 'contacts_update', 'labels', 'message_ack']
     if (skippableEvents.includes(eventType) && !isCallEvent) {
+      // Don't log skippable events to avoid flooding
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: `EventType ${eventType} filtered` }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -738,8 +760,10 @@ Deno.serve(async (req) => {
     if (isCallEvent) {
       console.log('Detected CALL event, processing...')
       const callRecord = await handleCallEvent(supabase, body);
+      const resp = { success: true, type: 'call', call_record_id: callRecord?.id || null }
+      await logWebhook('call_processed', resp)
       return new Response(
-        JSON.stringify({ success: true, type: 'call', call_record_id: callRecord?.id || null }),
+        JSON.stringify(resp),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -808,6 +832,7 @@ Deno.serve(async (req) => {
           );
         }
         console.log('SKIPPING non-message, non-call EventType:', body.EventType, 'Full type field:', body.type, 'Keys:', Object.keys(body).join(','));
+        await logWebhook('skipped_' + (body.EventType || 'unknown'))
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: `EventType ${body.EventType} ignored` }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -1108,22 +1133,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    const respData = { 
+      success: true, 
+      message_id: message.id, 
+      contact_id: contactId,
+      lead_id: leadId,
+      is_new_contact: !contactId,
+      instance_name: instanceName,
+      media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
+    }
+    await logWebhook('message_processed', respData)
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message_id: message.id, 
-        contact_id: contactId,
-        lead_id: leadId,
-        is_new_contact: !contactId,
-        instance_name: instanceName,
-        media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
-      }),
+      JSON.stringify(respData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     console.error('Webhook error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    // Try to log the error
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      const supabase = createClient(supabaseUrl, supabaseKey)
+      await supabase.from('webhook_logs').insert({
+        source: 'whatsapp',
+        event_type: 'error',
+        status: 'error',
+        error_message: errorMessage,
+        payload: null,
+      })
+    } catch (_) {}
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
