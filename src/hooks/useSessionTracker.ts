@@ -14,8 +14,8 @@ export function useSessionTracker() {
   const [sessionStartedAtState, setSessionStartedAtState] = useState<number | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const lastHeartbeatActivityRef = useRef<number>(Date.now());
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasRecentActivityRef = useRef<boolean>(false);
   const isStartingSessionRef = useRef<boolean>(false);
   const previousUserIdRef = useRef<string | null>(null);

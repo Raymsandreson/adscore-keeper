@@ -517,7 +517,7 @@ export function EntityAIChat({
             )}
 
             {/* Follow-up suggestion chips */}
-            {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).at(-1)?.id && (
+            {rawSuggestion?.follow_up_suggestions?.length > 0 && msg.id === messages.filter(m => m.message_type === 'ai_suggestion' && !m.deleted_at).slice(-1)[0]?.id && (
               <div className="flex flex-wrap gap-1.5 pl-1">
                 {rawSuggestion.follow_up_suggestions.map((s: any, i: number) => (
                   <button

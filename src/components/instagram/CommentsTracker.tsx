@@ -162,7 +162,7 @@ export const CommentsTracker = ({ pageId, accessToken, isConnected }: CommentsTr
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [autoRefreshInterval, setAutoRefreshInterval] = useState(5); // minutes
-  const autoRefreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Form state for manual comment logging
   const [newComment, setNewComment] = useState({
