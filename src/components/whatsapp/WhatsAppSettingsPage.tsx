@@ -4,12 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap
+  ChevronRight, Shield, Zap, ScrollText
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppAIAgents } from './WhatsAppAIAgents';
+import { WebhookLogsViewer } from './WebhookLogsViewer';
 
 interface Tab {
   id: string;
@@ -51,6 +52,15 @@ const tabs: Tab[] = [
     icon: <Webhook className="h-5 w-5" />,
     description: 'Webhooks, payload e n8n',
     accentColor: 'text-emerald-500',
+  },
+  {
+    id: 'logs',
+    label: 'Logs do Sistema',
+    icon: <ScrollText className="h-5 w-5" />,
+    description: 'Payloads recebidos e erros',
+    badge: '🔍 Debug',
+    badgeVariant: 'outline',
+    accentColor: 'text-amber-500',
   },
 ];
 
