@@ -45,9 +45,14 @@ Deno.serve(async (req) => {
       // Format for Brazil: +55XXXXXXXXXXX
       const formattedTo = cleanTo.startsWith('55') ? `+${cleanTo}` : `+55${cleanTo}`
       
-      // Use Twilio caller ID or a verified number
-      // For trial accounts, callerId must be a verified number
-      const callerIdToUse = callerId || Deno.env.get('TWILIO_CALLER_ID') || ''
+      // MUST use a real Twilio phone number as callerId for PSTN calls
+      // The "From" field from Twilio Client SDK is "client:xxx" which is NOT valid for PSTN
+      const twilioCallerId = Deno.env.get('TWILIO_CALLER_ID') || ''
+      
+      // Only use callerId from request if it looks like a real phone number (starts with +)
+      const callerIdToUse = (callerId && callerId.startsWith('+')) ? callerId : twilioCallerId
+      
+      console.log('Outbound call to:', formattedTo, 'callerId:', callerIdToUse, 'original From:', callerId)
       
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
