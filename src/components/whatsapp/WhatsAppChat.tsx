@@ -670,9 +670,19 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
-          <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="p">
-            {formatPhone(conversation.phone)}
-          </CopyableText>
+          <div className="flex items-center gap-1.5">
+            <a 
+              href={`tel:+${conversation.phone.replace(/\D/g, '')}`} 
+              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
+              title="Clique para ligar via CallFace"
+              onClick={(e) => e.stopPropagation()}
+            >
+              📞 {formatPhone(conversation.phone)}
+            </a>
+            <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
+              📋
+            </CopyableText>
+          </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {conversation.instance_name && (
