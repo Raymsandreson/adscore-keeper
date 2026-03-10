@@ -191,9 +191,7 @@ export function FloatingWhatsAppCall({ externalOpen, onExternalOpenChange }: { e
 
   const handleMakeCall = (phone: string, _contactName?: string | null) => {
     if (!phone) return;
-    // Set the dial number so TwilioSoftphone can make the call via WebRTC
     setDialNumber(phone.replace(/\D/g, ''));
-    toast.info('Número preenchido no softphone. Clique em "Ligar" para conectar via Twilio.');
   };
 
   const handleDialDirect = () => {
