@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes without interaction = end session
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutos sem interação para encerrar sessão
 const HEARTBEAT_INTERVAL = 2 * 60 * 1000; // 2 minutes - check if still active
 
 export function useSessionTracker() {
