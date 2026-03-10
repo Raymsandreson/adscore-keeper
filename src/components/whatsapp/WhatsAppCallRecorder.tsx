@@ -194,11 +194,7 @@ export function WhatsAppCallRecorder({ phone, contactName, contactId, leadId, le
     if (timerRef.current) clearInterval(timerRef.current);
     stopSpeechRecognition();
 
-    // Disconnect Twilio call
-    if (twilioCallRef.current) {
-      try { twilioCallRef.current.disconnect(); } catch {}
-      twilioCallRef.current = null;
-    }
+    // WhatsApp call ends on the device side, no SDK disconnect needed
 
     const currentDuration = recordingTime;
     const recorder = mediaRecorderRef.current;
