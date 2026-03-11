@@ -675,27 +675,21 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <a
-              href={`tel:${pwaDialPhone}`}
-              className="callface-dial text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
-              data-phone={pwaDialPhone}
-              title="Ligar via CallFace"
-            >
-              📞 CallFace
-            </a>
+            {/* Número em texto puro para o CallFace detectar e injetar botão */}
+            <span className="text-xs font-mono text-foreground select-all">{pwaDialPhone}</span>
             <span className="text-muted-foreground text-xs">|</span>
             <a
               href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-green-600 hover:text-green-700 hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
-              title="WhatsApp"
+              title="Abrir WhatsApp"
             >
-              WhatsApp
+              💬 WhatsApp
             </a>
             <span className="text-muted-foreground text-xs">|</span>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
-              📋 {conversation.phone.replace(/\D/g, '')}
+              📋 Copiar
             </CopyableText>
           </div>
         </div>
