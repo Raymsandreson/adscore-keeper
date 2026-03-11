@@ -21,6 +21,7 @@ import { ProspectingFunnel } from "./ProspectingFunnel";
 import { EngagementChampionship } from "./EngagementChampionship";
 import { DmWorkflowHistory } from "./DmWorkflowHistory";
 import { N8nIntegrationSettings } from "./N8nIntegrationSettings";
+import { ManyChatSettings } from "./ManyChatSettings";
 
 interface InstagramAutomationProps {
   isConnected: boolean;
