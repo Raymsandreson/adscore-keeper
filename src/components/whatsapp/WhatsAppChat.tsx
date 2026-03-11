@@ -670,17 +670,28 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <a 
+              href={`https://wa.me/${conversation.phone.replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-green-600 hover:text-green-700 hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
+              title="Ligar via WhatsApp Business"
+            >
+              📱 WhatsApp
+            </a>
+            <span className="text-muted-foreground text-xs">|</span>
             <a 
               href={`tel:${conversation.phone.replace(/\D/g, '')}`}
-              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors callface-dial"
-              title="Clique para ligar via CallFace"
+              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors callface-dial inline-flex items-center gap-0.5"
+              title="Ligar via CallFace"
               data-phone={conversation.phone.replace(/\D/g, '')}
             >
-              📞 {conversation.phone.replace(/\D/g, '')}
+              📞 CallFace
             </a>
+            <span className="text-muted-foreground text-xs">|</span>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
-              📋
+              📋 {conversation.phone.replace(/\D/g, '')}
             </CopyableText>
           </div>
         </div>
