@@ -677,10 +677,11 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <div className="flex items-center gap-1.5 flex-wrap">
             <a
               href={`tel:${pwaDialPhone}`}
-              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
-              title="Ligar"
+              className="callface-dial text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
+              data-phone={pwaDialPhone}
+              title="Ligar via CallFace"
             >
-              Ligar
+              📞 CallFace
             </a>
             <span className="text-muted-foreground text-xs">|</span>
             <a
