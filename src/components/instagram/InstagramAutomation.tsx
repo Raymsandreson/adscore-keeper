@@ -132,6 +132,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
           <AutoReplyRules />
         </TabsContent>
 
+        <TabsContent value="manychat" className="mt-6">
+          <ManyChatSettings />
+        </TabsContent>
+
         <TabsContent value="n8n" className="mt-6">
           <N8nIntegrationSettings />
         </TabsContent>
