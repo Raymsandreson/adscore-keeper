@@ -1,56 +1,30 @@
 
 
-## Plano: Sugestões de Continuação Inteligentes no Chat IA
+## Problem
 
-### O que muda
+The phone number displayed in the chat header (`558688054381`) is being auto-detected by the Android browser as a phone number. When tapped, Android treats it as a `tel:` link, showing only phone/dialer apps (Minha Claro, Telefone). The "💬 WhatsApp" link exists separately but the user is tapping the number itself.
 
-Toda resposta da IA no chat virá acompanhada de 2-4 "chips" clicáveis de sugestão de próximo passo. O usuário clica, o texto vai para o campo de input (editável), e basta enviar. A IA também deve preencher todos os campos relevantes (data, notificação, matriz, tipo) proativamente nas suas respostas.
+The CallFace extension works by scanning text on the page and injecting its own button -- this part should work on the published site if the extension is active in the browser.
 
-### Implementação
+## Solution
 
-**1. Backend: Adicionar `follow_up_suggestions` ao tool calling da IA**
+1. **Remove the plain text number** that Android auto-detects as a phone link
+2. **Show two explicit buttons side by side**: one for WhatsApp (`wa.me` link) and one for regular phone call (`tel:` link)
+3. **Add `tel:` meta tag** to prevent Android from auto-linking numbers in text
+4. **Keep the number as copyable text** with copy button, but wrapped in a way that prevents auto-detection
 
-No `supabase/functions/analyze-activity-chat/index.ts`, modo `assistant`:
-- Adicionar campo `follow_up_suggestions` ao schema da tool `suggest_field_updates`
-- Array de 2-4 objetos com `{ label: string, message: string }` onde `label` é texto curto do chip e `message` é o texto completo que será enviado como mensagem
-- Atualizar o system prompt para instruir a IA a SEMPRE gerar sugestões de continuação contextuais (ex: "Definir próximo passo", "Criar atividade de acompanhamento", "Atualizar status do lead")
-- Incluir no prompt que as sugestões devem cobrir cenários como: perguntar detalhes faltantes, criar atividades com campos completos, atualizar status, definir prioridades
+### Changes
 
-**2. Frontend: Renderizar chips de sugestão após cada mensagem da IA**
+**`src/components/whatsapp/WhatsAppChat.tsx`** (lines 677-694):
+- Remove the raw `<span>` with the phone number (Android auto-links it)
+- Add two clear buttons:
+  - `📱 WhatsApp` → `https://wa.me/{whatsappPhone}` 
+  - `📞 Ligar` → `tel:+{whatsappPhone}`
+  - `📋 Copiar` → copy to clipboard
+- Format the number display with `tel:` prefix disabled using CSS or wrapping
 
-No `ActivityChatSheet.tsx`:
-- Salvar `follow_up_suggestions` no campo `ai_suggestion` da mensagem (já existe o campo JSON)
-- No `renderMessage` para mensagens AI, renderizar os chips como botões horizontais scrolláveis abaixo do texto
-- Ao clicar no chip, preencher `inputText` com o `message` da sugestão para o usuário revisar/editar antes de enviar
-- Estilizar como badges/chips compactos com ícone de seta
+**`index.html`**:
+- Add `<meta name="format-detection" content="telephone=no">` to prevent auto-detection of phone numbers as links across the entire app
 
-**3. Atualizar o system prompt**
-
-Adicionar instruções:
-- "SEMPRE inclua 2-4 sugestões de continuação no campo follow_up_suggestions"
-- "As sugestões devem ser frases completas que o usuário enviaria, cobrindo: detalhes faltantes, próximos passos, criação de atividades, atualização de campos"
-- "Cada sugestão deve ser autossuficiente — ao ser enviada, a IA deve conseguir agir sem pedir mais informações"
-- "Sempre que possível, as sugestões devem incluir dados concretos (datas, tipos, prioridades) para que a IA preencha todos os campos automaticamente"
-
-### Exemplo de fluxo
-
-```text
-Usuário: "Preciso agendar uma reunião com o cliente João"
-
-IA: "Entendido! Posso criar a atividade de reunião com João. 
-     Quando seria a melhor data?"
-
-Chips:
-[📅 Amanhã às 14h] → "Agende a reunião com João para amanhã às 14h, prioridade normal, matriz Agende"
-[📅 Próxima segunda 10h] → "Agende a reunião com João para próxima segunda às 10h, prioridade normal"  
-[📋 Me ajude a definir] → "Quais horários estão disponíveis considerando minhas atividades pendentes?"
-[➕ Criar agora sem data] → "Crie a atividade de reunião com João como pendente para eu definir a data depois"
-```
-
-### Detalhes técnicos
-
-- O campo `ai_suggestion` (JSONB) já existe na tabela `activity_chat_messages` — basta incluir `follow_up_suggestions` dentro dele
-- Nenhuma migration necessária
-- A resposta da tool `suggest_field_updates` passa a retornar `follow_up_suggestions` junto com os outros campos
-- No frontend, os chips são renderizados apenas na última mensagem da IA (para não poluir o histórico)
+This ensures the user always sees explicit WhatsApp and Phone buttons, and tapping WhatsApp will open WhatsApp Business directly.
 
