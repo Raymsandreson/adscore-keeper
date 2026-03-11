@@ -97,16 +97,43 @@ export function WhatsAppInbox() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
 
-  // Deep link: auto-open chat from URL param
+  // Deep link: auto-open chat from URL params (openChat, contactId, leadId)
   useEffect(() => {
+    if (!hasLoaded) return;
     const openChat = searchParams.get('openChat');
-    if (openChat && hasLoaded) {
+    const contactId = searchParams.get('contactId');
+    const leadId = searchParams.get('leadId');
+
+    if (openChat) {
       setSelectedPhone(openChat);
-      // Clean up the URL param
       searchParams.delete('openChat');
       setSearchParams(searchParams, { replace: true });
+    } else if (contactId) {
+      // Resolve contactId → phone
+      supabase.from('contacts').select('phone').eq('id', contactId).single().then(({ data }) => {
+        if (data?.phone) {
+          const normalized = data.phone.replace(/\D/g, '');
+          // Try to find conversation by phone
+          const match = conversations.find(c => c.phone.replace(/\D/g, '').endsWith(normalized.slice(-8)));
+          setSelectedPhone(match?.phone || normalized);
+        }
+      });
+      searchParams.delete('contactId');
+      setSearchParams(searchParams, { replace: true });
+    } else if (leadId) {
+      // Resolve leadId → contact → phone
+      supabase.from('contact_leads').select('contact_id, contacts(phone)').eq('lead_id', leadId).limit(1).single().then(({ data }) => {
+        const phone = (data as any)?.contacts?.phone;
+        if (phone) {
+          const normalized = phone.replace(/\D/g, '');
+          const match = conversations.find(c => c.phone.replace(/\D/g, '').endsWith(normalized.slice(-8)));
+          setSelectedPhone(match?.phone || normalized);
+        }
+      });
+      searchParams.delete('leadId');
+      setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams, hasLoaded]);
+  }, [searchParams, hasLoaded, conversations]);
   const [showSetup, setShowSetup] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showGooglePanel, setShowGooglePanel] = useState(false);
