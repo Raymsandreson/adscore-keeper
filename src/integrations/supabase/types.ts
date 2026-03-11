@@ -4183,6 +4183,57 @@ export type Database = {
         }
         Relationships: []
       }
+      manychat_interactions: {
+        Row: {
+          ai_generated_reply: string | null
+          comment_id: string | null
+          created_at: string | null
+          direction: string | null
+          error_message: string | null
+          flow_id: string | null
+          id: string
+          message_text: string | null
+          metadata: Json | null
+          platform: string | null
+          post_url: string | null
+          status: string | null
+          subscriber_id: string | null
+          subscriber_name: string | null
+        }
+        Insert: {
+          ai_generated_reply?: string | null
+          comment_id?: string | null
+          created_at?: string | null
+          direction?: string | null
+          error_message?: string | null
+          flow_id?: string | null
+          id?: string
+          message_text?: string | null
+          metadata?: Json | null
+          platform?: string | null
+          post_url?: string | null
+          status?: string | null
+          subscriber_id?: string | null
+          subscriber_name?: string | null
+        }
+        Update: {
+          ai_generated_reply?: string | null
+          comment_id?: string | null
+          created_at?: string | null
+          direction?: string | null
+          error_message?: string | null
+          flow_id?: string | null
+          id?: string
+          message_text?: string | null
+          metadata?: Json | null
+          platform?: string | null
+          post_url?: string | null
+          status?: string | null
+          subscriber_id?: string | null
+          subscriber_name?: string | null
+        }
+        Relationships: []
+      }
       member_area_assignments: {
         Row: {
           area_id: string
