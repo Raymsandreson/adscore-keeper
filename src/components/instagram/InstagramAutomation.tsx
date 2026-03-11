@@ -90,6 +90,10 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
             <Bot className="h-4 w-4" />
             Automação
           </TabsTrigger>
+          <TabsTrigger value="manychat" className="gap-2">
+            <MessagesSquare className="h-4 w-4" />
+            ManyChat
+          </TabsTrigger>
           <TabsTrigger value="n8n" className="gap-2">
             <Webhook className="h-4 w-4" />
             n8n
