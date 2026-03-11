@@ -61,7 +61,7 @@ const InstagramAutomation = ({ isConnected, pageId, accessToken, initialTab }: I
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-10">
           <TabsTrigger value="funnel" className="gap-2">
             <Filter className="h-4 w-4" />
             Funil
