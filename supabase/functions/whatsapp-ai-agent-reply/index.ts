@@ -274,7 +274,9 @@ serve(async (req) => {
 
             if (transcribeRes.ok) {
               const transcribeData = await transcribeRes.json();
-              const transcription = transcribeData.choices?.[0]?.message?.content?.trim();
+              const transcription = useGoogleDirect
+                ? transcribeData.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+                : transcribeData.choices?.[0]?.message?.content?.trim();
               if (transcription && transcription !== "[áudio inaudível]") {
                 contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
                 console.log(`Transcribed audio: ${transcription.substring(0, 50)}...`);
