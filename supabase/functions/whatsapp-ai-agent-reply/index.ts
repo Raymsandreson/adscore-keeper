@@ -236,24 +236,41 @@ serve(async (req) => {
         if (msgType === "audio" && mediaUrl) {
           // Transcribe audio using Lovable AI
           try {
-            const transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages: [
-                  { role: "user", content: [
-                    { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                    { type: "image_url", image_url: { url: mediaUrl } }
-                  ]}
-                ],
-                max_tokens: 500,
-                temperature: 0.1,
-              }),
-            });
+            let transcribeRes: Response;
+            if (useGoogleDirect) {
+              // Google Generative Language API format
+              const googleModel = "gemini-2.5-flash-lite";
+              transcribeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ role: "user", parts: [
+                    { text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                    { fileData: { mimeType: "audio/ogg", fileUri: mediaUrl } }
+                  ]}],
+                  generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
+                }),
+              });
+            } else {
+              transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "user", content: [
+                      { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                      { type: "image_url", image_url: { url: mediaUrl } }
+                    ]}
+                  ],
+                  max_tokens: 500,
+                  temperature: 0.1,
+                }),
+              });
+            }
 
             if (transcribeRes.ok) {
               const transcribeData = await transcribeRes.json();
