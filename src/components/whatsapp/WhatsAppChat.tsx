@@ -685,8 +685,9 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
               📱 WhatsApp
             </a>
             <a
-              href={`tel:+${whatsappPhone}`}
-              className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 no-underline"
+              href={`tel:${whatsappPhone?.replace(/^55/, '')}`}
+              className="callface-dial text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 no-underline"
+              data-phone={whatsappPhone?.replace(/^55/, '')}
               title="Ligar"
             >
               📞 Ligar
