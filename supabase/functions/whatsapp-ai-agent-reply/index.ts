@@ -173,8 +173,13 @@ serve(async (req) => {
 
     // ========== GENERATE AI RESPONSE ==========
     if ((agent as any).provider === "lovable_ai") {
+      // Use Google AI API directly for cost savings
+      const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+      // Fallback to Lovable AI if Google key not available
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-      if (!LOVABLE_API_KEY) {
+      const useGoogleDirect = !!GOOGLE_AI_API_KEY;
+      
+      if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
         return new Response(JSON.stringify({ error: "AI not configured" }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -231,28 +236,47 @@ serve(async (req) => {
         if (msgType === "audio" && mediaUrl) {
           // Transcribe audio using Lovable AI
           try {
-            const transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
-                messages: [
-                  { role: "user", content: [
-                    { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
-                    { type: "image_url", image_url: { url: mediaUrl } }
-                  ]}
-                ],
-                max_tokens: 500,
-                temperature: 0.1,
-              }),
-            });
+            let transcribeRes: Response;
+            if (useGoogleDirect) {
+              // Google Generative Language API format
+              const googleModel = "gemini-2.5-flash-lite";
+              transcribeRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents: [{ role: "user", parts: [
+                    { text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                    { fileData: { mimeType: "audio/ogg", fileUri: mediaUrl } }
+                  ]}],
+                  generationConfig: { maxOutputTokens: 500, temperature: 0.1 },
+                }),
+              });
+            } else {
+              transcribeRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "user", content: [
+                      { type: "text", text: "Transcreva esta mensagem de voz fielmente em português. Retorne APENAS o texto falado, sem explicações, marcações ou formatação. Se não conseguir transcrever, retorne '[áudio inaudível]'." },
+                      { type: "image_url", image_url: { url: mediaUrl } }
+                    ]}
+                  ],
+                  max_tokens: 500,
+                  temperature: 0.1,
+                }),
+              });
+            }
 
             if (transcribeRes.ok) {
               const transcribeData = await transcribeRes.json();
-              const transcription = transcribeData.choices?.[0]?.message?.content?.trim();
+              const transcription = useGoogleDirect
+                ? transcribeData.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+                : transcribeData.choices?.[0]?.message?.content?.trim();
               if (transcription && transcription !== "[áudio inaudível]") {
                 contextMessages.push({ role, content: `[Mensagem de voz]: ${transcription}` });
                 console.log(`Transcribed audio: ${transcription.substring(0, 50)}...`);
@@ -291,22 +315,72 @@ serve(async (req) => {
         }
       }
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: (agent as any).model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            ...contextMessages,
-          ],
-          max_tokens: (agent as any).max_tokens,
-          temperature: (agent as any).temperature / 100,
-        }),
-      });
+      let aiResponse: Response;
+      
+      if (useGoogleDirect) {
+        // Map Lovable model names to Google model names
+        const modelMap: Record<string, string> = {
+          "google/gemini-2.5-flash": "gemini-2.5-flash",
+          "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+          "google/gemini-2.5-pro": "gemini-2.5-pro",
+          "google/gemini-3-flash-preview": "gemini-2.5-flash", // fallback
+        };
+        const agentModel = (agent as any).model || "google/gemini-2.5-flash";
+        const googleModel = modelMap[agentModel] || "gemini-2.5-flash-lite";
+        
+        // Convert OpenAI-style messages to Google format
+        const googleContents: any[] = [];
+        // System instruction is separate in Google API
+        const systemInstruction = { parts: [{ text: systemPrompt }] };
+        
+        for (const msg of contextMessages) {
+          const role = msg.role === "assistant" ? "model" : "user";
+          if (typeof msg.content === "string") {
+            googleContents.push({ role, parts: [{ text: msg.content }] });
+          } else if (Array.isArray(msg.content)) {
+            // Multimodal content - convert to Google parts format
+            const parts: any[] = [];
+            for (const part of msg.content) {
+              if (part.type === "text") {
+                parts.push({ text: part.text });
+              } else if (part.type === "image_url") {
+                parts.push({ text: `[imagem: ${part.image_url.url}]` });
+              }
+            }
+            googleContents.push({ role, parts });
+          }
+        }
+        
+        aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:generateContent?key=${GOOGLE_AI_API_KEY}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction,
+            contents: googleContents,
+            generationConfig: {
+              maxOutputTokens: (agent as any).max_tokens,
+              temperature: (agent as any).temperature / 100,
+            },
+          }),
+        });
+      } else {
+        aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: (agent as any).model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              ...contextMessages,
+            ],
+            max_tokens: (agent as any).max_tokens,
+            temperature: (agent as any).temperature / 100,
+          }),
+        });
+      }
 
       if (!aiResponse.ok) {
         const errText = await aiResponse.text();
@@ -317,7 +391,9 @@ serve(async (req) => {
       }
 
       const aiData = await aiResponse.json();
-      let reply = aiData.choices?.[0]?.message?.content || "";
+      let reply = useGoogleDirect
+        ? (aiData.candidates?.[0]?.content?.parts?.[0]?.text || "")
+        : (aiData.choices?.[0]?.message?.content || "");
       if (!reply.trim()) {
         return new Response(JSON.stringify({ skipped: true, reason: "Empty response" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
