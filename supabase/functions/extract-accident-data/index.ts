@@ -378,33 +378,59 @@ IMPORTANTE:
     const data = await response.json();
     console.log('AI response received:', JSON.stringify(data).slice(0, 500));
 
-    // Extract the tool call result
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const extractedData = JSON.parse(toolCall.function.arguments);
-      console.log('Extracted data:', extractedData);
-      
-      return new Response(
-        JSON.stringify({ success: true, data: extractedData }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Fallback: try to parse from content
-    const content_response = data.choices?.[0]?.message?.content;
-    if (content_response) {
-      try {
-        // Try to extract JSON from the response
-        const jsonMatch = content_response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const extractedData = JSON.parse(jsonMatch[0]);
-          return new Response(
-            JSON.stringify({ success: true, data: extractedData }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+    // Handle Google Direct API response format
+    if (useGoogleDirect) {
+      const candidate = data.candidates?.[0];
+      const functionCall = candidate?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+      if (functionCall?.args) {
+        console.log('Extracted data (Google):', functionCall.args);
+        return new Response(
+          JSON.stringify({ success: true, data: functionCall.args }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // Fallback: try text content
+      const textPart = candidate?.content?.parts?.find((p: any) => p.text)?.text;
+      if (textPart) {
+        try {
+          const jsonMatch = textPart.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const extractedData = JSON.parse(jsonMatch[0]);
+            return new Response(
+              JSON.stringify({ success: true, data: extractedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (e) {
+          console.error('Error parsing Google response text:', e);
         }
-      } catch (e) {
-        console.error('Error parsing JSON from content:', e);
+      }
+    } else {
+      // Handle Lovable Gateway response format (OpenAI-compatible)
+      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const extractedData = JSON.parse(toolCall.function.arguments);
+        console.log('Extracted data:', extractedData);
+        return new Response(
+          JSON.stringify({ success: true, data: extractedData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const content_response = data.choices?.[0]?.message?.content;
+      if (content_response) {
+        try {
+          const jsonMatch = content_response.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const extractedData = JSON.parse(jsonMatch[0]);
+            return new Response(
+              JSON.stringify({ success: true, data: extractedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (e) {
+          console.error('Error parsing JSON from content:', e);
+        }
       }
     }
 
