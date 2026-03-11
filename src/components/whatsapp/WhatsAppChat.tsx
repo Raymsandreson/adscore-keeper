@@ -659,6 +659,10 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     return phone;
   };
 
+  const phoneDigits = conversation.phone.replace(/\D/g, '');
+  const whatsappPhone = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
+  const pwaDialPhone = whatsappPhone.startsWith('55') ? whatsappPhone.slice(2) : phoneDigits;
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat Header */}
@@ -671,23 +675,22 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <a 
-              href={`https://wa.me/${conversation.phone.replace(/\D/g, '')}`}
+            <a
+              href={`tel:${pwaDialPhone}`}
+              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
+              title="Ligar"
+            >
+              Ligar
+            </a>
+            <span className="text-muted-foreground text-xs">|</span>
+            <a
+              href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-green-600 hover:text-green-700 hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
-              title="Ligar via WhatsApp Business"
+              title="WhatsApp"
             >
-              📱 WhatsApp
-            </a>
-            <span className="text-muted-foreground text-xs">|</span>
-            <a 
-              href={`tel:${conversation.phone.replace(/\D/g, '')}`}
-              className="text-xs text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors callface-dial inline-flex items-center gap-0.5"
-              title="Ligar via CallFace"
-              data-phone={conversation.phone.replace(/\D/g, '')}
-            >
-              📞 CallFace
+              WhatsApp
             </a>
             <span className="text-muted-foreground text-xs">|</span>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
