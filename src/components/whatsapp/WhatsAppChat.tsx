@@ -674,20 +674,23 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* Número em texto puro para o CallFace detectar e injetar botão */}
-            <span className="text-xs font-mono text-foreground select-all">{pwaDialPhone}</span>
-            <span className="text-muted-foreground text-xs">|</span>
+          <div className="flex items-center gap-2 flex-wrap">
             <a
               href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-green-600 hover:text-green-700 hover:underline cursor-pointer transition-colors inline-flex items-center gap-0.5"
+              className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full hover:bg-green-700 transition-colors inline-flex items-center gap-1 no-underline"
               title="Abrir WhatsApp"
             >
-              💬 WhatsApp
+              📱 WhatsApp
             </a>
-            <span className="text-muted-foreground text-xs">|</span>
+            <a
+              href={`tel:+${whatsappPhone}`}
+              className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full hover:bg-blue-700 transition-colors inline-flex items-center gap-1 no-underline"
+              title="Ligar"
+            >
+              📞 Ligar
+            </a>
             <CopyableText copyValue={conversation.phone} label="Telefone" className="text-xs text-muted-foreground" as="span">
               📋 Copiar
             </CopyableText>
