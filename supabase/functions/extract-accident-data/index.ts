@@ -85,13 +85,17 @@ serve(async (req) => {
       );
     }
 
+    const GOOGLE_AI_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
+    
+    if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: 'LOVABLE_API_KEY não configurada' }),
+        JSON.stringify({ error: 'Nenhuma chave de API configurada' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    const useGoogleDirect = !!GOOGLE_AI_API_KEY;
 
     // Handle different input types
     let textContent = '';
@@ -245,53 +249,92 @@ IMPORTANTE:
       });
     }
 
-    console.log('Calling Lovable AI for accident data extraction...', hasImages ? `with ${allImages.length} images` : 'text only');
+    console.log('Calling AI for accident data extraction...', hasImages ? `with ${allImages.length} images` : 'text only', useGoogleDirect ? '(Google Direct)' : '(Lovable Gateway)');
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
+    let response: Response;
+
+    const extractionSchema = {
+      type: 'object',
+      properties: {
+        victim_name: { type: 'string', nullable: true },
+        victim_age: { type: 'integer', nullable: true },
+        accident_date: { type: 'string', nullable: true },
+        accident_address: { type: 'string', nullable: true },
+        damage_description: { type: 'string', nullable: true },
+        contractor_company: { type: 'string', nullable: true },
+        main_company: { type: 'string', nullable: true },
+        sector: { type: 'string', nullable: true },
+        case_type: { type: 'string', nullable: true },
+        liability_type: { type: 'string', nullable: true },
+        legal_viability: { type: 'string', nullable: true },
+        visit_city: { type: 'string', nullable: true },
+        visit_state: { type: 'string', nullable: true },
+        company_size_justification: { type: 'string', nullable: true },
       },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessageContent },
-        ],
-        tools: [
-          {
+    };
+
+    if (useGoogleDirect) {
+      // Build Google Gemini contents
+      const parts: any[] = [];
+      
+      // Add text parts
+      for (const item of userMessageContent) {
+        if (item.type === 'text') {
+          parts.push({ text: item.text });
+        } else if (item.type === 'image_url') {
+          const imgUrl = item.image_url.url;
+          if (imgUrl.startsWith('data:')) {
+            const match = imgUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+            }
+          }
+        }
+      }
+
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_AI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts }],
+          tools: [{
+            functionDeclarations: [{
+              name: 'extract_accident_data',
+              description: 'Extrai dados estruturados de um acidente de trabalho',
+              parameters: extractionSchema,
+            }],
+          }],
+          toolConfig: { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['extract_accident_data'] } },
+          generationConfig: { temperature: 0.1 },
+        }),
+      });
+    } else {
+      // Fallback: Lovable AI Gateway
+      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-3-flash-preview',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessageContent },
+          ],
+          tools: [{
             type: 'function',
             function: {
               name: 'extract_accident_data',
-              description: 'Extrai dados estruturados de um acidente de trabalho a partir de texto e/ou imagens',
-              parameters: {
-                type: 'object',
-                properties: {
-                  victim_name: { type: ['string', 'null'] },
-                  victim_age: { type: ['integer', 'null'] },
-                  accident_date: { type: ['string', 'null'] },
-                  accident_address: { type: ['string', 'null'] },
-                  damage_description: { type: ['string', 'null'] },
-                  contractor_company: { type: ['string', 'null'] },
-                  main_company: { type: ['string', 'null'] },
-                  sector: { type: ['string', 'null'] },
-                  case_type: { type: ['string', 'null'] },
-                  liability_type: { type: ['string', 'null'] },
-                  legal_viability: { type: ['string', 'null'] },
-                  visit_city: { type: ['string', 'null'] },
-                  visit_state: { type: ['string', 'null'] },
-                  company_size_justification: { type: ['string', 'null'], description: 'Análise do porte da empresa baseado nas imagens' },
-                },
-                required: [],
-                additionalProperties: false,
-              },
+              description: 'Extrai dados estruturados de um acidente de trabalho',
+              parameters: { type: 'object', properties: extractionSchema.properties, required: [], additionalProperties: false },
             },
-          },
-        ],
-        tool_choice: { type: 'function', function: { name: 'extract_accident_data' } },
-      }),
-    });
+          }],
+          tool_choice: { type: 'function', function: { name: 'extract_accident_data' } },
+        }),
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -335,33 +378,59 @@ IMPORTANTE:
     const data = await response.json();
     console.log('AI response received:', JSON.stringify(data).slice(0, 500));
 
-    // Extract the tool call result
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const extractedData = JSON.parse(toolCall.function.arguments);
-      console.log('Extracted data:', extractedData);
-      
-      return new Response(
-        JSON.stringify({ success: true, data: extractedData }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Fallback: try to parse from content
-    const content_response = data.choices?.[0]?.message?.content;
-    if (content_response) {
-      try {
-        // Try to extract JSON from the response
-        const jsonMatch = content_response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const extractedData = JSON.parse(jsonMatch[0]);
-          return new Response(
-            JSON.stringify({ success: true, data: extractedData }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+    // Handle Google Direct API response format
+    if (useGoogleDirect) {
+      const candidate = data.candidates?.[0];
+      const functionCall = candidate?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
+      if (functionCall?.args) {
+        console.log('Extracted data (Google):', functionCall.args);
+        return new Response(
+          JSON.stringify({ success: true, data: functionCall.args }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // Fallback: try text content
+      const textPart = candidate?.content?.parts?.find((p: any) => p.text)?.text;
+      if (textPart) {
+        try {
+          const jsonMatch = textPart.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const extractedData = JSON.parse(jsonMatch[0]);
+            return new Response(
+              JSON.stringify({ success: true, data: extractedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (e) {
+          console.error('Error parsing Google response text:', e);
         }
-      } catch (e) {
-        console.error('Error parsing JSON from content:', e);
+      }
+    } else {
+      // Handle Lovable Gateway response format (OpenAI-compatible)
+      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const extractedData = JSON.parse(toolCall.function.arguments);
+        console.log('Extracted data:', extractedData);
+        return new Response(
+          JSON.stringify({ success: true, data: extractedData }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const content_response = data.choices?.[0]?.message?.content;
+      if (content_response) {
+        try {
+          const jsonMatch = content_response.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const extractedData = JSON.parse(jsonMatch[0]);
+            return new Response(
+              JSON.stringify({ success: true, data: extractedData }),
+              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        } catch (e) {
+          console.error('Error parsing JSON from content:', e);
+        }
       }
     }
 
