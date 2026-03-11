@@ -110,6 +110,7 @@ export function FloatingNav() {
       id: "automation", label: "Automação", icon: <Bot className="h-4 w-4" />,
       items: [
         { id: "automation-main", label: "Painel", icon: <Bot className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation", color: "text-purple-500" },
+        { id: "manychat", label: "ManyChat", icon: <MessagesSquare className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=manychat", color: "text-blue-500" },
         { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
         { id: "funnel", label: "Funil", icon: <Filter className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=funnel", color: "text-orange-500" },
         { id: "workflow", label: "Funil de Vendas", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow", color: "text-yellow-500" },
