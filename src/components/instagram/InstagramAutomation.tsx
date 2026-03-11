@@ -10,7 +10,8 @@ import {
   Filter,
   Trophy,
   History,
-  Webhook
+  Webhook,
+  MessagesSquare
 } from "lucide-react";
 import { EngagementGoals } from "./EngagementGoals";
 import { AutoReplyRules } from "./AutoReplyRules";
