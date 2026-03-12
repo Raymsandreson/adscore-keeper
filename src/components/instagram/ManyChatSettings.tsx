@@ -7,11 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Send, Search, Zap, CheckCircle, XCircle, Loader2, MessageSquare, History, Copy, Settings, Webhook } from "lucide-react";
+import { Bot, Send, Search, Zap, CheckCircle, XCircle, Loader2, MessageSquare, History, Copy, Settings, Webhook, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { ManyChatTagManager } from "./ManyChatTagManager";
 
 export const ManyChatSettings = () => {
   const queryClient = useQueryClient();
@@ -203,9 +204,12 @@ export const ManyChatSettings = () => {
 
       {/* Main Tabs */}
       <Tabs defaultValue="webhook" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="webhook" className="gap-1 text-xs">
             <Webhook className="h-4 w-4" /> Webhook
+          </TabsTrigger>
+          <TabsTrigger value="tags" className="gap-1 text-xs">
+            <Tag className="h-4 w-4" /> Tags
           </TabsTrigger>
           <TabsTrigger value="config" className="gap-1 text-xs">
             <Settings className="h-4 w-4" /> Prompt IA
@@ -316,6 +320,11 @@ export const ManyChatSettings = () => {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Tags Management */}
+        <TabsContent value="tags">
+          <ManyChatTagManager />
         </TabsContent>
 
         {/* AI Config */}
