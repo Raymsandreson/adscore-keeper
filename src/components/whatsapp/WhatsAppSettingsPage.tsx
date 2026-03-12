@@ -4,13 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText
+  ChevronRight, Shield, Zap, ScrollText, Sparkles
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
+import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 
 interface Tab {
   id: string;
