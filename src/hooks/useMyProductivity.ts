@@ -136,7 +136,7 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
       const callsUnanswered = callRecords.filter(c => c.call_result !== 'atendeu').length;
       const checklistChecked = activities.filter(a => a.action_type === 'checklist_item_checked').length;
       const checklistUnchecked = activities.filter(a => a.action_type === 'checklist_item_unchecked').length;
-      const checklistItemsChecked = checklistChecked - checklistUnchecked;
+      const checklistItemsChecked = Math.max(0, checklistChecked - checklistUnchecked);
       const nowMs = Date.now();
       const dayStartMs = new Date(startDate).getTime();
       const dayEndMs = new Date(endDate).getTime();
@@ -204,8 +204,8 @@ export function useMyProductivity(sessionStartedAt?: number | null) {
         activitiesCompleted: completedActivities.length,
         activitiesOverdue: overdueActivities.length,
         sessionMinutes,
-        totalActions: contacts.length + dmsSent + totalCommentReplies + leads.length +
-          callsMade + checklistItemsChecked + completedActivities.length - overdueActivities.length,
+        totalActions: Math.max(0, contacts.length + dmsSent + totalCommentReplies + leads.length +
+          callsMade + checklistItemsChecked + completedActivities.length),
         metaLeadsGenerated: 0,
         metaROAS: 0,
       };

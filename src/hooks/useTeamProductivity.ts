@@ -317,7 +317,9 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         const u = getUser(a.user_id);
         if (a.action_type === 'page_visit') u.pageVisits++;
         if (a.action_type === 'checklist_item_checked') u.checklistItemsChecked++;
-        if (a.action_type === 'checklist_item_unchecked') u.checklistItemsChecked--;
+        if (a.action_type === 'checklist_item_unchecked') {
+          u.checklistItemsChecked = Math.max(0, u.checklistItemsChecked - 1);
+        }
       });
 
       // Stage changes per user (now has changed_by) + unique leads progressed
@@ -363,13 +365,15 @@ export function useTeamProductivity(dateRange: { start: Date; end: Date }) {
         }
       });
 
-      // Compute total actions for each user (completed adds, overdue subtracts)
+      // Compute total actions for each user (non-negative, and never reduced by overdue)
       userMap.forEach(u => {
-        u.totalActions = u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
+        u.totalActions = Math.max(0,
+          u.contactsCreated + u.contactsLinked + u.dmsSent + u.dmsReceived +
           u.commentReplies + u.callsMade + u.leadsCreated + u.leadsClosed +
           u.followupsCreated + u.followupsDone + u.checklistItemsChecked +
-          u.activitiesCompleted - u.activitiesOverdue +
-          u.metaLeadsReceived + u.metaLeadsQualified + u.metaCreativesUploaded;
+          u.activitiesCompleted +
+          u.metaLeadsReceived + u.metaLeadsQualified + u.metaCreativesUploaded
+        );
       });
 
       const productivityList = Array.from(userMap.values())
