@@ -217,7 +217,7 @@ export function UserProductivityBanner() {
     watchedUserIds.forEach(id => {
       const rankEntry = ranking.find(r => r.userId === id);
       if (rankEntry && !rankEntry.isCurrentUser) {
-        result.push({ ...rankEntry, inRanking: true });
+        result.push({ ...rankEntry, totalPoints: Math.max(0, rankEntry.totalPoints || 0), inRanking: true });
       } else if (!rankEntry) {
         const member = allMembers.find(m => m.userId === id);
         result.push({
