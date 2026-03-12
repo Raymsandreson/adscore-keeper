@@ -114,7 +114,6 @@ export function FloatingNav() {
         { id: "comments", label: "Comentários", icon: <MessageCircle className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=comments", color: "text-primary" },
         { id: "funnel", label: "Funil", icon: <Filter className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=funnel", color: "text-orange-500" },
         { id: "workflow", label: "Funil de Vendas", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow", color: "text-yellow-500" },
-        { id: "manychat", label: "ManyChat", icon: <MessagesSquare className="h-3.5 w-3.5" />, path: "/dashboard?tab=automation&subtab=manychat", color: "text-blue-500" },
       ],
     },
     {
