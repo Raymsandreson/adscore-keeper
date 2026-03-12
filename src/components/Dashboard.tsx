@@ -331,7 +331,7 @@ const Dashboard = () => {
             <UserMenu />
           </div>
           
-          <img src={abraciLogo} alt="WhatsJUD" className="h-20 mx-auto" />
+          <img src={whatsjudLogo} alt="WhatsJUD" className="h-20 mx-auto" />
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2">
             WhatsJUD
           </h1>

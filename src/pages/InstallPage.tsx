@@ -61,9 +61,9 @@ export default function InstallPage() {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Instalar ABRACI.IA</h1>
+          <h1 className="text-2xl font-bold">Instalar WhatsJUD</h1>
           <p className="text-muted-foreground text-sm">
-            Adicione o ABRACI.IA à tela inicial do seu celular para acessar como um app nativo.
+            Adicione o WhatsJUD à tela inicial do seu celular para acessar como um app nativo.
           </p>
         </div>
 

@@ -3,7 +3,7 @@
  * Uses versioned keys with TTL for automatic expiration.
  */
 
-const CACHE_PREFIX = 'abraci_cache_';
+const CACHE_PREFIX = 'whatsjud_cache_';
 const CACHE_VERSION = 'v1_';
 
 interface CacheEntry<T> {
