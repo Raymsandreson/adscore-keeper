@@ -135,7 +135,10 @@ export function useMyTeamRanking() {
       (activityRes.data || []).forEach(a => {
         if (statsMap.has(a.user_id)) {
           if (a.action_type === 'checklist_item_checked') statsMap.get(a.user_id)!.checklist++;
-          if (a.action_type === 'checklist_item_unchecked') statsMap.get(a.user_id)!.checklist--;
+          if (a.action_type === 'checklist_item_unchecked') {
+            const currentChecklist = statsMap.get(a.user_id)!.checklist;
+            statsMap.get(a.user_id)!.checklist = Math.max(0, currentChecklist - 1);
+          }
         }
       });
       (stageRes.data || []).forEach(s => {

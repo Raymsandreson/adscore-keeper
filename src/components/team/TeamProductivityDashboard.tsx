@@ -248,8 +248,10 @@ export function TeamProductivityDashboard() {
     .map((p, index) => {
       const sessionHours = p.sessionMinutes / 60;
       const velocity = sessionHours > 0 ? Math.round((p.checklistItemsChecked / sessionHours) * 10) / 10 : 0;
+      const safeTotalActions = Math.max(0, Number(p.totalActions) || 0);
       return {
         ...p,
+        totalActions: safeTotalActions,
         velocity,
         position: index + 1,
         displayName: p.userName || p.email?.split('@')[0] || 'Usuário',
@@ -714,7 +716,7 @@ export function TeamProductivityDashboard() {
                       </div>
 
                       <Badge variant="outline" className="ml-4">
-                        {member.totalActions} pts
+                        {Math.max(0, member.totalActions || 0)} pts
                       </Badge>
                     </div>
                   ))}

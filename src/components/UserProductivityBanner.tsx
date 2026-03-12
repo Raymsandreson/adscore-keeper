@@ -217,7 +217,7 @@ export function UserProductivityBanner() {
     watchedUserIds.forEach(id => {
       const rankEntry = ranking.find(r => r.userId === id);
       if (rankEntry && !rankEntry.isCurrentUser) {
-        result.push({ ...rankEntry, inRanking: true });
+        result.push({ ...rankEntry, totalPoints: Math.max(0, rankEntry.totalPoints || 0), inRanking: true });
       } else if (!rankEntry) {
         const member = allMembers.find(m => m.userId === id);
         result.push({
@@ -691,7 +691,7 @@ export function UserProductivityBanner() {
 
         {/* Points */}
         <Badge variant="secondary" className="text-xs font-bold flex-shrink-0">
-          <AnimatedNumber value={data.totalActions} suffix=" pts" />
+          <AnimatedNumber value={Math.max(0, data.totalActions || 0)} suffix=" pts" />
         </Badge>
 
         {/* Watch users picker */}
@@ -739,7 +739,7 @@ export function UserProductivityBanner() {
                       />
                       <span className="truncate flex-1">{member.name.split(' ')[0]}</span>
                       {rankEntry && (
-                        <span className="text-muted-foreground text-[10px]">{rankEntry.totalPoints} pts</span>
+                        <span className="text-muted-foreground text-[10px]">{Math.max(0, rankEntry.totalPoints || 0)} pts</span>
                       )}
                     </label>
                   );
@@ -856,7 +856,7 @@ export function UserProductivityBanner() {
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-[10px] h-4 px-1 flex-shrink-0">
-                    {wu.totalPoints} pts
+                    {Math.max(0, wu.totalPoints || 0)} pts
                   </Badge>
                   <Button
                     variant="ghost"
@@ -1046,7 +1046,7 @@ export function UserProductivityBanner() {
                                 onCheckedChange={() => toggleWatchedUser(entry.userId)}
                               />
                               <span className="truncate">{entry.userName?.split(' ')[0] || '?'}</span>
-                              <span className="ml-auto text-muted-foreground">{entry.totalPoints} pts</span>
+                              <span className="ml-auto text-muted-foreground">{Math.max(0, entry.totalPoints || 0)} pts</span>
                             </label>
                           ))}
                         </div>
@@ -1116,7 +1116,7 @@ export function UserProductivityBanner() {
                           <span title="Ligações">{entry.callsMade}📞</span>
                         </div>
                         <Badge variant="secondary" className="text-[10px] h-4 px-1">
-                          {entry.totalPoints} pts
+                          {Math.max(0, entry.totalPoints || 0)} pts
                         </Badge>
                       </div>
                     );
