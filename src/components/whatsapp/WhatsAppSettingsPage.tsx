@@ -34,6 +34,15 @@ const tabs: Tab[] = [
     accentColor: 'text-violet-500',
   },
   {
+    id: 'commands',
+    label: 'Comandos WhatsApp',
+    icon: <Sparkles className="h-5 w-5" />,
+    description: 'Chat IA via WhatsApp',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-pink-500',
+  },
+  {
     id: 'reports',
     label: 'Relatórios',
     icon: <BarChart3 className="h-5 w-5" />,
