@@ -1116,7 +1116,7 @@ export function UserProductivityBanner() {
                           <span title="Ligações">{entry.callsMade}📞</span>
                         </div>
                         <Badge variant="secondary" className="text-[10px] h-4 px-1">
-                          {entry.totalPoints} pts
+                          {Math.max(0, entry.totalPoints || 0)} pts
                         </Badge>
                       </div>
                     );
