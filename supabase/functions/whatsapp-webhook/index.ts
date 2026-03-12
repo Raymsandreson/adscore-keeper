@@ -1154,6 +1154,57 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== WHATSAPP COMMAND PROCESSOR (Chat IA via WhatsApp) ==========
+    if (direction === 'inbound' && instanceName && phone) {
+      try {
+        const { data: cmdConfig } = await supabase
+          .from('whatsapp_command_config')
+          .select('id')
+          .eq('authorized_phone', phone)
+          .eq('instance_name', instanceName)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (cmdConfig) {
+          console.log('Authorized command phone detected, routing to command processor:', phone)
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          // Fire-and-forget
+          fetch(`${supabaseUrl}/functions/v1/whatsapp-command-processor`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              phone,
+              instance_name: instanceName,
+              message_text: messageText || '',
+            }),
+          }).catch(err => console.error('Command processor trigger error:', err))
+
+          // Skip AI agent auto-reply for command users
+          const respData = { 
+            success: true, 
+            message_id: message.id, 
+            contact_id: contactId,
+            lead_id: leadId,
+            is_new_contact: !contactId,
+            instance_name: instanceName,
+            media_stored: !!storedMediaUrl && storedMediaUrl !== mediaUrl,
+            command_routed: true,
+          }
+          await logWebhook('command_routed', respData)
+          return new Response(
+            JSON.stringify(respData),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      } catch (e) {
+        console.error('Command config check error:', e)
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {

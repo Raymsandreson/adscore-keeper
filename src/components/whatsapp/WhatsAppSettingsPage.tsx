@@ -4,13 +4,14 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText
+  ChevronRight, Shield, Zap, ScrollText, Sparkles
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
 import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
+import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 
 interface Tab {
   id: string;
@@ -31,6 +32,15 @@ const tabs: Tab[] = [
     badge: '✨ Popular',
     badgeVariant: 'default',
     accentColor: 'text-violet-500',
+  },
+  {
+    id: 'commands',
+    label: 'Comandos WhatsApp',
+    icon: <Sparkles className="h-5 w-5" />,
+    description: 'Chat IA via WhatsApp',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-pink-500',
   },
   {
     id: 'reports',
@@ -178,6 +188,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
             </div>
 
             {activeTab === 'agents' && <WhatsAppAIAgents />}
+            {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}
