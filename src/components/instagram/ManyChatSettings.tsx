@@ -258,32 +258,56 @@ export const ManyChatSettings = () => {
               {/* Step by step instructions */}
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
                 <h4 className="font-semibold text-sm">📋 Como configurar no ManyChat (passo a passo):</h4>
-                <ol className="space-y-3 text-sm">
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">1.</span>
-                    <span>No ManyChat, vá em <strong>Automação</strong> e clique em <strong>+ Começar Do Zero</strong></span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">2.</span>
-                    <span>Escolha o gatilho <strong>"Palavra-chave de DM"</strong> (para responder a palavras específicas) ou configure como <strong>Default Reply</strong> nas configurações de automação (para responder a qualquer mensagem)</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">3.</span>
-                    <span>Na tela do Flow, clique em <strong>"Escolha o primeiro passo"</strong> e selecione <strong>Ações</strong></span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">4.</span>
-                    <span>Dentro de Ações, escolha <strong>"Solicitação Externa" (External Request)</strong></span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">5.</span>
-                    <span>Configure o método como <strong>POST</strong> e cole a URL do webhook acima</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">6.</span>
-                    <span>No <strong>Body (JSON)</strong>, configure os campos:</span>
-                  </li>
-                </ol>
+                
+                {/* Passo 1: Default Reply */}
+                <div className="p-3 border border-primary/20 rounded-lg space-y-2">
+                  <h5 className="font-semibold text-sm text-primary">Passo 1 — Ativar o gatilho (escolha UMA opção)</h5>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="p-2 bg-background rounded">
+                      <p className="font-medium">🔵 Opção A: Default Reply (responde a QUALQUER mensagem)</p>
+                      <ol className="ml-4 mt-1 space-y-1 text-xs text-muted-foreground list-decimal">
+                        <li>No painel do ManyChat, clique em <strong>Settings (⚙️)</strong> no menu lateral esquerdo</li>
+                        <li>Vá em <strong>Automação</strong> (ou <strong>Automation</strong>)</li>
+                        <li>Encontre <strong>"Instagram Default Reply"</strong></li>
+                        <li>Ative o toggle e clique em <strong>"Edit Flow"</strong> para personalizar</li>
+                      </ol>
+                    </div>
+                    
+                    <div className="p-2 bg-background rounded">
+                      <p className="font-medium">🟢 Opção B: Palavra-chave (responde a palavras específicas)</p>
+                      <ol className="ml-4 mt-1 space-y-1 text-xs text-muted-foreground list-decimal">
+                        <li>No menu lateral, clique em <strong>Automation</strong></li>
+                        <li>Clique em <strong>"+ New Automation"</strong> (botão azul no topo)</li>
+                        <li>Escolha <strong>"Start from Scratch"</strong></li>
+                        <li>No gatilho, selecione <strong>"Instagram DM Keyword"</strong></li>
+                        <li>Digite as palavras-chave desejadas</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Passo 2: External Request */}
+                <div className="p-3 border border-primary/20 rounded-lg space-y-2">
+                  <h5 className="font-semibold text-sm text-primary">Passo 2 — Adicionar a External Request (Solicitação Externa)</h5>
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-200">
+                    <strong>⚠️ Requer plano Pro do ManyChat!</strong> No plano Free essa opção não aparece.
+                  </div>
+                  <ol className="space-y-2 text-sm list-decimal ml-4">
+                    <li>Dentro do Flow Builder, clique no botão <strong>"+"</strong> para adicionar um novo passo</li>
+                    <li>Selecione <strong>"Action"</strong> (Ação)</li>
+                    <li>Na lista de ações, procure <strong>"External Request"</strong> (pode estar em "Dev Tools" ou "Integrations")</li>
+                    <li>Configure:
+                      <ul className="ml-4 mt-1 space-y-1 text-xs text-muted-foreground list-disc">
+                        <li>Método: <strong>POST</strong></li>
+                        <li>URL: cole a URL do webhook acima</li>
+                        <li>Headers: <code className="bg-muted px-1 rounded">Content-Type: application/json</code></li>
+                      </ul>
+                    </li>
+                    <li>No <strong>Body (JSON)</strong>, cole este conteúdo:</li>
+                  </ol>
+                </div>
+
                 <div className="p-3 bg-background border rounded font-mono text-xs overflow-x-auto">
                   <pre>{`{
   "subscriber_id": "{{subscriber_id}}",
@@ -293,24 +317,25 @@ export const ManyChatSettings = () => {
   "platform": "instagram"
 }`}</pre>
                 </div>
-                <ol className="space-y-3 text-sm" start={7}>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">7.</span>
-                    <span>Em <strong>Response Mapping</strong>, mapeie <code className="bg-muted px-1 rounded">content.messages[0].text</code> para um Custom Field (ex: "ai_reply")</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">8.</span>
-                    <span>Adicione um passo <strong>"Instagram → Enviar Mensagem"</strong> usando o Custom Field <code className="bg-muted px-1 rounded">{"{{ai_reply}}"}</code> como texto</span>
-                  </li>
-                  <li className="flex gap-2">
-                    <span className="font-bold text-primary min-w-[20px]">9.</span>
-                    <span>Clique em <strong>Publicar</strong> no topo da tela e pronto! 🎉</span>
-                  </li>
-                </ol>
-                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-                  <p className="text-xs text-amber-800 dark:text-amber-200">
-                    <strong>⚠️ Importante:</strong> A "Solicitação Externa" requer o <strong>plano Pro do ManyChat</strong>. 
-                    Sem ele, use o passo "Etapa de IA" nativo do ManyChat (mas sem integração com nosso sistema).
+
+                {/* Passo 3: Response Mapping + Send */}
+                <div className="p-3 border border-primary/20 rounded-lg space-y-2">
+                  <h5 className="font-semibold text-sm text-primary">Passo 3 — Mapear resposta e enviar</h5>
+                  <ol className="space-y-2 text-sm list-decimal ml-4">
+                    <li>Ainda na External Request, role até <strong>"Response Mapping"</strong></li>
+                    <li>No campo JSONPath, digite: <code className="bg-muted px-1 rounded">$.content.messages[0].text</code></li>
+                    <li>Mapeie para um <strong>Custom Field</strong> — crie um chamado <code className="bg-muted px-1 rounded">ai_reply</code> (tipo Text)</li>
+                    <li>Adicione um novo passo <strong>"Send Message"</strong> (Instagram)</li>
+                    <li>No texto da mensagem, use a variável: <code className="bg-muted px-1 rounded">{"{{ai_reply}}"}</code></li>
+                    <li>Clique em <strong>Publish</strong> no topo direito 🎉</li>
+                  </ol>
+                </div>
+
+                {/* Alternativa sem Pro */}
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-xs text-blue-800 dark:text-blue-200">
+                    <strong>💡 Sem plano Pro?</strong> Use o <strong>"AI Step"</strong> nativo do ManyChat (disponível no Free). 
+                    Ele usa a IA do próprio ManyChat para gerar respostas, mas não se integra com nosso sistema de histórico e tags.
                   </p>
                 </div>
               </div>
