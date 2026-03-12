@@ -739,7 +739,7 @@ export function UserProductivityBanner() {
                       />
                       <span className="truncate flex-1">{member.name.split(' ')[0]}</span>
                       {rankEntry && (
-                        <span className="text-muted-foreground text-[10px]">{rankEntry.totalPoints} pts</span>
+                        <span className="text-muted-foreground text-[10px]">{Math.max(0, rankEntry.totalPoints || 0)} pts</span>
                       )}
                     </label>
                   );
