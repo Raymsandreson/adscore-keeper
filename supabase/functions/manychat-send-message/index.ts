@@ -259,6 +259,164 @@ Responda em português brasileiro:`
       });
     }
 
+    // ACTION: Remove tag from subscriber
+    if (action === "remove_tag") {
+      const { subscriber_id, tag_id } = body;
+
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/subscriber/removeTag`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ subscriber_id: parseInt(subscriber_id), tag_id })
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Create a tag
+    if (action === "create_tag") {
+      const { name } = body;
+
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/page/createTag`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name })
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Remove a tag (page-level)
+    if (action === "remove_page_tag") {
+      const { tag_id } = body;
+
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/page/removeTag`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tag_id })
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Set custom field for subscriber
+    if (action === "set_custom_field") {
+      const { subscriber_id, field_id, field_value } = body;
+
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/subscriber/setCustomField`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ subscriber_id: parseInt(subscriber_id), field_id, field_value })
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Get custom fields list
+    if (action === "get_custom_fields") {
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/page/getCustomFields`, {
+        headers: { "Authorization": `Bearer ${MANYCHAT_API_KEY}` }
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Get subscribers by tag (for filtering/bulk)
+    if (action === "get_subscribers_by_tag") {
+      const { tag_id } = body;
+
+      const manychatResp = await fetch(
+        `${MANYCHAT_API_URL}/fb/subscriber/getInfoByTag?tag_id=${tag_id}`,
+        { headers: { "Authorization": `Bearer ${MANYCHAT_API_KEY}` } }
+      );
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Send content to multiple subscribers (bulk)
+    if (action === "bulk_send") {
+      const { subscriber_ids, message_text, flow_ns } = body;
+      const results: any[] = [];
+
+      for (const subId of subscriber_ids) {
+        try {
+          if (flow_ns) {
+            const resp = await fetch(`${MANYCHAT_API_URL}/fb/sending/sendFlow`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ subscriber_id: parseInt(subId), flow_ns })
+            });
+            const d = await resp.json();
+            results.push({ subscriber_id: subId, success: d.status === "success", data: d });
+          } else if (message_text) {
+            const resp = await fetch(`${MANYCHAT_API_URL}/fb/sending/sendContent`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                subscriber_id: parseInt(subId),
+                data: {
+                  version: "v2",
+                  content: { messages: [{ type: "text", text: message_text }] }
+                },
+                message_tag: "HUMAN_AGENT"
+              })
+            });
+            const d = await resp.json();
+            results.push({ subscriber_id: subId, success: d.status === "success", data: d });
+          }
+        } catch (e: any) {
+          results.push({ subscriber_id: subId, success: false, error: e.message });
+        }
+      }
+
+      await supabase.from("manychat_interactions").insert({
+        subscriber_id: "bulk",
+        direction: "outbound",
+        message_text: message_text || `Flow: ${flow_ns}`,
+        status: results.every(r => r.success) ? "sent" : "partial",
+        metadata: { action: "bulk_send", total: subscriber_ids.length, results }
+      });
+
+      return new Response(JSON.stringify({ success: true, results }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     // ACTION: Test connection
     if (action === "test_connection") {
       const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/page/getInfo`, {
