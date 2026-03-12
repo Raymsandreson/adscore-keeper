@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import abraciLogo from "@/assets/abraci-logo.png";
+import whatsjudLogo from "@/assets/whatsjud-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
