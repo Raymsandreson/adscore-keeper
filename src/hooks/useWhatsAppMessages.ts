@@ -67,7 +67,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const profileCacheRef = useRef<{ full_name: string | null; treatment_title: string | null } | null>(null);
   const isFetchingRef = useRef(false);
 
-  const AUTO_REFRESH_INTERVAL_MS = 300000;
+  const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 min fallback polling
 
   const fetchInstances = async () => {
     if (!user) return;
