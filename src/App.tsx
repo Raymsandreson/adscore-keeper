@@ -59,6 +59,7 @@ const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"));
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"));
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"));
+const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"));
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,7 @@ function AppRoutes() {
           <Route path="/expense-form/:token" element={<ExpenseFormPage />} />
           <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
           <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
+          <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
           <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
           <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
           <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
