@@ -59,6 +59,7 @@ const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"));
 const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"));
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"));
+const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"));
 
 const queryClient = new QueryClient();
 
