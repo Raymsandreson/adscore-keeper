@@ -6190,6 +6190,69 @@ export type Database = {
           },
         ]
       }
+      whatsapp_command_config: {
+        Row: {
+          authorized_phone: string
+          created_at: string
+          id: string
+          instance_name: string
+          is_active: boolean
+          updated_at: string
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          authorized_phone: string
+          created_at?: string
+          id?: string
+          instance_name: string
+          is_active?: boolean
+          updated_at?: string
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          authorized_phone?: string
+          created_at?: string
+          id?: string
+          instance_name?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id?: string
+          user_name?: string | null
+        }
+        Relationships: []
+      }
+      whatsapp_command_history: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          instance_name: string
+          phone: string
+          role: string
+          tool_data: Json | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          instance_name: string
+          phone: string
+          role?: string
+          tool_data?: Json | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          instance_name?: string
+          phone?: string
+          role?: string
+          tool_data?: Json | null
+        }
+        Relationships: []
+      }
       whatsapp_conversation_agents: {
         Row: {
           activated_by: string | null
@@ -6771,6 +6834,7 @@ export type Database = {
         Args: { _pluggy_account_id: string; _user_id: string }
         Returns: boolean
       }
+      cleanup_old_command_history: { Args: never; Returns: undefined }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
