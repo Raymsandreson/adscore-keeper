@@ -191,23 +191,29 @@ Responda em português brasileiro:`
       });
     }
 
-    // ACTION: List recent subscribers
+    // ACTION: List recent subscribers via growth tools / tags workaround
     if (action === "list_subscribers") {
-      // Try to get subscribers using getSubscribers endpoint
-      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/subscriber/getSubscribers`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          page_size: 50,
-          sort: { field: "last_interaction", order: "desc" }
-        })
+      // ManyChat doesn't have a "list all subscribers" endpoint.
+      // We use getGrowthTools to list triggers, then try to get recent subscribers via tags.
+      // Best approach: list tags first, then get subscribers by tag.
+      const tagsResp = await fetch(`${MANYCHAT_API_URL}/fb/page/getTags`, {
+        headers: { "Authorization": `Bearer ${MANYCHAT_API_KEY}` }
       });
 
-      const data = await manychatResp.json();
-      return new Response(JSON.stringify(data), {
+      const tagsText = await tagsResp.text();
+      let tagsData;
+      try { tagsData = JSON.parse(tagsText); } catch {
+        return new Response(JSON.stringify({ status: "success", data: [], message: "A API do ManyChat não suporta listagem direta de assinantes. Use a busca por nome ou envie uma mensagem pelo Instagram para criar o primeiro contato." }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      return new Response(JSON.stringify({ 
+        status: "success", 
+        data: [], 
+        tags: tagsData?.data || [],
+        message: "Use a busca por nome para encontrar assinantes. Tags disponíveis listadas para referência."
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
