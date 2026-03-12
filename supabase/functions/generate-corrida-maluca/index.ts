@@ -132,7 +132,7 @@ ESTILO:
 - Use formatação do WhatsApp: *negrito*, _itálico_
 - A mensagem deve ter entre 800-1500 caracteres
 - NÃO use markdown de código, headers (#), ou formatação que não funcione no WhatsApp
-- Comece com um cabeçalho tipo "🏁🏎️ *CORRIDA MALUCA DA ABRACI* 🏎️🏁"
+- Comece com um cabeçalho tipo "🏁🏎️ *CORRIDA MALUCA DA WHATSJUD* 🏎️🏁"
 
 REGRAS:
 1. Seja JUSTO - elogie quem subiu, provoque amigavelmente quem caiu, mas sem ofender
