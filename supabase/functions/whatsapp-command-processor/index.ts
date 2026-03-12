@@ -353,7 +353,7 @@ REGRAS:
           headers: { "Content-Type": "application/json", token: inst.instance_token },
           body: JSON.stringify({
             number: normalizedPhone,
-            text: `🤖 *Abraci IA*\n\n${responseText}`,
+            text: `🤖 *WhatsJUD IA*\n\n${responseText}`,
           }),
         });
         console.log("Command response sent to WhatsApp:", normalizedPhone);
