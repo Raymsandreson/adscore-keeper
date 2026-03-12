@@ -856,7 +856,7 @@ export function UserProductivityBanner() {
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-[10px] h-4 px-1 flex-shrink-0">
-                    {wu.totalPoints} pts
+                    {Math.max(0, wu.totalPoints || 0)} pts
                   </Badge>
                   <Button
                     variant="ghost"
