@@ -35,8 +35,8 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       manifest: {
-        name: 'ABRACI.IA - Gestão Inteligente',
-        short_name: 'ABRACI.IA',
+        name: 'WhatsJUD - Gestão Inteligente',
+        short_name: 'WhatsJUD',
         description: 'Plataforma inteligente para gestão de leads, marketing digital e automação',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',
