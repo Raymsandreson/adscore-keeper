@@ -543,12 +543,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     fetchMessages();
   }, [selectedInstanceId, hasLoaded, fetchMessages]);
 
-  // Realtime subscription — lightweight, no polling needed
+  // Realtime subscription with reconnection resilience
   useEffect(() => {
     if (!hasLoaded) return;
 
+    const channelName = `whatsapp-realtime-${Date.now()}`;
     const channel = supabase
-      .channel('whatsapp-realtime')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
@@ -561,7 +562,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             if (inst && newMsg.instance_name !== inst.instance_name) return;
           }
 
-          setMessages(prev => [newMsg, ...prev]);
+          setMessages(prev => {
+            // Avoid duplicates from optimistic updates
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [newMsg, ...prev];
+          });
           setConversations(prev => {
             const existing = prev.find(c => c.phone === newMsg.phone);
             if (existing) {
@@ -572,6 +577,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
                 return existingMsgId === msgId && m.created_at === newMsg.created_at;
               });
               if (isDuplicate) return prev;
+              // Also check by id
+              if (existing.messages.some(m => m.id === newMsg.id)) return prev;
 
               return prev.map(c => {
                 if (c.phone !== newMsg.phone) return c;
@@ -602,12 +609,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('Realtime channel error, will refetch on next interval');
+        }
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [hasLoaded, selectedInstanceId, instances]);
 
-  // Fallback auto-refresh every 5 min (keeps stats and missed messages in sync)
+  // Fallback auto-refresh every 60s + refresh on tab visibility
   useEffect(() => {
     if (!hasLoaded) return;
 
@@ -616,7 +627,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       fetchMessages(true);
     }, AUTO_REFRESH_INTERVAL_MS);
 
-    return () => clearInterval(intervalId);
+    // Refresh when tab becomes visible again (catches missed realtime events)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [hasLoaded, fetchMessages, AUTO_REFRESH_INTERVAL_MS]);
 
   // Load all messages for a specific conversation (when selected)
