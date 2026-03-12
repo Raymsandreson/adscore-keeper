@@ -123,7 +123,7 @@ export const ManyChatSettings = () => {
       });
       if (error) throw error;
       setRecentSubscribers(data?.data || []);
-      if (!data?.data?.length) toast.info("Nenhum assinante encontrado. Alguém precisa enviar uma mensagem primeiro para o Instagram/Facebook da página.");
+      if (data?.message) toast.info(data.message);
     } catch (err: any) {
       toast.error("Erro ao listar assinantes: " + err.message);
     } finally {
