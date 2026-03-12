@@ -253,27 +253,31 @@ export const ManyChatSettings = () => {
 
               {/* Step by step instructions */}
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
-                <h4 className="font-semibold text-sm">📋 Como configurar no ManyChat:</h4>
+                <h4 className="font-semibold text-sm">📋 Como configurar no ManyChat (passo a passo):</h4>
                 <ol className="space-y-3 text-sm">
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">1.</span>
-                    <span>No ManyChat, vá em <strong>Automation → Flows</strong> e crie um novo Flow</span>
+                    <span className="font-bold text-primary min-w-[20px]">1.</span>
+                    <span>No ManyChat, vá em <strong>Automação</strong> e clique em <strong>+ Começar Do Zero</strong></span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">2.</span>
-                    <span>Defina o <strong>Trigger</strong> como <strong>"Default Reply"</strong> (responde a qualquer mensagem)</span>
+                    <span className="font-bold text-primary min-w-[20px]">2.</span>
+                    <span>Escolha o gatilho <strong>"Palavra-chave de DM"</strong> (para responder a palavras específicas) ou configure como <strong>Default Reply</strong> nas configurações de automação (para responder a qualquer mensagem)</span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">3.</span>
-                    <span>Adicione uma ação <strong>"External Request"</strong> (POST)</span>
+                    <span className="font-bold text-primary min-w-[20px]">3.</span>
+                    <span>Na tela do Flow, clique em <strong>"Escolha o primeiro passo"</strong> e selecione <strong>Ações</strong></span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">4.</span>
-                    <span>Cole a URL do webhook acima no campo URL</span>
+                    <span className="font-bold text-primary min-w-[20px]">4.</span>
+                    <span>Dentro de Ações, escolha <strong>"Solicitação Externa" (External Request)</strong></span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">5.</span>
-                    <span>No <strong>Body (JSON)</strong>, configure:</span>
+                    <span className="font-bold text-primary min-w-[20px]">5.</span>
+                    <span>Configure o método como <strong>POST</strong> e cole a URL do webhook acima</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-bold text-primary min-w-[20px]">6.</span>
+                    <span>No <strong>Body (JSON)</strong>, configure os campos:</span>
                   </li>
                 </ol>
                 <div className="p-3 bg-background border rounded font-mono text-xs overflow-x-auto">
@@ -285,20 +289,26 @@ export const ManyChatSettings = () => {
   "platform": "instagram"
 }`}</pre>
                 </div>
-                <ol className="space-y-3 text-sm" start={6}>
+                <ol className="space-y-3 text-sm" start={7}>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">6.</span>
-                    <span>Em <strong>Response Mapping</strong>, mapeie <code>content.messages[0].text</code> para um Custom Field (ex: "ai_reply")</span>
+                    <span className="font-bold text-primary min-w-[20px]">7.</span>
+                    <span>Em <strong>Response Mapping</strong>, mapeie <code className="bg-muted px-1 rounded">content.messages[0].text</code> para um Custom Field (ex: "ai_reply")</span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">7.</span>
-                    <span>Adicione uma ação <strong>"Send Message"</strong> usando o Custom Field <code>{"{{ai_reply}}"}</code></span>
+                    <span className="font-bold text-primary min-w-[20px]">8.</span>
+                    <span>Adicione um passo <strong>"Instagram → Enviar Mensagem"</strong> usando o Custom Field <code className="bg-muted px-1 rounded">{"{{ai_reply}}"}</code> como texto</span>
                   </li>
                   <li className="flex gap-2">
-                    <span className="font-bold text-primary">8.</span>
-                    <span><strong>Publique o Flow</strong> e pronto! A IA responderá automaticamente 🎉</span>
+                    <span className="font-bold text-primary min-w-[20px]">9.</span>
+                    <span>Clique em <strong>Publicar</strong> no topo da tela e pronto! 🎉</span>
                   </li>
                 </ol>
+                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    <strong>⚠️ Importante:</strong> A "Solicitação Externa" requer o <strong>plano Pro do ManyChat</strong>. 
+                    Sem ele, use o passo "Etapa de IA" nativo do ManyChat (mas sem integração com nosso sistema).
+                  </p>
+                </div>
               </div>
 
               <Button onClick={saveConfig} className="w-full">
