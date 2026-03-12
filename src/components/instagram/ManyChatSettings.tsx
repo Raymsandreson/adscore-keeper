@@ -28,6 +28,8 @@ export const ManyChatSettings = () => {
   const [searchName, setSearchName] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingSubscribers, setIsLoadingSubscribers] = useState(false);
+  const [recentSubscribers, setRecentSubscribers] = useState<any[]>([]);
 
   // Interactions history
   const { data: interactions, refetch: refetchInteractions } = useQuery({
@@ -110,6 +112,22 @@ export const ManyChatSettings = () => {
       toast.error("Erro na busca: " + err.message);
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const loadRecentSubscribers = async () => {
+    setIsLoadingSubscribers(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+        body: { action: "list_subscribers" },
+      });
+      if (error) throw error;
+      setRecentSubscribers(data?.data || []);
+      if (!data?.data?.length) toast.info("Nenhum assinante encontrado. Alguém precisa enviar uma mensagem primeiro para o Instagram/Facebook da página.");
+    } catch (err: any) {
+      toast.error("Erro ao listar assinantes: " + err.message);
+    } finally {
+      setIsLoadingSubscribers(false);
     }
   };
 
@@ -205,7 +223,7 @@ export const ManyChatSettings = () => {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Buscar Assinante</CardTitle>
-              <CardDescription>Encontre assinantes do ManyChat por nome</CardDescription>
+              <CardDescription>Encontre assinantes do ManyChat por nome ou liste os recentes</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
@@ -216,13 +234,20 @@ export const ManyChatSettings = () => {
                   {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 </Button>
               </div>
-              {searchResults.length > 0 && (
-                <div className="space-y-2">
-                  {searchResults.map((sub: any) => (
+              <Button onClick={loadRecentSubscribers} disabled={isLoadingSubscribers} variant="outline" className="w-full">
+                {isLoadingSubscribers ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <History className="h-4 w-4 mr-2" />}
+                Listar Últimos Assinantes
+              </Button>
+              {(searchResults.length > 0 || recentSubscribers.length > 0) && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {[...searchResults, ...recentSubscribers].map((sub: any) => (
                     <div key={sub.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
-                        <p className="font-medium">{sub.name || sub.first_name + " " + sub.last_name}</p>
+                        <p className="font-medium">{sub.name || sub.first_name + " " + (sub.last_name || "")}</p>
                         <p className="text-xs text-muted-foreground">ID: {sub.id}</p>
+                        {sub.last_interaction && (
+                          <p className="text-xs text-muted-foreground">Última interação: {sub.last_interaction}</p>
+                        )}
                       </div>
                       <Button size="sm" variant="outline" onClick={() => {
                         setSubscriberId(String(sub.id));

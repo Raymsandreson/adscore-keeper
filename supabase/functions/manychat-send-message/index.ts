@@ -191,6 +191,48 @@ Responda em português brasileiro:`
       });
     }
 
+    // ACTION: List recent subscribers
+    if (action === "list_subscribers") {
+      // Try to get subscribers using getSubscribers endpoint
+      const manychatResp = await fetch(`${MANYCHAT_API_URL}/fb/subscriber/getSubscribers`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${MANYCHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          page_size: 50,
+          sort: { field: "last_interaction", order: "desc" }
+        })
+      });
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // ACTION: Find subscriber by custom field or system field
+    if (action === "find_by_field") {
+      const { field_name, field_value, field_type = "system" } = body;
+
+      const endpoint = field_type === "custom" 
+        ? `${MANYCHAT_API_URL}/fb/subscriber/findByCustomField`
+        : `${MANYCHAT_API_URL}/fb/subscriber/findBySystemField`;
+
+      const manychatResp = await fetch(
+        `${endpoint}?field_name=${encodeURIComponent(field_name)}&field_value=${encodeURIComponent(field_value)}`,
+        {
+          headers: { "Authorization": `Bearer ${MANYCHAT_API_KEY}` }
+        }
+      );
+
+      const data = await manychatResp.json();
+      return new Response(JSON.stringify(data), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     // ACTION: Add tag to subscriber
     if (action === "add_tag") {
       const { subscriber_id, tag_id } = body;
