@@ -322,6 +322,11 @@ export const ManyChatSettings = () => {
           </Card>
         </TabsContent>
 
+        {/* Tags Management */}
+        <TabsContent value="tags">
+          <ManyChatTagManager />
+        </TabsContent>
+
         {/* AI Config */}
         <TabsContent value="config">
           <Card>
