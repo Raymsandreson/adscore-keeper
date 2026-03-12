@@ -1046,7 +1046,7 @@ export function UserProductivityBanner() {
                                 onCheckedChange={() => toggleWatchedUser(entry.userId)}
                               />
                               <span className="truncate">{entry.userName?.split(' ')[0] || '?'}</span>
-                              <span className="ml-auto text-muted-foreground">{entry.totalPoints} pts</span>
+                              <span className="ml-auto text-muted-foreground">{Math.max(0, entry.totalPoints || 0)} pts</span>
                             </label>
                           ))}
                         </div>
