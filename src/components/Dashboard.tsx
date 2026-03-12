@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import abraciLogo from "@/assets/abraci-logo.png";
+import whatsjudLogo from "@/assets/whatsjud-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -331,7 +331,7 @@ const Dashboard = () => {
             <UserMenu />
           </div>
           
-          <img src={abraciLogo} alt="WhatsJUD" className="h-20 mx-auto" />
+          <img src={whatsjudLogo} alt="WhatsJUD" className="h-20 mx-auto" />
           <h1 className="text-4xl md:text-5xl font-semibold text-foreground mb-2">
             WhatsJUD
           </h1>

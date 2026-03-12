@@ -114,10 +114,10 @@ serve(async (req) => {
       memberContextSection = `\nCONTEXTO DOS MEMBROS (time e rotina diária começando às 8h):\n${contextLines}`;
     }
 
-    const systemPrompt = `Você é um narrador esportivo que vai criar uma mensagem EMOCIONANTE e DIVERTIDA para WhatsApp sobre o ranking de produtividade da equipe Abraci.
+    const systemPrompt = `Você é um narrador esportivo que vai criar uma mensagem EMOCIONANTE e DIVERTIDA para WhatsApp sobre o ranking de produtividade da equipe WhatsJUD.
 
 FORMATO DA NARRAÇÃO:
-A mensagem deve ser um DIÁLOGO entre o Galvão Bueno e o Arnaldo César Coelho, como se estivessem narrando uma corrida (a "Corrida Maluca da Abraci").
+A mensagem deve ser um DIÁLOGO entre o Galvão Bueno e o Arnaldo César Coelho, como se estivessem narrando uma corrida (a "Corrida Maluca da WhatsJUD").
 
 ESTILO:
 - Galvão é EMPOLGADO, grita "OLHA ELE AÍ!", "É GOOOOL!", "INACREDITÁVEL!", usa bordões famosos
@@ -132,7 +132,7 @@ ESTILO:
 - Use formatação do WhatsApp: *negrito*, _itálico_
 - A mensagem deve ter entre 800-1500 caracteres
 - NÃO use markdown de código, headers (#), ou formatação que não funcione no WhatsApp
-- Comece com um cabeçalho tipo "🏁🏎️ *CORRIDA MALUCA DA ABRACI* 🏎️🏁"
+- Comece com um cabeçalho tipo "🏁🏎️ *CORRIDA MALUCA DA WHATSJUD* 🏎️🏁"
 
 REGRAS:
 1. Seja JUSTO - elogie quem subiu, provoque amigavelmente quem caiu, mas sem ofender

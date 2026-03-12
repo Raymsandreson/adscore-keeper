@@ -76,7 +76,7 @@ serve(async (req) => {
     const actTypeKeys = actTypes.map((t: any) => t.key);
     const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})`).join("\n");
 
-    const systemPrompt = `Você é o assistente IA do CRM Abraci, recebendo comandos via WhatsApp do assessor "${config.user_name}".
+    const systemPrompt = `Você é o assistente IA do CRM WhatsJUD, recebendo comandos via WhatsApp do assessor "${config.user_name}".
 
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
@@ -353,7 +353,7 @@ REGRAS:
           headers: { "Content-Type": "application/json", token: inst.instance_token },
           body: JSON.stringify({
             number: normalizedPhone,
-            text: `🤖 *Abraci IA*\n\n${responseText}`,
+            text: `🤖 *WhatsJUD IA*\n\n${responseText}`,
           }),
         });
         console.log("Command response sent to WhatsApp:", normalizedPhone);

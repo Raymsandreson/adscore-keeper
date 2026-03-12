@@ -44,7 +44,7 @@ export default function InstallPage() {
             <Check className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">App instalado!</h1>
-          <p className="text-muted-foreground">Você já está usando o ABRACI.IA como app.</p>
+          <p className="text-muted-foreground">Você já está usando o WhatsJUD como app.</p>
           <Button onClick={() => window.location.href = '/'} className="w-full">
             Ir para o início
           </Button>
@@ -61,9 +61,9 @@ export default function InstallPage() {
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Instalar ABRACI.IA</h1>
+          <h1 className="text-2xl font-bold">Instalar WhatsJUD</h1>
           <p className="text-muted-foreground text-sm">
-            Adicione o ABRACI.IA à tela inicial do seu celular para acessar como um app nativo.
+            Adicione o WhatsJUD à tela inicial do seu celular para acessar como um app nativo.
           </p>
         </div>
 
