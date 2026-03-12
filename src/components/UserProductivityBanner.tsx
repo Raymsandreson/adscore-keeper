@@ -691,7 +691,7 @@ export function UserProductivityBanner() {
 
         {/* Points */}
         <Badge variant="secondary" className="text-xs font-bold flex-shrink-0">
-          <AnimatedNumber value={data.totalActions} suffix=" pts" />
+          <AnimatedNumber value={Math.max(0, data.totalActions || 0)} suffix=" pts" />
         </Badge>
 
         {/* Watch users picker */}
