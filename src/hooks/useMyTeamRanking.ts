@@ -160,7 +160,7 @@ export function useMyTeamRanking() {
           userName: profileMap.get(id) || null,
           totalPoints: Math.max(0, rawTotal),
           leadsCreated: s.leads,
-          checklistItemsChecked: s.checklist,
+          checklistItemsChecked: safeChecklist,
           stageChanges: s.stages,
           leadsClosed: s.closed,
           contactsCreated: s.contacts,
