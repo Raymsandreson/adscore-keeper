@@ -204,9 +204,12 @@ export const ManyChatSettings = () => {
 
       {/* Main Tabs */}
       <Tabs defaultValue="webhook" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="webhook" className="gap-1 text-xs">
             <Webhook className="h-4 w-4" /> Webhook
+          </TabsTrigger>
+          <TabsTrigger value="tags" className="gap-1 text-xs">
+            <Tag className="h-4 w-4" /> Tags
           </TabsTrigger>
           <TabsTrigger value="config" className="gap-1 text-xs">
             <Settings className="h-4 w-4" /> Prompt IA
