@@ -87,7 +87,8 @@ Responda em português brasileiro:`
                 text: aiReply
               }]
             }
-          }
+          },
+          message_tag: "HUMAN_AGENT"
         })
       });
 
