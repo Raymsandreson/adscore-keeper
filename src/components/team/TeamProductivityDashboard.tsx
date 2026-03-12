@@ -716,7 +716,7 @@ export function TeamProductivityDashboard() {
                       </div>
 
                       <Badge variant="outline" className="ml-4">
-                        {member.totalActions} pts
+                        {Math.max(0, member.totalActions || 0)} pts
                       </Badge>
                     </div>
                   ))}
