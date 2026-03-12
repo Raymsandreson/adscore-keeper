@@ -152,10 +152,13 @@ export function useMyTeamRanking() {
       // Build ranking
       const entries: TeamRankingEntry[] = memberIds.map(id => {
         const s = statsMap.get(id)!;
+        // Ensure no individual metric goes negative
+        const safeChecklist = Math.max(0, s.checklist);
+        const rawTotal = s.leads + safeChecklist + s.stages + s.contacts + s.closed + s.calls + s.dms;
         return {
           userId: id,
           userName: profileMap.get(id) || null,
-          totalPoints: s.leads + s.checklist + s.stages + s.contacts + s.closed + s.calls + s.dms,
+          totalPoints: Math.max(0, rawTotal),
           leadsCreated: s.leads,
           checklistItemsChecked: s.checklist,
           stageChanges: s.stages,
