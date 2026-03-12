@@ -7,11 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Bot, Send, Search, Zap, CheckCircle, XCircle, Loader2, MessageSquare, History, Copy, Settings, Webhook } from "lucide-react";
+import { Bot, Send, Search, Zap, CheckCircle, XCircle, Loader2, MessageSquare, History, Copy, Settings, Webhook, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { ManyChatTagManager } from "./ManyChatTagManager";
 
 export const ManyChatSettings = () => {
   const queryClient = useQueryClient();
