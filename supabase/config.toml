@@ -146,3 +146,6 @@ verify_jwt = false
 
 [functions.twilio-voice-twiml]
 verify_jwt = false
+
+[functions.manychat-webhook]
+verify_jwt = false

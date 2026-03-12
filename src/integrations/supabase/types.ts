@@ -4183,6 +4183,36 @@ export type Database = {
         }
         Relationships: []
       }
+      manychat_agent_config: {
+        Row: {
+          auto_reply_enabled: boolean
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          system_prompt: string
+          updated_at: string
+        }
+        Insert: {
+          auto_reply_enabled?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          system_prompt?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_reply_enabled?: boolean
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          system_prompt?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       manychat_interactions: {
         Row: {
           ai_generated_reply: string | null
