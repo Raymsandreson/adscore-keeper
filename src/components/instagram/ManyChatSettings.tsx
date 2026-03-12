@@ -115,6 +115,22 @@ export const ManyChatSettings = () => {
     }
   };
 
+  const loadRecentSubscribers = async () => {
+    setIsLoadingSubscribers(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("manychat-send-message", {
+        body: { action: "list_subscribers" },
+      });
+      if (error) throw error;
+      setRecentSubscribers(data?.data || []);
+      if (!data?.data?.length) toast.info("Nenhum assinante encontrado. Alguém precisa enviar uma mensagem primeiro para o Instagram/Facebook da página.");
+    } catch (err: any) {
+      toast.error("Erro ao listar assinantes: " + err.message);
+    } finally {
+      setIsLoadingSubscribers(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Connection Status */}
