@@ -28,6 +28,8 @@ export const ManyChatSettings = () => {
   const [searchName, setSearchName] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingSubscribers, setIsLoadingSubscribers] = useState(false);
+  const [recentSubscribers, setRecentSubscribers] = useState<any[]>([]);
 
   // Interactions history
   const { data: interactions, refetch: refetchInteractions } = useQuery({
