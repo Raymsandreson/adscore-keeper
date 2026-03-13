@@ -121,6 +121,7 @@ function AppRoutes() {
           <Route path="/whatsapp" element={<ProtectedRoute><WhatsAppPage /></ProtectedRoute>} />
           <Route path="/instagram" element={<ProtectedRoute><InstagramPage /></ProtectedRoute>} />
           <Route path="/contacts" element={<ProtectedRoute><ContactsPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/cases" element={<ProtectedRoute><CasesPage /></ProtectedRoute>} />
           <Route path="/nuclei" element={<ProtectedRoute><NucleiPage /></ProtectedRoute>} />
           <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
