@@ -368,10 +368,10 @@ export function FloatingNav() {
               }}
               title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
               className={cn(
-                "h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+                "h-11 w-11 rounded-full items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
                 hasUpdate
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse sm:flex"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
+                  ? "flex bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+                  : "hidden sm:flex bg-muted text-muted-foreground hover:bg-accent"
               )}
             >
               <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
