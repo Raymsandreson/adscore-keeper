@@ -27,7 +27,7 @@ interface Props {
   userId?: string;
 }
 
-export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange }: Props) {
+export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange, userId }: Props) {
   const [expanded, setExpanded] = useState(goals.length > 0);
 
   const usedMetrics = new Set(goals.map(g => {
