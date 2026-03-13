@@ -500,6 +500,21 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         const todayStart = today + "T00:00:00";
         const todayEnd = today + "T23:59:59";
 
+        // Fetch user's evaluated_metrics from team_members
+        const { data: memberEntries } = await supabase
+          .from("team_members")
+          .select("evaluated_metrics")
+          .eq("user_id", targetUserId);
+        
+        // Union of all evaluated_metrics across all teams the user belongs to
+        const evaluatedMetrics = new Set<string>();
+        (memberEntries || []).forEach((m: any) => {
+          ((m.evaluated_metrics as string[]) || []).forEach((k: string) => evaluatedMetrics.add(k));
+        });
+        // If no metrics configured, show all by default
+        const showAll = evaluatedMetrics.size === 0;
+        const hasMetric = (key: string) => showAll || evaluatedMetrics.has(key);
+
         // Fetch ALL data sources in parallel
         const [
           overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes,
