@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { TimeBlockConfig, getDefaultTimeBlockConfigs } from '@/components/activities/TimeBlockSettingsDialog';
+import { toast } from 'sonner';
 
 export function useTimeBlockSettings(targetUserId?: string) {
   const { user } = useAuthContext();
@@ -87,7 +88,6 @@ export function useTimeBlockSettings(targetUserId?: string) {
       .eq('user_id', uid);
 
     if (deleteError) {
-      const { toast } = await import('sonner');
       toast.error('Erro ao salvar rotina. Verifique suas permissões.');
       return;
     }
@@ -95,17 +95,14 @@ export function useTimeBlockSettings(targetUserId?: string) {
     if (rows.length > 0) {
       const { error } = await supabase.from('user_timeblock_settings').insert(rows as any);
       if (error) {
-        const { toast } = await import('sonner');
         toast.error('Erro ao salvar rotina: ' + error.message);
         // Reload to restore whatever state is in DB
         await fetchSettings(uid);
         return;
       } else {
-        const { toast } = await import('sonner');
         toast.success('Rotina salva com sucesso!');
       }
     } else {
-      const { toast } = await import('sonner');
       toast.success('Rotina salva (sem tipos selecionados).');
     }
 
