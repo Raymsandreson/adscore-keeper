@@ -225,7 +225,42 @@ REGRAS:
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI error:", aiResponse.status, errText);
-      throw new Error(`AI gateway error: ${aiResponse.status}`);
+
+      const fallbackText = aiResponse.status === 402
+        ? "⚠️ Estou sem créditos de IA no momento. Assim que recarregar os créditos do workspace, volto a executar seus comandos."
+        : aiResponse.status === 429
+          ? "⏳ Estou recebendo muitos pedidos agora. Tente novamente em instantes."
+          : "⚠️ Tive um erro temporário ao processar seu comando. Tente novamente em alguns minutos.";
+
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone,
+        instance_name,
+        role: "assistant",
+        content: fallbackText,
+        tool_data: { error_status: aiResponse.status },
+      });
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (inst?.instance_token) {
+        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+        await fetch(`${baseUrl}/send/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", token: inst.instance_token },
+          body: JSON.stringify({
+            number: normalizedPhone,
+            text: `🤖 *WhatsJUD IA*\n\n${fallbackText}`,
+          }),
+        }).catch((sendErr) => console.error("Error sending AI fallback response:", sendErr));
+      }
+
+      return new Response(JSON.stringify({ success: false, error: fallbackText, status: aiResponse.status }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const aiData = await aiResponse.json();
