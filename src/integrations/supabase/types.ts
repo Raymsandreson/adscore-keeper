@@ -6482,6 +6482,63 @@ export type Database = {
           },
         ]
       }
+      whatsapp_notification_config: {
+        Row: {
+          created_at: string | null
+          goal_alert_percent: number | null
+          id: string
+          instance_name: string | null
+          is_active: boolean | null
+          name: string
+          notify_daily_summary: boolean | null
+          notify_goal_progress: boolean | null
+          notify_overdue_tasks: boolean | null
+          notify_session_reminder: boolean | null
+          notify_weekly_summary: boolean | null
+          overdue_threshold_hours: number | null
+          recipient_phones: string[] | null
+          schedule_days: number[] | null
+          schedule_times: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          goal_alert_percent?: number | null
+          id?: string
+          instance_name?: string | null
+          is_active?: boolean | null
+          name?: string
+          notify_daily_summary?: boolean | null
+          notify_goal_progress?: boolean | null
+          notify_overdue_tasks?: boolean | null
+          notify_session_reminder?: boolean | null
+          notify_weekly_summary?: boolean | null
+          overdue_threshold_hours?: number | null
+          recipient_phones?: string[] | null
+          schedule_days?: number[] | null
+          schedule_times?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          goal_alert_percent?: number | null
+          id?: string
+          instance_name?: string | null
+          is_active?: boolean | null
+          name?: string
+          notify_daily_summary?: boolean | null
+          notify_goal_progress?: boolean | null
+          notify_overdue_tasks?: boolean | null
+          notify_session_reminder?: boolean | null
+          notify_weekly_summary?: boolean | null
+          overdue_threshold_hours?: number | null
+          recipient_phones?: string[] | null
+          schedule_days?: number[] | null
+          schedule_times?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_private_conversations: {
         Row: {
           created_at: string
