@@ -13,6 +13,7 @@ import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
+import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 
 interface Tab {
   id: string;
