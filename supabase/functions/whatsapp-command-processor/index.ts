@@ -276,6 +276,16 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
                 },
                 required: ["search_type", "query"],
               },
+              productivity_report: {
+                type: "object",
+                description: "Consultar produtividade, metas, tarefas atrasadas, tempo online, ranking e gerar feedback. Use quando pedirem relatório, desempenho, feedback ou informações sobre metas.",
+                properties: {
+                  user_id: { type: "string", description: "user_id do assessor a consultar. Se sobre si mesmo, use o id do assessor atual." },
+                  user_name: { type: "string", description: "Nome do assessor consultado" },
+                  report_type: { type: "string", enum: ["full", "overdue_tasks", "goals", "session_time", "ranking", "feedback"], description: "Tipo do relatório: full=completo, overdue_tasks=só atrasadas, goals=metas, session_time=tempo online, ranking=posição, feedback=pontos de melhoria" },
+                },
+                required: ["user_id", "report_type"],
+              },
             },
             required: ["response_text"],
           },
