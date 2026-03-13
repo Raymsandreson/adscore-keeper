@@ -570,6 +570,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   useEffect(() => {
     if (!hasLoaded) return;
 
+    let disposed = false;
+
+    const scheduleRetry = () => {
+      if (realtimeRetryTimerRef.current !== null) return;
+      realtimeRetryTimerRef.current = window.setTimeout(() => {
+        realtimeRetryTimerRef.current = null;
+        if (!disposed) {
+          setRealtimeRetryNonce((prev) => prev + 1);
+        }
+      }, 2500);
+    };
+
     const channelName = `whatsapp-realtime-${Date.now()}`;
     const channel = supabase
       .channel(channelName)
@@ -579,10 +591,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         (payload) => {
           const newMsg = payload.new as WhatsAppMessage;
 
-          // If filtering by instance, skip irrelevant messages
+          // If filtering by instance, skip irrelevant messages (case-insensitive)
           if (selectedInstanceId && selectedInstanceId !== 'all') {
             const inst = instances.find(i => i.id === selectedInstanceId);
-            if (inst && newMsg.instance_name !== inst.instance_name) return;
+            const selectedName = inst?.instance_name?.trim().toLowerCase();
+            const incomingName = (newMsg.instance_name || '').trim().toLowerCase();
+            if (selectedName && incomingName !== selectedName) return;
           }
 
           setMessages(prev => {
@@ -633,22 +647,39 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         }
       )
       .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.warn('Realtime channel error, will refetch on next interval');
+        if (status === 'SUBSCRIBED') {
+          setRealtimeHealthy(true);
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeHealthy(false);
+          console.warn(`Realtime channel status: ${status}, forcing refetch/reconnect`);
+          fetchMessages(true);
+          scheduleRetry();
         }
       });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [hasLoaded, selectedInstanceId, instances]);
+    return () => {
+      disposed = true;
+      if (realtimeRetryTimerRef.current !== null) {
+        window.clearTimeout(realtimeRetryTimerRef.current);
+        realtimeRetryTimerRef.current = null;
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [hasLoaded, selectedInstanceId, instances, fetchMessages, realtimeRetryNonce]);
 
-  // Fallback auto-refresh every 60s + refresh on tab visibility
+  // Fallback auto-refresh + refresh on tab visibility
   useEffect(() => {
     if (!hasLoaded) return;
+
+    const fallbackIntervalMs = realtimeHealthy ? AUTO_REFRESH_INTERVAL_MS : 15000;
 
     const intervalId = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       fetchMessages(true);
-    }, AUTO_REFRESH_INTERVAL_MS);
+    }, fallbackIntervalMs);
 
     // Refresh when tab becomes visible again (catches missed realtime events)
     const handleVisibility = () => {
@@ -662,7 +693,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [hasLoaded, fetchMessages, AUTO_REFRESH_INTERVAL_MS]);
+  }, [hasLoaded, fetchMessages, realtimeHealthy]);
 
   // Load all messages for a specific conversation (when selected)
   const fetchFullConversation = useCallback(async (phone: string) => {
