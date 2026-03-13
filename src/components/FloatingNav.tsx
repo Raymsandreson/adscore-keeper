@@ -6,7 +6,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown, LogOut, MessagesSquare,
+  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
@@ -234,8 +234,15 @@ export function FloatingNav() {
                 </div>
               ))}
 
-              {/* Sair */}
+              {/* Configurações e Sair */}
               <div className="border-t border-border/30">
+                <button
+                  onClick={() => handleNavigate('/settings')}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-accent/50"
+                >
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </button>
                 <button
                   onClick={handleSignOut}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10 font-medium"
