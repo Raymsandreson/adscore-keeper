@@ -500,6 +500,21 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         const todayStart = today + "T00:00:00";
         const todayEnd = today + "T23:59:59";
 
+        // Fetch user's evaluated_metrics from team_members
+        const { data: memberEntries } = await supabase
+          .from("team_members")
+          .select("evaluated_metrics")
+          .eq("user_id", targetUserId);
+        
+        // Union of all evaluated_metrics across all teams the user belongs to
+        const evaluatedMetrics = new Set<string>();
+        (memberEntries || []).forEach((m: any) => {
+          ((m.evaluated_metrics as string[]) || []).forEach((k: string) => evaluatedMetrics.add(k));
+        });
+        // If no metrics configured, show all by default
+        const showAll = evaluatedMetrics.size === 0;
+        const hasMetric = (key: string) => showAll || evaluatedMetrics.has(key);
+
         // Fetch ALL data sources in parallel
         const [
           overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes,
@@ -613,20 +628,20 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         let report = `📊 *Relatório de Produtividade*\n👤 *${targetName}*\n📅 ${today}\n\n`;
 
         // ── Today's Metrics ──
+        // ── Today's Metrics (filtered by evaluated_metrics) ──
         if (pr.report_type === "full" || pr.report_type === "feedback") {
           report += `📌 *Métricas de Hoje*\n`;
-          report += `  📞 Ligações: *${callsMade}*\n`;
-          report += `  💬 DMs enviadas: *${dmsSent}*\n`;
-          report += `  💬 DMs recebidas: *${dmsReceived}*\n`;
-          report += `  💬 Respostas (comentários): *${replies.length}*\n`;
-          report += `  👥 Contatos cadastrados: *${contacts.length}*\n`;
-          report += `  📋 Leads cadastrados: *${leadsCreated.length}*\n`;
-          report += `  🔄 Mudanças de fase: *${stageHistory.length}*\n`;
-          report += `  📈 Leads progredidos: *${uniqueLeadsProgressed}*\n`;
-          report += `  🏆 Leads fechados: *${leadsClosed}*\n`;
-          report += `  ✅ Atividades concluídas: *${completedToday.length}*\n`;
-          report += `  ☑️ Checklist marcados: *${checklistChecked}*\n`;
-          report += `  📑 Followups: *${followups.length}*\n`;
+          if (hasMetric("calls")) report += `  📞 Ligações: *${callsMade}*\n`;
+          if (hasMetric("dms")) report += `  💬 DMs enviadas: *${dmsSent}*\n`;
+          if (hasMetric("dms")) report += `  💬 DMs recebidas: *${dmsReceived}*\n`;
+          if (hasMetric("replies")) report += `  💬 Respostas (comentários): *${replies.length}*\n`;
+          if (hasMetric("contacts")) report += `  👥 Contatos cadastrados: *${contacts.length}*\n`;
+          if (hasMetric("leads")) report += `  📋 Leads cadastrados: *${leadsCreated.length}*\n`;
+          if (hasMetric("stage_changes")) report += `  🔄 Mudanças de fase: *${stageHistory.length}*\n`;
+          if (hasMetric("stage_changes")) report += `  📈 Leads progredidos: *${uniqueLeadsProgressed}*\n`;
+          if (hasMetric("leads_closed")) report += `  🏆 Leads fechados: *${leadsClosed}*\n`;
+          if (hasMetric("activities")) report += `  ✅ Atividades concluídas: *${completedToday.length}*\n`;
+          if (hasMetric("checklist_items")) report += `  ☑️ Checklist marcados: *${checklistChecked}*\n`;
           report += "\n";
         }
 
@@ -675,12 +690,19 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
           report += `💡 *Pontos de Atenção*\n`;
           if (overdue.length > 3) report += `  🔴 Muitas tarefas atrasadas (${overdue.length}). Priorize as mais urgentes.\n`;
           if (overdue.length === 0 && completedToday.length > 0) report += `  🟢 Excelente! Sem atrasos e com entregas hoje.\n`;
-          if (totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje (${Math.round(totalSessionMinutes)} min).\n`;
+          if (hasMetric("session_minutes") && totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje (${Math.round(totalSessionMinutes)} min).\n`;
           if (avgProgress < 50 && snapshots.length > 5) report += `  🟠 Progresso médio abaixo de 50%. Revise prioridades.\n`;
           if (daysAchieved > snapshots.length * 0.7) report += `  🌟 Ótima consistência! Metas batidas em ${daysAchieved}/${snapshots.length} dias.\n`;
-          if (dmsSent === 0 && callsMade === 0 && contacts.length === 0) report += `  🟡 Nenhuma ação de prospecção registrada hoje.\n`;
-          if (callsMade >= 5) report += `  🟢 Bom volume de ligações hoje (${callsMade}).\n`;
-          if (dmsSent >= 10) report += `  🟢 Bom volume de DMs enviadas (${dmsSent}).\n`;
+          const noProspecting = (!hasMetric("dms") || dmsSent === 0) && (!hasMetric("calls") || callsMade === 0) && (!hasMetric("contacts") || contacts.length === 0);
+          if (noProspecting && (hasMetric("dms") || hasMetric("calls") || hasMetric("contacts"))) report += `  🟡 Nenhuma ação de prospecção registrada hoje.\n`;
+          if (hasMetric("calls") && callsMade >= 5) report += `  🟢 Bom volume de ligações hoje (${callsMade}).\n`;
+          if (hasMetric("dms") && dmsSent >= 10) report += `  🟢 Bom volume de DMs enviadas (${dmsSent}).\n`;
+          
+          if (!showAll) {
+            const metricLabels: Record<string, string> = { replies: "Respostas", dms: "DMs", leads: "Leads", session_minutes: "Tempo de sessão", contacts: "Contatos", calls: "Ligações", activities: "Atividades", stage_changes: "Fases", leads_closed: "Fechados", checklist_items: "Passos" };
+            const activeList = Array.from(evaluatedMetrics).map(k => metricLabels[k] || k).join(", ");
+            report += `\n📋 _Métricas avaliadas: ${activeList}_\n`;
+          }
         }
 
         toolData.productivity_report = {
