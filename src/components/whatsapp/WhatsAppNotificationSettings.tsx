@@ -1,0 +1,356 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays } from 'lucide-react';
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: 'Dom' },
+  { value: 1, label: 'Seg' },
+  { value: 2, label: 'Ter' },
+  { value: 3, label: 'Qua' },
+  { value: 4, label: 'Qui' },
+  { value: 5, label: 'Sex' },
+  { value: 6, label: 'Sáb' },
+];
+
+interface NotificationConfig {
+  id?: string;
+  is_active: boolean;
+  name: string;
+  instance_name: string;
+  recipient_phones: string[];
+  notify_overdue_tasks: boolean;
+  notify_goal_progress: boolean;
+  notify_daily_summary: boolean;
+  notify_weekly_summary: boolean;
+  notify_session_reminder: boolean;
+  schedule_times: string[];
+  schedule_days: number[];
+  overdue_threshold_hours: number;
+  goal_alert_percent: number;
+}
+
+const DEFAULT_CONFIG: NotificationConfig = {
+  is_active: true,
+  name: 'Notificações Gerais',
+  instance_name: '',
+  recipient_phones: [],
+  notify_overdue_tasks: true,
+  notify_goal_progress: true,
+  notify_daily_summary: true,
+  notify_weekly_summary: false,
+  notify_session_reminder: false,
+  schedule_times: ['08:00', '18:00'],
+  schedule_days: [1, 2, 3, 4, 5],
+  overdue_threshold_hours: 24,
+  goal_alert_percent: 50,
+};
+
+export function WhatsAppNotificationSettings() {
+  const [config, setConfig] = useState<NotificationConfig>(DEFAULT_CONFIG);
+  const [instances, setInstances] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [newPhone, setNewPhone] = useState('');
+  const [newTime, setNewTime] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [instRes, configRes] = await Promise.all([
+      supabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
+      supabase.from('whatsapp_notification_config').select('*').limit(1).maybeSingle(),
+    ]);
+    setInstances(instRes.data || []);
+    if (configRes.data) {
+      setConfig({
+        id: configRes.data.id,
+        is_active: configRes.data.is_active ?? true,
+        name: configRes.data.name || 'Notificações Gerais',
+        instance_name: configRes.data.instance_name || '',
+        recipient_phones: configRes.data.recipient_phones || [],
+        notify_overdue_tasks: configRes.data.notify_overdue_tasks ?? true,
+        notify_goal_progress: configRes.data.notify_goal_progress ?? true,
+        notify_daily_summary: configRes.data.notify_daily_summary ?? true,
+        notify_weekly_summary: configRes.data.notify_weekly_summary ?? false,
+        notify_session_reminder: configRes.data.notify_session_reminder ?? false,
+        schedule_times: configRes.data.schedule_times || ['08:00', '18:00'],
+        schedule_days: configRes.data.schedule_days || [1, 2, 3, 4, 5],
+        overdue_threshold_hours: configRes.data.overdue_threshold_hours ?? 24,
+        goal_alert_percent: configRes.data.goal_alert_percent ?? 50,
+      });
+    }
+    setLoading(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        is_active: config.is_active,
+        name: config.name,
+        instance_name: config.instance_name || null,
+        recipient_phones: config.recipient_phones,
+        notify_overdue_tasks: config.notify_overdue_tasks,
+        notify_goal_progress: config.notify_goal_progress,
+        notify_daily_summary: config.notify_daily_summary,
+        notify_weekly_summary: config.notify_weekly_summary,
+        notify_session_reminder: config.notify_session_reminder,
+        schedule_times: config.schedule_times,
+        schedule_days: config.schedule_days,
+        overdue_threshold_hours: config.overdue_threshold_hours,
+        goal_alert_percent: config.goal_alert_percent,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (config.id) {
+        const { error } = await supabase.from('whatsapp_notification_config').update(payload).eq('id', config.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from('whatsapp_notification_config').insert(payload).select('id').single();
+        if (error) throw error;
+        setConfig(prev => ({ ...prev, id: data.id }));
+      }
+      toast.success('Configurações salvas!');
+    } catch (e: any) {
+      toast.error('Erro ao salvar: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addPhone = () => {
+    const cleaned = newPhone.replace(/\D/g, '');
+    if (cleaned.length >= 10 && !config.recipient_phones.includes(cleaned)) {
+      setConfig(prev => ({ ...prev, recipient_phones: [...prev.recipient_phones, cleaned] }));
+      setNewPhone('');
+    }
+  };
+
+  const removePhone = (phone: string) => {
+    setConfig(prev => ({ ...prev, recipient_phones: prev.recipient_phones.filter(p => p !== phone) }));
+  };
+
+  const addTime = () => {
+    if (newTime && !config.schedule_times.includes(newTime)) {
+      setConfig(prev => ({ ...prev, schedule_times: [...prev.schedule_times, newTime].sort() }));
+      setNewTime('');
+    }
+  };
+
+  const removeTime = (time: string) => {
+    setConfig(prev => ({ ...prev, schedule_times: prev.schedule_times.filter(t => t !== time) }));
+  };
+
+  const toggleDay = (day: number) => {
+    setConfig(prev => ({
+      ...prev,
+      schedule_days: prev.schedule_days.includes(day)
+        ? prev.schedule_days.filter(d => d !== day)
+        : [...prev.schedule_days, day].sort(),
+    }));
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Master toggle */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" />
+                Notificações Ativas
+              </CardTitle>
+              <CardDescription>Ative para receber notificações automáticas via WhatsApp</CardDescription>
+            </div>
+            <Switch
+              checked={config.is_active}
+              onCheckedChange={(v) => setConfig(prev => ({ ...prev, is_active: v }))}
+            />
+          </div>
+        </CardHeader>
+      </Card>
+
+      {/* Instance & Recipients */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">📱 Instância e Destinatários</CardTitle>
+          <CardDescription>Escolha qual instância enviará as notificações e para quem</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Instância de envio</Label>
+            <Select value={config.instance_name} onValueChange={(v) => setConfig(prev => ({ ...prev, instance_name: v }))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma instância..." />
+              </SelectTrigger>
+              <SelectContent>
+                {instances.map((inst) => (
+                  <SelectItem key={inst.instance_name} value={inst.instance_name}>
+                    {inst.instance_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Telefones destinatários</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="5586999999999"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addPhone()}
+              />
+              <Button size="sm" variant="outline" onClick={addPhone}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {config.recipient_phones.map((phone) => (
+                <Badge key={phone} variant="secondary" className="gap-1">
+                  {phone}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => removePhone(phone)} />
+                </Badge>
+              ))}
+              {config.recipient_phones.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhum destinatário adicionado</p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notification Types */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">📋 Tipos de Notificação</CardTitle>
+          <CardDescription>Selecione quais notificações deseja receber</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[
+            { key: 'notify_overdue_tasks', icon: <AlertTriangle className="h-4 w-4 text-red-500" />, label: 'Tarefas Atrasadas', desc: 'Aviso quando há atividades vencidas' },
+            { key: 'notify_goal_progress', icon: <Target className="h-4 w-4 text-blue-500" />, label: 'Progresso de Metas', desc: 'Acompanhamento de metas diárias e mensais' },
+            { key: 'notify_daily_summary', icon: <CalendarDays className="h-4 w-4 text-green-500" />, label: 'Resumo Diário', desc: 'Relatório com produtividade do dia' },
+            { key: 'notify_weekly_summary', icon: <CalendarDays className="h-4 w-4 text-purple-500" />, label: 'Resumo Semanal', desc: 'Relatório consolidado da semana' },
+            { key: 'notify_session_reminder', icon: <Clock className="h-4 w-4 text-orange-500" />, label: 'Lembrete de Sessão', desc: 'Aviso quando trabalhador está offline há muito tempo' },
+          ].map(({ key, icon, label, desc }) => (
+            <div key={key} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
+              <div className="flex items-center gap-3">
+                {icon}
+                <div>
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              </div>
+              <Switch
+                checked={(config as any)[key]}
+                onCheckedChange={(v) => setConfig(prev => ({ ...prev, [key]: v }))}
+              />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Schedule */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">⏰ Horários de Envio</CardTitle>
+          <CardDescription>Defina quando as notificações serão enviadas</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Horários</Label>
+            <div className="flex gap-2">
+              <Input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)} />
+              <Button size="sm" variant="outline" onClick={addTime}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {config.schedule_times.map((time) => (
+                <Badge key={time} variant="outline" className="gap-1 text-sm">
+                  🕐 {time}
+                  <X className="h-3 w-3 cursor-pointer" onClick={() => removeTime(time)} />
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dias da semana</Label>
+            <div className="flex gap-1.5">
+              {DAYS_OF_WEEK.map(({ value, label }) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  variant={config.schedule_days.includes(value) ? 'default' : 'outline'}
+                  className="h-9 w-11 text-xs"
+                  onClick={() => toggleDay(value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Thresholds */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">⚙️ Parâmetros</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Atraso mínimo para alerta (horas)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={config.overdue_threshold_hours}
+                onChange={(e) => setConfig(prev => ({ ...prev, overdue_threshold_hours: parseInt(e.target.value) || 24 }))}
+              />
+              <p className="text-xs text-muted-foreground">Notificar quando tarefa estiver atrasada há mais de X horas</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Alerta de meta abaixo de (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={config.goal_alert_percent}
+                onChange={(e) => setConfig(prev => ({ ...prev, goal_alert_percent: parseInt(e.target.value) || 50 }))}
+              />
+              <p className="text-xs text-muted-foreground">Alertar quando progresso da meta estiver abaixo deste percentual</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Save button */}
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Salvar Configurações
+        </Button>
+      </div>
+    </div>
+  );
+}
