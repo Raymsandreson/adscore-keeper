@@ -1,5 +1,5 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,11 +13,6 @@ serve(async (req) => {
 
   try {
     const { goal, history } = await req.json();
-    const apiKey = Deno.env.get('LOVABLE_API_KEY');
-
-    if (!apiKey) {
-      throw new Error('API key não configurada');
-    }
 
     const systemPrompt = `Você é um especialista em marketing digital e growth hacking. Sua tarefa é analisar metas de marketing e fornecer sugestões práticas e acionáveis para ajudar a atingi-las.
 
@@ -56,29 +51,16 @@ FORMATO DA RESPOSTA (use markdown):
 ## ⚠️ Pontos de Atenção
 [Se houver riscos ou alertas baseados no histórico]`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Por favor, analise minha meta "${goal.title}" e me dê sugestões para atingi-la.` }
-        ],
-        max_tokens: 1500,
-      }),
+    const result = await geminiChat({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Por favor, analise minha meta "${goal.title}" e me dê sugestões para atingi-la.` }
+      ],
+      max_tokens: 1500,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Erro na API: ${error}`);
-    }
-
-    const data = await response.json();
-    const suggestion = data.choices[0]?.message?.content || 'Não foi possível gerar sugestões.';
+    const suggestion = result.choices[0]?.message?.content || 'Não foi possível gerar sugestões.';
 
     return new Response(
       JSON.stringify({ suggestion }),
