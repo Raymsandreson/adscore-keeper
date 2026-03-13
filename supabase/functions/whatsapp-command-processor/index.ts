@@ -166,9 +166,13 @@ serve(async (req) => {
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
 2. Criar leads (new_lead)
-3. Buscar informações sobre leads e atividades (search_info)
+3. Buscar informações sobre leads, atividades e contatos (search_info)
 4. Atualizar status de atividades (update_activity)
-5. Responder perguntas sobre o sistema
+5. Gerar relatórios de produtividade (productivity_report)
+6. Consultar metas e progresso de cada trabalhador
+7. Dar feedback sobre desempenho individual ou da equipe
+8. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
+9. Responder perguntas sobre o sistema
 
 ASSESSORES CADASTRADOS:
 ${assessorsList}
@@ -195,6 +199,15 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
+
+RELATÓRIOS E PRODUTIVIDADE:
+- Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
+- Você pode consultar: tarefas atrasadas, metas definidas vs atingidas, tempo online, ranking da equipe
+- Se perguntarem sobre "mim" ou "eu", use o user_id do assessor atual
+- Se perguntarem sobre outra pessoa, identifique pelo nome na lista de assessores
+- Formate o relatório de forma clara com seções e emojis
+- Inclua pontos de melhoria e sugestões quando relevante
+- Compare metas definidas com progresso atual
 
 EXEMPLO DE RESPOSTA BOA:
 Usuário: "criar tarefa teste para amanhã"
