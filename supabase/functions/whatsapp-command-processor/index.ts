@@ -25,8 +25,37 @@ serve(async (req) => {
 
     // 1) Check if this phone is authorized for commands
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
-    // Try with full phone and without country code
-    const phoneVariants = Array.from(new Set([normalizedPhone, normalizedPhone.replace(/^55/, "")].filter(Boolean)));
+
+    const buildPhoneVariants = (rawPhone: string) => {
+      const digits = (rawPhone || "").replace(/\D/g, "").replace(/^0+/, "");
+      if (!digits) return [] as string[];
+
+      const variants = new Set<string>();
+      const add = (value?: string) => {
+        if (value) variants.add(value);
+      };
+
+      add(digits);
+      const local = digits.startsWith("55") ? digits.slice(2) : digits;
+      add(local);
+
+      // Brasil: alguns provedores enviam celular sem o 9 após DDD
+      if (local.length === 10) {
+        const withNine = `${local.slice(0, 2)}9${local.slice(2)}`;
+        add(withNine);
+        add(`55${withNine}`);
+      }
+
+      if (local.length === 11 && local[2] === "9") {
+        const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`;
+        add(withoutNine);
+        add(`55${withoutNine}`);
+      }
+
+      return Array.from(variants);
+    };
+
+    const phoneVariants = buildPhoneVariants(normalizedPhone);
     let config: any = null;
     for (const variant of phoneVariants) {
       const { data } = await supabase
@@ -196,7 +225,42 @@ REGRAS:
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI error:", aiResponse.status, errText);
-      throw new Error(`AI gateway error: ${aiResponse.status}`);
+
+      const fallbackText = aiResponse.status === 402
+        ? "⚠️ Estou sem créditos de IA no momento. Assim que recarregar os créditos do workspace, volto a executar seus comandos."
+        : aiResponse.status === 429
+          ? "⏳ Estou recebendo muitos pedidos agora. Tente novamente em instantes."
+          : "⚠️ Tive um erro temporário ao processar seu comando. Tente novamente em alguns minutos.";
+
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone,
+        instance_name,
+        role: "assistant",
+        content: fallbackText,
+        tool_data: { error_status: aiResponse.status },
+      });
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (inst?.instance_token) {
+        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+        await fetch(`${baseUrl}/send/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", token: inst.instance_token },
+          body: JSON.stringify({
+            number: normalizedPhone,
+            text: `🤖 *WhatsJUD IA*\n\n${fallbackText}`,
+          }),
+        }).catch((sendErr) => console.error("Error sending AI fallback response:", sendErr));
+      }
+
+      return new Response(JSON.stringify({ success: false, error: fallbackText, status: aiResponse.status }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const aiData = await aiResponse.json();

@@ -1158,8 +1158,37 @@ Deno.serve(async (req) => {
     // Also handle self-chat (messages to own number show as outbound/fromMe)
     if (instanceName && phone && (direction === 'inbound' || direction === 'outbound')) {
       try {
-        // Compare with phone variants (with and without country code)
-        const cmdPhoneVariants = Array.from(new Set([phone, phone.replace(/^55/, '')].filter(Boolean)))
+        // Compare with normalized phone variants (with/without country code and optional mobile 9)
+        const buildPhoneVariants = (rawPhone: string) => {
+          const digits = (rawPhone || '').replace(/\D/g, '').replace(/^0+/, '')
+          if (!digits) return [] as string[]
+
+          const variants = new Set<string>()
+          const add = (value?: string) => {
+            if (value) variants.add(value)
+          }
+
+          add(digits)
+          const local = digits.startsWith('55') ? digits.slice(2) : digits
+          add(local)
+
+          // Brasil: alguns eventos chegam sem o 9 após DDD
+          if (local.length === 10) {
+            const withNine = `${local.slice(0, 2)}9${local.slice(2)}`
+            add(withNine)
+            add(`55${withNine}`)
+          }
+
+          if (local.length === 11 && local[2] === '9') {
+            const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`
+            add(withoutNine)
+            add(`55${withoutNine}`)
+          }
+
+          return Array.from(variants)
+        }
+
+        const cmdPhoneVariants = buildPhoneVariants(phone)
         let cmdConfig: any = null
         for (const variant of cmdPhoneVariants) {
           const { data } = await supabase
