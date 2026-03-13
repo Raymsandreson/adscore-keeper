@@ -152,6 +152,53 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, [instances]);
 
+  const processMessages = useCallback((msgs: WhatsAppMessage[], silent: boolean) => {
+    setMessages(msgs);
+
+    const convMap = new Map<string, WhatsAppConversation>();
+
+    for (const msg of msgs) {
+      const existing = convMap.get(msg.phone);
+      if (!existing) {
+        convMap.set(msg.phone, {
+          phone: msg.phone,
+          contact_name: msg.contact_name,
+          contact_id: msg.contact_id,
+          lead_id: msg.lead_id,
+          last_message: msg.message_text,
+          last_message_at: msg.created_at,
+          unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
+          messages: [msg],
+          instance_name: msg.instance_name,
+        });
+      } else {
+        const msgId = msg.external_message_id?.split(':').pop();
+        const isDuplicate = msgId && existing.messages.some(m => {
+          const existingMsgId = m.external_message_id?.split(':').pop();
+          return existingMsgId === msgId && m.created_at === msg.created_at;
+        });
+        if (!isDuplicate) {
+          existing.messages.push(msg);
+          if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
+        }
+        if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
+        if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
+        if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+      }
+    }
+
+    const convList = Array.from(convMap.values())
+      .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+
+    conversationsRef.current = convList;
+    setConversations(convList);
+    setHasLoaded(true);
+
+    if (!silent) {
+      toast.success(`${convList.length} conversas carregadas`);
+    }
+  }, []);
+
   const fetchMessages = useCallback(async (silent = false) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
@@ -178,68 +225,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         processMessages(data as WhatsAppMessage[], silent);
-        return;
-      }
+      } else {
+        const inst = instances.find(i => i.id === selectedInstanceId);
+        let query = supabase
+          .from('whatsapp_messages')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(2000);
 
-      const inst = instances.find(i => i.id === selectedInstanceId);
-      let query = supabase
-        .from('whatsapp_messages')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(2000);
-
-      if (inst) {
-        query = query.eq('instance_name', inst.instance_name);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const msgs = (data || []) as WhatsAppMessage[];
-      setMessages(msgs);
-
-      const convMap = new Map<string, WhatsAppConversation>();
-
-      for (const msg of msgs) {
-        const existing = convMap.get(msg.phone);
-        if (!existing) {
-          convMap.set(msg.phone, {
-            phone: msg.phone,
-            contact_name: msg.contact_name,
-            contact_id: msg.contact_id,
-            lead_id: msg.lead_id,
-            last_message: msg.message_text,
-            last_message_at: msg.created_at,
-            unread_count: !msg.read_at && msg.direction === 'inbound' ? 1 : 0,
-            messages: [msg],
-            instance_name: msg.instance_name,
-          });
-        } else {
-          // Deduplicate group messages: same messageid from different instances
-          const msgId = msg.external_message_id?.split(':').pop();
-          const isDuplicate = msgId && existing.messages.some(m => {
-            const existingMsgId = m.external_message_id?.split(':').pop();
-            return existingMsgId === msgId && m.created_at === msg.created_at;
-          });
-          if (!isDuplicate) {
-            existing.messages.push(msg);
-            if (!msg.read_at && msg.direction === 'inbound') existing.unread_count++;
-          }
-          if (!existing.contact_name && msg.contact_name) existing.contact_name = msg.contact_name;
-          if (!existing.contact_id && msg.contact_id) existing.contact_id = msg.contact_id;
-          if (!existing.lead_id && msg.lead_id) existing.lead_id = msg.lead_id;
+        if (inst) {
+          query = query.eq('instance_name', inst.instance_name);
         }
-      }
 
-      const convList = Array.from(convMap.values())
-        .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-
-      conversationsRef.current = convList;
-      setConversations(convList);
-      setHasLoaded(true);
-
-      if (!silent) {
-        toast.success(`${convList.length} conversas carregadas`);
+        const { data, error } = await query;
+        if (error) throw error;
+        processMessages((data || []) as WhatsAppMessage[], silent);
       }
     } catch (error) {
       console.error('Error fetching WhatsApp messages:', error);
@@ -250,7 +250,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       isFetchingRef.current = false;
       if (!silent) setLoading(false);
     }
-  }, [instances, selectedInstanceId]);
+  }, [instances, selectedInstanceId, processMessages]);
 
   const sendMessage = async (
     phone: string,
