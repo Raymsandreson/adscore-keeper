@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
-import { useUserRole } from "@/hooks/useUserRole";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -36,7 +35,6 @@ interface NavSection {
 export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin } = useUserRole();
   const { user, signOut } = useAuthContext();
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
