@@ -89,7 +89,7 @@ interface Props {
   initialTab?: string;
 }
 
-export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
+export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
   return (
