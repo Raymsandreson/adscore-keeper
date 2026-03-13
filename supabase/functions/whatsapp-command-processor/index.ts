@@ -173,7 +173,8 @@ VOCÊ PODE:
 ASSESSORES CADASTRADOS:
 ${assessorsList}
 
-TIPOS DE ATIVIDADE DISPONÍVEIS: ${actTypesList}
+TIPOS DE ATIVIDADE (USE EXATAMENTE ESTAS KEYS): ${actTypesList}
+IMPORTANTE: Use SEMPRE a key exata (ex: "tarefa", "audiencia"). Nunca invente tipos novos.
 
 QUADROS KANBAN:
 ${boardsList}
@@ -361,11 +362,18 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
           if (leads?.[0]) leadId = leads[0].id;
         }
 
+        // Validate activity_type against known keys (case-insensitive match)
+        let validatedType = "tarefa";
+        if (act.activity_type) {
+          const match = actTypeKeys.find((k: string) => k.toLowerCase() === act.activity_type.toLowerCase());
+          validatedType = match || "tarefa";
+        }
+
         const { data: newAct, error: actErr } = await supabase
           .from("lead_activities")
           .insert({
             title: act.title,
-            activity_type: act.activity_type || "tarefa",
+            activity_type: validatedType,
             priority: act.priority || "normal",
             status: "pendente",
             assigned_to: act.assigned_to || config.user_id,
