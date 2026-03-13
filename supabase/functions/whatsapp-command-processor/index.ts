@@ -173,7 +173,8 @@ VOCÊ PODE:
 ASSESSORES CADASTRADOS:
 ${assessorsList}
 
-TIPOS DE ATIVIDADE DISPONÍVEIS: ${actTypesList}
+TIPOS DE ATIVIDADE (USE EXATAMENTE ESTAS KEYS): ${actTypesList}
+IMPORTANTE: Use SEMPRE a key exata (ex: "tarefa", "audiencia"). Nunca invente tipos novos.
 
 QUADROS KANBAN:
 ${boardsList}
