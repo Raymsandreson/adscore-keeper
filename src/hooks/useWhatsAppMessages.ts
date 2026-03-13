@@ -159,17 +159,37 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     if (!silent) setLoading(true);
 
     try {
+      // When viewing all instances, fetch per-instance to avoid one busy instance
+      // pushing out messages from quieter ones
+      if (!selectedInstanceId || selectedInstanceId === 'all') {
+        const perInstanceLimit = Math.max(500, Math.floor(2000 / Math.max(instances.length, 1)));
+        const allResults = await Promise.all(
+          instances.map(inst =>
+            supabase
+              .from('whatsapp_messages')
+              .select('*')
+              .eq('instance_name', inst.instance_name)
+              .order('created_at', { ascending: false })
+              .limit(perInstanceLimit)
+              .then(r => r.data || [])
+          )
+        );
+        const data = allResults.flat().sort((a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        processMessages(data as WhatsAppMessage[], silent);
+        return;
+      }
+
+      const inst = instances.find(i => i.id === selectedInstanceId);
       let query = supabase
         .from('whatsapp_messages')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(2000);
 
-      if (selectedInstanceId && selectedInstanceId !== 'all') {
-        const inst = instances.find(i => i.id === selectedInstanceId);
-        if (inst) {
-          query = query.eq('instance_name', inst.instance_name);
-        }
+      if (inst) {
+        query = query.eq('instance_name', inst.instance_name);
       }
 
       const { data, error } = await query;
