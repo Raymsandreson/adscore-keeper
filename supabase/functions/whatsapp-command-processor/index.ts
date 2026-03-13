@@ -690,12 +690,19 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
           report += `💡 *Pontos de Atenção*\n`;
           if (overdue.length > 3) report += `  🔴 Muitas tarefas atrasadas (${overdue.length}). Priorize as mais urgentes.\n`;
           if (overdue.length === 0 && completedToday.length > 0) report += `  🟢 Excelente! Sem atrasos e com entregas hoje.\n`;
-          if (totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje (${Math.round(totalSessionMinutes)} min).\n`;
+          if (hasMetric("session_minutes") && totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje (${Math.round(totalSessionMinutes)} min).\n`;
           if (avgProgress < 50 && snapshots.length > 5) report += `  🟠 Progresso médio abaixo de 50%. Revise prioridades.\n`;
           if (daysAchieved > snapshots.length * 0.7) report += `  🌟 Ótima consistência! Metas batidas em ${daysAchieved}/${snapshots.length} dias.\n`;
-          if (dmsSent === 0 && callsMade === 0 && contacts.length === 0) report += `  🟡 Nenhuma ação de prospecção registrada hoje.\n`;
-          if (callsMade >= 5) report += `  🟢 Bom volume de ligações hoje (${callsMade}).\n`;
-          if (dmsSent >= 10) report += `  🟢 Bom volume de DMs enviadas (${dmsSent}).\n`;
+          const noProspecting = (!hasMetric("dms") || dmsSent === 0) && (!hasMetric("calls") || callsMade === 0) && (!hasMetric("contacts") || contacts.length === 0);
+          if (noProspecting && (hasMetric("dms") || hasMetric("calls") || hasMetric("contacts"))) report += `  🟡 Nenhuma ação de prospecção registrada hoje.\n`;
+          if (hasMetric("calls") && callsMade >= 5) report += `  🟢 Bom volume de ligações hoje (${callsMade}).\n`;
+          if (hasMetric("dms") && dmsSent >= 10) report += `  🟢 Bom volume de DMs enviadas (${dmsSent}).\n`;
+          
+          if (!showAll) {
+            const metricLabels: Record<string, string> = { replies: "Respostas", dms: "DMs", leads: "Leads", session_minutes: "Tempo de sessão", contacts: "Contatos", calls: "Ligações", activities: "Atividades", stage_changes: "Fases", leads_closed: "Fechados", checklist_items: "Passos" };
+            const activeList = Array.from(evaluatedMetrics).map(k => metricLabels[k] || k).join(", ");
+            report += `\n📋 _Métricas avaliadas: ${activeList}_\n`;
+          }
         }
 
         toolData.productivity_report = {
