@@ -263,6 +263,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         processMessages(data as WhatsAppMessage[], silent);
       } else {
         const inst = instances.find(i => i.id === selectedInstanceId);
+
+        if (inst) {
+          await syncRecentMessages(inst, !realtimeHealthy);
+        }
+
         let query = supabase
           .from('whatsapp_messages')
           .select('*')
