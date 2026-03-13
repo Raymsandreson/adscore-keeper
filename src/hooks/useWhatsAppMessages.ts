@@ -69,6 +69,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
   const [realtimeHealthy, setRealtimeHealthy] = useState(true);
   const [realtimeRetryNonce, setRealtimeRetryNonce] = useState(0);
   const realtimeRetryTimerRef = useRef<number | null>(null);
+  const syncInFlightRef = useRef(false);
+  const lastSyncAtRef = useRef<Record<string, number>>({});
 
   const AUTO_REFRESH_INTERVAL_MS = 60000; // 1 min fallback polling
 
@@ -202,6 +204,37 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
     }
   }, []);
 
+  const syncRecentMessages = useCallback(async (instance?: WhatsAppInstance | null, force = false) => {
+    if (!instance?.id) return;
+    const now = Date.now();
+    const lastSyncAt = lastSyncAtRef.current[instance.id] || 0;
+
+    // Avoid excessive provider pulls unless realtime is degraded
+    if (!force && now - lastSyncAt < 45000) return;
+    if (syncInFlightRef.current) return;
+
+    syncInFlightRef.current = true;
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-whatsapp-recent', {
+        body: {
+          instance_id: instance.id,
+          max_chats: 80,
+        },
+      });
+
+      if (error) throw error;
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Sync failed');
+      }
+
+      lastSyncAtRef.current[instance.id] = now;
+    } catch (err) {
+      console.warn('Error syncing recent WhatsApp messages:', err);
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  }, []);
+
   const fetchMessages = useCallback(async (silent = false) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
@@ -230,6 +263,11 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
         processMessages(data as WhatsAppMessage[], silent);
       } else {
         const inst = instances.find(i => i.id === selectedInstanceId);
+
+        if (inst) {
+          await syncRecentMessages(inst, !realtimeHealthy);
+        }
+
         let query = supabase
           .from('whatsapp_messages')
           .select('*')
@@ -253,7 +291,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       isFetchingRef.current = false;
       if (!silent) setLoading(false);
     }
-  }, [instances, selectedInstanceId, processMessages]);
+  }, [instances, selectedInstanceId, processMessages, syncRecentMessages, realtimeHealthy]);
 
   const sendMessage = async (
     phone: string,
