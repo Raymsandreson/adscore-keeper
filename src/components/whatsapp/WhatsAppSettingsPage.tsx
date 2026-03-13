@@ -197,6 +197,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
               </p>
             </div>
 
+            {activeTab === 'instances' && <WhatsAppInstanceManager />}
             {activeTab === 'agents' && <WhatsAppAIAgents />}
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
