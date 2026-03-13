@@ -289,7 +289,7 @@ export function FloatingNav() {
               {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
-            {/* Search button */}
+            {/* Search button - hidden on small screens */}
             <button
               onClick={() => {
                 setMenuOpen(false);
@@ -297,7 +297,7 @@ export function FloatingNav() {
                 document.dispatchEvent(event);
               }}
               title="Buscar"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
+              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
             >
               <Search className="h-5 w-5" />
             </button>
@@ -330,14 +330,14 @@ export function FloatingNav() {
               <Bot className="h-5 w-5" />
             </button>
 
-            {/* Mentions button */}
+            {/* Mentions button - hidden on small screens */}
             <button
               onClick={() => {
                 setMentionsOpen(true);
                 setMenuOpen(false);
               }}
               title="Menções"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
+              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
             >
               <AtSign className="h-5 w-5" />
               {unreadMentions > 0 && (
@@ -347,7 +347,7 @@ export function FloatingNav() {
               )}
             </button>
 
-            {/* Update button */}
+            {/* Update button - hidden on small screens */}
             <button
               onClick={async () => {
                 if (hasUpdate) {
@@ -368,10 +368,10 @@ export function FloatingNav() {
               }}
               title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
               className={cn(
-                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+                "h-11 w-11 rounded-full items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
                 hasUpdate
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
-                  : "bg-muted text-muted-foreground hover:bg-accent"
+                  ? "flex bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+                  : "hidden sm:flex bg-muted text-muted-foreground hover:bg-accent"
               )}
             >
               <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
