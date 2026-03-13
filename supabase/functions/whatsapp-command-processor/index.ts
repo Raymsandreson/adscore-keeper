@@ -628,20 +628,20 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         let report = `📊 *Relatório de Produtividade*\n👤 *${targetName}*\n📅 ${today}\n\n`;
 
         // ── Today's Metrics ──
+        // ── Today's Metrics (filtered by evaluated_metrics) ──
         if (pr.report_type === "full" || pr.report_type === "feedback") {
           report += `📌 *Métricas de Hoje*\n`;
-          report += `  📞 Ligações: *${callsMade}*\n`;
-          report += `  💬 DMs enviadas: *${dmsSent}*\n`;
-          report += `  💬 DMs recebidas: *${dmsReceived}*\n`;
-          report += `  💬 Respostas (comentários): *${replies.length}*\n`;
-          report += `  👥 Contatos cadastrados: *${contacts.length}*\n`;
-          report += `  📋 Leads cadastrados: *${leadsCreated.length}*\n`;
-          report += `  🔄 Mudanças de fase: *${stageHistory.length}*\n`;
-          report += `  📈 Leads progredidos: *${uniqueLeadsProgressed}*\n`;
-          report += `  🏆 Leads fechados: *${leadsClosed}*\n`;
-          report += `  ✅ Atividades concluídas: *${completedToday.length}*\n`;
-          report += `  ☑️ Checklist marcados: *${checklistChecked}*\n`;
-          report += `  📑 Followups: *${followups.length}*\n`;
+          if (hasMetric("calls")) report += `  📞 Ligações: *${callsMade}*\n`;
+          if (hasMetric("dms")) report += `  💬 DMs enviadas: *${dmsSent}*\n`;
+          if (hasMetric("dms")) report += `  💬 DMs recebidas: *${dmsReceived}*\n`;
+          if (hasMetric("replies")) report += `  💬 Respostas (comentários): *${replies.length}*\n`;
+          if (hasMetric("contacts")) report += `  👥 Contatos cadastrados: *${contacts.length}*\n`;
+          if (hasMetric("leads")) report += `  📋 Leads cadastrados: *${leadsCreated.length}*\n`;
+          if (hasMetric("stage_changes")) report += `  🔄 Mudanças de fase: *${stageHistory.length}*\n`;
+          if (hasMetric("stage_changes")) report += `  📈 Leads progredidos: *${uniqueLeadsProgressed}*\n`;
+          if (hasMetric("leads_closed")) report += `  🏆 Leads fechados: *${leadsClosed}*\n`;
+          if (hasMetric("activities")) report += `  ✅ Atividades concluídas: *${completedToday.length}*\n`;
+          if (hasMetric("checklist_items")) report += `  ☑️ Checklist marcados: *${checklistChecked}*\n`;
           report += "\n";
         }
 
