@@ -330,14 +330,14 @@ export function FloatingNav() {
               <Bot className="h-5 w-5" />
             </button>
 
-            {/* Mentions button */}
+            {/* Mentions button - hidden on small screens */}
             <button
               onClick={() => {
                 setMentionsOpen(true);
                 setMenuOpen(false);
               }}
               title="Menções"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
+              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
             >
               <AtSign className="h-5 w-5" />
               {unreadMentions > 0 && (
