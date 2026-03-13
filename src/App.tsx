@@ -11,56 +11,64 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { PageTracker } from "@/components/PageTracker";
 import { FloatingNav } from "@/components/FloatingNav";
+import { GlobalDatabaseSearch } from "@/components/GlobalDatabaseSearch";
+import { UserProductivityBanner } from "@/components/UserProductivityBanner";
+import { CallFieldSuggestionsBanner } from "@/components/CallFieldSuggestionsBanner";
+import { FloatingWhatsAppCall } from "@/components/FloatingWhatsAppCall";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 
-// Helper: retry dynamic import once on failure (stale chunk after deploy)
+// Helper: retry dynamic import once per module on failure (stale chunk after deploy)
 function lazyRetry<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
+  factory: () => Promise<{ default: T }>,
+  retryKey: string
 ) {
-  return lazy(() =>
-    factory().catch(() => {
-      // Force reload once to get fresh chunks
-      const key = "chunk_reload";
-      if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, "1");
+  return lazy(async () => {
+    const storageKey = `chunk_reload:${retryKey}`;
+
+    try {
+      const module = await factory();
+      sessionStorage.removeItem(storageKey);
+      return module;
+    } catch (error) {
+      const retries = Number(sessionStorage.getItem(storageKey) ?? "0");
+
+      if (retries < 1) {
+        sessionStorage.setItem(storageKey, String(retries + 1));
         window.location.reload();
+
+        // Keep suspense pending until reload happens
+        return new Promise<{ default: T }>(() => {});
       }
-      return factory();
-    })
-  );
+
+      throw error;
+    }
+  });
 }
 
-// Lazy-loaded global overlays (non-critical)
-const GlobalDatabaseSearch = lazyRetry(() => import("@/components/GlobalDatabaseSearch").then(m => ({ default: m.GlobalDatabaseSearch })));
-const UserProductivityBanner = lazyRetry(() => import("@/components/UserProductivityBanner").then(m => ({ default: m.UserProductivityBanner })));
-const IncomingCallBanner = lazyRetry(() => import("@/components/IncomingCallBanner").then(m => ({ default: m.IncomingCallBanner })));
-const CallFieldSuggestionsBanner = lazyRetry(() => import("@/components/CallFieldSuggestionsBanner").then(m => ({ default: m.CallFieldSuggestionsBanner })));
-const FloatingWhatsAppCall = lazyRetry(() => import("@/components/FloatingWhatsAppCall").then(m => ({ default: m.FloatingWhatsAppCall })));
-const PWAInstallBanner = lazyRetry(() => import("@/components/PWAInstallBanner").then(m => ({ default: m.PWAInstallBanner })));
-
 // Lazy-loaded pages (with retry for stale chunks)
-const Index = lazyRetry(() => import("./pages/Index"));
-const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"));
-const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"));
-const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"));
-const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"));
-const TeamPage = lazyRetry(() => import("./pages/TeamPage"));
-const WorkflowPage = lazyRetry(() => import("./pages/WorkflowPage"));
-const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"));
-const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"));
-const FinancePage = lazyRetry(() => import("./pages/FinancePage"));
-const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"));
-const CallsPage = lazyRetry(() => import("./pages/CallsPage"));
-const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"));
-const NotFound = lazyRetry(() => import("./pages/NotFound"));
-const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"));
-const InstallPage = lazyRetry(() => import("./pages/InstallPage"));
-const CasesPage = lazyRetry(() => import("./pages/CasesPage"));
-const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"));
-const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"));
-const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
-const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"));
-const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"));
-const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"));
+const Index = lazyRetry(() => import("./pages/Index"), "Index");
+const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"), "ActivitiesPage");
+const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"), "LeadsCenter");
+const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
+const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "LeaderboardPage");
+const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
+const WorkflowPage = lazyRetry(() => import("./pages/WorkflowPage"), "WorkflowPage");
+const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"), "WorkflowProgressPage");
+const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage");
+const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage");
+const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
+const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
+const WhatsAppPage = lazyRetry(() => import("./pages/WhatsAppPage"), "WhatsAppPage");
+const NotFound = lazyRetry(() => import("./pages/NotFound"), "NotFound");
+const PrivacyPolicyPage = lazyRetry(() => import("./pages/PrivacyPolicyPage"), "PrivacyPolicyPage");
+const InstallPage = lazyRetry(() => import("./pages/InstallPage"), "InstallPage");
+const CasesPage = lazyRetry(() => import("./pages/CasesPage"), "CasesPage");
+const NucleiPage = lazyRetry(() => import("./pages/NucleiPage"), "NucleiPage");
+const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPage"), "CostOrganizationPage");
+const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
+const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPage");
+const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
+const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"), "SettingsPage");
 
 const queryClient = new QueryClient();
 
@@ -94,14 +102,11 @@ function AppRoutes() {
   return (
     <>
       <PageTracker />
-      <Suspense fallback={null}>
-        <GlobalDatabaseSearch />
-        <UserProductivityBanner />
-        {/* IncomingCallBanner removido — contabilidade mantida via webhooks */}
-        <CallFieldSuggestionsBanner />
-        <FloatingWhatsAppCall />
-        <PWAInstallBanner />
-      </Suspense>
+      <GlobalDatabaseSearch />
+      <UserProductivityBanner />
+      <CallFieldSuggestionsBanner />
+      <FloatingWhatsAppCall />
+      <PWAInstallBanner />
       <FloatingNav />
       <Suspense fallback={<PageLoading />}>
         <Routes>
