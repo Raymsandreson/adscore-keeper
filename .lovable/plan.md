@@ -1,56 +1,53 @@
 
+Objetivo: resolver de vez 3 problemas conectados: (1) build quebrando no PWA, (2) botão “Atualizar” sem efeito real, (3) falta de equivalente ao Ctrl+F5 no Samsung.
 
-## Plano: Sugestões de Continuação Inteligentes no Chat IA
+1) Diagnóstico (raiz do problema)
+- O build está falhando no Service Worker porque o Workbox bloqueia arquivos > 2 MiB e hoje existe um chunk `index-*.js` com ~2.28 MiB.
+- Enquanto o build falha, a versão corrigida não sobe; por isso parece que “continua do mesmo jeito”.
+- O fluxo atual de atualização está inconsistente:
+  - `vite.config.ts` usa `registerType: 'autoUpdate'` + `skipWaiting: true`
+  - mas a UI espera atualização manual (`hasUpdate`, dialog “Atualizar agora”, `applyUpdate()` com `SKIP_WAITING`)
+  - resultado: o botão gira/verifica, mas não dá feedback claro nem força renovação quando precisa.
 
-### O que muda
+2) Plano de implementação (correção definitiva)
+- Frente A — Destravar build PWA
+  - Em `vite.config.ts`, ajustar Workbox com `maximumFileSizeToCacheInBytes` acima do maior chunk atual (com margem).
+  - Manter limpeza de caches antigas (`cleanupOutdatedCaches`) e revisar estratégia de cache para evitar nova quebra por tamanho.
+- Frente B — Alinhar estratégia de atualização com o botão
+  - Tornar o fluxo de update coerente com UX manual (botão “Atualizar”):
+    - detectar update disponível de forma confiável
+    - aplicar update de fato ao clicar
+    - feedback explícito de “já está atualizado” quando não há nova versão
+  - Remover dependência de timeout cego de 3s e trocar por fluxo assíncrono com resultado real.
+- Frente C — “Ctrl+F5 no Samsung” dentro do app
+  - Adicionar fallback de “forçar atualização” no próprio botão:
+    - unregister do service worker
+    - limpeza de `caches`
+    - recarregamento único da página
+  - Isso vira o equivalente mobile do hard refresh, sem teclado.
 
-Toda resposta da IA no chat virá acompanhada de 2-4 "chips" clicáveis de sugestão de próximo passo. O usuário clica, o texto vai para o campo de input (editável), e basta enviar. A IA também deve preencher todos os campos relevantes (data, notificação, matriz, tipo) proativamente nas suas respostas.
+3) Detalhes técnicos (arquivos)
+- `vite.config.ts`
+  - Ajustar `workbox.maximumFileSizeToCacheInBytes`.
+  - Revisar opção de registro/ativação do SW para ficar compatível com botão manual.
+- `src/lib/pwaUpdater.ts`
+  - Evoluir para API assíncrona com status (ex.: update encontrado / sem update / sem registro).
+  - Implementar função de refresh forçado (limpa SW + cache + reload).
+  - Garantir detecção robusta de registro ativo (`serviceWorker.ready` + registration listeners).
+- `src/components/FloatingNav.tsx`
+  - Botão de atualizar passa a:
+    - mostrar estado “checando”
+    - informar “app já atualizado” quando for o caso
+    - abrir dialog/aplicar update quando disponível
+    - oferecer fallback “forçar atualização” (mobile)
+- `src/components/updates/UpdateNotesDialog.tsx` (se necessário)
+  - Ajustar texto/ação para refletir fluxo real de atualização e fallback.
 
-### Implementação
-
-**1. Backend: Adicionar `follow_up_suggestions` ao tool calling da IA**
-
-No `supabase/functions/analyze-activity-chat/index.ts`, modo `assistant`:
-- Adicionar campo `follow_up_suggestions` ao schema da tool `suggest_field_updates`
-- Array de 2-4 objetos com `{ label: string, message: string }` onde `label` é texto curto do chip e `message` é o texto completo que será enviado como mensagem
-- Atualizar o system prompt para instruir a IA a SEMPRE gerar sugestões de continuação contextuais (ex: "Definir próximo passo", "Criar atividade de acompanhamento", "Atualizar status do lead")
-- Incluir no prompt que as sugestões devem cobrir cenários como: perguntar detalhes faltantes, criar atividades com campos completos, atualizar status, definir prioridades
-
-**2. Frontend: Renderizar chips de sugestão após cada mensagem da IA**
-
-No `ActivityChatSheet.tsx`:
-- Salvar `follow_up_suggestions` no campo `ai_suggestion` da mensagem (já existe o campo JSON)
-- No `renderMessage` para mensagens AI, renderizar os chips como botões horizontais scrolláveis abaixo do texto
-- Ao clicar no chip, preencher `inputText` com o `message` da sugestão para o usuário revisar/editar antes de enviar
-- Estilizar como badges/chips compactos com ícone de seta
-
-**3. Atualizar o system prompt**
-
-Adicionar instruções:
-- "SEMPRE inclua 2-4 sugestões de continuação no campo follow_up_suggestions"
-- "As sugestões devem ser frases completas que o usuário enviaria, cobrindo: detalhes faltantes, próximos passos, criação de atividades, atualização de campos"
-- "Cada sugestão deve ser autossuficiente — ao ser enviada, a IA deve conseguir agir sem pedir mais informações"
-- "Sempre que possível, as sugestões devem incluir dados concretos (datas, tipos, prioridades) para que a IA preencha todos os campos automaticamente"
-
-### Exemplo de fluxo
-
-```text
-Usuário: "Preciso agendar uma reunião com o cliente João"
-
-IA: "Entendido! Posso criar a atividade de reunião com João. 
-     Quando seria a melhor data?"
-
-Chips:
-[📅 Amanhã às 14h] → "Agende a reunião com João para amanhã às 14h, prioridade normal, matriz Agende"
-[📅 Próxima segunda 10h] → "Agende a reunião com João para próxima segunda às 10h, prioridade normal"  
-[📋 Me ajude a definir] → "Quais horários estão disponíveis considerando minhas atividades pendentes?"
-[➕ Criar agora sem data] → "Crie a atividade de reunião com João como pendente para eu definir a data depois"
-```
-
-### Detalhes técnicos
-
-- O campo `ai_suggestion` (JSONB) já existe na tabela `activity_chat_messages` — basta incluir `follow_up_suggestions` dentro dele
-- Nenhuma migration necessária
-- A resposta da tool `suggest_field_updates` passa a retornar `follow_up_suggestions` junto com os outros campos
-- No frontend, os chips são renderizados apenas na última mensagem da IA (para não poluir o histórico)
-
+4) Critério de aceite (teste final)
+- Build conclui sem erro do Workbox.
+- Em celular Samsung:
+  - botão “Atualizar” responde com feedback imediato (não fica “morto”).
+  - quando há versão nova, aplica e recarrega corretamente.
+  - quando não há versão nova, informa claramente.
+  - fallback de atualização forçada resolve caso de cache preso (equivalente ao Ctrl+F5).
+- Verificar ponta a ponta no app instalado e no navegador mobile para confirmar estabilidade do menu e da atualização.
