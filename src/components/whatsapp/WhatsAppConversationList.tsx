@@ -47,7 +47,7 @@ export function WhatsAppConversationList({ conversations, loading, selectedPhone
   const [selectedChecklistIds, setSelectedChecklistIds] = useState<string[]>([]);
   const [checklistPopoverOpen, setChecklistPopoverOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('last_received');
-  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('inbound');
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
 
   const [phonesWithCalls, setPhonesWithCalls] = useState<Set<string>>(new Set());
   const [leadInfoMap, setLeadInfoMap] = useState<Map<string, LeadInfo>>(new Map());

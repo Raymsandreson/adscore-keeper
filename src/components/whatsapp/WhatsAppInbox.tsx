@@ -591,7 +591,7 @@ export function WhatsAppInbox() {
   return (
     <div className="h-screen h-[100dvh] flex flex-col relative overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-3 p-4 border-b bg-card shrink-0 flex-wrap md:flex-nowrap">
         <MessageSquare className="h-6 w-6 text-green-600" />
         <h1 className="text-lg font-semibold">WhatsApp</h1>
         {totalUnread > 0 && (
@@ -600,7 +600,7 @@ export function WhatsAppInbox() {
 
         {instances.length > 0 && (
           <Select value={selectedInstanceId} onValueChange={setSelectedInstanceId}>
-            <SelectTrigger className="w-52 h-8 text-xs ml-2">
+            <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
             </SelectTrigger>
@@ -632,7 +632,7 @@ export function WhatsAppInbox() {
           </Select>
         )}
 
-        <div className="ml-auto flex gap-1 items-center flex-shrink-0">
+        <div className="w-full md:w-auto md:ml-auto flex flex-wrap md:flex-nowrap gap-1 items-center justify-end">
           {disconnectedInstances.length > 0 && (
             <Button
               variant="destructive"
