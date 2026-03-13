@@ -266,14 +266,14 @@ export function FloatingNav() {
           </button>
         ) : (
           /* Dock Bar */
-          <div className="flex items-center gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-2.5 py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
+          <div className="flex items-center gap-1 sm:gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-1.5 sm:px-2.5 py-1.5 sm:py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
             {/* Collapse button */}
             <button
               onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); try { localStorage.setItem('dock_collapsed', '1'); } catch {} }}
               title="Minimizar"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted/50 text-muted-foreground hover:bg-muted"
+              className="h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted/50 text-muted-foreground hover:bg-muted"
             >
-              <ChevronDown className="h-5 w-5" />
+              <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
 
             {/* Menu button */}
@@ -281,73 +281,64 @@ export function FloatingNav() {
               onClick={() => { setMenuOpen(v => !v); setExpandedSection(null); }}
               title="Menu"
               className={cn(
-                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
                 "bg-primary text-primary-foreground",
                 menuOpen && "ring-2 ring-primary/50 scale-110"
               )}
             >
-              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {menuOpen ? <X className="h-4 w-4 sm:h-5 sm:w-5" /> : <Menu className="h-4 w-4 sm:h-5 sm:w-5" />}
             </button>
 
-            {/* Search button - hidden on small screens */}
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
-                document.dispatchEvent(event);
-              }}
-              title="Buscar"
-              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
-            >
-              <Search className="h-5 w-5" />
-            </button>
-
-            {/* WhatsApp Call button */}
+            {/* WhatsApp button */}
             <button
               onClick={() => {
                 setWhatsAppOpen(v => !v);
                 setMenuOpen(false);
               }}
-              title="WhatsApp Call"
+              title="WhatsApp"
               className={cn(
-                "h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
                 "bg-green-600 text-white hover:bg-green-700",
                 whatsAppOpen && "ring-2 ring-green-400/50 scale-110"
               )}
             >
-              <Phone className="h-5 w-5" />
+              <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
 
-            {/* AI Chat button */}
+            {/* Instagram button */}
             <button
               onClick={() => {
-                setAiChatOpen(true);
+                navigate('/instagram');
                 setMenuOpen(false);
               }}
-              title="Chat IA"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-accent text-accent-foreground hover:bg-accent/80"
+              title="Instagram"
+              className={cn(
+                "h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "bg-pink-500 text-white hover:bg-pink-600",
+                location.pathname === '/instagram' && "ring-2 ring-pink-400/50 scale-110"
+              )}
             >
-              <Bot className="h-5 w-5" />
+              <AtSign className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
 
-            {/* Mentions button - hidden on small screens */}
+            {/* Mentions button */}
             <button
               onClick={() => {
                 setMentionsOpen(true);
                 setMenuOpen(false);
               }}
               title="Menções"
-              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
+              className="h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative bg-muted text-muted-foreground hover:bg-muted/80"
             >
-              <AtSign className="h-5 w-5" />
+              <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
               {unreadMentions > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-destructive text-destructive-foreground text-[9px] sm:text-[10px] font-bold flex items-center justify-center">
                   {unreadMentions > 9 ? '9+' : unreadMentions}
                 </span>
               )}
             </button>
 
-            {/* Update button - hidden on small screens */}
+            {/* Update button */}
             <button
               onClick={async () => {
                 if (hasUpdate) {
@@ -366,16 +357,41 @@ export function FloatingNav() {
                   toast.success('App atualizado!', { description: 'Você já está na versão mais recente.' });
                 }
               }}
-              title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}
+              title={hasUpdate ? "Atualização disponível" : "Atualizar"}
               className={cn(
-                "h-11 w-11 rounded-full items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
+                "h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md relative",
                 hasUpdate
-                  ? "flex bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
-                  : "hidden sm:flex bg-muted text-muted-foreground hover:bg-accent"
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700 animate-pulse"
+                  : "bg-muted text-muted-foreground hover:bg-accent"
               )}
             >
-              <RefreshCw className={cn("h-5 w-5", (updating || checking) && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4 sm:h-5 sm:w-5", (updating || checking) && "animate-spin")} />
               {hasUpdate && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-destructive" />}
+            </button>
+
+            {/* Settings button */}
+            <button
+              onClick={() => {
+                navigate('/settings');
+                setMenuOpen(false);
+              }}
+              title="Configurações"
+              className={cn(
+                "h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md",
+                "bg-muted text-muted-foreground hover:bg-accent",
+                location.pathname === '/settings' && "ring-2 ring-primary/50"
+              )}
+            >
+              <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
+
+            {/* Logout button */}
+            <button
+              onClick={handleSignOut}
+              title="Sair"
+              className="h-9 w-9 sm:h-11 sm:w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-destructive/10 text-destructive hover:bg-destructive/20"
+            >
+              <LogOut className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
         )}
