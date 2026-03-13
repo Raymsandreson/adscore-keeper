@@ -755,6 +755,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
                         goals={processGoals[type.key] || []}
                         boards={boards}
                         onChange={(newGoals) => setProcessGoals(prev => ({ ...prev, [type.key]: newGoals }))}
+                        userId={targetUserId}
                       />
                     </div>
                   )}
