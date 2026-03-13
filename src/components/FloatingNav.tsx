@@ -234,8 +234,15 @@ export function FloatingNav() {
                 </div>
               ))}
 
-              {/* Sair */}
+              {/* Configurações e Sair */}
               <div className="border-t border-border/30">
+                <button
+                  onClick={() => handleNavigate('/settings')}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors hover:bg-accent/50"
+                >
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </button>
                 <button
                   onClick={handleSignOut}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-destructive transition-colors hover:bg-destructive/10 font-medium"
