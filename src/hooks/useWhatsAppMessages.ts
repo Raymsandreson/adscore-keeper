@@ -291,7 +291,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
       isFetchingRef.current = false;
       if (!silent) setLoading(false);
     }
-  }, [instances, selectedInstanceId, processMessages]);
+  }, [instances, selectedInstanceId, processMessages, syncRecentMessages, realtimeHealthy]);
 
   const sendMessage = async (
     phone: string,
