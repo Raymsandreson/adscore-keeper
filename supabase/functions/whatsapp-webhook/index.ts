@@ -1157,13 +1157,19 @@ Deno.serve(async (req) => {
     // ========== WHATSAPP COMMAND PROCESSOR (Chat IA via WhatsApp) ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {
-        const { data: cmdConfig } = await supabase
-          .from('whatsapp_command_config')
-          .select('id')
-          .eq('authorized_phone', phone)
-          .eq('instance_name', instanceName)
-          .eq('is_active', true)
-          .maybeSingle()
+        // Compare with phone variants (with and without country code)
+        const cmdPhoneVariants = Array.from(new Set([phone, phone.replace(/^55/, '')].filter(Boolean)))
+        let cmdConfig: any = null
+        for (const variant of cmdPhoneVariants) {
+          const { data } = await supabase
+            .from('whatsapp_command_config')
+            .select('id')
+            .eq('authorized_phone', variant)
+            .eq('instance_name', instanceName)
+            .eq('is_active', true)
+            .maybeSingle()
+          if (data) { cmdConfig = data; break }
+        }
 
         if (cmdConfig) {
           console.log('Authorized command phone detected, routing to command processor:', phone)

@@ -25,13 +25,19 @@ serve(async (req) => {
 
     // 1) Check if this phone is authorized for commands
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
-    const { data: config } = await supabase
-      .from("whatsapp_command_config")
-      .select("*")
-      .eq("authorized_phone", normalizedPhone)
-      .eq("instance_name", instance_name)
-      .eq("is_active", true)
-      .maybeSingle();
+    // Try with full phone and without country code
+    const phoneVariants = Array.from(new Set([normalizedPhone, normalizedPhone.replace(/^55/, "")].filter(Boolean)));
+    let config: any = null;
+    for (const variant of phoneVariants) {
+      const { data } = await supabase
+        .from("whatsapp_command_config")
+        .select("*")
+        .eq("authorized_phone", variant)
+        .eq("instance_name", instance_name)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (data) { config = data; break; }
+    }
 
     if (!config) {
       console.log(`Phone ${normalizedPhone} not authorized for commands on ${instance_name}`);
