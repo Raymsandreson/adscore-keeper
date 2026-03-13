@@ -26,6 +26,15 @@ interface Tab {
 
 const tabs: Tab[] = [
   {
+    id: 'instances',
+    label: 'Instâncias',
+    icon: <Smartphone className="h-5 w-5" />,
+    description: 'Criar e gerenciar números',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-green-500',
+  },
+  {
     id: 'agents',
     label: 'Agentes IA',
     icon: <Bot className="h-5 w-5" />,
