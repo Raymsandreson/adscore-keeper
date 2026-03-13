@@ -23,6 +23,7 @@ interface Props {
   goals: ProcessGoalEntry[];
   boards: Board[];
   onChange: (goals: ProcessGoalEntry[]) => void;
+  userId?: string;
 }
 
 export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange }: Props) {
