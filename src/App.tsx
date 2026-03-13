@@ -60,6 +60,7 @@ const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPag
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"));
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"));
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"));
+const SettingsPage = lazyRetry(() => import("./pages/SettingsPage"));
 
 const queryClient = new QueryClient();
 
