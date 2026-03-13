@@ -8,7 +8,7 @@ import {
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
   ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings,
 } from "lucide-react";
-import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
+import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
@@ -349,14 +349,21 @@ export function FloatingNav() {
 
             {/* Update button */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (hasUpdate) {
                   setUpdateNotesOpen(true);
                   setMenuOpen(false);
+                  return;
+                }
+                setChecking(true);
+                setMenuOpen(false);
+                const result = await checkForUpdates();
+                setChecking(false);
+                if (result === 'update-found') {
+                  setHasUpdate(true);
+                  setUpdateNotesOpen(true);
                 } else {
-                  setChecking(true);
-                  checkForUpdates();
-                  setTimeout(() => setChecking(false), 3000);
+                  toast.success('App atualizado!', { description: 'Você já está na versão mais recente.' });
                 }
               }}
               title={hasUpdate ? "Atualização disponível — clique para aplicar" : "Verificar atualizações"}

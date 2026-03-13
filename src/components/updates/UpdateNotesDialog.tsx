@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, ChevronDown, ChevronUp, Sparkles, ArrowRight } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Sparkles, ArrowRight, RotateCcw } from "lucide-react";
 import { changelog, type ChangelogFeature } from "./changelogData";
 import { cn } from "@/lib/utils";
+import { forceHardRefresh } from "@/lib/pwaUpdater";
 
 interface UpdateNotesDialogProps {
   open: boolean;
@@ -48,6 +49,7 @@ function FeatureCard({ feature, index }: { feature: ChangelogFeature; index: num
 }
 
 export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating }: UpdateNotesDialogProps) {
+  const [forceRefreshing, setForceRefreshing] = useState(false);
   const latest = changelog[0];
   if (!latest) return null;
 
@@ -80,29 +82,44 @@ export function UpdateNotesDialog({ open, onOpenChange, onApplyUpdate, updating 
         </ScrollArea>
 
         {/* Footer */}
-        <div className="border-t border-border px-4 py-3 flex gap-2">
+        <div className="border-t border-border px-4 py-3 space-y-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => onOpenChange(false)}
+            >
+              Depois
+            </Button>
+            <Button
+              size="sm"
+              className="flex-1 gap-1.5"
+              onClick={onApplyUpdate}
+              disabled={updating || forceRefreshing}
+            >
+              {updating ? (
+                <>Atualizando...</>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Atualizar agora
+                </>
+              )}
+            </Button>
+          </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="flex-1"
-            onClick={() => onOpenChange(false)}
+            className="w-full text-xs text-muted-foreground gap-1.5"
+            onClick={() => {
+              setForceRefreshing(true);
+              forceHardRefresh();
+            }}
+            disabled={updating || forceRefreshing}
           >
-            Depois
-          </Button>
-          <Button
-            size="sm"
-            className="flex-1 gap-1.5"
-            onClick={onApplyUpdate}
-            disabled={updating}
-          >
-            {updating ? (
-              <>Atualizando...</>
-            ) : (
-              <>
-                <Check className="h-4 w-4" />
-                Atualizar agora
-              </>
-            )}
+            <RotateCcw className={cn("h-3.5 w-3.5", forceRefreshing && "animate-spin")} />
+            {forceRefreshing ? "Limpando cache..." : "Forçar atualização completa"}
           </Button>
         </div>
       </DialogContent>
