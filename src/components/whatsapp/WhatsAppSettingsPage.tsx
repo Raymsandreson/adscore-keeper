@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -12,6 +12,7 @@ import { WhatsAppAdLinkSettings } from './WhatsAppAdLinkSettings';
 import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
+import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 
 interface Tab {
   id: string;
@@ -24,6 +25,15 @@ interface Tab {
 }
 
 const tabs: Tab[] = [
+  {
+    id: 'instances',
+    label: 'Instâncias',
+    icon: <Smartphone className="h-5 w-5" />,
+    description: 'Criar e gerenciar números',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-green-500',
+  },
   {
     id: 'agents',
     label: 'Agentes IA',
@@ -79,7 +89,7 @@ interface Props {
   initialTab?: string;
 }
 
-export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
+export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
   return (
@@ -187,6 +197,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'agents' }: Props) {
               </p>
             </div>
 
+            {activeTab === 'instances' && <WhatsAppInstanceManager />}
             {activeTab === 'agents' && <WhatsAppAIAgents />}
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
