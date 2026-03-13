@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Trash2, Target, ChevronDown, ChevronUp } from 'lucide-react';
 import { GOAL_CATEGORIES, RESULT_METRICS_COMERCIAL, RESULT_METRICS_MARKETING, type GoalCategory } from '@/hooks/useRoutineProcessGoals';
+import { GoalAIAssistant } from './GoalAIAssistant';
 
 export interface ProcessGoalEntry {
   metric_key: string;
@@ -23,9 +24,10 @@ interface Props {
   goals: ProcessGoalEntry[];
   boards: Board[];
   onChange: (goals: ProcessGoalEntry[]) => void;
+  userId?: string;
 }
 
-export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange }: Props) {
+export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChange, userId }: Props) {
   const [expanded, setExpanded] = useState(goals.length > 0);
 
   const usedMetrics = new Set(goals.map(g => {
@@ -88,6 +90,14 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
 
       {expanded && (
         <div className="mt-2 space-y-3">
+          {/* AI Goal Assistant */}
+          {userId && (
+            <GoalAIAssistant
+              userId={userId}
+              currentGoals={goals}
+              onApplySuggestions={(suggested) => onChange(suggested)}
+            />
+          )}
           {GOAL_CATEGORIES.map(cat => {
             const categoryGoals = getGoalsForCategory(cat.key);
 
