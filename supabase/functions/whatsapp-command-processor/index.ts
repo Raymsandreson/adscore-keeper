@@ -497,17 +497,21 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         const targetName = pr.user_name || config.user_name;
         const today = new Date().toISOString().split("T")[0];
         const monthStart = `${today.slice(0, 7)}-01`;
+        const todayStart = today + "T00:00:00";
+        const todayEnd = today + "T23:59:59";
 
-        // Fetch data in parallel
-        const [overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes] = await Promise.all([
+        // Fetch ALL data sources in parallel
+        const [
+          overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes,
+          contactsRes, dmsRes, repliesRes, stageHistoryRes, followupsRes,
+          leadsRes, catContactsRes, completedActsRes, activityLogRes,
+        ] = await Promise.all([
           // Overdue tasks
           supabase.from("lead_activities")
             .select("id, title, deadline, priority, lead_name")
-            .eq("assigned_to", targetUserId)
-            .eq("status", "pendente")
+            .eq("assigned_to", targetUserId).eq("status", "pendente")
             .lt("deadline", new Date().toISOString())
-            .order("deadline", { ascending: true })
-            .limit(10),
+            .order("deadline", { ascending: true }).limit(10),
           // Goals
           supabase.from("commission_goals")
             .select("id, metric_key, target_value, period, period_start, period_end")
@@ -518,18 +522,62 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
           supabase.from("user_sessions")
             .select("started_at, ended_at, duration_seconds")
             .eq("user_id", targetUserId)
-            .gte("started_at", today + "T00:00:00")
+            .gte("started_at", todayStart)
             .order("started_at", { ascending: false }),
-          // Activity stats this month
+          // Activities this month
           supabase.from("lead_activities")
             .select("id, status, activity_type, completed_at")
             .eq("assigned_to", targetUserId)
             .gte("created_at", monthStart + "T00:00:00"),
-          // Daily goal snapshots this month
+          // Daily goal snapshots
           supabase.from("daily_goal_snapshots")
-            .select("snapshot_date, progress_percent, achieved")
+            .select("snapshot_date, progress_percent, achieved, metrics_detail")
             .eq("user_id", targetUserId)
             .gte("snapshot_date", monthStart),
+          // Contacts created today
+          supabase.from("contacts")
+            .select("id")
+            .eq("created_by", targetUserId)
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
+          // DMs sent today
+          supabase.from("dm_history")
+            .select("id, action_type")
+            .eq("user_id", targetUserId)
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
+          // Comment replies today
+          supabase.from("instagram_comments")
+            .select("id")
+            .eq("replied_by", targetUserId)
+            .gte("replied_at", todayStart).lte("replied_at", todayEnd),
+          // Stage changes today
+          supabase.from("lead_stage_history")
+            .select("id, lead_id, to_stage")
+            .eq("changed_by", targetUserId)
+            .gte("changed_at", todayStart).lte("changed_at", todayEnd),
+          // Followups today
+          supabase.from("lead_followups")
+            .select("id")
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
+          // Leads created today
+          supabase.from("leads")
+            .select("id, status")
+            .eq("created_by", targetUserId)
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
+          // Calls today (CAT contacts)
+          supabase.from("cat_lead_contacts")
+            .select("id, contact_channel")
+            .eq("contacted_by", targetUserId)
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
+          // Completed activities today
+          supabase.from("lead_activities")
+            .select("id")
+            .eq("completed_by", targetUserId).eq("status", "concluida")
+            .gte("completed_at", todayStart).lte("completed_at", todayEnd),
+          // Activity log today (page visits, checklist)
+          supabase.from("user_activity_log")
+            .select("id, action_type")
+            .eq("user_id", targetUserId)
+            .gte("created_at", todayStart).lte("created_at", todayEnd),
         ]);
 
         const overdue = overdueRes.data || [];
@@ -537,16 +585,58 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         const sessions = sessionsRes.data || [];
         const allActs = allActivitiesRes.data || [];
         const snapshots = snapshotsRes.data || [];
+        const contacts = contactsRes.data || [];
+        const dms = dmsRes.data || [];
+        const replies = repliesRes.data || [];
+        const stageHistory = stageHistoryRes.data || [];
+        const followups = followupsRes.data || [];
+        const leadsCreated = leadsRes.data || [];
+        const catContacts = catContactsRes.data || [];
+        const completedToday = completedActsRes.data || [];
+        const activityLog = activityLogRes.data || [];
 
-        // Calculate metrics
+        // Calculate detailed metrics
         const totalSessionMinutes = sessions.reduce((sum: number, s: any) => sum + (s.duration_seconds || 0), 0) / 60;
-        const completedActs = allActs.filter((a: any) => a.status === "concluida").length;
-        const pendingActs = allActs.filter((a: any) => a.status === "pendente").length;
+        const completedMonth = allActs.filter((a: any) => a.status === "concluida").length;
+        const pendingMonth = allActs.filter((a: any) => a.status === "pendente").length;
         const daysAchieved = snapshots.filter((s: any) => s.achieved).length;
         const avgProgress = snapshots.length > 0 ? Math.round(snapshots.reduce((sum: number, s: any) => sum + (s.progress_percent || 0), 0) / snapshots.length) : 0;
 
+        const dmsSent = dms.filter((d: any) => d.action_type !== "received").length;
+        const dmsReceived = dms.filter((d: any) => d.action_type === "received").length;
+        const callsMade = catContacts.filter((c: any) => c.contact_channel === "phone" || c.contact_channel === "ligacao").length;
+        const uniqueLeadsProgressed = new Set(stageHistory.map((s: any) => s.lead_id)).size;
+        const CLOSED_STAGES = ["closed", "fechado", "done"];
+        const leadsClosed = stageHistory.filter((s: any) => CLOSED_STAGES.includes(s.to_stage)).length;
+        const checklistChecked = activityLog.filter((a: any) => a.action_type === "checklist_item_checked").length;
+
         let report = `📊 *Relatório de Produtividade*\n👤 *${targetName}*\n📅 ${today}\n\n`;
 
+        // ── Today's Metrics ──
+        if (pr.report_type === "full" || pr.report_type === "feedback") {
+          report += `📌 *Métricas de Hoje*\n`;
+          report += `  📞 Ligações: *${callsMade}*\n`;
+          report += `  💬 DMs enviadas: *${dmsSent}*\n`;
+          report += `  💬 DMs recebidas: *${dmsReceived}*\n`;
+          report += `  💬 Respostas (comentários): *${replies.length}*\n`;
+          report += `  👥 Contatos cadastrados: *${contacts.length}*\n`;
+          report += `  📋 Leads cadastrados: *${leadsCreated.length}*\n`;
+          report += `  🔄 Mudanças de fase: *${stageHistory.length}*\n`;
+          report += `  📈 Leads progredidos: *${uniqueLeadsProgressed}*\n`;
+          report += `  🏆 Leads fechados: *${leadsClosed}*\n`;
+          report += `  ✅ Atividades concluídas: *${completedToday.length}*\n`;
+          report += `  ☑️ Checklist marcados: *${checklistChecked}*\n`;
+          report += `  📑 Followups: *${followups.length}*\n`;
+          report += "\n";
+        }
+
+        // ── Session Time ──
+        if (pr.report_type === "full" || pr.report_type === "session_time") {
+          report += `🕐 *Tempo Online Hoje: ${Math.round(totalSessionMinutes)} min*\n`;
+          report += `  📍 Sessões: ${sessions.length}\n\n`;
+        }
+
+        // ── Overdue Tasks ──
         if (pr.report_type === "full" || pr.report_type === "overdue_tasks") {
           report += `⚠️ *Tarefas Atrasadas: ${overdue.length}*\n`;
           if (overdue.length > 0) {
@@ -561,40 +651,46 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
           report += "\n";
         }
 
-        if (pr.report_type === "full" || pr.report_type === "session_time") {
-          report += `🕐 *Tempo Online Hoje: ${Math.round(totalSessionMinutes)} min*\n`;
-          report += `  📍 Sessões: ${sessions.length}\n\n`;
-        }
-
+        // ── Goals ──
         if (pr.report_type === "full" || pr.report_type === "goals") {
           report += `🎯 *Metas (${snapshots.length} dias com dados)*\n`;
           report += `  📈 Progresso médio: ${avgProgress}%\n`;
           report += `  ✅ Dias batidos: ${daysAchieved}/${snapshots.length}\n`;
           if (goals.length > 0) {
             report += `  📋 Metas ativas:\n`;
-            goals.slice(0, 5).forEach((g: any) => {
-              report += `    • ${g.metric_key}: alvo ${g.target_value} (${g.period})\n`;
+            goals.slice(0, 8).forEach((g: any) => {
+              report += `    • ${g.metric_key}: alvo *${g.target_value}* (${g.period})\n`;
             });
           }
           report += "\n";
         }
 
+        // ── Monthly Summary & Feedback ──
         if (pr.report_type === "full" || pr.report_type === "feedback") {
           report += `📋 *Atividades do Mês*\n`;
-          report += `  ✅ Concluídas: ${completedActs}\n`;
-          report += `  ⏳ Pendentes: ${pendingActs}\n`;
+          report += `  ✅ Concluídas: ${completedMonth}\n`;
+          report += `  ⏳ Pendentes: ${pendingMonth}\n`;
           report += `  ⚠️ Atrasadas: ${overdue.length}\n\n`;
 
-          // AI-generated feedback points
           report += `💡 *Pontos de Atenção*\n`;
           if (overdue.length > 3) report += `  🔴 Muitas tarefas atrasadas (${overdue.length}). Priorize as mais urgentes.\n`;
-          if (totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje. Considere focar em blocos de tempo maiores.\n`;
-          if (avgProgress < 50 && snapshots.length > 5) report += `  🟠 Progresso médio abaixo de 50%. Revise as metas e ajuste prioridades.\n`;
-          if (completedActs > 0 && overdue.length === 0) report += `  🟢 Excelente! Sem atrasos e com entregas no mês.\n`;
-          if (daysAchieved > snapshots.length * 0.7) report += `  🌟 Ótima consistência! Metas batidas em ${daysAchieved} de ${snapshots.length} dias.\n`;
+          if (overdue.length === 0 && completedToday.length > 0) report += `  🟢 Excelente! Sem atrasos e com entregas hoje.\n`;
+          if (totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje (${Math.round(totalSessionMinutes)} min).\n`;
+          if (avgProgress < 50 && snapshots.length > 5) report += `  🟠 Progresso médio abaixo de 50%. Revise prioridades.\n`;
+          if (daysAchieved > snapshots.length * 0.7) report += `  🌟 Ótima consistência! Metas batidas em ${daysAchieved}/${snapshots.length} dias.\n`;
+          if (dmsSent === 0 && callsMade === 0 && contacts.length === 0) report += `  🟡 Nenhuma ação de prospecção registrada hoje.\n`;
+          if (callsMade >= 5) report += `  🟢 Bom volume de ligações hoje (${callsMade}).\n`;
+          if (dmsSent >= 10) report += `  🟢 Bom volume de DMs enviadas (${dmsSent}).\n`;
         }
 
-        toolData.productivity_report = { overdue: overdue.length, completed: completedActs, pending: pendingActs, session_minutes: Math.round(totalSessionMinutes), avg_progress: avgProgress };
+        toolData.productivity_report = {
+          overdue: overdue.length, completed_month: completedMonth, pending: pendingMonth,
+          session_minutes: Math.round(totalSessionMinutes), avg_progress: avgProgress,
+          today: { calls: callsMade, dms_sent: dmsSent, dms_received: dmsReceived, replies: replies.length,
+            contacts: contacts.length, leads_created: leadsCreated.length, stage_changes: stageHistory.length,
+            leads_progressed: uniqueLeadsProgressed, leads_closed: leadsClosed,
+            activities_completed: completedToday.length, checklist: checklistChecked, followups: followups.length },
+        };
         responseText = report;
       }
     }
