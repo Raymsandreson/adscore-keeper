@@ -347,7 +347,7 @@ export function FloatingNav() {
               )}
             </button>
 
-            {/* Update button */}
+            {/* Update button - hidden on small screens */}
             <button
               onClick={async () => {
                 if (hasUpdate) {
