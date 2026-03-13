@@ -25,8 +25,37 @@ serve(async (req) => {
 
     // 1) Check if this phone is authorized for commands
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
-    // Try with full phone and without country code
-    const phoneVariants = Array.from(new Set([normalizedPhone, normalizedPhone.replace(/^55/, "")].filter(Boolean)));
+
+    const buildPhoneVariants = (rawPhone: string) => {
+      const digits = (rawPhone || "").replace(/\D/g, "").replace(/^0+/, "");
+      if (!digits) return [] as string[];
+
+      const variants = new Set<string>();
+      const add = (value?: string) => {
+        if (value) variants.add(value);
+      };
+
+      add(digits);
+      const local = digits.startsWith("55") ? digits.slice(2) : digits;
+      add(local);
+
+      // Brasil: alguns provedores enviam celular sem o 9 após DDD
+      if (local.length === 10) {
+        const withNine = `${local.slice(0, 2)}9${local.slice(2)}`;
+        add(withNine);
+        add(`55${withNine}`);
+      }
+
+      if (local.length === 11 && local[2] === "9") {
+        const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`;
+        add(withoutNine);
+        add(`55${withoutNine}`);
+      }
+
+      return Array.from(variants);
+    };
+
+    const phoneVariants = buildPhoneVariants(normalizedPhone);
     let config: any = null;
     for (const variant of phoneVariants) {
       const { data } = await supabase
