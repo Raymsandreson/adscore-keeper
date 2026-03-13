@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -13,6 +13,7 @@ import { WhatsAppAIAgents } from './WhatsAppAIAgents';
 import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
+import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 
 interface Tab {
   id: string;
@@ -51,6 +52,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-pink-500',
+  },
+  {
+    id: 'notifications',
+    label: 'Notificações',
+    icon: <Bell className="h-5 w-5" />,
+    description: 'Metas, rotinas e acompanhamento',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-yellow-500',
   },
   {
     id: 'reports',
@@ -200,6 +210,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'instances' && <WhatsAppInstanceManager />}
             {activeTab === 'agents' && <WhatsAppAIAgents />}
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
+            {activeTab === 'notifications' && <WhatsAppNotificationSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}

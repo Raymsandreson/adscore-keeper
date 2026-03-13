@@ -166,9 +166,13 @@ serve(async (req) => {
 VOCÊ PODE:
 1. Criar atividades/tarefas (new_activity)
 2. Criar leads (new_lead)
-3. Buscar informações sobre leads e atividades (search_info)
+3. Buscar informações sobre leads, atividades e contatos (search_info)
 4. Atualizar status de atividades (update_activity)
-5. Responder perguntas sobre o sistema
+5. Gerar relatórios de produtividade (productivity_report)
+6. Consultar metas e progresso de cada trabalhador
+7. Dar feedback sobre desempenho individual ou da equipe
+8. Informar tarefas atrasadas, tempo no sistema, pontos de melhoria
+9. Responder perguntas sobre o sistema
 
 ASSESSORES CADASTRADOS:
 ${assessorsList}
@@ -195,6 +199,15 @@ REGRAS CRÍTICAS DE COMPORTAMENTO:
 11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
 12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
 13. Responda em português do Brasil
+
+RELATÓRIOS E PRODUTIVIDADE:
+- Quando pedirem relatório, feedback, desempenho ou produtividade: use productivity_report
+- Você pode consultar: tarefas atrasadas, metas definidas vs atingidas, tempo online, ranking da equipe
+- Se perguntarem sobre "mim" ou "eu", use o user_id do assessor atual
+- Se perguntarem sobre outra pessoa, identifique pelo nome na lista de assessores
+- Formate o relatório de forma clara com seções e emojis
+- Inclua pontos de melhoria e sugestões quando relevante
+- Compare metas definidas com progresso atual
 
 EXEMPLO DE RESPOSTA BOA:
 Usuário: "criar tarefa teste para amanhã"
@@ -262,6 +275,16 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
                   query: { type: "string" },
                 },
                 required: ["search_type", "query"],
+              },
+              productivity_report: {
+                type: "object",
+                description: "Consultar produtividade, metas, tarefas atrasadas, tempo online, ranking e gerar feedback. Use quando pedirem relatório, desempenho, feedback ou informações sobre metas.",
+                properties: {
+                  user_id: { type: "string", description: "user_id do assessor a consultar. Se sobre si mesmo, use o id do assessor atual." },
+                  user_name: { type: "string", description: "Nome do assessor consultado" },
+                  report_type: { type: "string", enum: ["full", "overdue_tasks", "goals", "session_time", "ranking", "feedback"], description: "Tipo do relatório: full=completo, overdue_tasks=só atrasadas, goals=metas, session_time=tempo online, ranking=posição, feedback=pontos de melhoria" },
+                },
+                required: ["user_id", "report_type"],
               },
             },
             required: ["response_text"],
@@ -465,6 +488,114 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         } else {
           responseText += "\n\n🔍 Nenhum resultado encontrado.";
         }
+      }
+
+      // ── Productivity Report ──
+      if (parsed.productivity_report) {
+        const pr = parsed.productivity_report;
+        const targetUserId = pr.user_id || config.user_id;
+        const targetName = pr.user_name || config.user_name;
+        const today = new Date().toISOString().split("T")[0];
+        const monthStart = `${today.slice(0, 7)}-01`;
+
+        // Fetch data in parallel
+        const [overdueRes, goalsRes, sessionsRes, allActivitiesRes, snapshotsRes] = await Promise.all([
+          // Overdue tasks
+          supabase.from("lead_activities")
+            .select("id, title, deadline, priority, lead_name")
+            .eq("assigned_to", targetUserId)
+            .eq("status", "pendente")
+            .lt("deadline", new Date().toISOString())
+            .order("deadline", { ascending: true })
+            .limit(10),
+          // Goals
+          supabase.from("commission_goals")
+            .select("id, metric_key, target_value, period, period_start, period_end")
+            .eq("is_active", true)
+            .or(`user_id.eq.${targetUserId},user_id.is.null`)
+            .order("created_at", { ascending: false }),
+          // Sessions today
+          supabase.from("user_sessions")
+            .select("started_at, ended_at, duration_seconds")
+            .eq("user_id", targetUserId)
+            .gte("started_at", today + "T00:00:00")
+            .order("started_at", { ascending: false }),
+          // Activity stats this month
+          supabase.from("lead_activities")
+            .select("id, status, activity_type, completed_at")
+            .eq("assigned_to", targetUserId)
+            .gte("created_at", monthStart + "T00:00:00"),
+          // Daily goal snapshots this month
+          supabase.from("daily_goal_snapshots")
+            .select("snapshot_date, progress_percent, achieved")
+            .eq("user_id", targetUserId)
+            .gte("snapshot_date", monthStart),
+        ]);
+
+        const overdue = overdueRes.data || [];
+        const goals = goalsRes.data || [];
+        const sessions = sessionsRes.data || [];
+        const allActs = allActivitiesRes.data || [];
+        const snapshots = snapshotsRes.data || [];
+
+        // Calculate metrics
+        const totalSessionMinutes = sessions.reduce((sum: number, s: any) => sum + (s.duration_seconds || 0), 0) / 60;
+        const completedActs = allActs.filter((a: any) => a.status === "concluida").length;
+        const pendingActs = allActs.filter((a: any) => a.status === "pendente").length;
+        const daysAchieved = snapshots.filter((s: any) => s.achieved).length;
+        const avgProgress = snapshots.length > 0 ? Math.round(snapshots.reduce((sum: number, s: any) => sum + (s.progress_percent || 0), 0) / snapshots.length) : 0;
+
+        let report = `📊 *Relatório de Produtividade*\n👤 *${targetName}*\n📅 ${today}\n\n`;
+
+        if (pr.report_type === "full" || pr.report_type === "overdue_tasks") {
+          report += `⚠️ *Tarefas Atrasadas: ${overdue.length}*\n`;
+          if (overdue.length > 0) {
+            overdue.slice(0, 5).forEach((t: any) => {
+              const deadline = t.deadline ? new Date(t.deadline).toLocaleDateString("pt-BR") : "sem prazo";
+              report += `  • ${t.title} (${deadline}) ${t.priority === "urgente" ? "🔴" : t.priority === "alta" ? "🟠" : ""}\n`;
+            });
+            if (overdue.length > 5) report += `  ... e mais ${overdue.length - 5}\n`;
+          } else {
+            report += `  ✅ Nenhuma tarefa atrasada!\n`;
+          }
+          report += "\n";
+        }
+
+        if (pr.report_type === "full" || pr.report_type === "session_time") {
+          report += `🕐 *Tempo Online Hoje: ${Math.round(totalSessionMinutes)} min*\n`;
+          report += `  📍 Sessões: ${sessions.length}\n\n`;
+        }
+
+        if (pr.report_type === "full" || pr.report_type === "goals") {
+          report += `🎯 *Metas (${snapshots.length} dias com dados)*\n`;
+          report += `  📈 Progresso médio: ${avgProgress}%\n`;
+          report += `  ✅ Dias batidos: ${daysAchieved}/${snapshots.length}\n`;
+          if (goals.length > 0) {
+            report += `  📋 Metas ativas:\n`;
+            goals.slice(0, 5).forEach((g: any) => {
+              report += `    • ${g.metric_key}: alvo ${g.target_value} (${g.period})\n`;
+            });
+          }
+          report += "\n";
+        }
+
+        if (pr.report_type === "full" || pr.report_type === "feedback") {
+          report += `📋 *Atividades do Mês*\n`;
+          report += `  ✅ Concluídas: ${completedActs}\n`;
+          report += `  ⏳ Pendentes: ${pendingActs}\n`;
+          report += `  ⚠️ Atrasadas: ${overdue.length}\n\n`;
+
+          // AI-generated feedback points
+          report += `💡 *Pontos de Atenção*\n`;
+          if (overdue.length > 3) report += `  🔴 Muitas tarefas atrasadas (${overdue.length}). Priorize as mais urgentes.\n`;
+          if (totalSessionMinutes < 120 && sessions.length > 0) report += `  🟡 Tempo online baixo hoje. Considere focar em blocos de tempo maiores.\n`;
+          if (avgProgress < 50 && snapshots.length > 5) report += `  🟠 Progresso médio abaixo de 50%. Revise as metas e ajuste prioridades.\n`;
+          if (completedActs > 0 && overdue.length === 0) report += `  🟢 Excelente! Sem atrasos e com entregas no mês.\n`;
+          if (daysAchieved > snapshots.length * 0.7) report += `  🌟 Ótima consistência! Metas batidas em ${daysAchieved} de ${snapshots.length} dias.\n`;
+        }
+
+        toolData.productivity_report = { overdue: overdue.length, completed: completedActs, pending: pendingActs, session_minutes: Math.round(totalSessionMinutes), avg_progress: avgProgress };
+        responseText = report;
       }
     }
 
