@@ -90,6 +90,14 @@ export function ActivityProcessGoalsConfig({ activityType, goals, boards, onChan
 
       {expanded && (
         <div className="mt-2 space-y-3">
+          {/* AI Goal Assistant */}
+          {userId && (
+            <GoalAIAssistant
+              userId={userId}
+              currentGoals={goals}
+              onApplySuggestions={(suggested) => onChange(suggested)}
+            />
+          )}
           {GOAL_CATEGORIES.map(cat => {
             const categoryGoals = getGoalsForCategory(cat.key);
 
