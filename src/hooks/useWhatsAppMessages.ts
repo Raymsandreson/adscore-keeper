@@ -218,7 +218,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
             supabase
               .from('whatsapp_messages')
               .select('*')
-              .eq('instance_name', inst.instance_name)
+              .ilike('instance_name', inst.instance_name)
               .order('created_at', { ascending: false })
               .limit(perInstanceLimit)
               .then(r => r.data || [])
@@ -237,7 +237,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null) {
           .limit(2000);
 
         if (inst) {
-          query = query.eq('instance_name', inst.instance_name);
+          query = query.ilike('instance_name', inst.instance_name);
         }
 
         const { data, error } = await query;
