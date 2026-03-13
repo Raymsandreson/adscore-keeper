@@ -6,6 +6,84 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const APP_URL = "https://adscore-keeper.lovable.app";
+
+// ── helpers ──────────────────────────────────────────────────────────
+const buildPhoneVariants = (rawPhone: string) => {
+  const digits = (rawPhone || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!digits) return [] as string[];
+  const variants = new Set<string>();
+  const add = (v?: string) => { if (v) variants.add(v); };
+  add(digits);
+  const local = digits.startsWith("55") ? digits.slice(2) : digits;
+  add(local);
+  if (local.length === 10) {
+    const withNine = `${local.slice(0, 2)}9${local.slice(2)}`;
+    add(withNine); add(`55${withNine}`);
+  }
+  if (local.length === 11 && local[2] === "9") {
+    const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`;
+    add(withoutNine); add(`55${withoutNine}`);
+  }
+  return Array.from(variants);
+};
+
+async function sendWhatsAppText(baseUrl: string, token: string, number: string, text: string) {
+  await fetch(`${baseUrl}/send/text`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", token },
+    body: JSON.stringify({ number, text }),
+  });
+}
+
+async function sendWhatsAppButtons(baseUrl: string, token: string, number: string, text: string, buttons: { id: string; text: string }[]) {
+  // uazapi send/quickReply – up to 3 buttons
+  try {
+    const res = await fetch(`${baseUrl}/send/quickReply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({
+        number,
+        message: text,
+        buttons: buttons.slice(0, 3).map(b => ({ buttonId: b.id, buttonText: b.text })),
+      }),
+    });
+    if (res.ok) return true;
+    console.warn("quickReply failed, falling back to text", await res.text());
+  } catch (e) {
+    console.warn("quickReply error, falling back to text:", e);
+  }
+  // Fallback: send as numbered text
+  const fallbackText = text + "\n\n" + buttons.map((b, i) => `${i + 1}️⃣ ${b.text}`).join("\n") + "\n\n_Responda com o número da opção_";
+  await sendWhatsAppText(baseUrl, token, number, fallbackText);
+  return false;
+}
+
+async function sendWhatsAppList(baseUrl: string, token: string, number: string, text: string, items: { id: string; title: string; description?: string }[]) {
+  // uazapi send/list – up to 10 items
+  try {
+    const res = await fetch(`${baseUrl}/send/list`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({
+        number,
+        message: text,
+        buttonText: "Ver opções",
+        listItems: items.slice(0, 10).map(i => ({ title: i.title, description: i.description || "", id: i.id })),
+      }),
+    });
+    if (res.ok) return true;
+    console.warn("sendList failed, falling back to text", await res.text());
+  } catch (e) {
+    console.warn("sendList error, falling back to text:", e);
+  }
+  // Fallback: send as numbered text
+  const fallbackText = text + "\n\n" + items.map((item, i) => `${i + 1}️⃣ *${item.title}*${item.description ? ` – ${item.description}` : ""}`).join("\n") + "\n\n_Responda com o número da opção_";
+  await sendWhatsAppText(baseUrl, token, number, fallbackText);
+  return false;
+}
+
+// ── main handler ─────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -26,39 +104,10 @@ serve(async (req) => {
       throw new Error("No AI provider configured (GOOGLE_AI_API_KEY or LOVABLE_API_KEY)");
     }
 
-    // 1) Check if this phone is authorized for commands
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
-
-    const buildPhoneVariants = (rawPhone: string) => {
-      const digits = (rawPhone || "").replace(/\D/g, "").replace(/^0+/, "");
-      if (!digits) return [] as string[];
-
-      const variants = new Set<string>();
-      const add = (value?: string) => {
-        if (value) variants.add(value);
-      };
-
-      add(digits);
-      const local = digits.startsWith("55") ? digits.slice(2) : digits;
-      add(local);
-
-      // Brasil: alguns provedores enviam celular sem o 9 após DDD
-      if (local.length === 10) {
-        const withNine = `${local.slice(0, 2)}9${local.slice(2)}`;
-        add(withNine);
-        add(`55${withNine}`);
-      }
-
-      if (local.length === 11 && local[2] === "9") {
-        const withoutNine = `${local.slice(0, 2)}${local.slice(3)}`;
-        add(withoutNine);
-        add(`55${withoutNine}`);
-      }
-
-      return Array.from(variants);
-    };
-
     const phoneVariants = buildPhoneVariants(normalizedPhone);
+
+    // 1) Authorize
     let config: any = null;
     for (const variant of phoneVariants) {
       const { data } = await supabase
@@ -80,15 +129,12 @@ serve(async (req) => {
 
     console.log(`Command from authorized user: ${config.user_name} (${normalizedPhone})`);
 
-    // 2) Save incoming command to history
+    // 2) Save incoming command
     await supabase.from("whatsapp_command_history").insert({
-      phone: normalizedPhone,
-      instance_name,
-      role: "user",
-      content: message_text,
+      phone: normalizedPhone, instance_name, role: "user", content: message_text,
     });
 
-    // 3) Load recent conversation history (last 20 messages)
+    // 3) Load conversation history (last 20)
     const { data: history } = await supabase
       .from("whatsapp_command_history")
       .select("role, content, tool_data, created_at")
@@ -99,7 +145,7 @@ serve(async (req) => {
 
     const chatHistory = (history || []).reverse();
 
-    // 4) Fetch system context (assessors, activity types, leads, boards)
+    // 4) Fetch system context
     const [profilesRes, typesRes, boardsRes] = await Promise.all([
       supabase.from("profiles").select("user_id, full_name").order("full_name"),
       supabase.from("activity_types").select("key, label").eq("is_active", true).order("display_order"),
@@ -114,6 +160,7 @@ serve(async (req) => {
     const actTypeKeys = actTypes.map((t: any) => t.key);
     const boardsList = boards.map((b: any) => `- "${b.name}" (id: ${b.id})`).join("\n");
 
+    // ── System Prompt ──
     const systemPrompt = `Você é o assistente IA do CRM WhatsJUD, recebendo comandos via WhatsApp do assessor "${config.user_name}".
 
 VOCÊ PODE:
@@ -126,31 +173,41 @@ VOCÊ PODE:
 ASSESSORES CADASTRADOS:
 ${assessorsList}
 
-TIPOS DE ATIVIDADE: ${actTypesList}
+TIPOS DE ATIVIDADE DISPONÍVEIS: ${actTypesList}
 
 QUADROS KANBAN:
 ${boardsList}
 
 DATA ATUAL: ${new Date().toISOString().split("T")[0]} (ANO: ${new Date().getFullYear()})
 
-REGRAS:
-- Execute comandos IMEDIATAMENTE sem pedir confirmação desnecessária
-- Responda de forma CONCISA (mensagens curtas para WhatsApp)
-- Use emojis para tornar a leitura mais fácil
-- SEMPRE inclua deadline e notification_date ao criar atividades
-- NUNCA sugira datas em fins de semana ou feriados
-- O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
-- Se não especificar responsável, atribua ao próprio assessor
-- Responda em português do Brasil`;
+REGRAS CRÍTICAS DE COMPORTAMENTO:
+1. DECIDA VOCÊ MESMO todos os campos com base no contexto. NUNCA liste todas as opções pedindo para o usuário escolher.
+2. Para "activity_type": analise o conteúdo do comando e escolha o tipo mais adequado automaticamente. Ex: "ligar para fulano" → tipo ligação; "audiência dia X" → tipo audiência; "reunião com equipe" → tipo reunião. Se não houver tipo claro, use "tarefa".
+3. Para "priority": infira do contexto (palavras como "urgente", "importante", "quando puder"). Default: "normal".
+4. Para "matrix_quadrant": infira automaticamente (urgente+importante=do_now, importante+não urgente=schedule, etc). Default: "schedule".
+5. Para "assigned_to": se não mencionado, use o próprio assessor que enviou o comando.
+6. Execute comandos IMEDIATAMENTE sem pedir confirmação.
+7. Responda de forma CONCISA (mensagens curtas para WhatsApp).
+8. Use emojis para tornar a leitura mais fácil.
+9. SEMPRE inclua deadline e notification_date ao criar atividades.
+10. NUNCA sugira datas em fins de semana ou feriados.
+11. Após criar atividade ou lead, inclua na response_text um resumo do que foi criado com os campos preenchidos.
+12. O assessor que enviou o comando é: "${config.user_name}" (id: ${config.user_id})
+13. Responda em português do Brasil
+
+EXEMPLO DE RESPOSTA BOA:
+Usuário: "criar tarefa teste para amanhã"
+→ Crie imediatamente com activity_type="tarefa", priority="normal", deadline=amanhã 09:00, notification_date=amanhã 08:00
+→ response_text: "✅ Atividade criada!\\n📋 *teste*\\n📅 Prazo: 14/03/2026 09:00\\n🔔 Notificação: 14/03/2026 08:00\\n👤 ${config.user_name}\\n\\n✏️ Editar: {link}"
+
+EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
+"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções`;
 
     // Build AI messages
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
     for (const msg of chatHistory) {
-      if (msg.role === "user") {
-        aiMessages.push({ role: "user", content: msg.content });
-      } else if (msg.role === "assistant") {
-        aiMessages.push({ role: "assistant", content: msg.content });
-      }
+      if (msg.role === "user") aiMessages.push({ role: "user", content: msg.content });
+      else if (msg.role === "assistant") aiMessages.push({ role: "assistant", content: msg.content });
     }
 
     const tools = [
@@ -158,29 +215,29 @@ REGRAS:
         type: "function",
         function: {
           name: "execute_command",
-          description: "Executa um comando do assessor: cria atividades, leads, busca informações ou atualiza dados.",
+          description: "Executa um comando do assessor: cria atividades, leads, busca informações ou atualiza dados. SEMPRE decida os campos automaticamente baseado no contexto.",
           parameters: {
             type: "object",
             properties: {
-              response_text: { type: "string", description: "Resposta para enviar ao assessor via WhatsApp" },
+              response_text: { type: "string", description: "Resposta concisa para enviar ao assessor via WhatsApp. Inclua resumo do que foi feito." },
               new_activity: {
                 type: "object",
-                description: "Criar nova atividade",
+                description: "Criar nova atividade. Preencha TODOS os campos automaticamente baseado no contexto.",
                 properties: {
                   title: { type: "string" },
-                  activity_type: { type: "string", enum: actTypeKeys.length > 0 ? actTypeKeys : ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"] },
-                  priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"] },
-                  assigned_to: { type: "string", description: "user_id do responsável" },
+                  activity_type: { type: "string", enum: actTypeKeys.length > 0 ? actTypeKeys : ["tarefa", "audiencia", "prazo", "acompanhamento", "reuniao", "diligencia"], description: "Escolha automaticamente o tipo mais adequado ao contexto do comando" },
+                  priority: { type: "string", enum: ["baixa", "normal", "alta", "urgente"], description: "Infira do contexto. Default: normal" },
+                  assigned_to: { type: "string", description: "user_id do responsável. Default: assessor atual" },
                   assigned_to_name: { type: "string" },
                   notes: { type: "string" },
                   what_was_done: { type: "string" },
                   next_steps: { type: "string" },
                   deadline: { type: "string", description: "YYYY-MM-DDTHH:mm" },
                   notification_date: { type: "string", description: "YYYY-MM-DDTHH:mm" },
-                  matrix_quadrant: { type: "string", enum: ["do_now", "schedule", "delegate", "eliminate"] },
+                  matrix_quadrant: { type: "string", enum: ["do_now", "schedule", "delegate", "eliminate"], description: "Infira automaticamente. Default: schedule" },
                   lead_name: { type: "string", description: "Nome do lead para vincular" },
                 },
-                required: ["title", "deadline", "notification_date"],
+                required: ["title", "activity_type", "deadline", "notification_date"],
               },
               new_lead: {
                 type: "object",
@@ -191,7 +248,7 @@ REGRAS:
                   victim_name: { type: "string" },
                   city: { type: "string" },
                   state: { type: "string" },
-                  board_id: { type: "string", description: "ID do quadro Kanban" },
+                  board_id: { type: "string", description: "ID do quadro Kanban. Escolha o mais adequado automaticamente." },
                   notes: { type: "string" },
                 },
                 required: ["lead_name"],
@@ -212,6 +269,7 @@ REGRAS:
       },
     ];
 
+    // ── Call AI ──
     const useGoogleDirect = !!GOOGLE_AI_API_KEY;
     let aiResponse: Response;
 
@@ -232,103 +290,61 @@ REGRAS:
           tools: [{
             functionDeclarations: [{
               name: "execute_command",
-              description: "Executa um comando do assessor: cria atividades, leads, busca informações ou atualiza dados.",
+              description: tools[0].function.description,
               parameters: tools[0].function.parameters,
             }],
           }],
-          toolConfig: {
-            functionCallingConfig: {
-              mode: "ANY",
-              allowedFunctionNames: ["execute_command"],
-            },
-          },
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["execute_command"] } },
           generationConfig: { temperature: 0.2 },
         }),
       });
     } else {
       aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: aiMessages,
-          tools,
-        }),
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: aiMessages, tools }),
       });
     }
 
+    // ── Handle AI errors ──
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("AI error:", aiResponse.status, errText);
-
       const fallbackText = aiResponse.status === 402
-        ? "⚠️ Estou sem créditos de IA no momento. Assim que recarregar os créditos do workspace, volto a executar seus comandos."
+        ? "⚠️ Estou sem créditos de IA no momento."
         : aiResponse.status === 429
-          ? "⏳ Estou recebendo muitos pedidos agora. Tente novamente em instantes."
-          : "⚠️ Tive um erro temporário ao processar seu comando. Tente novamente em alguns minutos.";
+          ? "⏳ Muitos pedidos. Tente em instantes."
+          : "⚠️ Erro temporário. Tente novamente em minutos.";
 
       await supabase.from("whatsapp_command_history").insert({
-        phone: normalizedPhone,
-        instance_name,
-        role: "assistant",
-        content: fallbackText,
-        tool_data: { error_status: aiResponse.status },
+        phone: normalizedPhone, instance_name, role: "assistant", content: fallbackText, tool_data: { error_status: aiResponse.status },
       });
 
-      const { data: inst } = await supabase
-        .from("whatsapp_instances")
-        .select("instance_token, base_url")
-        .eq("instance_name", instance_name)
-        .maybeSingle();
-
+      const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
       if (inst?.instance_token) {
-        const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-        await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({
-            number: normalizedPhone,
-            text: `🤖 *WhatsJUD IA*\n\n${fallbackText}`,
-          }),
-        }).catch((sendErr) => console.error("Error sending AI fallback response:", sendErr));
+        await sendWhatsAppText(inst.base_url || "https://abraci.uazapi.com", inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${fallbackText}`).catch(e => console.error("Send error:", e));
       }
-
-      return new Response(JSON.stringify({ success: false, error: fallbackText, status: aiResponse.status }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ success: false, error: fallbackText }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ── Parse AI response ──
     const aiData = await aiResponse.json();
-
     let responseText = "Comando processado.";
     let toolData: any = null;
     let parsed: any = null;
 
     if (useGoogleDirect) {
       const parts = aiData?.candidates?.[0]?.content?.parts || [];
-      const functionCallPart = parts.find((part: any) => part?.functionCall?.name === "execute_command");
-      const textPart = parts.find((part: any) => typeof part?.text === "string" && part.text.trim());
-
-      if (functionCallPart?.functionCall?.args) {
-        parsed = functionCallPart.functionCall.args;
-      }
-      if (textPart?.text) {
-        responseText = textPart.text;
-      }
+      const fcPart = parts.find((p: any) => p?.functionCall?.name === "execute_command");
+      const txtPart = parts.find((p: any) => typeof p?.text === "string" && p.text.trim());
+      if (fcPart?.functionCall?.args) parsed = fcPart.functionCall.args;
+      if (txtPart?.text) responseText = txtPart.text;
     } else {
       const choice = aiData.choices?.[0]?.message;
       const toolCall = choice?.tool_calls?.[0];
       responseText = choice?.content || responseText;
-
       if (toolCall?.function?.name === "execute_command") {
-        try {
-          parsed = JSON.parse(toolCall.function.arguments);
-        } catch (parseErr) {
-          console.error("Error parsing tool arguments:", parseErr);
-        }
+        try { parsed = JSON.parse(toolCall.function.arguments); } catch (e) { console.error("Parse error:", e); }
       }
     }
 
@@ -336,17 +352,12 @@ REGRAS:
       responseText = parsed.response_text || responseText;
       toolData = {};
 
-      // Execute: Create activity
+      // ── Create activity ──
       if (parsed.new_activity) {
         const act = parsed.new_activity;
-        // Try to find lead by name
         let leadId = null;
         if (act.lead_name) {
-          const { data: leads } = await supabase
-            .from("leads")
-            .select("id")
-            .ilike("lead_name", `%${act.lead_name}%`)
-            .limit(1);
+          const { data: leads } = await supabase.from("leads").select("id").ilike("lead_name", `%${act.lead_name}%`).limit(1);
           if (leads?.[0]) leadId = leads[0].id;
         }
 
@@ -377,19 +388,19 @@ REGRAS:
           responseText += "\n\n⚠️ Erro ao criar atividade: " + actErr.message;
         } else {
           toolData.activity_created = newAct;
-          console.log("Activity created via WhatsApp command:", newAct?.id);
+          // Append edit link
+          responseText += `\n\n✏️ Editar: ${APP_URL}/activities?edit=${newAct?.id}`;
+          console.log("Activity created via WhatsApp:", newAct?.id);
         }
       }
 
-      // Execute: Create lead
+      // ── Create lead ──
       if (parsed.new_lead) {
         const lead = parsed.new_lead;
         const { data: stages } = await supabase
-          .from("kanban_stages")
-          .select("id")
+          .from("kanban_stages").select("id")
           .eq("board_id", lead.board_id || boards[0]?.id)
-          .order("display_order")
-          .limit(1);
+          .order("display_order").limit(1);
 
         const { data: newLead, error: leadErr } = await supabase
           .from("leads")
@@ -413,43 +424,32 @@ REGRAS:
           responseText += "\n\n⚠️ Erro ao criar lead: " + leadErr.message;
         } else {
           toolData.lead_created = newLead;
-          console.log("Lead created via WhatsApp command:", newLead?.id);
+          const boardId = lead.board_id || boards[0]?.id;
+          responseText += `\n\n✏️ Editar: ${APP_URL}/leads?board=${boardId}&openLead=${newLead?.id}`;
+          console.log("Lead created via WhatsApp:", newLead?.id);
         }
       }
 
-      // Execute: Search
+      // ── Search ──
       if (parsed.search_query) {
         const sq = parsed.search_query;
         let results: any[] = [];
 
         if (sq.search_type === "lead") {
-          const { data } = await supabase
-            .from("leads")
-            .select("id, lead_name, status, stage_id, lead_phone, victim_name")
-            .ilike("lead_name", `%${sq.query}%`)
-            .limit(5);
+          const { data } = await supabase.from("leads").select("id, lead_name, status, stage_id, lead_phone, victim_name").ilike("lead_name", `%${sq.query}%`).limit(5);
           results = data || [];
         } else if (sq.search_type === "activity") {
-          const { data } = await supabase
-            .from("lead_activities")
-            .select("id, title, status, priority, deadline, assigned_to_name")
-            .or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`)
-            .order("created_at", { ascending: false })
-            .limit(5);
+          const { data } = await supabase.from("lead_activities").select("id, title, status, priority, deadline, assigned_to_name").or(`title.ilike.%${sq.query}%,notes.ilike.%${sq.query}%`).order("created_at", { ascending: false }).limit(5);
           results = data || [];
         } else if (sq.search_type === "contact") {
-          const { data } = await supabase
-            .from("contacts")
-            .select("id, full_name, phone, email")
-            .ilike("full_name", `%${sq.query}%`)
-            .limit(5);
+          const { data } = await supabase.from("contacts").select("id, full_name, phone, email").ilike("full_name", `%${sq.query}%`).limit(5);
           results = data || [];
         }
 
         toolData.search_results = results;
         if (results.length > 0) {
           const resultTexts = results.map((r: any) => {
-            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem telefone"}`;
+            if (sq.search_type === "lead") return `• ${r.lead_name} (${r.status}) - ${r.lead_phone || "sem tel"}`;
             if (sq.search_type === "activity") return `• ${r.title} (${r.status}/${r.priority}) - ${r.deadline || "sem prazo"} - ${r.assigned_to_name || ""}`;
             return `• ${r.full_name} - ${r.phone || ""} - ${r.email || ""}`;
           });
@@ -460,16 +460,12 @@ REGRAS:
       }
     }
 
-    // 5) Save AI response to history
+    // 5) Save AI response
     await supabase.from("whatsapp_command_history").insert({
-      phone: normalizedPhone,
-      instance_name,
-      role: "assistant",
-      content: responseText,
-      tool_data: toolData,
+      phone: normalizedPhone, instance_name, role: "assistant", content: responseText, tool_data: toolData,
     });
 
-    // 6) Send response back via WhatsApp
+    // 6) Send response via WhatsApp
     const { data: inst } = await supabase
       .from("whatsapp_instances")
       .select("instance_token, base_url")
@@ -479,17 +475,10 @@ REGRAS:
     if (inst?.instance_token) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
       try {
-        await fetch(`${baseUrl}/send/text`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", token: inst.instance_token },
-          body: JSON.stringify({
-            number: normalizedPhone,
-            text: `🤖 *WhatsJUD IA*\n\n${responseText}`,
-          }),
-        });
-        console.log("Command response sent to WhatsApp:", normalizedPhone);
+        await sendWhatsAppText(baseUrl, inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
+        console.log("Response sent to WhatsApp:", normalizedPhone);
       } catch (e) {
-        console.error("Error sending command response:", e);
+        console.error("Error sending response:", e);
       }
     }
 
