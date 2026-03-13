@@ -212,18 +212,53 @@ REGRAS:
       },
     ];
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: aiMessages,
-        tools,
-      }),
-    });
+    const useGoogleDirect = !!GOOGLE_AI_API_KEY;
+    let aiResponse: Response;
+
+    if (useGoogleDirect) {
+      const googleContents = aiMessages
+        .filter((msg: any) => msg.role !== "system")
+        .map((msg: any) => ({
+          role: msg.role === "assistant" ? "model" : "user",
+          parts: [{ text: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? "") }],
+        }));
+
+      aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_AI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text }] }],
+          tools: [{
+            functionDeclarations: [{
+              name: "execute_command",
+              description: "Executa um comando do assessor: cria atividades, leads, busca informações ou atualiza dados.",
+              parameters: tools[0].function.parameters,
+            }],
+          }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: "ANY",
+              allowedFunctionNames: ["execute_command"],
+            },
+          },
+          generationConfig: { temperature: 0.2 },
+        }),
+      });
+    } else {
+      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: aiMessages,
+          tools,
+        }),
+      });
+    }
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
@@ -267,14 +302,37 @@ REGRAS:
     }
 
     const aiData = await aiResponse.json();
-    const choice = aiData.choices?.[0]?.message;
-    const toolCall = choice?.tool_calls?.[0];
 
-    let responseText = choice?.content || "Comando processado.";
+    let responseText = "Comando processado.";
     let toolData: any = null;
+    let parsed: any = null;
 
-    if (toolCall?.function?.name === "execute_command") {
-      const parsed = JSON.parse(toolCall.function.arguments);
+    if (useGoogleDirect) {
+      const parts = aiData?.candidates?.[0]?.content?.parts || [];
+      const functionCallPart = parts.find((part: any) => part?.functionCall?.name === "execute_command");
+      const textPart = parts.find((part: any) => typeof part?.text === "string" && part.text.trim());
+
+      if (functionCallPart?.functionCall?.args) {
+        parsed = functionCallPart.functionCall.args;
+      }
+      if (textPart?.text) {
+        responseText = textPart.text;
+      }
+    } else {
+      const choice = aiData.choices?.[0]?.message;
+      const toolCall = choice?.tool_calls?.[0];
+      responseText = choice?.content || responseText;
+
+      if (toolCall?.function?.name === "execute_command") {
+        try {
+          parsed = JSON.parse(toolCall.function.arguments);
+        } catch (parseErr) {
+          console.error("Error parsing tool arguments:", parseErr);
+        }
+      }
+    }
+
+    if (parsed) {
       responseText = parsed.response_text || responseText;
       toolData = {};
 
