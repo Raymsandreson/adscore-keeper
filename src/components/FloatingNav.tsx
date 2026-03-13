@@ -289,7 +289,7 @@ export function FloatingNav() {
               {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
 
-            {/* Search button */}
+            {/* Search button - hidden on small screens */}
             <button
               onClick={() => {
                 setMenuOpen(false);
@@ -297,7 +297,7 @@ export function FloatingNav() {
                 document.dispatchEvent(event);
               }}
               title="Buscar"
-              className="h-11 w-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
+              className="h-11 w-11 rounded-full hidden sm:flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 shadow-md bg-muted text-muted-foreground hover:bg-muted/80"
             >
               <Search className="h-5 w-5" />
             </button>
