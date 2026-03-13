@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { callGemini, transformGeminiStream } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,104 +13,39 @@ serve(async (req) => {
 
   try {
     const { messages, campaignData, type } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
-    // Helper function to format targeting data
     const formatTargeting = (targeting: any) => {
       if (!targeting) return "Não disponível";
-      
       const parts: string[] = [];
-      
-      if (targeting.age_min || targeting.age_max) {
-        parts.push(`Idade: ${targeting.age_min || '18'}-${targeting.age_max || '65'}+ anos`);
-      }
-      
+      if (targeting.age_min || targeting.age_max) parts.push(`Idade: ${targeting.age_min || '18'}-${targeting.age_max || '65'}+ anos`);
       if (targeting.genders) {
         const genderMap: Record<number, string> = { 0: 'Todos', 1: 'Masculino', 2: 'Feminino' };
-        const genderNames = targeting.genders.map((g: number) => genderMap[g] || 'Desconhecido');
-        parts.push(`Gênero: ${genderNames.join(', ')}`);
+        parts.push(`Gênero: ${targeting.genders.map((g: number) => genderMap[g] || 'Desconhecido').join(', ')}`);
       }
-      
-      if (targeting.geo_locations?.countries) {
-        parts.push(`Países: ${targeting.geo_locations.countries.join(', ')}`);
-      }
-      
-      if (targeting.geo_locations?.cities?.length > 0) {
-        const cities = targeting.geo_locations.cities.map((c: any) => c.name).slice(0, 5);
-        parts.push(`Cidades: ${cities.join(', ')}`);
-      }
-      
-      if (targeting.interests?.length > 0) {
-        const interests = targeting.interests.map((i: any) => i.name).slice(0, 10);
-        parts.push(`Interesses: ${interests.join(', ')}`);
-      }
-      
-      if (targeting.behaviors?.length > 0) {
-        const behaviors = targeting.behaviors.map((b: any) => b.name).slice(0, 5);
-        parts.push(`Comportamentos: ${behaviors.join(', ')}`);
-      }
-      
-      if (targeting.custom_audiences?.length > 0) {
-        const audiences = targeting.custom_audiences.map((a: any) => a.name).slice(0, 3);
-        parts.push(`Públicos Personalizados: ${audiences.join(', ')}`);
-      }
-      
-      if (targeting.optimization_goal) {
-        parts.push(`Objetivo de Otimização: ${targeting.optimization_goal}`);
-      }
-      
+      if (targeting.geo_locations?.countries) parts.push(`Países: ${targeting.geo_locations.countries.join(', ')}`);
+      if (targeting.geo_locations?.cities?.length > 0) parts.push(`Cidades: ${targeting.geo_locations.cities.map((c: any) => c.name).slice(0, 5).join(', ')}`);
+      if (targeting.interests?.length > 0) parts.push(`Interesses: ${targeting.interests.map((i: any) => i.name).slice(0, 10).join(', ')}`);
+      if (targeting.behaviors?.length > 0) parts.push(`Comportamentos: ${targeting.behaviors.map((b: any) => b.name).slice(0, 5).join(', ')}`);
+      if (targeting.custom_audiences?.length > 0) parts.push(`Públicos Personalizados: ${targeting.custom_audiences.map((a: any) => a.name).slice(0, 3).join(', ')}`);
+      if (targeting.optimization_goal) parts.push(`Objetivo de Otimização: ${targeting.optimization_goal}`);
       return parts.length > 0 ? parts.join('\n   ') : "Segmentação básica";
     };
 
-    // Helper function to format creative data
     const formatCreative = (creative: any) => {
       if (!creative) return "Não disponível";
-      
       const parts: string[] = [];
-      
-      if (creative.title) {
-        parts.push(`Título: "${creative.title}"`);
-      }
-      
-      if (creative.body) {
-        parts.push(`Texto principal: "${creative.body}"`);
-      }
-      
-      if (creative.link_description) {
-        parts.push(`Descrição do link: "${creative.link_description}"`);
-      }
-      
-      if (creative.call_to_action_type) {
-        parts.push(`CTA: ${creative.call_to_action_type}`);
-      }
-      
-      if (creative.object_story_spec?.link_data?.message) {
-        parts.push(`Mensagem: "${creative.object_story_spec.link_data.message}"`);
-      }
-      
-      if (creative.object_story_spec?.video_data?.message) {
-        parts.push(`Mensagem do vídeo: "${creative.object_story_spec.video_data.message}"`);
-      }
-      
+      if (creative.title) parts.push(`Título: \"${creative.title}\"`);
+      if (creative.body) parts.push(`Texto principal: \"${creative.body}\"`);
+      if (creative.link_description) parts.push(`Descrição do link: \"${creative.link_description}\"`);
+      if (creative.call_to_action_type) parts.push(`CTA: ${creative.call_to_action_type}`);
+      if (creative.object_story_spec?.link_data?.message) parts.push(`Mensagem: \"${creative.object_story_spec.link_data.message}\"`);
+      if (creative.object_story_spec?.video_data?.message) parts.push(`Mensagem do vídeo: \"${creative.object_story_spec.video_data.message}\"`);
       return parts.length > 0 ? parts.join('\n   ') : "Dados do criativo não disponíveis";
     };
 
-    // Build enriched data section
-    const targetingSection = campaignData?.targeting 
-      ? `\n\n📎 SEGMENTAÇÃO ATUAL:\n   ${formatTargeting(campaignData.targeting)}`
-      : '';
-    
-    const creativeSection = campaignData?.creative 
-      ? `\n\n📝 COPY DO ANÚNCIO:\n   ${formatCreative(campaignData.creative)}`
-      : '';
-    
-    const objectiveSection = campaignData?.objective 
-      ? `\n\n🎯 OBJETIVO DA CAMPANHA: ${campaignData.objective}`
-      : '';
+    const targetingSection = campaignData?.targeting ? `\n\n📎 SEGMENTAÇÃO ATUAL:\n   ${formatTargeting(campaignData.targeting)}` : '';
+    const creativeSection = campaignData?.creative ? `\n\n📝 COPY DO ANÚNCIO:\n   ${formatCreative(campaignData.creative)}` : '';
+    const objectiveSection = campaignData?.objective ? `\n\n🎯 OBJETIVO DA CAMPANHA: ${campaignData.objective}` : '';
 
     let systemPrompt = "";
 
@@ -150,20 +86,9 @@ COPY ATUAL DO ANÚNCIO:
 ${campaignData?.creative ? formatCreative(campaignData.creative) : "O usuário vai fornecer a copy abaixo."}
 
 Analise a copy fornecida e dê sugestões específicas sobre:
-
-1. **GANCHOS (Hooks)**: Sugira 3-5 ganchos alternativos para o início do anúncio que prendam atenção nos primeiros 3 segundos.
-
-2. **SEGMENTAÇÃO**: Com base na copy E na segmentação atual, sugira:
-   - Novos interesses para testar
-   - Comportamentos do público
-   - Ajustes de faixa etária se necessário
-   - Públicos personalizados que poderiam funcionar
-
-3. **MELHORIAS NA COPY**: 
-   - Pontos fortes da copy atual
-   - Pontos fracos a melhorar
-   - CTAs mais efetivos
-   - Elementos de urgência/escassez
+1. **GANCHOS (Hooks)**: Sugira 3-5 ganchos alternativos
+2. **SEGMENTAÇÃO**: Sugira novos interesses, comportamentos, ajustes
+3. **MELHORIAS NA COPY**: Pontos fortes, fracos, CTAs mais efetivos
 
 Seja específico e prático nas sugestões. Use emojis para organizar visualmente.`;
     } else {
@@ -179,56 +104,41 @@ Seja específico e prático nas sugestões. Use emojis para organizar visualment
 - Impressões: ${campaignData?.impressions || "0"}
 - Cliques: ${campaignData?.clicks || "0"}${objectiveSection}${targetingSection}${creativeSection}
 
-Com base nas informações fornecidas (incluindo segmentação e copy), dê conselhos práticos e acionáveis para melhorar a performance.
-Seja específico, use dados quando possível, e foque no que pode ser implementado imediatamente.
-Mantenha respostas concisas e bem organizadas.`;
+Com base nas informações fornecidas, dê conselhos práticos e acionáveis para melhorar a performance.
+Seja específico, use dados quando possível, e foque no que pode ser implementado imediatamente.`;
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-      }),
+    const response = await callGemini({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages,
+      ],
+      stream: true,
     });
 
     if (!response.ok) {
       if (response.status === 429) {
         return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente em alguns segundos." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos na sua conta Lovable." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("AI error:", response.status, errorText);
       return new Response(JSON.stringify({ error: "Erro ao conectar com a IA" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    return new Response(response.body, {
+    const transformedStream = transformGeminiStream(response.body!);
+
+    return new Response(transformedStream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
     console.error("Campaign AI assistant error:", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Erro desconhecido" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
