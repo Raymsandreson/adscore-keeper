@@ -1155,7 +1155,8 @@ Deno.serve(async (req) => {
     }
 
     // ========== WHATSAPP COMMAND PROCESSOR (Chat IA via WhatsApp) ==========
-    if (direction === 'inbound' && instanceName && phone) {
+    // Also handle self-chat (messages to own number show as outbound/fromMe)
+    if (instanceName && phone && (direction === 'inbound' || direction === 'outbound')) {
       try {
         // Compare with phone variants (with and without country code)
         const cmdPhoneVariants = Array.from(new Set([phone, phone.replace(/^55/, '')].filter(Boolean)))
