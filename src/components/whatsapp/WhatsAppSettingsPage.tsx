@@ -54,6 +54,15 @@ const tabs: Tab[] = [
     accentColor: 'text-pink-500',
   },
   {
+    id: 'notifications',
+    label: 'Notificações',
+    icon: <Bell className="h-5 w-5" />,
+    description: 'Metas, rotinas e acompanhamento',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-yellow-500',
+  },
+  {
     id: 'reports',
     label: 'Relatórios',
     icon: <BarChart3 className="h-5 w-5" />,
