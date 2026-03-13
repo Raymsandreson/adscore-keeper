@@ -8,7 +8,7 @@ import {
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
   ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings,
 } from "lucide-react";
-import { onUpdateAvailable, applyUpdate, checkForUpdates } from "@/lib/pwaUpdater";
+import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
