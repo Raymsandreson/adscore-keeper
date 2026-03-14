@@ -750,64 +750,37 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
 
     const userContent: any[] = [{ type: "text", text: textSummary }, ...contentParts];
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "fill_activity_fields",
-              description: "Preenche os campos da atividade com base no chat",
-              parameters: {
-                type: "object",
-                properties: {
-                  what_was_done: { type: "string", description: "O que foi feito" },
-                  current_status_notes: { type: "string", description: "Status atual" },
-                  next_steps: { type: "string", description: "Próximos passos" },
-                  notes: { type: "string", description: "Observações" },
-                },
-                required: ["what_was_done", "current_status_notes", "next_steps", "notes"],
-                additionalProperties: false,
+    const data = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "fill_activity_fields",
+            description: "Preenche os campos da atividade com base no chat",
+            parameters: {
+              type: "object",
+              properties: {
+                what_was_done: { type: "string" },
+                current_status_notes: { type: "string" },
+                next_steps: { type: "string" },
+                notes: { type: "string" },
               },
+              required: ["what_was_done", "current_status_notes", "next_steps", "notes"],
+              additionalProperties: false,
             },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "fill_activity_fields" } },
-      }),
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "fill_activity_fields" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     let suggestion;
-    
     if (toolCall?.function?.arguments) {
       suggestion = JSON.parse(toolCall.function.arguments);
     } else {

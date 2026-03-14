@@ -372,7 +372,7 @@ IMPORTANTE:
     console.log('AI response received:', JSON.stringify(data).slice(0, 500));
 
     // Handle Google Direct API response format
-    if (useGoogleDirect) {
+    if (GOOGLE_AI_API_KEY) {
       const candidate = data.candidates?.[0];
       const functionCall = candidate?.content?.parts?.find((p: any) => p.functionCall)?.functionCall;
       if (functionCall?.args) {
@@ -398,17 +398,7 @@ IMPORTANTE:
           console.error('Error parsing Google response text:', e);
         }
       }
-    } else {
-      // Handle Lovable Gateway response format (OpenAI-compatible)
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const extractedData = JSON.parse(toolCall.function.arguments);
-        console.log('Extracted data:', extractedData);
-        return new Response(
-          JSON.stringify({ success: true, data: extractedData }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    }
 
       const content_response = data.choices?.[0]?.message?.content;
       if (content_response) {
