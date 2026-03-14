@@ -145,30 +145,76 @@ export default function TeamPage() {
         </div>
       </div>
 
-      {/* Inter-style pill tab navigation */}
+      {/* Collapsible pill tab navigation */}
       <div className="sticky top-16 z-20 bg-card/80 backdrop-blur-md border-b">
         <div className="container mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="flex items-center gap-1.5 py-2.5 overflow-x-auto scrollbar-hide">
-            {visibleTabs.map(tab => {
-              const Icon = tab.icon;
-              const isActive = safeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
-                    isActive
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {(() => {
+            // Always show the active tab + first N tabs (deduplicated)
+            const activeTabDef = visibleTabs.find(t => t.key === safeTab);
+            const collapsed = !tabsExpanded;
+            
+            // When collapsed: show first VISIBLE_COUNT, but ensure active is always visible
+            let displayTabs = visibleTabs;
+            let hiddenCount = 0;
+            if (collapsed && visibleTabs.length > VISIBLE_COUNT) {
+              const firstN = visibleTabs.slice(0, VISIBLE_COUNT);
+              const activeInFirstN = firstN.some(t => t.key === safeTab);
+              if (activeInFirstN) {
+                displayTabs = firstN;
+              } else {
+                // Replace last visible with active tab
+                displayTabs = [...firstN.slice(0, VISIBLE_COUNT - 1), activeTabDef!];
+              }
+              hiddenCount = visibleTabs.length - displayTabs.length;
+            }
+
+            return (
+              <div className="flex items-center gap-1.5 py-2.5 flex-wrap">
+                {displayTabs.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = safeTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveTab(tab.key)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
+                        isActive
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+
+                {/* Expand/collapse toggle */}
+                {visibleTabs.length > VISIBLE_COUNT && (
+                  <button
+                    onClick={() => setTabsExpanded(prev => !prev)}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-3 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
+                      'text-primary bg-primary/10 hover:bg-primary/20'
+                    )}
+                  >
+                    {collapsed ? (
+                      <>
+                        <span>+{hiddenCount}</span>
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </>
+                    ) : (
+                      <>
+                        <span>Menos</span>
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
