@@ -105,13 +105,23 @@ export function initPWAUpdater() {
     }
   });
 
-  navigator.serviceWorker.getRegistration().then(reg => {
+  navigator.serviceWorker.getRegistration().then(async (reg) => {
     if (!reg) return;
 
-    if (reg.waiting) {
+    const notifyIfWaiting = () => {
+      if (!reg.waiting) return;
       waitingWorker = reg.waiting;
       updateCallbacks.forEach(cb => cb());
+    };
+
+    // Check immediately on app startup so newly published versions are detected fast.
+    notifyIfWaiting();
+    try {
+      await reg.update();
+    } catch {
+      // ignore update check failures (offline/intermittent network)
     }
+    notifyIfWaiting();
 
     reg.addEventListener('updatefound', () => {
       const newWorker = reg.installing;
