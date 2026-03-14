@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +36,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2 } from 'lucide-react';
+import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -69,6 +70,43 @@ interface TeamMemberEntry {
   user_id: string;
   evaluated_metrics: string[];
   created_at: string;
+}
+
+function CollapsibleAddMembers({ available, teamId, onAdd }: {
+  available: { user_id: string; full_name: string | null; email: string | null }[];
+  teamId: string;
+  onAdd: (teamId: string, userId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="pt-2 border-t">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <span className="flex items-center gap-1.5 font-medium">
+          <UserPlus className="h-3.5 w-3.5" />
+          Adicionar membro
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{available.length}</Badge>
+        </span>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      <div className={cn(
+        'overflow-hidden transition-all duration-200',
+        expanded ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'
+      )}>
+        <div className="flex flex-wrap gap-1">
+          {available.map(m => (
+            <Button key={m.user_id} variant="outline" size="sm" className="h-7 text-xs" onClick={() => onAdd(teamId, m.user_id)}>
+              <UserPlus className="h-3 w-3 mr-1" />
+              {m.full_name || m.email || 'Sem nome'}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function TeamsManager() {
@@ -436,19 +474,13 @@ export function TeamsManager() {
                     <p className="text-sm text-muted-foreground text-center py-2">Nenhum membro alocado</p>
                   )}
 
-                  {/* Add member dropdown */}
+                  {/* Collapsible add member section */}
                   {available.length > 0 && (
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">Adicionar membro:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {available.map(m => (
-                          <Button key={m.user_id} variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleAddMember(team.id, m.user_id)}>
-                            <UserPlus className="h-3 w-3 mr-1" />
-                            {m.full_name || m.email || 'Sem nome'}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
+                    <CollapsibleAddMembers
+                      available={available}
+                      teamId={team.id}
+                      onAdd={handleAddMember}
+                    />
                   )}
                 </CardContent>
               </Card>
