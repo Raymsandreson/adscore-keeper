@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN followup_steps jsonb DEFAULT '[]'::jsonb;

@@ -6697,6 +6697,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           display_order: number | null
+          followup_steps: Json | null
           id: string
           is_active: boolean | null
           prompt_instructions: string | null
@@ -6709,6 +6710,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           display_order?: number | null
+          followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
           prompt_instructions?: string | null
@@ -6721,6 +6723,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           display_order?: number | null
+          followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
           prompt_instructions?: string | null
