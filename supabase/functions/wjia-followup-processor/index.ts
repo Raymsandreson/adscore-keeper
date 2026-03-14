@@ -15,8 +15,12 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find sessions that need follow-up
-    // Status: "generated" (doc sent but not signed) with active followup rules
+    // Check if processing a specific session (event-driven mode)
+    let body: any = {};
+    try { body = await req.json(); } catch { /* empty body ok */ }
+    const targetSessionId = body?.session_id || null;
+
+    // Get active rules
     const { data: rules } = await supabase
       .from("wjia_followup_rules")
       .select("*")
@@ -29,12 +33,17 @@ serve(async (req) => {
       });
     }
 
-    // Get sessions with status "generated" (pending signature)
-    const { data: sessions } = await supabase
+    // Get target session(s)
+    let sessionsQuery = supabase
       .from("wjia_collection_sessions")
       .select("*")
-      .eq("status", "generated")
-      .order("updated_at", { ascending: true });
+      .eq("status", "generated");
+
+    if (targetSessionId) {
+      sessionsQuery = sessionsQuery.eq("id", targetSessionId);
+    }
+
+    const { data: sessions } = await sessionsQuery.order("updated_at", { ascending: true });
 
     if (!sessions?.length) {
       return new Response(JSON.stringify({ message: "No pending sessions" }), {
@@ -45,7 +54,6 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     for (const session of sessions) {
-      // Find the applicable rule
       const rule = rules.find((r: any) => r.trigger_status === "generated") || rules[0];
       if (!rule) continue;
 
@@ -62,9 +70,10 @@ serve(async (req) => {
         .maybeSingle();
 
       const nextStepIndex = lastLog ? (lastLog.step_index + 1) : 0;
-      if (nextStepIndex >= steps.length) continue; // All steps done
-
-      const step = steps[nextStepIndex];
+      
+      // For infinite followup: wrap around to beginning when all steps done
+      const effectiveStepIndex = nextStepIndex % steps.length;
+      const step = steps[effectiveStepIndex];
       const delayMinutes = step.delay_minutes || 60;
 
       // Check if enough time has passed
@@ -72,9 +81,17 @@ serve(async (req) => {
       const timeSince = Date.now() - new Date(referenceTime).getTime();
       const delayMs = delayMinutes * 60 * 1000;
 
-      if (timeSince < delayMs) continue; // Not time yet
+      if (timeSince < delayMs) {
+        // Not time yet — schedule for later (remaining time)
+        const remainingMinutes = Math.max(1, Math.ceil((delayMs - timeSince) / 60000));
+        await supabase.rpc("schedule_followup_for_session", {
+          p_session_id: session.id,
+          p_delay_minutes: remainingMinutes,
+        }).catch(e => console.error("Schedule error:", e));
+        continue;
+      }
 
-      console.log(`Executing followup step ${nextStepIndex} for session ${session.id}: ${step.action_type}`);
+      console.log(`Executing followup step ${effectiveStepIndex} for session ${session.id}: ${step.action_type}`);
 
       let actionResult = "executed";
 
@@ -86,18 +103,13 @@ serve(async (req) => {
         .maybeSingle();
 
       if (step.action_type === "whatsapp_message") {
-        // Send follow-up message
         if (inst?.instance_token) {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
           const collectedData = session.collected_data || {};
           const signerName = collectedData.signer_name || "Cliente";
           
-          const msg = step.message_template
-            ? step.message_template
-                .replace("{{nome}}", signerName.split(" ")[0])
-                .replace("{{documento}}", session.template_name || "documento")
-                .replace("{{link}}", session.sign_url || "")
-            : `Olá ${signerName.split(" ")[0]}! 📝\n\nNotamos que o documento *${session.template_name}* ainda não foi assinado.\n\n👉 ${session.sign_url}\n\nPrecisa de ajuda? Estamos à disposição! 🙏`;
+          // Generate contextual follow-up message using the shortcut's prompt
+          const msg = `Olá ${signerName.split(" ")[0]}! 📝\n\nNotamos que o documento *${session.template_name}* ainda não foi assinado.\n\n👉 ${session.sign_url}\n\nPrecisa de ajuda? Estamos à disposição! 🙏`;
 
           await fetch(`${baseUrl}/send/text`, {
             method: "POST",
@@ -108,7 +120,6 @@ serve(async (req) => {
             actionResult = "error";
           });
 
-          // Save outbound message
           await supabase.from("whatsapp_messages").insert({
             phone: session.phone,
             instance_name: session.instance_name,
@@ -121,7 +132,6 @@ serve(async (req) => {
           });
         }
       } else if (step.action_type === "call") {
-        // Make call via UazAPI
         if (inst?.instance_token) {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
           await fetch(`${baseUrl}/call/make`, {
@@ -134,7 +144,6 @@ serve(async (req) => {
           });
         }
       } else if (step.action_type === "create_activity") {
-        // Create activity/task for user to follow up manually
         const assignedTo = step.assigned_to || null;
         let assignedName = null;
         if (assignedTo) {
@@ -160,20 +169,26 @@ serve(async (req) => {
       }
 
       // Log the execution
-      const nextExecutionAt = (nextStepIndex + 1 < steps.length)
-        ? new Date(Date.now() + (steps[nextStepIndex + 1]?.delay_minutes || 60) * 60 * 1000).toISOString()
-        : null;
-
       await supabase.from("wjia_followup_log").insert({
         session_id: session.id,
         rule_id: rule.id,
-        step_index: nextStepIndex,
+        step_index: nextStepIndex, // keep absolute index for tracking
         action_type: step.action_type,
         action_result: actionResult,
-        next_execution_at: nextExecutionAt,
+        next_execution_at: null, // will be set by the scheduled job
       });
 
       actionsExecuted++;
+
+      // Schedule the NEXT step via DB trigger (event-driven, no polling)
+      const nextNextIndex = (nextStepIndex + 1) % steps.length;
+      const nextStep = steps[nextNextIndex];
+      const nextDelay = nextStep?.delay_minutes || 60;
+
+      await supabase.rpc("schedule_followup_for_session", {
+        p_session_id: session.id,
+        p_delay_minutes: nextDelay,
+      }).catch(e => console.error("Schedule next error:", e));
     }
 
     return new Response(JSON.stringify({

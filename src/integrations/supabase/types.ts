@@ -7080,6 +7080,10 @@ export type Database = {
       cleanup_old_command_history: { Args: never; Returns: undefined }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
+      execute_and_cleanup_followup: {
+        Args: { p_job_name: string; p_session_id: string }
+        Returns: undefined
+      }
       generate_case_number: { Args: { p_nucleus_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -7096,6 +7100,10 @@ export type Database = {
           p_change_description?: string
           p_changed_by: string
         }
+        Returns: undefined
+      }
+      schedule_followup_for_session: {
+        Args: { p_delay_minutes: number; p_session_id: string }
         Returns: undefined
       }
     }
