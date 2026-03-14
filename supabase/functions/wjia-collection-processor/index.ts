@@ -152,13 +152,13 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
-    // Find active collection session for this phone
+    // Find active collection session for this phone (collecting OR confirming)
     const { data: session } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .eq("status", "collecting")
+      .in("status", ["collecting", "confirming"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
