@@ -6,7 +6,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings,
+  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings, GripVertical,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
@@ -32,6 +32,80 @@ interface NavSection {
   items: NavItem[];
 }
 
+function useDraggable() {
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('dock_position');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const dragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const posStart = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // Only start drag from the grip handle
+    const target = e.target as HTMLElement;
+    if (!target.closest('[data-drag-handle]')) return;
+    
+    dragging.current = true;
+    hasMoved.current = false;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    
+    const el = (e.currentTarget as HTMLElement);
+    const rect = el.getBoundingClientRect();
+    posStart.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    
+    if (!hasMoved.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+    hasMoved.current = true;
+
+    const newX = posStart.current.x + dx;
+    const newY = posStart.current.y + dy;
+    
+    // Clamp to viewport
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clampedX = Math.max(40, Math.min(vw - 40, newX));
+    const clampedY = Math.max(40, Math.min(vh - 40, newY));
+    
+    setPosition({ x: clampedX, y: clampedY });
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    
+    if (hasMoved.current) {
+      setPosition(prev => {
+        if (prev) {
+          try { localStorage.setItem('dock_position', JSON.stringify(prev)); } catch {}
+        }
+        return prev;
+      });
+    }
+  }, []);
+
+  const resetPosition = useCallback(() => {
+    setPosition(null);
+    try { localStorage.removeItem('dock_position'); } catch {}
+  }, []);
+
+  const isDragging = () => hasMoved.current && dragging.current;
+
+  return { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging };
+}
+
 export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +124,7 @@ export function FloatingNav() {
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
+  const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging } = useDraggable();
 
   const noop = useCallback(() => {}, []);
 
