@@ -52,6 +52,7 @@ interface FollowupStep {
 
 interface Instance { id: string; instance_name: string; }
 interface Profile { user_id: string; full_name: string | null; }
+interface ZapSignTemplateOption { token: string; name: string; }
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
