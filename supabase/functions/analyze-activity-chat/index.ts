@@ -158,52 +158,45 @@ Responda em português do Brasil.`;
         { type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } },
       ];
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas e extrai informações para atualizar o CRM." },
-            { role: "user", content: contentParts },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "save_transcription_and_suggestions",
-              description: "Salva a transcrição, resumo e sugestões de atualização de campos",
-              parameters: {
-                type: "object",
-                properties: {
-                  transcript: { type: "string", description: "Transcrição completa do áudio" },
-                  summary: { type: "string", description: "Resumo objetivo em bullet points" },
-                  next_steps: { type: "string", description: "Próximos passos identificados" },
-                  field_suggestions: {
-                    type: "array",
-                    description: "Sugestões de atualização de campos do lead ou contato mencionados na ligação. Só inclua se a informação for CLARAMENTE mencionada.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        entity_type: { type: "string", enum: ["lead", "contact"], description: "Se é campo do lead ou do contato" },
-                        field_name: { type: "string", description: "Nome do campo no banco (ex: city, state, victim_name, profession)" },
-                        field_label: { type: "string", description: "Nome amigável do campo em português (ex: Cidade, Estado, Nome da Vítima)" },
-                        suggested_value: { type: "string", description: "Valor sugerido baseado na ligação" },
-                      },
-                      required: ["entity_type", "field_name", "field_label", "suggested_value"],
-                      additionalProperties: false,
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas e extrai informações para atualizar o CRM." },
+          { role: "user", content: contentParts },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "save_transcription_and_suggestions",
+            description: "Salva a transcrição, resumo e sugestões de atualização de campos",
+            parameters: {
+              type: "object",
+              properties: {
+                transcript: { type: "string", description: "Transcrição completa do áudio" },
+                summary: { type: "string", description: "Resumo objetivo em bullet points" },
+                next_steps: { type: "string", description: "Próximos passos identificados" },
+                field_suggestions: {
+                  type: "array",
+                  description: "Sugestões de atualização de campos do lead ou contato mencionados na ligação.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      entity_type: { type: "string", enum: ["lead", "contact"] },
+                      field_name: { type: "string" },
+                      field_label: { type: "string" },
+                      suggested_value: { type: "string" },
                     },
+                    required: ["entity_type", "field_name", "field_label", "suggested_value"],
+                    additionalProperties: false,
                   },
                 },
-                required: ["transcript", "summary", "next_steps", "field_suggestions"],
-                additionalProperties: false,
               },
+              required: ["transcript", "summary", "next_steps", "field_suggestions"],
+              additionalProperties: false,
             },
-          }],
-          tool_choice: { type: "function", function: { name: "save_transcription_and_suggestions" } },
-        }),
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "save_transcription_and_suggestions" } },
       });
 
       let transcript = "";
@@ -211,21 +204,16 @@ Responda em português do Brasil.`;
       let nextSteps = "";
       let fieldSuggestions: any[] = [];
 
-      if (aiResponse.ok) {
-        const aiData = await aiResponse.json();
-        const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall?.function?.arguments) {
-          const parsed = JSON.parse(toolCall.function.arguments);
-          transcript = parsed.transcript || "";
-          summary = parsed.summary || "";
-          nextSteps = parsed.next_steps || "";
-          fieldSuggestions = parsed.field_suggestions || [];
-        } else {
-          transcript = aiData.choices?.[0]?.message?.content || "";
-          summary = transcript;
-        }
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        transcript = parsed.transcript || "";
+        summary = parsed.summary || "";
+        nextSteps = parsed.next_steps || "";
+        fieldSuggestions = parsed.field_suggestions || [];
       } else {
-        console.error("AI transcription error:", aiResponse.status, await aiResponse.text());
+        transcript = aiData.choices?.[0]?.message?.content || "";
+        summary = transcript;
       }
 
       if (call_record_id && (transcript || summary)) {
