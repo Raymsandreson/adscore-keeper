@@ -353,6 +353,10 @@ export function FloatingNav() {
                 if (result === 'update-found') {
                   setHasUpdate(true);
                   setUpdateNotesOpen(true);
+                } else if (result === 'no-sw') {
+                  // No service worker — just hard reload
+                  toast.info('Recarregando app...');
+                  setTimeout(() => window.location.reload(), 300);
                 } else {
                   toast.success('App atualizado!', { description: 'Você já está na versão mais recente.' });
                 }
