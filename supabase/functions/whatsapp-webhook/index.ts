@@ -1310,6 +1310,56 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== WJIA COLLECTION SESSION CHECK ==========
+    // If there's an active data collection session, route to collection processor instead of AI agent
+    if (direction === 'inbound' && instanceName && phone && messageText) {
+      try {
+        const { data: activeSession } = await supabase
+          .from('wjia_collection_sessions')
+          .select('id')
+          .eq('phone', phone)
+          .eq('instance_name', instanceName)
+          .eq('status', 'collecting')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (activeSession) {
+          console.log('Active WJIA collection session found, routing to collection processor:', activeSession.id)
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+          fetch(`${supabaseUrl}/functions/v1/wjia-collection-processor`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              phone,
+              instance_name: instanceName,
+              message_text: messageText,
+            }),
+          }).catch(err => console.error('Collection processor trigger error:', err))
+
+          const respData = {
+            success: true,
+            message_id: message.id,
+            contact_id: contactId,
+            lead_id: leadId,
+            instance_name: instanceName,
+            wjia_collection_routed: true,
+          }
+          await logWebhook('wjia_collection_routed', respData)
+          return new Response(
+            JSON.stringify(respData),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+      } catch (e) {
+        console.error('Collection session check error:', e)
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {
