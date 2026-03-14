@@ -1220,6 +1220,90 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== @WJIA COMMAND DETECTION (outbound messages from attendant) ==========
+    if (direction === 'outbound' && instanceName && phone && messageText) {
+      const trimmed = (messageText || '').trim()
+      if (trimmed.toLowerCase().startsWith('@wjia')) {
+        console.log('@wjia command detected from attendant via WhatsApp app, phone:', phone, 'command:', trimmed)
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+          const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || ''
+
+          // Resolve instance_name to get instance details
+          const { data: instData } = await supabase
+            .from('whatsapp_instances')
+            .select('instance_name')
+            .eq('instance_name', instanceName)
+            .eq('is_active', true)
+            .maybeSingle()
+
+          // Fire-and-forget: call wjia-chat-command
+          fetch(`${supabaseUrl}/functions/v1/wjia-chat-command`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              phone,
+              instance_name: instData?.instance_name || instanceName,
+              command: trimmed,
+              contact_id: contactId,
+              lead_id: leadId,
+            }),
+          }).catch(err => console.error('@wjia command trigger error:', err))
+
+          // Delete the @wjia message from WhatsApp so client doesn't see it
+          if (externalMessageId && instanceName) {
+            try {
+              let resolvedToken = instanceToken
+              let resolvedBaseUrl = baseUrl
+              if (!resolvedToken || !resolvedBaseUrl) {
+                const { data: inst } = await supabase
+                  .from('whatsapp_instances')
+                  .select('instance_token, base_url')
+                  .eq('instance_name', instanceName)
+                  .limit(1)
+                  .maybeSingle()
+                if (inst) {
+                  resolvedToken = resolvedToken || inst.instance_token
+                  resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+                }
+              }
+              if (resolvedToken && resolvedBaseUrl) {
+                fetch(`${resolvedBaseUrl}/message/delete`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                  body: JSON.stringify({ id: externalMessageId }),
+                }).catch(e => console.error('Error deleting @wjia message:', e))
+              }
+            } catch (delErr) {
+              console.error('Error deleting @wjia command message:', delErr)
+            }
+          }
+
+          // Also delete from DB so it doesn't show in inbox
+          if (message?.id) {
+            await supabase.from('whatsapp_messages').delete().eq('id', message.id).catch(() => {})
+          }
+
+          const respData = {
+            success: true,
+            message_id: message.id,
+            wjia_command: true,
+            instance_name: instanceName,
+          }
+          await logWebhook('wjia_command_routed', respData)
+          return new Response(
+            JSON.stringify(respData),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        } catch (e) {
+          console.error('@wjia command processing error:', e)
+        }
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {
