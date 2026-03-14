@@ -6632,6 +6632,189 @@ export type Database = {
         }
         Relationships: []
       }
+      wjia_collection_sessions: {
+        Row: {
+          collected_data: Json | null
+          contact_id: string | null
+          created_at: string | null
+          doc_token: string | null
+          id: string
+          instance_name: string
+          lead_id: string | null
+          missing_fields: Json | null
+          phone: string
+          prompt_instructions: string | null
+          required_fields: Json | null
+          sign_url: string | null
+          status: string | null
+          template_name: string | null
+          template_token: string
+          triggered_by: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          collected_data?: Json | null
+          contact_id?: string | null
+          created_at?: string | null
+          doc_token?: string | null
+          id?: string
+          instance_name: string
+          lead_id?: string | null
+          missing_fields?: Json | null
+          phone: string
+          prompt_instructions?: string | null
+          required_fields?: Json | null
+          sign_url?: string | null
+          status?: string | null
+          template_name?: string | null
+          template_token: string
+          triggered_by?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          collected_data?: Json | null
+          contact_id?: string | null
+          created_at?: string | null
+          doc_token?: string | null
+          id?: string
+          instance_name?: string
+          lead_id?: string | null
+          missing_fields?: Json | null
+          phone?: string
+          prompt_instructions?: string | null
+          required_fields?: Json | null
+          sign_url?: string | null
+          status?: string | null
+          template_name?: string | null
+          template_token?: string
+          triggered_by?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      wjia_command_shortcuts: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          prompt_instructions: string | null
+          shortcut_name: string
+          template_name: string | null
+          template_token: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          prompt_instructions?: string | null
+          shortcut_name: string
+          template_name?: string | null
+          template_token?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          prompt_instructions?: string | null
+          shortcut_name?: string
+          template_name?: string | null
+          template_token?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      wjia_followup_log: {
+        Row: {
+          action_result: string | null
+          action_type: string
+          executed_at: string | null
+          id: string
+          next_execution_at: string | null
+          rule_id: string | null
+          session_id: string | null
+          step_index: number | null
+        }
+        Insert: {
+          action_result?: string | null
+          action_type: string
+          executed_at?: string | null
+          id?: string
+          next_execution_at?: string | null
+          rule_id?: string | null
+          session_id?: string | null
+          step_index?: number | null
+        }
+        Update: {
+          action_result?: string | null
+          action_type?: string
+          executed_at?: string | null
+          id?: string
+          next_execution_at?: string | null
+          rule_id?: string | null
+          session_id?: string | null
+          step_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wjia_followup_log_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_followup_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wjia_followup_log_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "wjia_collection_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wjia_followup_rules: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          steps: Json | null
+          trigger_status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          steps?: Json | null
+          trigger_status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          steps?: Json | null
+          trigger_status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       workflow_daily_goals: {
         Row: {
           created_at: string
