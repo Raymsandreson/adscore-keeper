@@ -72,6 +72,43 @@ interface TeamMemberEntry {
   created_at: string;
 }
 
+function CollapsibleAddMembers({ available, teamId, onAdd }: {
+  available: { user_id: string; full_name: string | null; email: string | null }[];
+  teamId: string;
+  onAdd: (teamId: string, userId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="pt-2 border-t">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <span className="flex items-center gap-1.5 font-medium">
+          <UserPlus className="h-3.5 w-3.5" />
+          Adicionar membro
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{available.length}</Badge>
+        </span>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      <div className={cn(
+        'overflow-hidden transition-all duration-200',
+        expanded ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'
+      )}>
+        <div className="flex flex-wrap gap-1">
+          {available.map(m => (
+            <Button key={m.user_id} variant="outline" size="sm" className="h-7 text-xs" onClick={() => onAdd(teamId, m.user_id)}>
+              <UserPlus className="h-3 w-3 mr-1" />
+              {m.full_name || m.email || 'Sem nome'}
+            </Button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TeamsManager() {
   const { members } = useTeamMembers();
   const { boards } = useKanbanBoards();
