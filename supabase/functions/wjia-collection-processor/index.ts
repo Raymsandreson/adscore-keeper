@@ -215,7 +215,7 @@ ${conversationText}
 MENSAGEM ATUAL DO CLIENTE: "${message_text || ""}"
 
 REGRAS:
-- Analise a mensagem do cliente e extraia QUALQUER dado que corresponda aos campos faltantes
+- Analise a mensagem atual E a conversa recente para extrair QUALQUER dado que corresponda aos campos faltantes
 - Se o cliente mandou nome completo, CPF, RG, endereço, etc., extraia tudo
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
