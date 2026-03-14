@@ -327,6 +327,7 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
       {showForm && (
         <Card className="border-primary/30">
           <CardContent className="p-4 space-y-3">
+            <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando atalho' : '➕ Novo atalho'}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Nome do Atalho *</Label>
@@ -357,8 +358,8 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button size="sm" onClick={handleSave}>Salvar</Button>
+              <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
+              <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
             </div>
           </CardContent>
         </Card>
