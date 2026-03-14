@@ -339,7 +339,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
           Atalhos @wjia com regras de follow-up integradas para cada documento.
         </p>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => { setShowAI(!showAI); setShowForm(false); }} className="gap-1">
+          <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
             <Wand2 className="h-3.5 w-3.5" /> IA
           </Button>
           <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); setShowAI(false); }}>
