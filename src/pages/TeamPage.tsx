@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { usePageState } from '@/hooks/usePageState';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { TeamManagement } from '@/components/team/TeamManagement';
 import { TeamProductivityDashboard } from '@/components/team/TeamProductivityDashboard';
@@ -18,11 +17,11 @@ import { WhatsAppInstancePermissions } from '@/components/team/WhatsAppInstanceP
 import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
+import { cn } from '@/lib/utils';
 import {
   Users,
   BarChart3,
   ArrowLeft,
-  Shield,
   Loader2,
   CreditCard,
   Star,
@@ -37,14 +36,55 @@ import {
   Activity,
 } from 'lucide-react';
 
+interface TabDef {
+  key: string;
+  label: string;
+  icon: React.ElementType;
+  adminOnly?: boolean;
+}
+
+const ALL_TABS: TabDef[] = [
+  { key: 'productivity', label: 'Produtividade', icon: BarChart3 },
+  { key: 'metrics', label: 'Métricas', icon: Activity, adminOnly: true },
+  { key: 'commission', label: 'Metas', icon: DollarSign, adminOnly: true },
+  { key: 'evaluations', label: 'Avaliações', icon: Star, adminOnly: true },
+  { key: 'traffic', label: 'Tráfego', icon: TrendingUp, adminOnly: true },
+  { key: 'members', label: 'Membros', icon: Users },
+  { key: 'teams', label: 'Times', icon: UsersRound },
+  { key: 'career', label: 'Carreira', icon: GraduationCap, adminOnly: true },
+  { key: 'routines', label: 'Rotinas', icon: CalendarClock, adminOnly: true },
+  { key: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, adminOnly: true },
+  { key: 'permissions', label: 'Cartões', icon: CreditCard, adminOnly: true },
+  { key: 'accounts', label: 'Contas', icon: Landmark, adminOnly: true },
+  { key: 'modules', label: 'Acessos', icon: Lock, adminOnly: true },
+];
+
+function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: string[] }) {
+  switch (tab) {
+    case 'productivity': return <TeamProductivityDashboard />;
+    case 'metrics': return <MetricsManager />;
+    case 'commission': return <CommissionGoals />;
+    case 'evaluations': return <WeeklyEvaluations />;
+    case 'traffic': return <TrafficActivityPanel />;
+    case 'members': return <TeamManagement />;
+    case 'teams': return <TeamsManager />;
+    case 'career': return <CareerPlanManager />;
+    case 'routines': return <MemberRoutineManager />;
+    case 'whatsapp': return <WhatsAppInstancePermissions />;
+    case 'permissions': return <CardPermissionsManager availableCards={availableCards} />;
+    case 'accounts': return <AccountPermissionsManager />;
+    case 'modules': return <ModulePermissionsManager />;
+    default: return null;
+  }
+}
+
 export default function TeamPage() {
   const navigate = useNavigate();
   const { isAdmin, loading } = useUserRole();
   const [activeTab, setActiveTab] = usePageState<string>('team_activeTab', 'productivity');
-  
-  // Fetch transactions to get available cards for permissions
+
   const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
-  
+
   useEffect(() => {
     fetchConnections();
     fetchTransactions();
@@ -55,164 +95,82 @@ export default function TeamPage() {
     return Array.from(cards);
   }, [transactions]);
 
+  const visibleTabs = useMemo(
+    () => ALL_TABS.filter(t => !t.adminOnly || isAdmin),
+    [isAdmin]
+  );
+
+  const safeTab = visibleTabs.some(t => t.key === activeTab) ? activeTab : 'productivity';
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // All authenticated users can access - admin-only tabs are filtered below
-  const availableTabs = isAdmin
-    ? ['productivity', 'metrics', 'commission', 'evaluations', 'traffic', 'members', 'teams', 'career', 'routines', 'whatsapp', 'permissions', 'accounts', 'modules']
-    : ['productivity', 'members', 'teams'];
-
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-6 max-w-7xl">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Gestão de Equipe</h1>
-            <p className="text-muted-foreground">
-              Gerencie membros e monitore a produtividade
-            </p>
+    <div className="min-h-screen bg-muted/30">
+      {/* Inter-style sticky header */}
+      <div className="sticky top-0 z-30 bg-card border-b shadow-sm">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex items-center gap-3 h-16">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/')}
+              className="rounded-full hover:bg-primary/10 shrink-0"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden sm:flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold text-foreground truncate">
+                  Gestão de Equipe
+                </h1>
+                <p className="text-xs text-muted-foreground hidden sm:block">
+                  Membros, produtividade e permissões
+                </p>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <Tabs value={availableTabs.includes(activeTab) ? activeTab : 'productivity'} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="flex w-full max-w-7xl overflow-x-auto">
-            <TabsTrigger value="productivity" className="gap-2 shrink-0">
-              <BarChart3 className="h-4 w-4" />
-              <span className="hidden sm:inline">Produtividade</span>
-            </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="metrics" className="gap-2 shrink-0">
-                <Activity className="h-4 w-4" />
-                <span className="hidden sm:inline">Métricas</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="commission" className="gap-2 shrink-0">
-                <DollarSign className="h-4 w-4" />
-                <span className="hidden sm:inline">Metas</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="evaluations" className="gap-2 shrink-0">
-                <Star className="h-4 w-4" />
-                <span className="hidden sm:inline">Avaliações</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="traffic" className="gap-2 shrink-0">
-                <TrendingUp className="h-4 w-4" />
-                <span className="hidden sm:inline">Tráfego</span>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="members" className="gap-2 shrink-0">
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Membros</span>
-            </TabsTrigger>
-            <TabsTrigger value="teams" className="gap-2 shrink-0">
-              <UsersRound className="h-4 w-4" />
-              <span className="hidden sm:inline">Times</span>
-            </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="career" className="gap-2 shrink-0">
-                <GraduationCap className="h-4 w-4" />
-                <span className="hidden sm:inline">Carreira</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="routines" className="gap-2 shrink-0">
-                <CalendarClock className="h-4 w-4" />
-                <span className="hidden sm:inline">Rotinas</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="whatsapp" className="gap-2 shrink-0">
-                <MessageSquare className="h-4 w-4" />
-                <span className="hidden sm:inline">WhatsApp</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="permissions" className="gap-2 shrink-0">
-                <CreditCard className="h-4 w-4" />
-                <span className="hidden sm:inline">Cartões</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="accounts" className="gap-2 shrink-0">
-                <Landmark className="h-4 w-4" />
-                <span className="hidden sm:inline">Contas</span>
-              </TabsTrigger>
-            )}
-            {isAdmin && (
-              <TabsTrigger value="modules" className="gap-2 shrink-0">
-                <Lock className="h-4 w-4" />
-                <span className="hidden sm:inline">Acessos</span>
-              </TabsTrigger>
-            )}
-          </TabsList>
+      {/* Inter-style pill tab navigation */}
+      <div className="sticky top-16 z-20 bg-card/80 backdrop-blur-md border-b">
+        <div className="container mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex items-center gap-1.5 py-2.5 overflow-x-auto scrollbar-hide">
+            {visibleTabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = safeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0',
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
-          <TabsContent value="productivity">
-            <TeamProductivityDashboard />
-          </TabsContent>
-
-          <TabsContent value="metrics">
-            <MetricsManager />
-          </TabsContent>
-
-          <TabsContent value="commission">
-            <CommissionGoals />
-          </TabsContent>
-
-          <TabsContent value="evaluations">
-            <WeeklyEvaluations />
-          </TabsContent>
-
-          <TabsContent value="traffic">
-            <TrafficActivityPanel />
-          </TabsContent>
-
-          <TabsContent value="members">
-            <TeamManagement />
-          </TabsContent>
-
-          <TabsContent value="teams">
-            <TeamsManager />
-          </TabsContent>
-
-          <TabsContent value="career">
-            <CareerPlanManager />
-          </TabsContent>
-
-          <TabsContent value="routines">
-            <MemberRoutineManager />
-          </TabsContent>
-
-          <TabsContent value="whatsapp">
-            <WhatsAppInstancePermissions />
-          </TabsContent>
-
-          <TabsContent value="permissions">
-            <CardPermissionsManager availableCards={availableCards} />
-          </TabsContent>
-
-          <TabsContent value="accounts">
-            <AccountPermissionsManager />
-          </TabsContent>
-
-          <TabsContent value="modules">
-            <ModulePermissionsManager />
-          </TabsContent>
-        </Tabs>
+      {/* Content */}
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-6">
+        <TeamTabContent tab={safeTab} availableCards={availableCards} />
       </div>
     </div>
   );
