@@ -654,58 +654,42 @@ ${context.contact_phone ? `Telefone: ${context.contact_phone}` : ''}
 
 Cada ação deve ser uma frase curta (máximo 15 palavras) e começar com um verbo de ação. Pense em ações como: ligar para o contato, enviar documentação, agendar reunião, verificar prazo, etc.`;
 
-      const actionsResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Retorne exatamente 3 ações práticas." },
-            { role: "user", content: actionsPrompt },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "suggest_actions",
-              description: "Retorna 3 sugestões de ação",
-              parameters: {
-                type: "object",
-                properties: {
-                  actions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: { type: "string", description: "Ação curta (ex: Ligar para o contato)" },
-                        detail: { type: "string", description: "Detalhe breve do que fazer" },
-                        icon: { type: "string", enum: ["phone", "document", "meeting", "email", "check", "search"], description: "Ícone da ação" },
-                      },
-                      required: ["label", "detail", "icon"],
-                      additionalProperties: false,
+      const actionsData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Retorne exatamente 3 ações práticas." },
+          { role: "user", content: actionsPrompt },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "suggest_actions",
+            description: "Retorna 3 sugestões de ação",
+            parameters: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string" },
+                      detail: { type: "string" },
+                      icon: { type: "string", enum: ["phone", "document", "meeting", "email", "check", "search"] },
                     },
+                    required: ["label", "detail", "icon"],
+                    additionalProperties: false,
                   },
                 },
-                required: ["actions"],
-                additionalProperties: false,
               },
+              required: ["actions"],
+              additionalProperties: false,
             },
-          }],
-          tool_choice: { type: "function", function: { name: "suggest_actions" } },
-        }),
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "suggest_actions" } },
       });
 
-      if (!actionsResponse.ok) {
-        const t = await actionsResponse.text();
-        console.error("AI actions error:", actionsResponse.status, t);
-        return new Response(JSON.stringify({ actions: [] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const actionsData = await actionsResponse.json();
       const toolCall = actionsData.choices?.[0]?.message?.tool_calls?.[0];
       let actions = [];
       if (toolCall?.function?.arguments) {
