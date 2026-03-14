@@ -25,14 +25,20 @@ Cada atalho tem:
 1. **shortcut_name**: Nome curto do atalho (sem espaços, minúsculo, ex: "procuracao", "contrato", "honorarios")
 2. **description**: Descrição breve do que o atalho faz
 3. **prompt_instructions**: Instruções detalhadas para a IA sobre como conduzir a conversa, coletar dados, gerar documentos, etc.
-4. **followup_steps**: Array de etapas de follow-up automático quando o cliente não responde/assina
+   IMPORTANTE: O prompt_instructions DEVE incluir também as instruções de COMO o follow-up deve funcionar (o que dizer em cada etapa, tom, abordagem). NÃO há campo separado para mensagem de follow-up — tudo fica no prompt.
+4. **followup_steps**: Array de etapas de follow-up automático — define apenas TIPO de ação e TEMPO de espera. O conteúdo/abordagem de cada etapa deve estar descrito no prompt_instructions.
 
 Tipos de ações para followup_steps:
-- "whatsapp_message": Envia mensagem WhatsApp. Tem "message_template" com variáveis {{nome}}, {{documento}}, {{link}}
+- "whatsapp_message": Envia mensagem WhatsApp (o prompt define o que dizer)
 - "call": Agenda ligação. Tem "assigned_to" (deixe vazio)
 - "create_activity": Cria atividade/tarefa. Tem "assigned_to" (deixe vazio), "activity_type" (ex: "tarefa", "ligacao")
 
-Para delay_minutes no follow-up: use valores realistas (60=1h, 1440=1dia, 2880=2dias, etc.)
+Para delay_minutes: use valores realistas e VARIADOS conforme a urgência e bom senso:
+- 1ª cobrança: 60-120 min (1-2h)
+- 2ª: 1440-2880 (1-2 dias)
+- Ligação: geralmente após 2ª ou 3ª mensagem sem resposta
+- Escale gradualmente os tempos
+- Monte uma sequência infinita lógica (mínimo 4-6 etapas), alternando mensagens, ligações e atividades conforme faça sentido
 
 O prompt_instructions deve ser COMPLETO e incluir:
 - Papel/persona do agente
@@ -41,6 +47,7 @@ O prompt_instructions deve ser COMPLETO e incluir:
 - Fluxo da conversa (saudação → coleta → confirmação → geração)
 - Regras de comportamento
 - Formato das respostas (curtas, com emojis, profissional)
+- Instruções de follow-up: o que dizer em cada etapa de cobrança, como escalar o tom, quando ser mais insistente
 
 IMPORTANTE: O prompt_instructions deve ser extremamente detalhado e cobrir todas as situações possíveis.
 
@@ -53,7 +60,6 @@ Responda APENAS com JSON válido no formato:
     {
       "action_type": "whatsapp_message" | "call" | "create_activity",
       "delay_minutes": number,
-      "message_template": "string (opcional)",
       "assigned_to": "string (opcional, deixe vazio)",
       "activity_type": "string (opcional)"
     }

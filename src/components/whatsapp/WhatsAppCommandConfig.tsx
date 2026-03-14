@@ -348,23 +348,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         </div>
       </div>
 
-      {showAI && (
+      {showAI && !aiEditConfig && (
         <AIShortcutGenerator
-          existingConfig={aiEditConfig}
+          existingConfig={null}
           onApply={(config) => {
             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
-              template_token: editingId ? form.template_token : '',
-              template_name: editingId ? form.template_name : '',
+              template_token: '',
+              template_name: '',
               prompt_instructions: config.prompt_instructions,
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
             setShowAI(false);
-            setAiEditConfig(null);
           }}
-          onClose={() => { setShowAI(false); setAiEditConfig(null); }}
+          onClose={() => { setShowAI(false); }}
         />
       )}
 
