@@ -72,6 +72,113 @@ interface TeamMemberEntry {
   created_at: string;
 }
 
+function CollapsibleMembers({ members: currentMembers, teamId, getMemberMetrics, handleToggleMetric, handleRemoveMember, teamMembers, setTeamMembers, teamColor }: {
+  members: { user_id: string; full_name: string | null; email: string | null }[];
+  teamId: string;
+  getMemberMetrics: (teamId: string, userId: string) => string[];
+  handleToggleMetric: (teamId: string, userId: string, metricKey: string) => void;
+  handleRemoveMember: (teamId: string, userId: string) => void;
+  teamMembers: TeamMemberEntry[];
+  setTeamMembers: React.Dispatch<React.SetStateAction<TeamMemberEntry[]>>;
+  teamColor: string;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="flex items-center justify-between w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-1 mb-1"
+      >
+        <span className="flex items-center gap-1.5 font-medium">
+          <Users className="h-3.5 w-3.5" />
+          Membros
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{currentMembers.length}</Badge>
+        </span>
+        {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      <div className={cn(
+        'overflow-hidden transition-all duration-200',
+        expanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
+      )}>
+        <div className="space-y-2">
+          {currentMembers.map(m => {
+            const memberMetrics = getMemberMetrics(teamId, m.user_id);
+            return (
+              <div key={m.user_id} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Users className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium block truncate">{m.full_name || m.email || 'Sem nome'}</span>
+                    {memberMetrics.length > 0 && memberMetrics.length < ALL_METRICS.length && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {memberMetrics.length} métrica{memberMetrics.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-56 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-medium">Métricas avaliadas</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={async () => {
+                            const allSelected = memberMetrics.length === ALL_METRICS.length;
+                            const newMetrics = allSelected ? [] : ALL_METRICS.map(met => met.key);
+                            try {
+                              await supabase
+                                .from('team_members')
+                                .update({ evaluated_metrics: newMetrics })
+                                .eq('team_id', teamId)
+                                .eq('user_id', m.user_id);
+                              setTeamMembers(prev => prev.map(tm =>
+                                tm.team_id === teamId && tm.user_id === m.user_id
+                                  ? { ...tm, evaluated_metrics: newMetrics }
+                                  : tm
+                              ));
+                            } catch { toast.error('Erro ao atualizar métricas'); }
+                          }}
+                        >
+                          {memberMetrics.length === ALL_METRICS.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {ALL_METRICS.map(metric => (
+                          <label key={metric.key} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded p-1 -mx-1">
+                            <Checkbox
+                              checked={memberMetrics.includes(metric.key)}
+                              onCheckedChange={() => handleToggleMetric(teamId, m.user_id, metric.key)}
+                            />
+                            {metric.label}
+                          </label>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveMember(teamId, m.user_id)}>
+                    <UserMinus className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CollapsibleAddMembers({ available, teamId, onAdd }: {
   available: { user_id: string; full_name: string | null; email: string | null }[];
   teamId: string;
