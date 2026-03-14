@@ -298,17 +298,34 @@ REGRAS:
 
     console.log("Collection result:", JSON.stringify(result));
 
-    // Update collected data
+    // Update collected data using template-variable normalization
     const updatedFields = [...(collectedData.fields || [])];
-    for (const newField of (result.newly_extracted || [])) {
-      const existingIdx = updatedFields.findIndex((f: any) =>
-        f.de?.toUpperCase() === newField.de?.toUpperCase()
-      );
-      if (existingIdx >= 0) {
-        updatedFields[existingIdx].para = newField.para;
-      } else {
-        updatedFields.push({ de: newField.de, para: newField.para });
+
+    for (const existingField of (collectedData.fields || [])) {
+      const canonicalVariable =
+        resolveTemplateVariable(existingField, requiredFieldCatalog) ||
+        inferVariableFromValue(existingField?.para, requiredFieldCatalog);
+
+      if (canonicalVariable && hasFieldValue(existingField?.para)) {
+        upsertCollectedField(updatedFields, canonicalVariable, existingField.para);
       }
+    }
+
+    for (const newField of (result.newly_extracted || [])) {
+      const canonicalVariable =
+        resolveTemplateVariable(newField, requiredFieldCatalog) ||
+        inferVariableFromValue(newField?.para, requiredFieldCatalog);
+
+      const targetVariable = canonicalVariable || newField?.de || newField?.field_name;
+      if (!targetVariable || !hasFieldValue(newField?.para)) continue;
+
+      if (!canonicalVariable) {
+        const targetKey = normalizeFieldKey(targetVariable.toString());
+        const valueKey = normalizeFieldKey(newField.para.toString());
+        if (targetKey === valueKey) continue;
+      }
+
+      upsertCollectedField(updatedFields, targetVariable.toString(), newField.para);
     }
 
     const updatedCollectedData = {
@@ -318,39 +335,52 @@ REGRAS:
       signer_phone: collectedData.signer_phone,
     };
 
-    // Fetch instance info (needed for replies and validation)
+    const actuallyMissing = computeMissingRequiredFields(requiredFieldCatalog, updatedFields);
+    const finalAllCollected = actuallyMissing.length === 0;
+
+    if (!finalAllCollected && result.all_collected) {
+      console.log("SERVER VALIDATION: AI said all_collected but these fields are still empty:", JSON.stringify(actuallyMissing));
+    }
+
+    const missingNames = actuallyMissing
+      .map((f: any) => f.friendly_name || f.field_name)
+      .slice(0, 4)
+      .join(", ");
+    const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
+
+    const replyToClient = finalAllCollected
+      ? (result.reply_to_client || "Obrigado(a)! Todos os dados foram coletados. Vou preparar o documento.")
+      : (result.all_collected ? correctionMsg : (result.reply_to_client || correctionMsg));
+
+    // Fetch instance info (needed for replies)
     const { data: inst } = await supabase
       .from("whatsapp_instances")
       .select("instance_token, base_url")
       .eq("instance_name", instance_name)
       .maybeSingle();
 
-    // Update session
     await supabase
       .from("wjia_collection_sessions")
       .update({
         collected_data: updatedCollectedData,
-        missing_fields: result.still_missing || [],
-        status: result.all_collected ? "ready" : "collecting",
+        missing_fields: actuallyMissing,
+        status: finalAllCollected ? "ready" : "collecting",
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id);
 
-    // Send reply to client
-
-    if (inst?.instance_token && result.reply_to_client) {
+    if (inst?.instance_token && replyToClient) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
       await fetch(`${baseUrl}/send/text`, {
         method: "POST",
         headers: { "Content-Type": "application/json", token: inst.instance_token },
-        body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
+        body: JSON.stringify({ number: normalizedPhone, text: replyToClient }),
       }).catch(e => console.error("Error sending reply:", e));
 
-      // Save outbound
       await supabase.from("whatsapp_messages").insert({
         phone: normalizedPhone,
         instance_name,
-        message_text: result.reply_to_client,
+        message_text: replyToClient,
         message_type: "text",
         direction: "outbound",
         contact_id: session.contact_id || null,
@@ -359,70 +389,8 @@ REGRAS:
       });
     }
 
-    // SERVER-SIDE VALIDATION: Even if AI says all_collected, verify all required fields have values
-    if (result.all_collected) {
-      const requiredFields = (session.missing_fields || []).concat(
-        (collectedData.fields || []).map((f: any) => ({ field_name: f.de, friendly_name: f.de }))
-      );
-      
-      const actuallyMissing: any[] = [];
-      for (const reqField of requiredFields) {
-        const fieldKey = (reqField.field_name || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
-        if (!fieldKey) continue;
-        // Skip optional fields (email, whatsapp - they have defaults)
-        if (fieldKey === "EMAIL" || fieldKey.includes("EMAIL") || fieldKey === "WHATSAPP" || fieldKey.includes("WHATSAPP")) continue;
-        
-        const found = updatedFields.find((f: any) => {
-          const fKey = (f.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
-          return fKey === fieldKey && f.para && f.para.toString().trim().length > 0;
-        });
-        if (!found) {
-          actuallyMissing.push(reqField);
-        }
-      }
-
-      if (actuallyMissing.length > 0) {
-        console.log("SERVER VALIDATION: AI said all_collected but these fields are still empty:", JSON.stringify(actuallyMissing));
-        result.all_collected = false;
-        result.still_missing = actuallyMissing;
-        
-        // Send a message asking for the missing data
-        const missingNames = actuallyMissing.map((f: any) => f.friendly_name || f.field_name).slice(0, 4).join(", ");
-        const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
-        
-        if (inst?.instance_token) {
-          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          await fetch(`${baseUrl}/send/text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ number: normalizedPhone, text: correctionMsg }),
-          }).catch(e => console.error("Error sending correction:", e));
-          
-          await supabase.from("whatsapp_messages").insert({
-            phone: normalizedPhone, instance_name,
-            message_text: correctionMsg, message_type: "text", direction: "outbound",
-            contact_id: session.contact_id || null, lead_id: session.lead_id || null,
-            external_message_id: `wjia_validate_${Date.now()}`,
-          });
-        }
-
-        // Keep session as collecting
-        await supabase.from("wjia_collection_sessions").update({
-          collected_data: updatedCollectedData,
-          missing_fields: actuallyMissing,
-          status: "collecting",
-          updated_at: new Date().toISOString(),
-        }).eq("id", session.id);
-
-        return new Response(JSON.stringify({
-          active_session: true, processed: true, all_collected: false,
-          validation_override: true, session_id: session.id,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
-
     // If all data collected, generate the document!
-    if (result.all_collected && zapsignToken) {
+    if (finalAllCollected && zapsignToken) {
       console.log("All data collected! Generating document for session:", session.id);
 
       // Apply defaults
