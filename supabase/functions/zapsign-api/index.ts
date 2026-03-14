@@ -390,31 +390,14 @@ Responda APENAS o JSON, sem markdown.`
       console.log(`Extracting data with ${totalImages} images (${uploadedImageUrls.length} uploaded, ${imageUrls.length} from chat) and ${textMessages.length} text messages`)
 
       try {
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-pro',
-            messages: [
-              { role: 'system', content: 'Você é um assistente especializado em extrair dados de conversas, imagens e documentos para preencher documentos jurídicos. Analise cuidadosamente TODAS as imagens enviadas, incluindo documentos de identidade, comprovantes e certidões. Extraia nacionalidade, estado civil, endereço e todos os dados visíveis. Responda apenas JSON válido.' },
-              { role: 'user', content: userContent }
-            ],
-          }),
+        const aiData = await geminiChat({
+          model: 'google/gemini-2.5-pro',
+          messages: [
+            { role: 'system', content: 'Você é um assistente especializado em extrair dados de conversas, imagens e documentos para preencher documentos jurídicos. Analise cuidadosamente TODAS as imagens enviadas, incluindo documentos de identidade, comprovantes e certidões. Extraia nacionalidade, estado civil, endereço e todos os dados visíveis. Responda apenas JSON válido.' },
+            { role: 'user', content: userContent }
+          ],
         })
 
-        if (!aiResponse.ok) {
-          const errorText = await aiResponse.text()
-          console.error('Lovable AI error:', aiResponse.status, errorText)
-          return new Response(
-            JSON.stringify({ success: true, extracted_data: [], source: 'ai_error' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
-
-        const aiData = await aiResponse.json()
         const responseText = aiData.choices?.[0]?.message?.content || '[]'
         
         let extractedData = []
