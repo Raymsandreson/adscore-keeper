@@ -111,6 +111,7 @@ function AppRoutes() {
       <Suspense fallback={<PageLoading />}>
         <Routes>
           <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
+          <Route path="/index" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Index />} />
           <Route path="/leads" element={<ProtectedRoute><LeadsCenter /></ProtectedRoute>} />
           
