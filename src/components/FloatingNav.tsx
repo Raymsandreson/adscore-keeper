@@ -6,7 +6,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Menu, X, Search, ClipboardList, ChevronRight, Phone,
   MessageSquare as MessageSquareIcon, Scale, Briefcase, AtSign, RefreshCw,
-  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings,
+  ChevronUp, ChevronDown, LogOut, MessagesSquare, Settings, GripVertical,
 } from "lucide-react";
 import { onUpdateAvailable, applyUpdate, checkForUpdates, forceHardRefresh } from "@/lib/pwaUpdater";
 import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
@@ -32,6 +32,80 @@ interface NavSection {
   items: NavItem[];
 }
 
+function useDraggable() {
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('dock_position');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+  const dragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const posStart = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    // Only start drag from the grip handle
+    const target = e.target as HTMLElement;
+    if (!target.closest('[data-drag-handle]')) return;
+    
+    dragging.current = true;
+    hasMoved.current = false;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    
+    const el = (e.currentTarget as HTMLElement);
+    const rect = el.getBoundingClientRect();
+    posStart.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    
+    if (!hasMoved.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+    hasMoved.current = true;
+
+    const newX = posStart.current.x + dx;
+    const newY = posStart.current.y + dy;
+    
+    // Clamp to viewport
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const clampedX = Math.max(40, Math.min(vw - 40, newX));
+    const clampedY = Math.max(40, Math.min(vh - 40, newY));
+    
+    setPosition({ x: clampedX, y: clampedY });
+  }, []);
+
+  const onPointerUp = useCallback(() => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    
+    if (hasMoved.current) {
+      setPosition(prev => {
+        if (prev) {
+          try { localStorage.setItem('dock_position', JSON.stringify(prev)); } catch {}
+        }
+        return prev;
+      });
+    }
+  }, []);
+
+  const resetPosition = useCallback(() => {
+    setPosition(null);
+    try { localStorage.removeItem('dock_position'); } catch {}
+  }, []);
+
+  const isDragging = () => hasMoved.current && dragging.current;
+
+  return { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging };
+}
+
 export function FloatingNav() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +124,7 @@ export function FloatingNav() {
   const [updating, setUpdating] = useState(false);
   const [checking, setChecking] = useState(false);
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
+  const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging } = useDraggable();
 
   const noop = useCallback(() => {}, []);
 
@@ -161,7 +236,23 @@ export function FloatingNav() {
 
   return (
     <>
-      <div ref={containerRef} className="fixed left-1/2 -translate-x-1/2 z-50 bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:bottom-[calc(env(safe-area-inset-bottom)+1.5rem)]">
+      <div
+        ref={containerRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="fixed z-50 touch-none"
+        style={position ? {
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          transform: 'translate(-50%, -50%)',
+          bottom: 'auto',
+        } : {
+          left: '50%',
+          transform: 'translateX(-50%)',
+          bottom: 'calc(env(safe-area-inset-bottom) + 1rem)',
+        }}
+      >
         {/* Menu Panel - appears above the dock */}
         {menuOpen && !dockCollapsed && (
           <div
@@ -267,6 +358,15 @@ export function FloatingNav() {
         ) : (
           /* Dock Bar */
           <div className="flex items-center gap-1 sm:gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-1.5 sm:px-2.5 py-1.5 sm:py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
+            {/* Drag handle */}
+            <div
+              data-drag-handle
+              onDoubleClick={() => resetPosition()}
+              title="Arraste para mover · Duplo clique para resetar"
+              className="h-9 w-5 sm:h-11 sm:w-6 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              <GripVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+            </div>
             {/* Collapse button */}
             <button
               onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); try { localStorage.setItem('dock_collapsed', '1'); } catch {} }}
