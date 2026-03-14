@@ -339,7 +339,20 @@ REGRAS:
       signer_phone: collectedData.signer_phone,
     };
 
-    const actuallyMissing = computeMissingRequiredFields(requiredFieldCatalog, updatedFields);
+    const pendingFieldCatalog: TemplateFieldRef[] = (missingFields || [])
+      .map((f: any) => {
+        const variable =
+          resolveTemplateVariable(f, requiredFieldCatalog) ||
+          (f?.field_name || f?.friendly_name || "").toString().trim();
+        const label = (f?.friendly_name || f?.field_name || variable).toString().trim();
+        return { variable, label, normalized: normalizeFieldKey(variable || label) };
+      })
+      .filter((f) => f.variable && f.normalized);
+
+    const validationCatalog = pendingFieldCatalog.length > 0 ? pendingFieldCatalog : requiredFieldCatalog;
+    const actuallyMissing = computeMissingRequiredFields(validationCatalog, updatedFields, {
+      skipOptional: pendingFieldCatalog.length === 0,
+    });
     const finalAllCollected = actuallyMissing.length === 0;
 
     if (!finalAllCollected && result.all_collected) {
