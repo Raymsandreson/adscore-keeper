@@ -400,20 +400,19 @@ IMPORTANTE:
       }
     }
 
-      const content_response = data.choices?.[0]?.message?.content;
-      if (content_response) {
-        try {
-          const jsonMatch = content_response.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const extractedData = JSON.parse(jsonMatch[0]);
-            return new Response(
-              JSON.stringify({ success: true, data: extractedData }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-        } catch (e) {
-          console.error('Error parsing JSON from content:', e);
+    const content_response = data.choices?.[0]?.message?.content;
+    if (content_response) {
+      try {
+        const jsonMatch = content_response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const extractedData = JSON.parse(jsonMatch[0]);
+          return new Response(
+            JSON.stringify({ success: true, data: extractedData }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
+      } catch (e) {
+        console.error('Error parsing JSON from content:', e);
       }
     }
 
