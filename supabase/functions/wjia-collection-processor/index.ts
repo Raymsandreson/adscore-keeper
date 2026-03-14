@@ -192,6 +192,13 @@ REGRAS:
       signer_phone: collectedData.signer_phone,
     };
 
+    // Fetch instance info (needed for replies and validation)
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+
     // Update session
     await supabase
       .from("wjia_collection_sessions")
@@ -204,11 +211,6 @@ REGRAS:
       .eq("id", session.id);
 
     // Send reply to client
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
 
     if (inst?.instance_token && result.reply_to_client) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
