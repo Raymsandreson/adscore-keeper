@@ -115,10 +115,14 @@ function upsertCollectedField(fields: any[], targetVariable: string, value: any)
   fields.push({ de: targetVariable, para: value });
 }
 
-function computeMissingRequiredFields(catalog: TemplateFieldRef[], fields: any[]) {
+function computeMissingRequiredFields(
+  catalog: TemplateFieldRef[],
+  fields: any[],
+  options?: { skipOptional?: boolean },
+) {
   return catalog
     .filter((requiredField) => {
-      if (isOptionalFieldKey(requiredField.normalized)) return false;
+      if (options?.skipOptional && isOptionalFieldKey(requiredField.normalized)) return false;
 
       const found = fields.find((f: any) => {
         const fKey = normalizeFieldKey((f?.de || f?.field_name || "").toString());
