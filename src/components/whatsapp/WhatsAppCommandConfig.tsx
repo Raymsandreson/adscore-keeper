@@ -281,7 +281,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   };
 
   const addStep = () => {
-    setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60, message_template: '' }]);
+    setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60 }]);
   };
 
   const removeStep = (idx: number) => {
