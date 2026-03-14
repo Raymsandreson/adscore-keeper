@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { description } = await req.json();
+    const { description, existing_config } = await req.json();
     if (!description?.trim()) {
       return new Response(JSON.stringify({ error: "Descrição é obrigatória" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -60,11 +60,26 @@ Responda APENAS com JSON válido no formato:
   ]
 }`;
 
+    let userMessage: string;
+    if (existing_config) {
+      userMessage = `O atalho atual é:
+- Nome: ${existing_config.shortcut_name}
+- Descrição: ${existing_config.description || '(sem descrição)'}
+- Prompt: ${existing_config.prompt_instructions || '(sem prompt)'}
+- Follow-up: ${JSON.stringify(existing_config.followup_steps || [])}
+
+O usuário quer as seguintes mudanças: ${description.trim()}
+
+Retorne a configuração COMPLETA atualizada (não apenas as mudanças), mantendo o que não foi pedido para alterar.`;
+    } else {
+      userMessage = `Crie um atalho completo para: ${description.trim()}`;
+    }
+
     const result = await geminiChat({
       model: "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Crie um atalho completo para: ${description.trim()}` },
+        { role: "user", content: userMessage },
       ],
       temperature: 0.7,
       max_tokens: 4000,
