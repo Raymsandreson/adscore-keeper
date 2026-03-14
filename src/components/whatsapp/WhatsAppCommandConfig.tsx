@@ -438,17 +438,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                         />
                       </div>
                     </div>
-                    {step.action_type === 'whatsapp_message' && (
-                      <div className="space-y-1">
-                        <Label className="text-[10px]">Mensagem (use {'{{nome}}'}, {'{{documento}}'}, {'{{link}}'})</Label>
-                        <Textarea
-                          placeholder="Olá {{nome}}! Notamos que o {{documento}} ainda não foi assinado..."
-                          value={step.message_template || ''}
-                          onChange={e => updateStep(idx, 'message_template', e.target.value)}
-                          className="min-h-[60px] text-xs"
-                        />
-                      </div>
-                    )}
                     {step.action_type === 'create_activity' && (
                       <div className="space-y-1">
                         <Label className="text-[10px]">Atribuir a</Label>
