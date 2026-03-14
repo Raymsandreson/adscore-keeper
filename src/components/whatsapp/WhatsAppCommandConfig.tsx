@@ -243,6 +243,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
 
@@ -250,6 +251,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
     setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
     setFollowupSteps([]);
     setEditingId(null);
+    setShowForm(false);
+    setAiEditConfig(null);
+  };
+
+  const startAIEdit = (s: Shortcut) => {
+    setAiEditConfig({
+      shortcut_name: s.shortcut_name,
+      description: s.description || '',
+      prompt_instructions: s.prompt_instructions || '',
+      followup_steps: s.followup_steps || [],
+    });
+    setEditingId(s.id);
+    setShowAI(true);
     setShowForm(false);
   };
 
@@ -325,7 +339,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
           Atalhos @wjia com regras de follow-up integradas para cada documento.
         </p>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => { setShowAI(!showAI); setShowForm(false); }} className="gap-1">
+          <Button size="sm" variant="outline" onClick={() => { setAiEditConfig(null); setEditingId(null); setShowAI(!showAI); setShowForm(false); }} className="gap-1">
             <Wand2 className="h-3.5 w-3.5" /> IA
           </Button>
           <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); setShowAI(false); }}>
@@ -336,20 +350,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
 
       {showAI && (
         <AIShortcutGenerator
+          existingConfig={aiEditConfig}
           onApply={(config) => {
             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
-              template_token: '',
-              template_name: '',
+              template_token: editingId ? form.template_token : '',
+              template_name: editingId ? form.template_name : '',
               prompt_instructions: config.prompt_instructions,
             });
             setFollowupSteps(config.followup_steps || []);
-            setEditingId(null);
             setShowForm(true);
             setShowAI(false);
+            setAiEditConfig(null);
           }}
-          onClose={() => setShowAI(false)}
+          onClose={() => { setShowAI(false); setAiEditConfig(null); }}
         />
       )}
 
@@ -487,7 +502,10 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 )}
               </div>
               <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => startAIEdit(s)} title="Editar com IA">
+                <Wand2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)} title="Editar manual">
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}>

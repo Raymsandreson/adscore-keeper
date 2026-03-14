@@ -25,11 +25,12 @@ interface ShortcutConfig {
 interface Props {
   onApply: (config: ShortcutConfig) => void;
   onClose: () => void;
+  existingConfig?: ShortcutConfig | null;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
 
-export function AIShortcutGenerator({ onApply, onClose }: Props) {
+export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props) {
   const [description, setDescription] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<ShortcutConfig | null>(null);
@@ -44,13 +45,18 @@ export function AIShortcutGenerator({ onApply, onClose }: Props) {
     setResult(null);
 
     try {
+      const payload: any = { description: description.trim() };
+      if (existingConfig) {
+        payload.existing_config = existingConfig;
+      }
+
       const resp = await fetch(GENERATE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ description: description.trim() }),
+        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
@@ -100,14 +106,18 @@ export function AIShortcutGenerator({ onApply, onClose }: Props) {
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Descreva o que o atalho deve fazer e a IA configura tudo: nome, prompt, follow-up.
+          {existingConfig
+            ? `Editando "${existingConfig.shortcut_name}" — descreva as mudanças desejadas.`
+            : 'Descreva o que o atalho deve fazer e a IA configura tudo: nome, prompt, follow-up.'}
         </p>
 
         {!result && (
           <div className="space-y-2">
             <div className="flex gap-2">
               <Textarea
-                placeholder="Ex: Atalho para gerar procuração ad judicia. Deve coletar nome completo, CPF, RG, endereço, estado civil e e-mail. Tom profissional mas acolhedor. Follow-up a cada 1h se não assinar, máximo 3 cobranças."
+                placeholder={existingConfig
+                  ? "Ex: Mude o tom para mais formal, adicione mais uma etapa de follow-up por ligação após 24h..."
+                  : "Ex: Atalho para gerar procuração ad judicia. Deve coletar nome completo, CPF, RG, endereço, estado civil e e-mail. Tom profissional mas acolhedor. Follow-up a cada 1h se não assinar, máximo 3 cobranças."}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 className="min-h-[80px] text-sm flex-1"
