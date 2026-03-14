@@ -350,20 +350,21 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
 
       {showAI && (
         <AIShortcutGenerator
+          existingConfig={aiEditConfig}
           onApply={(config) => {
             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
-              template_token: '',
-              template_name: '',
+              template_token: editingId ? form.template_token : '',
+              template_name: editingId ? form.template_name : '',
               prompt_instructions: config.prompt_instructions,
             });
             setFollowupSteps(config.followup_steps || []);
-            setEditingId(null);
             setShowForm(true);
             setShowAI(false);
+            setAiEditConfig(null);
           }}
-          onClose={() => setShowAI(false)}
+          onClose={() => { setShowAI(false); setAiEditConfig(null); }}
         />
       )}
 
