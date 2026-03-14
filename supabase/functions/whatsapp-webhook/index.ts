@@ -1284,7 +1284,13 @@ Deno.serve(async (req) => {
 
           // Also delete from DB so it doesn't show in inbox
           if (message?.id) {
-            await supabase.from('whatsapp_messages').delete().eq('id', message.id).catch(() => {})
+            const { error: deleteMessageError } = await supabase
+              .from('whatsapp_messages')
+              .delete()
+              .eq('id', message.id)
+            if (deleteMessageError) {
+              console.error('Error deleting @wjia message from DB:', deleteMessageError)
+            }
           }
 
           const respData = {

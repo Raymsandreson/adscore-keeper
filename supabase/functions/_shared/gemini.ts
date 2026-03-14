@@ -160,8 +160,11 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   };
   if (options.signal) fetchOptions.signal = options.signal;
 
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:${action}`;
+  const keySeparator = action.includes("?") ? "&" : "?";
+
   return fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${googleModel}:${action}&key=${GOOGLE_AI_API_KEY}`,
+    `${endpoint}${keySeparator}key=${encodeURIComponent(GOOGLE_AI_API_KEY)}`,
     fetchOptions
   );
 }
