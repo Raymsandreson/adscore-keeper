@@ -406,15 +406,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Token do Template ZapSign</Label>
-                <Input placeholder="abc123..." value={form.template_token} onChange={e => setForm(f => ({ ...f, template_token: e.target.value }))} className="h-9" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Nome do Template</Label>
-                <Input placeholder="Procuração Ad Judicia" value={form.template_name} onChange={e => setForm(f => ({ ...f, template_name: e.target.value }))} className="h-9" />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Modelo ZapSign</Label>
+              {loadingTemplates ? (
+                <div className="h-9 flex items-center text-xs text-muted-foreground">Carregando modelos...</div>
+              ) : (
+                <Select
+                  value={form.template_token}
+                  onValueChange={v => {
+                    const tmpl = zapsignTemplates.find(t => t.token === v);
+                    setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
+                  <SelectContent>
+                    {zapsignTemplates.map(t => (
+                      <SelectItem key={t.token} value={t.token} className="text-xs">{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {form.template_name && (
+                <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
