@@ -35,6 +35,7 @@ interface Shortcut {
   prompt_instructions: string | null;
   is_active: boolean;
   display_order: number;
+  followup_steps: FollowupStep[];
 }
 
 interface FollowupStep {
