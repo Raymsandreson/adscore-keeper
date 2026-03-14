@@ -319,7 +319,7 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
         <p className="text-xs text-muted-foreground">
           Atalhos que aparecem ao digitar @wjia no chat. Ex: "@wjia procuração" dispara automaticamente o template configurado.
         </p>
-        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
+        <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); }}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Novo
         </Button>
       </div>
