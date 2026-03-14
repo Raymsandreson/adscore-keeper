@@ -387,6 +387,9 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
               )}
             </div>
             <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
