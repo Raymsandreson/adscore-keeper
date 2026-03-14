@@ -152,3 +152,9 @@ verify_jwt = false
 
 [functions.wjia-chat-command]
 verify_jwt = false
+
+[functions.wjia-collection-processor]
+verify_jwt = false
+
+[functions.wjia-followup-processor]
+verify_jwt = false
