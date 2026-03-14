@@ -12,8 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil
+  Zap, Phone, FileText, Bell, Pencil, Wand2
 } from 'lucide-react';
+import { AIShortcutGenerator } from './AIShortcutGenerator';
 
 // ==================== TYPES ====================
 interface CommandConfig {
@@ -240,6 +241,7 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
 // ==================== SHORTCUTS TAB (with embedded follow-up) ====================
 function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
+  const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
@@ -322,10 +324,34 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <p className="text-xs text-muted-foreground">
           Atalhos @wjia com regras de follow-up integradas para cada documento.
         </p>
-        <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Novo
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setShowAI(!showAI); setShowForm(false); }} className="gap-1">
+            <Wand2 className="h-3.5 w-3.5" /> IA
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); setShowAI(false); }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Novo
+          </Button>
+        </div>
       </div>
+
+      {showAI && (
+        <AIShortcutGenerator
+          onApply={(config) => {
+            setForm({
+              shortcut_name: config.shortcut_name,
+              description: config.description || '',
+              template_token: '',
+              template_name: '',
+              prompt_instructions: config.prompt_instructions,
+            });
+            setFollowupSteps(config.followup_steps || []);
+            setEditingId(null);
+            setShowForm(true);
+            setShowAI(false);
+          }}
+          onClose={() => setShowAI(false)}
+        />
+      )}
 
       {showForm && (
         <Card className="border-primary/30">
