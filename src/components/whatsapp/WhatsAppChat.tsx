@@ -334,8 +334,42 @@ export function WhatsAppChat({ conversation, onSendMessage, onSendMedia, onSendL
     localStorage.setItem(`wa-selected-nickname:${conversation.phone}`, value);
   };
 
+  const handleWjiaCommand = async (command: string) => {
+    setSending(true);
+    setNewMessage('');
+    toast.info('🤖 Processando comando @wjia...', { duration: 5000 });
+    try {
+      const { data, error } = await supabase.functions.invoke('wjia-chat-command', {
+        body: {
+          phone: conversation.phone,
+          instance_name: conversation.instance_name,
+          command: command.replace(/^@wjia\s*/i, '').trim(),
+          contact_id: conversation.contact_id || null,
+          lead_id: conversation.lead_id || null,
+        },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(data.message || 'Comando processado!', { duration: 8000 });
+      } else {
+        toast.error(data?.message || 'Erro ao processar comando');
+      }
+    } catch (err: any) {
+      console.error('WJIA command error:', err);
+      toast.error(`Erro: ${err.message}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
+
+    // Intercept @wjia commands - don't send to client
+    if (newMessage.trim().toLowerCase().startsWith('@wjia')) {
+      await handleWjiaCommand(newMessage.trim());
+      return;
+    }
 
     const conversationChatId =
       conversation.messages.find((msg) => typeof msg.metadata?.chat?.wa_chatid === 'string')?.metadata?.chat?.wa_chatid ||
