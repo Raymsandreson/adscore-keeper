@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
-  Zap, Clock, Phone, FileText, GripVertical, Settings2, Bell
+  Zap, Clock, Phone, FileText, GripVertical, Settings2, Bell, Pencil
 } from 'lucide-react';
 
 // ==================== TYPES ====================
@@ -259,22 +259,46 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
 // ==================== SHORTCUTS TAB ====================
 function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+
+  const resetForm = () => {
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const startEdit = (s: Shortcut) => {
+    setForm({
+      shortcut_name: s.shortcut_name,
+      description: s.description || '',
+      template_token: s.template_token || '',
+      template_name: s.template_name || '',
+      prompt_instructions: s.prompt_instructions || '',
+    });
+    setEditingId(s.id);
+    setShowForm(true);
+  };
 
   const handleSave = async () => {
     if (!form.shortcut_name.trim()) { toast.error('Nome do atalho é obrigatório'); return; }
-    const { error } = await (supabase.from('wjia_command_shortcuts') as any).insert({
+    const payload = {
       shortcut_name: form.shortcut_name.trim(),
       description: form.description || null,
       template_token: form.template_token || null,
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
-      display_order: shortcuts.length,
-    });
+    };
+
+    let error;
+    if (editingId) {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
+    }
     if (error) { toast.error(error.message); return; }
-    toast.success('Atalho criado!');
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
-    setShowForm(false);
+    toast.success(editingId ? 'Atalho atualizado!' : 'Atalho criado!');
+    resetForm();
     onReload();
   };
 
@@ -295,7 +319,7 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
         <p className="text-xs text-muted-foreground">
           Atalhos que aparecem ao digitar @wjia no chat. Ex: "@wjia procuração" dispara automaticamente o template configurado.
         </p>
-        <Button size="sm" variant="outline" onClick={() => setShowForm(!showForm)}>
+        <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); }}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Novo
         </Button>
       </div>
@@ -303,6 +327,7 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
       {showForm && (
         <Card className="border-primary/30">
           <CardContent className="p-4 space-y-3">
+            <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando atalho' : '➕ Novo atalho'}</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Nome do Atalho *</Label>
@@ -333,8 +358,8 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Button>
-              <Button size="sm" onClick={handleSave}>Salvar</Button>
+              <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
+              <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
             </div>
           </CardContent>
         </Card>
@@ -362,6 +387,9 @@ function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload
               )}
             </div>
             <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

@@ -65,6 +65,10 @@ serve(async (req) => {
     const missingFields = session.missing_fields || [];
 
     // Use AI to extract data from the client's message
+    // Build explicit list of ALL template fields for the AI
+    const allTemplateFields = (session.missing_fields || []).map((f: any) => f.friendly_name || f.field_name);
+    const alreadyCollected = (collectedData.fields || []).map((f: any) => f.de);
+
     const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 
 DADOS JÁ COLETADOS:
@@ -72,6 +76,9 @@ ${JSON.stringify(collectedData.fields || [], null, 2)}
 
 DADOS QUE AINDA FALTAM:
 ${missingFields.map((f: any) => `- ${f.friendly_name} (${f.field_name})`).join("\n")}
+
+LISTA COMPLETA DE CAMPOS DO TEMPLATE (todos são OBRIGATÓRIOS):
+${[...alreadyCollected, ...allTemplateFields].map((f: string) => `- ${f}`).join("\n")}
 
 CONVERSA RECENTE:
 ${conversationText}
@@ -84,7 +91,8 @@ REGRAS:
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
 - Seja educado e natural na conversa
-- Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez)
+- Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez, máximo 3 por vez)
+- IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
 - Se TODOS os dados foram coletados, diga que vai preparar o documento`;
 
     const tools = [{
@@ -184,6 +192,13 @@ REGRAS:
       signer_phone: collectedData.signer_phone,
     };
 
+    // Fetch instance info (needed for replies and validation)
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+
     // Update session
     await supabase
       .from("wjia_collection_sessions")
@@ -196,11 +211,6 @@ REGRAS:
       .eq("id", session.id);
 
     // Send reply to client
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
 
     if (inst?.instance_token && result.reply_to_client) {
       const baseUrl = inst.base_url || "https://abraci.uazapi.com";
@@ -221,6 +231,68 @@ REGRAS:
         lead_id: session.lead_id || null,
         external_message_id: `wjia_collect_reply_${Date.now()}`,
       });
+    }
+
+    // SERVER-SIDE VALIDATION: Even if AI says all_collected, verify all required fields have values
+    if (result.all_collected) {
+      const requiredFields = (session.missing_fields || []).concat(
+        (collectedData.fields || []).map((f: any) => ({ field_name: f.de, friendly_name: f.de }))
+      );
+      
+      const actuallyMissing: any[] = [];
+      for (const reqField of requiredFields) {
+        const fieldKey = (reqField.field_name || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
+        if (!fieldKey) continue;
+        // Skip optional fields (email, whatsapp - they have defaults)
+        if (fieldKey === "EMAIL" || fieldKey.includes("EMAIL") || fieldKey === "WHATSAPP" || fieldKey.includes("WHATSAPP")) continue;
+        
+        const found = updatedFields.find((f: any) => {
+          const fKey = (f.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
+          return fKey === fieldKey && f.para && f.para.toString().trim().length > 0;
+        });
+        if (!found) {
+          actuallyMissing.push(reqField);
+        }
+      }
+
+      if (actuallyMissing.length > 0) {
+        console.log("SERVER VALIDATION: AI said all_collected but these fields are still empty:", JSON.stringify(actuallyMissing));
+        result.all_collected = false;
+        result.still_missing = actuallyMissing;
+        
+        // Send a message asking for the missing data
+        const missingNames = actuallyMissing.map((f: any) => f.friendly_name || f.field_name).slice(0, 4).join(", ");
+        const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
+        
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: correctionMsg }),
+          }).catch(e => console.error("Error sending correction:", e));
+          
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone, instance_name,
+            message_text: correctionMsg, message_type: "text", direction: "outbound",
+            contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+            external_message_id: `wjia_validate_${Date.now()}`,
+          });
+        }
+
+        // Keep session as collecting
+        await supabase.from("wjia_collection_sessions").update({
+          collected_data: updatedCollectedData,
+          missing_fields: actuallyMissing,
+          status: "collecting",
+          updated_at: new Date().toISOString(),
+        }).eq("id", session.id);
+
+        return new Response(JSON.stringify({
+          active_session: true, processed: true, all_collected: false,
+          validation_override: true, session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
     }
 
     // If all data collected, generate the document!
