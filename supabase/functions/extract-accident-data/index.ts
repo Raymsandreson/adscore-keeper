@@ -87,16 +87,6 @@ serve(async (req) => {
     }
 
     const GOOGLE_AI_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY');
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    
-    if (!GOOGLE_AI_API_KEY && !LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: 'Nenhuma chave de API configurada' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    const useGoogleDirect = !!GOOGLE_AI_API_KEY;
 
     // Handle different input types
     let textContent = '';
