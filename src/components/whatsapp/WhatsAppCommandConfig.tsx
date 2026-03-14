@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
-  Zap, Clock, Phone, FileText, GripVertical, Settings2, Bell
+  Zap, Clock, Phone, FileText, GripVertical, Settings2, Bell, Pencil
 } from 'lucide-react';
 
 // ==================== TYPES ====================
