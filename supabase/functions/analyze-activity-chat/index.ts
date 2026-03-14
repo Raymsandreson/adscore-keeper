@@ -523,39 +523,12 @@ SUGESTÕES DE CONTINUAÇÃO (OBRIGATÓRIO):
         },
       ];
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: aiMessages,
-          tools,
-        }),
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: aiMessages,
+        tools,
       });
 
-      if (!aiResponse.ok) {
-        const status = aiResponse.status;
-        if (status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (status === 402) {
-          return new Response(JSON.stringify({ error: "Payment required" }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        const t = await aiResponse.text();
-        console.error("AI assistant error:", status, t);
-        return new Response(JSON.stringify({ error: "AI gateway error" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const aiData = await aiResponse.json();
       const choice = aiData.choices?.[0]?.message;
 
       // Check if AI used tool calling
