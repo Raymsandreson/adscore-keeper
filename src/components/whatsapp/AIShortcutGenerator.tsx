@@ -106,14 +106,18 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
         </div>
 
         <p className="text-[11px] text-muted-foreground">
-          Descreva o que o atalho deve fazer e a IA configura tudo: nome, prompt, follow-up.
+          {existingConfig
+            ? `Editando "${existingConfig.shortcut_name}" — descreva as mudanças desejadas.`
+            : 'Descreva o que o atalho deve fazer e a IA configura tudo: nome, prompt, follow-up.'}
         </p>
 
         {!result && (
           <div className="space-y-2">
             <div className="flex gap-2">
               <Textarea
-                placeholder="Ex: Atalho para gerar procuração ad judicia. Deve coletar nome completo, CPF, RG, endereço, estado civil e e-mail. Tom profissional mas acolhedor. Follow-up a cada 1h se não assinar, máximo 3 cobranças."
+                placeholder={existingConfig
+                  ? "Ex: Mude o tom para mais formal, adicione mais uma etapa de follow-up por ligação após 24h..."
+                  : "Ex: Atalho para gerar procuração ad judicia. Deve coletar nome completo, CPF, RG, endereço, estado civil e e-mail. Tom profissional mas acolhedor. Follow-up a cada 1h se não assinar, máximo 3 cobranças."}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 className="min-h-[80px] text-sm flex-1"
