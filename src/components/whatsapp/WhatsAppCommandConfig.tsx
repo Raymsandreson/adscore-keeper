@@ -57,7 +57,6 @@ export function WhatsAppCommandConfig() {
   const [activeTab, setActiveTab] = useState('auth');
   const [configs, setConfigs] = useState<CommandConfig[]>([]);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
-  const [followupRules, setFollowupRules] = useState<FollowupRule[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,18 +65,16 @@ export function WhatsAppCommandConfig() {
 
   const loadData = async () => {
     setLoading(true);
-    const [configsRes, instancesRes, profilesRes, shortcutsRes, rulesRes] = await Promise.all([
+    const [configsRes, instancesRes, profilesRes, shortcutsRes] = await Promise.all([
       supabase.from('whatsapp_command_config').select('*').order('created_at', { ascending: false }),
       supabase.from('whatsapp_instances').select('id, instance_name').eq('is_active', true),
       supabase.from('profiles').select('user_id, full_name').order('full_name'),
       supabase.from('wjia_command_shortcuts').select('*').order('display_order') as any,
-      supabase.from('wjia_followup_rules').select('*').order('display_order') as any,
     ]);
     setConfigs((configsRes.data as any[]) || []);
     setInstances(instancesRes.data || []);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
-    setShortcuts((shortcutsRes.data || []) as Shortcut[]);
-    setFollowupRules((rulesRes.data || []) as FollowupRule[]);
+    setShortcuts((shortcutsRes.data || []).map((s: any) => ({ ...s, followup_steps: s.followup_steps || [] })) as Shortcut[]);
     setLoading(false);
   };
 
@@ -94,7 +91,7 @@ export function WhatsAppCommandConfig() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Sistema de Comandos @wjia</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Configure números autorizados, atalhos de comandos e regras de follow-up automático para documentos pendentes.
+                Configure números autorizados e atalhos de comandos com regras de follow-up integradas.
               </p>
             </div>
           </div>
@@ -102,15 +99,12 @@ export function WhatsAppCommandConfig() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="auth" className="text-xs gap-1">
             <Shield className="h-3.5 w-3.5" /> Autorizados
           </TabsTrigger>
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
-            <Zap className="h-3.5 w-3.5" /> Atalhos
-          </TabsTrigger>
-          <TabsTrigger value="followup" className="text-xs gap-1">
-            <Bell className="h-3.5 w-3.5" /> Follow-up
+            <Zap className="h-3.5 w-3.5" /> Atalhos & Follow-up
           </TabsTrigger>
         </TabsList>
 
@@ -126,13 +120,6 @@ export function WhatsAppCommandConfig() {
         <TabsContent value="shortcuts">
           <ShortcutsTab
             shortcuts={shortcuts}
-            onReload={loadData}
-          />
-        </TabsContent>
-
-        <TabsContent value="followup">
-          <FollowupTab
-            rules={followupRules}
             profiles={profiles}
             onReload={loadData}
           />
