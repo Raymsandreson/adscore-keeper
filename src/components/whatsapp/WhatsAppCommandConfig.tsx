@@ -12,8 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { 
   Bot, Plus, Trash2, Smartphone, Shield, MessageSquare, Sparkles, 
-  Zap, Phone, FileText, Bell, Pencil
+  Zap, Phone, FileText, Bell, Pencil, Wand2
 } from 'lucide-react';
+import { AIShortcutGenerator } from './AIShortcutGenerator';
 
 // ==================== TYPES ====================
 interface CommandConfig {
