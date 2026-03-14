@@ -252,6 +252,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
     setFollowupSteps([]);
     setEditingId(null);
     setShowForm(false);
+    setAiEditConfig(null);
+  };
+
+  const startAIEdit = (s: Shortcut) => {
+    setAiEditConfig({
+      shortcut_name: s.shortcut_name,
+      description: s.description || '',
+      prompt_instructions: s.prompt_instructions || '',
+      followup_steps: s.followup_steps || [],
+    });
+    setEditingId(s.id);
+    setShowAI(true);
+    setShowForm(false);
   };
 
   const startEdit = (s: Shortcut) => {
