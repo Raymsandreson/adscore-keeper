@@ -45,13 +45,18 @@ export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props)
     setResult(null);
 
     try {
+      const payload: any = { description: description.trim() };
+      if (existingConfig) {
+        payload.existing_config = existingConfig;
+      }
+
       const resp = await fetch(GENERATE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ description: description.trim() }),
+        body: JSON.stringify(payload),
       });
 
       if (!resp.ok) {
