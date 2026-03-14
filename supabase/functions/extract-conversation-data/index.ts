@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { geminiChat, GeminiError } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,17 +8,14 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const { messages, targetType } = await req.json();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'No messages provided' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -55,39 +53,39 @@ serve(async (req) => {
   "state": "sigla do estado",
   "sector": "setor/área de atuação",
   "case_number": "número do processo se mencionado",
-  "case_type": "tipo do caso (acidente_trabalho, acidente_transito, previdenciario, consumidor)",
+  "case_type": "tipo do caso",
   "liability_type": "tipo de responsabilidade",
   "news_link": "link de notícia mencionado",
   "notes": "resumo das informações importantes",
   "processes": [
     {
-      "title": "título do processo (ex: Ação Trabalhista, Recurso, Processo Administrativo INSS)",
-      "process_number": "número do processo judicial ou administrativo se mencionado",
+      "title": "título do processo",
+      "process_number": "número do processo",
       "process_type": "judicial ou administrativo",
-      "description": "descrição breve do processo"
+      "description": "descrição breve"
     }
   ]
 }
 
-IMPORTANTE sobre "processes": Identifique TODOS os processos judiciais ou administrativos mencionados na conversa. Cada número de processo distinto deve ser um item separado. Se não houver processos mencionados, retorne "processes": [].`;
+IMPORTANTE sobre "processes": Identifique TODOS os processos mencionados na conversa.`;
     } else {
       schemaPrompt = `{
-  "lead_name": "nome do lead/caso (formato: Local/Vítima/Empresa)",
-  "victim_name": "nome da vítima do acidente",
+  "lead_name": "nome do lead/caso",
+  "victim_name": "nome da vítima",
   "lead_phone": "telefone principal",
   "lead_email": "e-mail",
-  "city": "cidade do acidente ou do cliente",
-  "state": "sigla do estado (ex: SP, RJ, MG)",
+  "city": "cidade",
+  "state": "sigla do estado",
   "neighborhood": "bairro",
-  "main_company": "empresa onde a vítima trabalha",
-  "contractor_company": "empresa contratante/terceirizada",
+  "main_company": "empresa principal",
+  "contractor_company": "empresa terceirizada",
   "accident_address": "endereço do acidente",
-  "accident_date": "data do acidente (formato YYYY-MM-DD se possível)",
+  "accident_date": "data do acidente (formato YYYY-MM-DD)",
   "damage_description": "descrição do dano/lesão",
-  "case_number": "número do caso/processo se mencionado",
-  "case_type": "tipo do caso (acidente_trabalho, acidente_transito, etc)",
-  "notes": "resumo das informações importantes da conversa para acompanhamento",
-  "sector": "setor/área de atuação da vítima",
+  "case_number": "número do caso/processo",
+  "case_type": "tipo do caso",
+  "notes": "resumo das informações importantes",
+  "sector": "setor/área de atuação",
   "visit_city": "cidade para visita",
   "visit_state": "estado para visita",
   "visit_address": "endereço para visita",
@@ -105,38 +103,19 @@ ${schemaPrompt}
 IMPORTANTE:
 - Extraia APENAS informações explicitamente mencionadas na conversa
 - Não invente dados
-- Para o campo "notes", faça um resumo útil das informações relevantes da conversa
+- Para o campo "notes", faça um resumo útil
 - Retorne APENAS o JSON, sem nenhum texto adicional ou markdown`;
 
-    const apiKey = Deno.env.get('LOVABLE_API_KEY');
-    if (!apiKey) {
-      throw new Error('LOVABLE_API_KEY not configured');
-    }
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: conversationText },
-        ],
-        temperature: 0.1,
-      }),
+    const result = await geminiChat({
+      model: 'google/gemini-3-flash-preview',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: conversationText },
+      ],
+      temperature: 0.1,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`AI API error: ${response.status} - ${errText}`);
-    }
-
-    const aiResult = await response.json();
-    const content = aiResult.choices?.[0]?.message?.content || '{}';
-
+    const content = result.choices?.[0]?.message?.content || '{}';
     const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     let extracted: Record<string, any>;
     try {
@@ -145,7 +124,6 @@ IMPORTANTE:
       extracted = {};
     }
 
-    // Remove null values
     const cleaned: Record<string, any> = {};
     for (const [key, value] of Object.entries(extracted)) {
       if (value !== null && value !== undefined && value !== '') {
@@ -160,11 +138,10 @@ IMPORTANTE:
     return new Response(JSON.stringify({ data: cleaned }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

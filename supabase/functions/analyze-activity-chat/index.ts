@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,30 +59,16 @@ serve(async (req) => {
         });
       }
 
-      const summaryResponse = await fetch("https://api.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "system",
-              content: "Você é um assistente que resume transcrições de ligações telefônicas. Gere um resumo conciso e objetivo em português, destacando: pontos principais discutidos, decisões tomadas, próximos passos acordados. Seja direto e use bullet points quando apropriado.",
-            },
-            {
-              role: "user",
-              content: `${summaryContext ? `Contexto: ${summaryContext}\n\n` : ''}Transcrição:\n${text}`,
-            },
-          ],
-          temperature: 0.3,
-          max_tokens: 1000,
-        }),
+      const summaryData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você é um assistente que resume transcrições de ligações telefônicas. Gere um resumo conciso e objetivo em português, destacando: pontos principais discutidos, decisões tomadas, próximos passos acordados. Seja direto e use bullet points quando apropriado." },
+          { role: "user", content: `${summaryContext ? `Contexto: ${summaryContext}\n\n` : ''}Transcrição:\n${text}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 1000,
       });
 
-      const summaryData = await summaryResponse.json();
       const summaryText = summaryData?.choices?.[0]?.message?.content || "Não foi possível gerar o resumo.";
 
       return new Response(JSON.stringify({ summary: summaryText }), {
@@ -171,52 +158,45 @@ Responda em português do Brasil.`;
         { type: "input_audio", input_audio: { data: fileData.base64, format: "wav" } },
       ];
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas e extrai informações para atualizar o CRM." },
-            { role: "user", content: contentParts },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "save_transcription_and_suggestions",
-              description: "Salva a transcrição, resumo e sugestões de atualização de campos",
-              parameters: {
-                type: "object",
-                properties: {
-                  transcript: { type: "string", description: "Transcrição completa do áudio" },
-                  summary: { type: "string", description: "Resumo objetivo em bullet points" },
-                  next_steps: { type: "string", description: "Próximos passos identificados" },
-                  field_suggestions: {
-                    type: "array",
-                    description: "Sugestões de atualização de campos do lead ou contato mencionados na ligação. Só inclua se a informação for CLARAMENTE mencionada.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        entity_type: { type: "string", enum: ["lead", "contact"], description: "Se é campo do lead ou do contato" },
-                        field_name: { type: "string", description: "Nome do campo no banco (ex: city, state, victim_name, profession)" },
-                        field_label: { type: "string", description: "Nome amigável do campo em português (ex: Cidade, Estado, Nome da Vítima)" },
-                        suggested_value: { type: "string", description: "Valor sugerido baseado na ligação" },
-                      },
-                      required: ["entity_type", "field_name", "field_label", "suggested_value"],
-                      additionalProperties: false,
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você é um assistente jurídico que transcreve e resume ligações telefônicas e extrai informações para atualizar o CRM." },
+          { role: "user", content: contentParts },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "save_transcription_and_suggestions",
+            description: "Salva a transcrição, resumo e sugestões de atualização de campos",
+            parameters: {
+              type: "object",
+              properties: {
+                transcript: { type: "string", description: "Transcrição completa do áudio" },
+                summary: { type: "string", description: "Resumo objetivo em bullet points" },
+                next_steps: { type: "string", description: "Próximos passos identificados" },
+                field_suggestions: {
+                  type: "array",
+                  description: "Sugestões de atualização de campos do lead ou contato mencionados na ligação.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      entity_type: { type: "string", enum: ["lead", "contact"] },
+                      field_name: { type: "string" },
+                      field_label: { type: "string" },
+                      suggested_value: { type: "string" },
                     },
+                    required: ["entity_type", "field_name", "field_label", "suggested_value"],
+                    additionalProperties: false,
                   },
                 },
-                required: ["transcript", "summary", "next_steps", "field_suggestions"],
-                additionalProperties: false,
               },
+              required: ["transcript", "summary", "next_steps", "field_suggestions"],
+              additionalProperties: false,
             },
-          }],
-          tool_choice: { type: "function", function: { name: "save_transcription_and_suggestions" } },
-        }),
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "save_transcription_and_suggestions" } },
       });
 
       let transcript = "";
@@ -224,21 +204,16 @@ Responda em português do Brasil.`;
       let nextSteps = "";
       let fieldSuggestions: any[] = [];
 
-      if (aiResponse.ok) {
-        const aiData = await aiResponse.json();
-        const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-        if (toolCall?.function?.arguments) {
-          const parsed = JSON.parse(toolCall.function.arguments);
-          transcript = parsed.transcript || "";
-          summary = parsed.summary || "";
-          nextSteps = parsed.next_steps || "";
-          fieldSuggestions = parsed.field_suggestions || [];
-        } else {
-          transcript = aiData.choices?.[0]?.message?.content || "";
-          summary = transcript;
-        }
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = JSON.parse(toolCall.function.arguments);
+        transcript = parsed.transcript || "";
+        summary = parsed.summary || "";
+        nextSteps = parsed.next_steps || "";
+        fieldSuggestions = parsed.field_suggestions || [];
       } else {
-        console.error("AI transcription error:", aiResponse.status, await aiResponse.text());
+        transcript = aiData.choices?.[0]?.message?.content || "";
+        summary = transcript;
       }
 
       if (call_record_id && (transcript || summary)) {
@@ -548,39 +523,12 @@ SUGESTÕES DE CONTINUAÇÃO (OBRIGATÓRIO):
         },
       ];
 
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: aiMessages,
-          tools,
-        }),
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: aiMessages,
+        tools,
       });
 
-      if (!aiResponse.ok) {
-        const status = aiResponse.status;
-        if (status === 429) {
-          return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        if (status === 402) {
-          return new Response(JSON.stringify({ error: "Payment required" }), {
-            status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        const t = await aiResponse.text();
-        console.error("AI assistant error:", status, t);
-        return new Response(JSON.stringify({ error: "AI gateway error" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const aiData = await aiResponse.json();
       const choice = aiData.choices?.[0]?.message;
 
       // Check if AI used tool calling
@@ -669,30 +617,14 @@ Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
 
       const userContent: any[] = [{ type: "text", text: descriptionPrompt }, ...contentParts];
 
-      const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia trabalhista. Analise o arquivo recebido e forneça uma descrição/resumo útil." },
-            { role: "user", content: userContent },
-          ],
-        }),
+      const descData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia trabalhista. Analise o arquivo recebido e forneça uma descrição/resumo útil." },
+          { role: "user", content: userContent },
+        ],
       });
 
-      if (!descResponse.ok) {
-        const t = await descResponse.text();
-        console.error("AI describe error:", descResponse.status, t);
-        return new Response(JSON.stringify({ description: "Erro ao analisar arquivo com IA." }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const descData = await descResponse.json();
       const description = descData.choices?.[0]?.message?.content || "Não foi possível gerar uma descrição.";
 
       return new Response(JSON.stringify({ description }), {
@@ -722,58 +654,42 @@ ${context.contact_phone ? `Telefone: ${context.contact_phone}` : ''}
 
 Cada ação deve ser uma frase curta (máximo 15 palavras) e começar com um verbo de ação. Pense em ações como: ligar para o contato, enviar documentação, agendar reunião, verificar prazo, etc.`;
 
-      const actionsResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Retorne exatamente 3 ações práticas." },
-            { role: "user", content: actionsPrompt },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "suggest_actions",
-              description: "Retorna 3 sugestões de ação",
-              parameters: {
-                type: "object",
-                properties: {
-                  actions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: { type: "string", description: "Ação curta (ex: Ligar para o contato)" },
-                        detail: { type: "string", description: "Detalhe breve do que fazer" },
-                        icon: { type: "string", enum: ["phone", "document", "meeting", "email", "check", "search"], description: "Ícone da ação" },
-                      },
-                      required: ["label", "detail", "icon"],
-                      additionalProperties: false,
+      const actionsData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Retorne exatamente 3 ações práticas." },
+          { role: "user", content: actionsPrompt },
+        ],
+        tools: [{
+          type: "function",
+          function: {
+            name: "suggest_actions",
+            description: "Retorna 3 sugestões de ação",
+            parameters: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string" },
+                      detail: { type: "string" },
+                      icon: { type: "string", enum: ["phone", "document", "meeting", "email", "check", "search"] },
                     },
+                    required: ["label", "detail", "icon"],
+                    additionalProperties: false,
                   },
                 },
-                required: ["actions"],
-                additionalProperties: false,
               },
+              required: ["actions"],
+              additionalProperties: false,
             },
-          }],
-          tool_choice: { type: "function", function: { name: "suggest_actions" } },
-        }),
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "suggest_actions" } },
       });
 
-      if (!actionsResponse.ok) {
-        const t = await actionsResponse.text();
-        console.error("AI actions error:", actionsResponse.status, t);
-        return new Response(JSON.stringify({ actions: [] }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const actionsData = await actionsResponse.json();
       const toolCall = actionsData.choices?.[0]?.message?.tool_calls?.[0];
       let actions = [];
       if (toolCall?.function?.arguments) {
@@ -834,64 +750,37 @@ IMPORTANTE: Retorne APENAS o JSON, sem markdown, sem código, sem explicações.
 
     const userContent: any[] = [{ type: "text", text: textSummary }, ...contentParts];
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "fill_activity_fields",
-              description: "Preenche os campos da atividade com base no chat",
-              parameters: {
-                type: "object",
-                properties: {
-                  what_was_done: { type: "string", description: "O que foi feito" },
-                  current_status_notes: { type: "string", description: "Status atual" },
-                  next_steps: { type: "string", description: "Próximos passos" },
-                  notes: { type: "string", description: "Observações" },
-                },
-                required: ["what_was_done", "current_status_notes", "next_steps", "notes"],
-                additionalProperties: false,
+    const data = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "fill_activity_fields",
+            description: "Preenche os campos da atividade com base no chat",
+            parameters: {
+              type: "object",
+              properties: {
+                what_was_done: { type: "string" },
+                current_status_notes: { type: "string" },
+                next_steps: { type: "string" },
+                notes: { type: "string" },
               },
+              required: ["what_was_done", "current_status_notes", "next_steps", "notes"],
+              additionalProperties: false,
             },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "fill_activity_fields" } },
-      }),
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "fill_activity_fields" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await response.json();
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     let suggestion;
-    
     if (toolCall?.function?.arguments) {
       suggestion = JSON.parse(toolCall.function.arguments);
     } else {

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat, GeminiError } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,14 +12,11 @@ serve(async (req) => {
 
   try {
     const { user_id, current_goals } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch user's team membership, evaluated metrics, and team info in parallel
     const [teamMembersRes, profileRes, boardsRes] = await Promise.all([
       supabase.from("team_members").select("team_id, evaluated_metrics, teams(name, description)").eq("user_id", user_id),
       supabase.from("profiles").select("full_name").eq("user_id", user_id).single(),
@@ -29,7 +27,6 @@ serve(async (req) => {
     const userName = profileRes.data?.full_name || "Usuário";
     const boards = boardsRes.data || [];
 
-    // Collect evaluated metrics across all teams
     const allEvaluatedMetrics = new Set<string>();
     const teamContexts: string[] = [];
 
@@ -42,7 +39,6 @@ serve(async (req) => {
       }
     }
 
-    // Fetch commission goals for context (team-level targets)
     const teamIds = teamMembers.map((tm: any) => tm.team_id).filter(Boolean);
     let commissionGoalsContext = '';
     if (teamIds.length > 0) {
@@ -59,7 +55,6 @@ serve(async (req) => {
       }
     }
 
-    // Build metric definitions
     const METRIC_DEFINITIONS = `
 MÉTRICAS DISPONÍVEIS POR CATEGORIA:
 
@@ -83,7 +78,7 @@ MÉTRICAS DISPONÍVEIS POR CATEGORIA:
 - meta_roas: ROAS (marketing)`;
 
     const evaluatedList = allEvaluatedMetrics.size > 0
-      ? `\nMÉTRICAS AVALIADAS PARA ESTE MEMBRO: ${[...allEvaluatedMetrics].join(', ')}\nIMPORTANTE: Sugira metas APENAS para essas métricas. Não inclua métricas que o membro não é avaliado.`
+      ? `\nMÉTRICAS AVALIADAS PARA ESTE MEMBRO: ${[...allEvaluatedMetrics].join(', ')}\nIMPORTANTE: Sugira metas APENAS para essas métricas.`
       : '\nNenhuma restrição de métricas — sugira as mais relevantes.';
 
     const currentGoalsStr = current_goals && current_goals.length > 0
@@ -118,102 +113,68 @@ REGRAS DE CONSISTÊNCIA (CRÍTICAS):
 
 RESPONDA USANDO TOOL CALLING com a função suggest_goals.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analise o contexto e sugira metas equilibradas para ${userName}. Se houver metas atuais, analise inconsistências e sugira correções.` },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "suggest_goals",
-              description: "Retorna sugestões de metas com análise de consistência",
-              parameters: {
-                type: "object",
-                properties: {
-                  analysis: {
-                    type: "string",
-                    description: "Análise breve da situação atual e inconsistências encontradas (max 300 chars)"
-                  },
-                  inconsistencies: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        issue: { type: "string", description: "Descrição da inconsistência" },
-                        severity: { type: "string", enum: ["warning", "error"] }
-                      },
-                      required: ["issue", "severity"]
+    const aiData = await geminiChat({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Analise o contexto e sugira metas equilibradas para ${userName}. Se houver metas atuais, analise inconsistências e sugira correções.` },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "suggest_goals",
+            description: "Retorna sugestões de metas com análise de consistência",
+            parameters: {
+              type: "object",
+              properties: {
+                analysis: { type: "string", description: "Análise breve da situação atual e inconsistências encontradas (max 300 chars)" },
+                inconsistencies: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      issue: { type: "string", description: "Descrição da inconsistência" },
+                      severity: { type: "string", enum: ["warning", "error"] }
                     },
-                    description: "Lista de inconsistências encontradas nas metas atuais"
+                    required: ["issue", "severity"]
                   },
-                  suggested_goals: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        metric_key: { type: "string" },
-                        target_value: { type: "number" },
-                        board_id: { type: "string", description: "ID do board/funil, null se não aplicável" },
-                        reasoning: { type: "string", description: "Justificativa breve para o valor sugerido" }
-                      },
-                      required: ["metric_key", "target_value", "reasoning"]
-                    }
-                  }
                 },
-                required: ["analysis", "inconsistencies", "suggested_goals"]
-              }
+                suggested_goals: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      metric_key: { type: "string" },
+                      target_value: { type: "number" },
+                      board_id: { type: "string", description: "ID do board/funil, null se não aplicável" },
+                      reasoning: { type: "string", description: "Justificativa breve para o valor sugerido" }
+                    },
+                    required: ["metric_key", "target_value", "reasoning"]
+                  },
+                },
+              },
+              required: ["analysis", "inconsistencies", "suggested_goals"]
             }
           }
-        ],
-        tool_choice: { type: "function", function: { name: "suggest_goals" } },
-      }),
+        }
+      ],
+      tool_choice: { type: "function", function: { name: "suggest_goals" } },
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições atingido. Tente novamente." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await response.text();
-      throw new Error(`AI gateway error: ${response.status} - ${errText}`);
-    }
-
-    const aiData = await response.json();
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) throw new Error("IA não retornou sugestões estruturadas");
 
-    if (!toolCall?.function?.arguments) {
-      throw new Error("IA não retornou sugestões estruturadas");
-    }
-
-    let result;
-    try {
-      result = JSON.parse(toolCall.function.arguments);
-    } catch {
-      throw new Error("Formato de resposta inválido da IA");
-    }
+    const result = JSON.parse(toolCall.function.arguments);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("suggest-goals error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erro desconhecido" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const status = e instanceof GeminiError ? (e.status === 429 ? 429 : 500) : 500;
+    return new Response(JSON.stringify({ error: e.message || "Erro desconhecido" }), {
+      status, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

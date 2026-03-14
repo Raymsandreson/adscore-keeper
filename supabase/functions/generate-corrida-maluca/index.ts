@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { geminiChat, GeminiError } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,33 +7,24 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { rankings, weekStart, weekEnd, settings, refineRequest, currentMessage, memberContexts } = await req.json();
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
-
     if (!rankings || rankings.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Nenhum dado de ranking disponível" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Nenhum dado de ranking disponível" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // Build ranking context
     const rankingDetails = rankings.map((r: any, i: number) => {
       const position = i + 1;
-      const posChange = r.previous_rank_position 
-        ? (r.previous_rank_position > position ? `subiu ${r.previous_rank_position - position} posição(ões)` : 
+      const posChange = r.previous_rank_position
+        ? (r.previous_rank_position > position ? `subiu ${r.previous_rank_position - position} posição(ões)` :
            r.previous_rank_position < position ? `caiu ${position - r.previous_rank_position} posição(ões)` : 'manteve posição')
         : 'nova entrada';
-      
+
       const parts = [`${position}º lugar: @${r.username} - ${r.total_points} ações`];
       if (r.comments_count !== undefined) parts.push(`${r.comments_count} comentários`);
       if (r.mentions_count !== undefined) parts.push(`${r.mentions_count} DMs`);
@@ -53,17 +45,13 @@ serve(async (req) => {
       if (r.velocity !== undefined) parts.push(`velocidade: ${r.velocity} passos/hora`);
       parts.push(`badge: ${r.badge_level || 'none'}`);
       parts.push(posChange);
-      
       return `${parts[0]} (${parts.slice(1).join(', ')})`;
     }).join('\n');
 
-    // Calculate interesting stats
-    const leader = rankings[0];
     const totalParticipants = rankings.length;
     const totalPoints = rankings.reduce((sum: number, r: any) => sum + r.total_points, 0);
     const avgPoints = totalParticipants > 0 ? Math.round(totalPoints / totalParticipants) : 0;
-    
-    // Find biggest mover up
+
     const biggestMoverUp = rankings
       .filter((r: any) => r.previous_rank_position && r.previous_rank_position > (rankings.indexOf(r) + 1))
       .sort((a: any, b: any) => {
@@ -72,7 +60,6 @@ serve(async (req) => {
         return bGain - aGain;
       })[0];
 
-    // Find biggest faller
     const biggestFaller = rankings
       .filter((r: any) => r.previous_rank_position && r.previous_rank_position < (rankings.indexOf(r) + 1))
       .sort((a: any, b: any) => {
@@ -82,33 +69,21 @@ serve(async (req) => {
       })[0];
 
     let extraContext = "";
-    if (biggestMoverUp) {
-      extraContext += `\nDestaque positivo: @${biggestMoverUp.username} subiu ${biggestMoverUp.previous_rank_position - (rankings.indexOf(biggestMoverUp) + 1)} posições!`;
-    }
-    if (biggestFaller) {
-      extraContext += `\nQuem caiu: @${biggestFaller.username} perdeu ${(rankings.indexOf(biggestFaller) + 1) - biggestFaller.previous_rank_position} posições.`;
-    }
+    if (biggestMoverUp) extraContext += `\nDestaque positivo: @${biggestMoverUp.username} subiu ${biggestMoverUp.previous_rank_position - (rankings.indexOf(biggestMoverUp) + 1)} posições!`;
+    if (biggestFaller) extraContext += `\nQuem caiu: @${biggestFaller.username} perdeu ${(rankings.indexOf(biggestFaller) + 1) - biggestFaller.previous_rank_position} posições.`;
 
-    // Gap analysis
     const gaps: string[] = [];
     for (let i = 0; i < Math.min(rankings.length - 1, 5); i++) {
       const diff = rankings[i].total_points - rankings[i + 1].total_points;
-      if (diff > 0) {
-        gaps.push(`Diferença do ${i + 1}º para o ${i + 2}º: ${diff} pontos`);
-      }
+      if (diff > 0) gaps.push(`Diferença do ${i + 1}º para o ${i + 2}º: ${diff} pontos`);
     }
 
-    // Build member context (teams, routines)
     let memberContextSection = "";
     if (memberContexts && Array.isArray(memberContexts) && memberContexts.length > 0) {
       const contextLines = memberContexts.map((mc: any) => {
         const parts = [`@${mc.username}`];
-        if (mc.teams && mc.teams.length > 0) {
-          parts.push(`Time(s): ${mc.teams.join(', ')}`);
-        }
-        if (mc.routine && mc.routine.length > 0) {
-          parts.push(`Rotina: ${mc.routine.join(' → ')}`);
-        }
+        if (mc.teams && mc.teams.length > 0) parts.push(`Time(s): ${mc.teams.join(', ')}`);
+        if (mc.routine && mc.routine.length > 0) parts.push(`Rotina: ${mc.routine.join(' → ')}`);
         return parts.join(' | ');
       }).join('\n');
       memberContextSection = `\nCONTEXTO DOS MEMBROS (time e rotina diária começando às 8h):\n${contextLines}`;
@@ -121,28 +96,12 @@ A mensagem deve ser um DIÁLOGO entre o Galvão Bueno e o Arnaldo César Coelho,
 
 ESTILO:
 - Galvão é EMPOLGADO, grita "OLHA ELE AÍ!", "É GOOOOL!", "INACREDITÁVEL!", usa bordões famosos
-- Arnaldo é ANALÍTICO mas também empolgado, faz comentários técnicos e espirituosos tipo "A regra é clara", comenta as estratégias
+- Arnaldo é ANALÍTICO mas também empolgado, faz comentários técnicos e espirituosos tipo "A regra é clara"
 - Use emojis de corrida 🏎️🏁🚀💨🔥🏆👑⚡ com moderação
-- Inclua bordões do Galvão: "ACABOU!", "OLHA O GOL!", "HAJA CORAÇÃO!", "FECHOU!", "QUE JOGADAAAA!"
-- Arnaldo pode fazer piadas e provocações amigáveis
 - Mencione CADA participante pelo nome
-- Comente as ultrapassagens, quem subiu, quem caiu, quem está ameaçando
-- Estimule a competição e a participação
-- Termine com uma provocação motivacional para a próxima semana
 - Use formatação do WhatsApp: *negrito*, _itálico_
 - A mensagem deve ter entre 800-1500 caracteres
-- NÃO use markdown de código, headers (#), ou formatação que não funcione no WhatsApp
-- Comece com um cabeçalho tipo "🏁🏎️ *CORRIDA MALUCA DA WHATSJUD* 🏎️🏁"
-
-REGRAS:
-1. Seja JUSTO - elogie quem subiu, provoque amigavelmente quem caiu, mas sem ofender
-2. Destaque o LÍDER com empolgação
-3. Mencione quem está perto de ultrapassar alguém (gaps pequenos)
-4. Se alguém tem poucos pontos, incentive com humor
-5. A narração deve parecer uma transmissão ao vivo de uma corrida emocionante
-6. Finalize sempre estimulando todos a competirem mais na próxima semana
-7. LEVE EM CONTA o time de cada pessoa e sua rotina diária - use isso para contextualizar o desempenho (ex: quem faz outbound deveria ter mais leads, quem faz DMs deveria ter mais mensagens)
-8. O expediente começa às 8h - considere isso ao analisar a produtividade`;
+- LEVE EM CONTA o time de cada pessoa e sua rotina diária`;
 
     const userPrompt = `Crie a narração da Corrida Maluca do Engajamento para o período de ${weekStart} a ${weekEnd}.
 
@@ -162,7 +121,6 @@ ${gaps.join('\n')}
 
 Agora crie o diálogo Galvão + Arnaldo narrando essa corrida!`;
 
-    // Build messages based on whether this is a refine request or initial generation
     const aiMessages: any[] = [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -175,39 +133,23 @@ Agora crie o diálogo Galvão + Arnaldo narrando essa corrida!`;
       );
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: aiMessages,
-        max_tokens: 1500,
-        temperature: 0.9,
-      }),
+    const data = await geminiChat({
+      model: "google/gemini-3-flash-preview",
+      messages: aiMessages,
+      max_tokens: 1500,
+      temperature: 0.9,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
     const message = data.choices?.[0]?.message?.content?.trim() || "";
 
-    return new Response(
-      JSON.stringify({ success: true, message }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
+    return new Response(JSON.stringify({ success: true, message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error: any) {
     console.error("Error generating corrida maluca:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const status = error instanceof GeminiError ? (error.status === 429 ? 429 : 500) : 500;
+    return new Response(JSON.stringify({ error: error.message || "Unknown error" }), {
+      status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

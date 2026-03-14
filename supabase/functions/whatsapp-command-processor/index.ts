@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -323,11 +324,9 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         }),
       });
     } else {
-      aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: aiMessages, tools }),
-      });
+      // Fallback: use shared Gemini helper
+      const geminiResult = await geminiChat({ model: "google/gemini-2.5-flash", messages: aiMessages, tools });
+      aiResponse = new Response(JSON.stringify(geminiResult), { status: 200, headers: { "Content-Type": "application/json" } });
     }
 
     // ── Handle AI errors ──
