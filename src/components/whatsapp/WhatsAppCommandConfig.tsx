@@ -259,22 +259,46 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
 // ==================== SHORTCUTS TAB ====================
 function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+
+  const resetForm = () => {
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const startEdit = (s: Shortcut) => {
+    setForm({
+      shortcut_name: s.shortcut_name,
+      description: s.description || '',
+      template_token: s.template_token || '',
+      template_name: s.template_name || '',
+      prompt_instructions: s.prompt_instructions || '',
+    });
+    setEditingId(s.id);
+    setShowForm(true);
+  };
 
   const handleSave = async () => {
     if (!form.shortcut_name.trim()) { toast.error('Nome do atalho é obrigatório'); return; }
-    const { error } = await (supabase.from('wjia_command_shortcuts') as any).insert({
+    const payload = {
       shortcut_name: form.shortcut_name.trim(),
       description: form.description || null,
       template_token: form.template_token || null,
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
-      display_order: shortcuts.length,
-    });
+    };
+
+    let error;
+    if (editingId) {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
+    }
     if (error) { toast.error(error.message); return; }
-    toast.success('Atalho criado!');
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
-    setShowForm(false);
+    toast.success(editingId ? 'Atalho atualizado!' : 'Atalho criado!');
+    resetForm();
     onReload();
   };
 
