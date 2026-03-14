@@ -1,56 +1,41 @@
 
 
-## Plano: Sugestões de Continuação Inteligentes no Chat IA
+# Plano: Edição de Atalhos + Validação de Dados na Geração de Documentos
 
-### O que muda
+## Problema 1: Atalhos não são editáveis
+A tab "Atalhos" só permite criar e deletar. Não há botão de edição nem formulário para modificar um atalho existente.
 
-Toda resposta da IA no chat virá acompanhada de 2-4 "chips" clicáveis de sugestão de próximo passo. O usuário clica, o texto vai para o campo de input (editável), e basta enviar. A IA também deve preencher todos os campos relevantes (data, notificação, matriz, tipo) proativamente nas suas respostas.
+## Problema 2: Documento gerado sem todos os dados
+O template ZapSign tem campos como `{{Nome Cliente Maior de idade}}`, `{{estado civil}}`, `{{profissão}}`, `{{Rua/Quadra/Logradouro}}`, `{{Bairro}}`, `{{Cidade}}`, `{{Estado}}`, `{{CEP}}`, etc. O sistema confia na IA para decidir `all_collected: true`, mas a IA pode marcar prematuramente. Falta uma validação server-side que compare os campos coletados com os campos obrigatórios do template antes de gerar.
 
-### Implementação
+---
 
-**1. Backend: Adicionar `follow_up_suggestions` ao tool calling da IA**
+## Alterações
 
-No `supabase/functions/analyze-activity-chat/index.ts`, modo `assistant`:
-- Adicionar campo `follow_up_suggestions` ao schema da tool `suggest_field_updates`
-- Array de 2-4 objetos com `{ label: string, message: string }` onde `label` é texto curto do chip e `message` é o texto completo que será enviado como mensagem
-- Atualizar o system prompt para instruir a IA a SEMPRE gerar sugestões de continuação contextuais (ex: "Definir próximo passo", "Criar atividade de acompanhamento", "Atualizar status do lead")
-- Incluir no prompt que as sugestões devem cobrir cenários como: perguntar detalhes faltantes, criar atividades com campos completos, atualizar status, definir prioridades
+### 1. Adicionar edição de atalhos (`WhatsAppCommandConfig.tsx`)
 
-**2. Frontend: Renderizar chips de sugestão após cada mensagem da IA**
+Na `ShortcutsTab`:
+- Adicionar estado `editingId` para controlar qual atalho está em edição
+- Botão de editar (ícone lápis) em cada card de atalho
+- Ao clicar, preenche o formulário com os dados existentes
+- O `handleSave` passa a fazer `upsert` ou detectar se é insert/update baseado em `editingId`
+- Campos editáveis: nome, descrição, token do template, nome do template, instruções do prompt
 
-No `ActivityChatSheet.tsx`:
-- Salvar `follow_up_suggestions` no campo `ai_suggestion` da mensagem (já existe o campo JSON)
-- No `renderMessage` para mensagens AI, renderizar os chips como botões horizontais scrolláveis abaixo do texto
-- Ao clicar no chip, preencher `inputText` com o `message` da sugestão para o usuário revisar/editar antes de enviar
-- Estilizar como badges/chips compactos com ícone de seta
+### 2. Validação server-side no collection processor (`wjia-collection-processor/index.ts`)
 
-**3. Atualizar o system prompt**
+Antes de gerar o documento (quando `result.all_collected === true`):
+- Comparar `updatedFields` com `session.required_fields` (já salvo na sessão)
+- Verificar se cada campo obrigatório do template tem um valor preenchido (não vazio)
+- Se faltar algum campo, **não gerar** o documento — forçar `status: "collecting"` e enviar mensagem pedindo os dados faltantes
+- Isso impede a IA de gerar prematuramente
 
-Adicionar instruções:
-- "SEMPRE inclua 2-4 sugestões de continuação no campo follow_up_suggestions"
-- "As sugestões devem ser frases completas que o usuário enviaria, cobrindo: detalhes faltantes, próximos passos, criação de atividades, atualização de campos"
-- "Cada sugestão deve ser autossuficiente — ao ser enviada, a IA deve conseguir agir sem pedir mais informações"
-- "Sempre que possível, as sugestões devem incluir dados concretos (datas, tipos, prioridades) para que a IA preencha todos os campos automaticamente"
+### 3. Melhoria no prompt do collection processor
 
-### Exemplo de fluxo
+Adicionar ao prompt do sistema a lista explícita dos campos do template (de `session.required_fields`) para que a IA tenha clareza total sobre o que precisa coletar, reduzindo falsos positivos de `all_collected`.
 
-```text
-Usuário: "Preciso agendar uma reunião com o cliente João"
+---
 
-IA: "Entendido! Posso criar a atividade de reunião com João. 
-     Quando seria a melhor data?"
-
-Chips:
-[📅 Amanhã às 14h] → "Agende a reunião com João para amanhã às 14h, prioridade normal, matriz Agende"
-[📅 Próxima segunda 10h] → "Agende a reunião com João para próxima segunda às 10h, prioridade normal"  
-[📋 Me ajude a definir] → "Quais horários estão disponíveis considerando minhas atividades pendentes?"
-[➕ Criar agora sem data] → "Crie a atividade de reunião com João como pendente para eu definir a data depois"
-```
-
-### Detalhes técnicos
-
-- O campo `ai_suggestion` (JSONB) já existe na tabela `activity_chat_messages` — basta incluir `follow_up_suggestions` dentro dele
-- Nenhuma migration necessária
-- A resposta da tool `suggest_field_updates` passa a retornar `follow_up_suggestions` junto com os outros campos
-- No frontend, os chips são renderizados apenas na última mensagem da IA (para não poluir o histórico)
+## Arquivos a editar
+1. `src/components/whatsapp/WhatsAppCommandConfig.tsx` — adicionar edição inline de atalhos
+2. `supabase/functions/wjia-collection-processor/index.ts` — validação server-side antes de gerar documento
 
