@@ -237,8 +237,261 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
   );
 }
 
-// ==================== SHORTCUTS TAB ====================
-function ShortcutsTab({ shortcuts, onReload }: { shortcuts: Shortcut[]; onReload: () => void }) {
+// ==================== SHORTCUTS TAB (with embedded follow-up) ====================
+function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+  const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+
+  const resetForm = () => {
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+    setFollowupSteps([]);
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const startEdit = (s: Shortcut) => {
+    setForm({
+      shortcut_name: s.shortcut_name,
+      description: s.description || '',
+      template_token: s.template_token || '',
+      template_name: s.template_name || '',
+      prompt_instructions: s.prompt_instructions || '',
+    });
+    setFollowupSteps(s.followup_steps || []);
+    setEditingId(s.id);
+    setShowForm(true);
+  };
+
+  const addStep = () => {
+    setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60, message_template: '' }]);
+  };
+
+  const removeStep = (idx: number) => {
+    setFollowupSteps(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateStep = (idx: number, field: string, value: any) => {
+    setFollowupSteps(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  };
+
+  const handleSave = async () => {
+    if (!form.shortcut_name.trim()) { toast.error('Nome do atalho é obrigatório'); return; }
+    const payload = {
+      shortcut_name: form.shortcut_name.trim(),
+      description: form.description || null,
+      template_token: form.template_token || null,
+      template_name: form.template_name || null,
+      prompt_instructions: form.prompt_instructions || null,
+      followup_steps: followupSteps,
+    };
+
+    let error;
+    if (editingId) {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await (supabase.from('wjia_command_shortcuts') as any).insert({ ...payload, display_order: shortcuts.length }));
+    }
+    if (error) { toast.error(error.message); return; }
+    toast.success(editingId ? 'Atalho atualizado!' : 'Atalho criado!');
+    resetForm();
+    onReload();
+  };
+
+  const handleDelete = async (id: string) => {
+    await (supabase.from('wjia_command_shortcuts') as any).delete().eq('id', id);
+    onReload();
+    toast.success('Atalho removido');
+  };
+
+  const handleToggle = async (id: string, isActive: boolean) => {
+    await (supabase.from('wjia_command_shortcuts') as any).update({ is_active: !isActive }).eq('id', id);
+    onReload();
+  };
+
+  const actionLabels: Record<string, { label: string; icon: any; color: string }> = {
+    whatsapp_message: { label: 'Mensagem WhatsApp', icon: MessageSquare, color: 'text-green-500' },
+    call: { label: 'Ligação', icon: Phone, color: 'text-blue-500' },
+    create_activity: { label: 'Criar Atividade', icon: FileText, color: 'text-orange-500' },
+  };
+
+  return (
+    <div className="space-y-4 mt-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Atalhos @wjia com regras de follow-up integradas para cada documento.
+        </p>
+        <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); }}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> Novo
+        </Button>
+      </div>
+
+      {showForm && (
+        <Card className="border-primary/30">
+          <CardContent className="p-4 space-y-3">
+            <p className="text-xs font-medium text-primary">{editingId ? '✏️ Editando atalho' : '➕ Novo atalho'}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nome do Atalho *</Label>
+                <Input placeholder="procuração" value={form.shortcut_name} onChange={e => setForm(f => ({ ...f, shortcut_name: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Descrição</Label>
+                <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Token do Template ZapSign</Label>
+                <Input placeholder="abc123..." value={form.template_token} onChange={e => setForm(f => ({ ...f, template_token: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Nome do Template</Label>
+                <Input placeholder="Procuração Ad Judicia" value={form.template_name} onChange={e => setForm(f => ({ ...f, template_name: e.target.value }))} className="h-9" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
+              <Textarea
+                placeholder="Ao coletar dados para esta procuração, pergunte nome completo, CPF, RG, endereço completo, estado civil, nacionalidade..."
+                value={form.prompt_instructions}
+                onChange={e => setForm(f => ({ ...f, prompt_instructions: e.target.value }))}
+                className="min-h-[80px] text-xs"
+              />
+            </div>
+
+            {/* Follow-up Steps Section */}
+            <div className="border-t pt-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-primary" />
+                  <Label className="text-xs font-semibold">Follow-up Automático</Label>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Cobranças quando o cliente não assina</p>
+              </div>
+
+              {followupSteps.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-2 p-3 rounded-lg border bg-muted/30">
+                  <Badge variant="secondary" className="text-[10px] h-5 w-5 p-0 flex items-center justify-center mt-1">{idx + 1}</Badge>
+                  <div className="flex-1 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Ação</Label>
+                        <Select value={step.action_type} onValueChange={v => updateStep(idx, 'action_type', v)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="whatsapp_message">📱 Mensagem WhatsApp</SelectItem>
+                            <SelectItem value="call">📞 Ligação</SelectItem>
+                            <SelectItem value="create_activity">📋 Criar Atividade</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Aguardar (minutos)</Label>
+                        <Input
+                          type="number" min={5}
+                          value={step.delay_minutes}
+                          onChange={e => updateStep(idx, 'delay_minutes', parseInt(e.target.value) || 60)}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    {step.action_type === 'whatsapp_message' && (
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Mensagem (use {'{{nome}}'}, {'{{documento}}'}, {'{{link}}'})</Label>
+                        <Textarea
+                          placeholder="Olá {{nome}}! Notamos que o {{documento}} ainda não foi assinado..."
+                          value={step.message_template || ''}
+                          onChange={e => updateStep(idx, 'message_template', e.target.value)}
+                          className="min-h-[60px] text-xs"
+                        />
+                      </div>
+                    )}
+                    {step.action_type === 'create_activity' && (
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Atribuir a</Label>
+                        <Select value={step.assigned_to || ''} onValueChange={v => updateStep(idx, 'assigned_to', v)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                          <SelectContent>
+                            {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => removeStep(idx)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              <Button size="sm" variant="outline" onClick={addStep} className="w-full">
+                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Etapa de Follow-up
+              </Button>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="ghost" onClick={resetForm}>Cancelar</Button>
+              <Button size="sm" onClick={handleSave}>{editingId ? 'Atualizar' : 'Salvar'}</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {shortcuts.length === 0 ? (
+        <Card><CardContent className="py-6 text-center text-sm text-muted-foreground">
+          <Zap className="h-6 w-6 mx-auto mb-2 text-muted-foreground/40" />
+          Nenhum atalho configurado
+        </CardContent></Card>
+      ) : shortcuts.map(s => (
+        <Card key={s.id} className={!s.is_active ? 'opacity-50' : ''}>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-3">
+              <Zap className="h-4 w-4 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">@wjia {s.shortcut_name}</span>
+                  {s.template_name && <Badge variant="secondary" className="text-[10px]">{s.template_name}</Badge>}
+                </div>
+                {s.description && <p className="text-[11px] text-muted-foreground mt-0.5">{s.description}</p>}
+                {s.prompt_instructions && (
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 truncate max-w-[300px]">
+                    💡 {s.prompt_instructions}
+                  </p>
+                )}
+              </div>
+              <Switch checked={s.is_active} onCheckedChange={() => handleToggle(s.id, s.is_active)} />
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startEdit(s)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(s.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {s.followup_steps && s.followup_steps.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap mt-2 ml-7">
+                <Bell className="h-3 w-3 text-muted-foreground" />
+                {s.followup_steps.map((step, idx) => {
+                  const info = actionLabels[step.action_type] || actionLabels.whatsapp_message;
+                  const Icon = info.icon;
+                  return (
+                    <div key={idx} className="flex items-center gap-1">
+                      {idx > 0 && <span className="text-[10px] text-muted-foreground">→</span>}
+                      <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                        <Icon className={`h-3 w-3 ${info.color}`} />
+                        {step.delay_minutes >= 60 ? `${Math.round(step.delay_minutes / 60)}h` : `${step.delay_minutes}min`}
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
