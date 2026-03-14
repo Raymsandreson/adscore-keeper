@@ -485,7 +485,7 @@ REGRAS:
     return new Response(JSON.stringify({
       active_session: true,
       processed: true,
-      all_collected: result.all_collected,
+      all_collected: finalAllCollected,
       session_id: session.id,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
