@@ -76,6 +76,17 @@ serve(async (req) => {
     // CRM context
     const crmContext = buildCrmContext(contactData, leadData, normalizedPhone);
 
+    // Check if command matches a specific shortcut with a fixed template
+    const commandLower = command.replace(/^@wjia\s*/i, '').trim().toLowerCase();
+    const matchedShortcut = shortcuts.find((s: any) => 
+      commandLower.includes(s.shortcut_name.toLowerCase()) || 
+      s.shortcut_name.toLowerCase().includes(commandLower)
+    );
+
+    const forceTemplate = matchedShortcut?.template_token || null;
+    const forceTemplateName = matchedShortcut?.template_name || null;
+    const shortcutInstructions = matchedShortcut?.prompt_instructions || '';
+
     // 2) AI decides what to do — but does NOT generate doc yet if data is missing
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
 
@@ -84,6 +95,8 @@ IMPORTANTE: NÃO gere o documento agora. Seu trabalho é:
 2. Analisar TODOS os dados disponíveis (conversa + CRM)
 3. Identificar quais campos obrigatórios estão FALTANDO
 4. Se houver dados faltantes, o robô vai assumir a conversa para coletá-los antes de gerar
+
+${forceTemplate ? `⚠️ TEMPLATE OBRIGATÓRIO: Use EXATAMENTE o template "${forceTemplateName}" (token: ${forceTemplate}). NÃO escolha outro template.` : ''}
 
 ATALHOS CONFIGURADOS:
 ${shortcutList || "(nenhum atalho)"}
@@ -96,6 +109,7 @@ ${crmContext}
 CONVERSA COM O CLIENTE (últimas mensagens):
 ${conversationText || "(sem mensagens)"}
 
+${shortcutInstructions ? `INSTRUÇÕES ESPECÍFICAS DO ATALHO:\n${shortcutInstructions}\n` : ''}
 REGRAS:
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Para WHATSAPP do escritório: use "(86)99447-3226"
@@ -184,6 +198,15 @@ REGRAS:
     }
 
     console.log("WJIA analysis result:", JSON.stringify(parsed));
+
+    // Force shortcut template if configured
+    if (forceTemplate) {
+      parsed.template_token = forceTemplate;
+      parsed.template_name = forceTemplateName || parsed.template_name;
+      if (parsed.action !== "generate_document") {
+        parsed.action = "generate_document";
+      }
+    }
 
     if (parsed.action !== "generate_document" || !parsed.template_token || !zapsignToken) {
       return new Response(JSON.stringify({

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,6 +52,7 @@ interface FollowupStep {
 
 interface Instance { id: string; instance_name: string; }
 interface Profile { user_id: string; full_name: string | null; }
+interface ZapSignTemplateOption { token: string; name: string; }
 
 // ==================== COMPONENT ====================
 export function WhatsAppCommandConfig() {
@@ -246,6 +247,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+  const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const loadZapSignTemplates = useCallback(async () => {
+    if (zapsignTemplates.length > 0) return;
+    setLoadingTemplates(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: { action: 'list_templates' },
+      });
+      if (!error && data?.success) {
+        const templates = Array.isArray(data.templates) ? data.templates : (data.templates?.results || []);
+        setZapsignTemplates(templates.map((t: any) => ({ token: t.token, name: t.name })));
+      }
+    } catch (e) {
+      console.error('Error loading ZapSign templates:', e);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, [zapsignTemplates.length]);
+
+  useEffect(() => {
+    if (showForm) loadZapSignTemplates();
+  }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
     setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
@@ -381,15 +406,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <Input placeholder="Gera procuração ad judicia" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-9" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Token do Template ZapSign</Label>
-                <Input placeholder="abc123..." value={form.template_token} onChange={e => setForm(f => ({ ...f, template_token: e.target.value }))} className="h-9" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Nome do Template</Label>
-                <Input placeholder="Procuração Ad Judicia" value={form.template_name} onChange={e => setForm(f => ({ ...f, template_name: e.target.value }))} className="h-9" />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Modelo ZapSign</Label>
+              {loadingTemplates ? (
+                <div className="h-9 flex items-center text-xs text-muted-foreground">Carregando modelos...</div>
+              ) : (
+                <Select
+                  value={form.template_token}
+                  onValueChange={v => {
+                    const tmpl = zapsignTemplates.find(t => t.token === v);
+                    setForm(f => ({ ...f, template_token: v, template_name: tmpl?.name || '' }));
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
+                  <SelectContent>
+                    {zapsignTemplates.map(t => (
+                      <SelectItem key={t.token} value={t.token} className="text-xs">{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {form.template_name && (
+                <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>

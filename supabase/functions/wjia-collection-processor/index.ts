@@ -152,13 +152,13 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
-    // Find active collection session for this phone
+    // Find active collection session for this phone (collecting OR confirming)
     const { data: session } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .eq("status", "collecting")
+      .in("status", ["collecting", "confirming"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -169,7 +169,170 @@ serve(async (req) => {
       });
     }
 
-    console.log("Active collection session found:", session.id, "missing:", JSON.stringify(session.missing_fields));
+    console.log("Active collection session found:", session.id, "status:", session.status, "missing:", JSON.stringify(session.missing_fields));
+
+    // === HANDLE CONFIRMATION STATUS ===
+    if (session.status === 'confirming') {
+      const msgLower = (message_text || "").toLowerCase().trim();
+      const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo|yes|s)/.test(msgLower);
+
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      if (isConfirmation) {
+        // Client confirmed → move to "ready" and generate
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({ status: "ready", updated_at: new Date().toISOString() })
+          .eq("id", session.id);
+
+        // Trigger document generation (same flow as before)
+        const zapsignToken = Deno.env.get("ZAPSIGN_API_TOKEN");
+        const collectedData = session.collected_data || { fields: [] };
+        const updatedFields = [...(collectedData.fields || [])];
+
+        // Apply defaults
+        for (const field of updatedFields) {
+          const fieldName = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
+          if ((fieldName === "EMAIL" || fieldName.includes("EMAIL")) && !field.para) {
+            field.para = "contato@prudencioadv.com";
+          }
+          if ((fieldName === "WHATSAPP" || fieldName.includes("WHATSAPP")) && !field.para) {
+            field.para = "(86)99447-3226";
+          }
+        }
+
+        const signerName = collectedData.signer_name || "Cliente";
+        const signerPhone = collectedData.signer_phone || normalizedPhone;
+
+        if (zapsignToken) {
+          const createBody = {
+            template_id: session.template_token,
+            signer_name: signerName,
+            signer_phone: signerPhone,
+            data: updatedFields.length > 0 ? updatedFields : [{ de: "{{_}}", para: " " }],
+          };
+
+          console.log("Creating ZapSign doc after confirmation:", JSON.stringify(createBody));
+
+          const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify(createBody),
+          });
+
+          if (createRes.ok) {
+            const docData = await createRes.json();
+            const signer = docData.signers?.[0];
+            const signUrl = signer ? `https://app.zapsign.co/verificar/${signer.token}` : null;
+
+            await supabase
+              .from("wjia_collection_sessions")
+              .update({ status: "generated", doc_token: docData.token, sign_url: signUrl })
+              .eq("id", session.id);
+
+            await supabase.from("zapsign_documents").insert({
+              doc_token: docData.token,
+              template_id: session.template_token,
+              document_name: session.template_name || "Documento",
+              status: docData.status || "pending",
+              original_file_url: docData.original_file || null,
+              sign_url: signUrl,
+              signer_name: signerName,
+              signer_token: signer?.token || null,
+              signer_phone: signerPhone,
+              signer_status: signer?.status || "new",
+              template_data: updatedFields,
+              lead_id: session.lead_id || null,
+              contact_id: session.contact_id || null,
+              sent_via_whatsapp: true,
+              whatsapp_phone: normalizedPhone,
+            });
+
+            if (inst?.instance_token && signUrl) {
+              const signMsg = `📝 *Documento pronto para assinatura!*\n\nOlá ${signerName.split(" ")[0]}! O documento *${session.template_name}* está pronto.\n\n👉 Clique para assinar: ${signUrl}\n\n*Instruções:*\n1. Clique no link\n2. Confira seus dados\n3. Assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
+
+              const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+              await fetch(`${baseUrl}/send/text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", token: inst.instance_token },
+                body: JSON.stringify({ number: normalizedPhone, text: signMsg }),
+              }).catch(e => console.error("Error sending sign link:", e));
+
+              await supabase.from("whatsapp_messages").insert({
+                phone: normalizedPhone,
+                instance_name,
+                message_text: signMsg,
+                message_type: "text",
+                direction: "outbound",
+                contact_id: session.contact_id || null,
+                lead_id: session.lead_id || null,
+                external_message_id: `wjia_sign_${Date.now()}`,
+              });
+            }
+
+            console.log("Document generated after confirmation! Doc token:", docData.token);
+          } else {
+            const errText = await createRes.text();
+            console.error("ZapSign error after confirmation:", errText);
+          }
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true,
+          processed: true,
+          all_collected: true,
+          confirmed: true,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      } else {
+        // Client wants to correct something → back to collecting
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({ status: "collecting", updated_at: new Date().toISOString() })
+          .eq("id", session.id);
+
+        const correctionReply = "Entendi! Me diga qual informação precisa ser corrigida que eu atualizo.";
+
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: correctionReply }),
+          }).catch(e => console.error("Error sending correction reply:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone,
+            instance_name,
+            message_text: correctionReply,
+            message_type: "text",
+            direction: "outbound",
+            contact_id: session.contact_id || null,
+            lead_id: session.lead_id || null,
+            external_message_id: `wjia_correct_${Date.now()}`,
+          });
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true,
+          processed: true,
+          correction_mode: true,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Fetch instance info (needed for replies and doc sending)
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
 
     // Get recent conversation for context
     const { data: recentMsgs } = await supabase
@@ -365,23 +528,76 @@ REGRAS:
       .join(", ");
     const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
 
-    const replyToClient = finalAllCollected
-      ? (result.reply_to_client || "Obrigado(a)! Todos os dados foram coletados. Vou preparar o documento.")
-      : (result.all_collected ? correctionMsg : (result.reply_to_client || correctionMsg));
+    // === CONFIRMATION STEP ===
+    // When all data is collected, show summary and ask for confirmation before generating
+    if (finalAllCollected) {
+      // Check if client just confirmed
+      const msgLower = (message_text || "").toLowerCase().trim();
+      const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
+      
+      if (session.status === 'collecting') {
+        // First time all data collected → show summary, move to "confirming"
+        const summaryLines = updatedFields
+          .filter((f: any) => f.para)
+          .map((f: any) => {
+            const label = (f.de || '').replace(/\{\{|\}\}/g, '');
+            return `• *${label}*: ${f.para}`;
+          }).join('\n');
+
+        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+
+        // Update status to "confirming"
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({
+            collected_data: updatedCollectedData,
+            missing_fields: [],
+            status: "confirming",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", session.id);
+
+        // Send summary
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: summaryMsg }),
+          }).catch(e => console.error("Error sending summary:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone,
+            instance_name,
+            message_text: summaryMsg,
+            message_type: "text",
+            direction: "outbound",
+            contact_id: session.contact_id || null,
+            lead_id: session.lead_id || null,
+            external_message_id: `wjia_summary_${Date.now()}`,
+          });
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true,
+          processed: true,
+          all_collected: true,
+          awaiting_confirmation: true,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Not all collected yet → normal flow
+    const replyToClient = result.all_collected ? correctionMsg : (result.reply_to_client || correctionMsg);
 
     // Fetch instance info (needed for replies)
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
-
     await supabase
       .from("wjia_collection_sessions")
       .update({
         collected_data: updatedCollectedData,
         missing_fields: actuallyMissing,
-        status: finalAllCollected ? "ready" : "collecting",
+        status: "collecting",
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id);
@@ -404,99 +620,6 @@ REGRAS:
         lead_id: session.lead_id || null,
         external_message_id: `wjia_collect_reply_${Date.now()}`,
       });
-    }
-
-    // If all data collected, generate the document!
-    if (finalAllCollected && zapsignToken) {
-      console.log("All data collected! Generating document for session:", session.id);
-
-      // Apply defaults
-      for (const field of updatedFields) {
-        const fieldName = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
-        if ((fieldName === "EMAIL" || fieldName.includes("EMAIL")) && !field.para) {
-          field.para = "contato@prudencioadv.com";
-        }
-        if ((fieldName === "WHATSAPP" || fieldName.includes("WHATSAPP")) && !field.para) {
-          field.para = "(86)99447-3226";
-        }
-      }
-
-      const signerName = updatedCollectedData.signer_name || "Cliente";
-      const signerPhone = updatedCollectedData.signer_phone || normalizedPhone;
-
-      const createBody = {
-        template_id: session.template_token,
-        signer_name: signerName,
-        signer_phone: signerPhone,
-        data: updatedFields.length > 0 ? updatedFields : [{ de: "{{_}}", para: " " }],
-      };
-
-      console.log("Creating ZapSign doc:", JSON.stringify(createBody));
-
-      const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(createBody),
-      });
-
-      if (createRes.ok) {
-        const docData = await createRes.json();
-        const signer = docData.signers?.[0];
-        const signUrl = signer ? `https://app.zapsign.co/verificar/${signer.token}` : null;
-
-        // Update session
-        await supabase
-          .from("wjia_collection_sessions")
-          .update({ status: "generated", doc_token: docData.token, sign_url: signUrl })
-          .eq("id", session.id);
-
-        // Save doc to zapsign_documents
-        await supabase.from("zapsign_documents").insert({
-          doc_token: docData.token,
-          template_id: session.template_token,
-          document_name: session.template_name || "Documento",
-          status: docData.status || "pending",
-          original_file_url: docData.original_file || null,
-          sign_url: signUrl,
-          signer_name: signerName,
-          signer_token: signer?.token || null,
-          signer_phone: signerPhone,
-          signer_status: signer?.status || "new",
-          template_data: updatedFields,
-          lead_id: session.lead_id || null,
-          contact_id: session.contact_id || null,
-          sent_via_whatsapp: true,
-          whatsapp_phone: normalizedPhone,
-        });
-
-        // Send sign link to client
-        if (inst?.instance_token && signUrl) {
-          const signMsg = `📝 *Documento pronto para assinatura!*\n\nOlá ${signerName.split(" ")[0]}! O documento *${session.template_name}* está pronto.\n\n👉 Clique para assinar: ${signUrl}\n\n*Instruções:*\n1. Clique no link\n2. Confira seus dados\n3. Assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
-
-          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
-          await fetch(`${baseUrl}/send/text`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: inst.instance_token },
-            body: JSON.stringify({ number: normalizedPhone, text: signMsg }),
-          }).catch(e => console.error("Error sending sign link:", e));
-
-          await supabase.from("whatsapp_messages").insert({
-            phone: normalizedPhone,
-            instance_name,
-            message_text: signMsg,
-            message_type: "text",
-            direction: "outbound",
-            contact_id: session.contact_id || null,
-            lead_id: session.lead_id || null,
-            external_message_id: `wjia_sign_${Date.now()}`,
-          });
-        }
-
-        console.log("Document generated and sent! Doc token:", docData.token);
-      } else {
-        const errText = await createRes.text();
-        console.error("ZapSign error:", errText);
-      }
     }
 
     return new Response(JSON.stringify({
