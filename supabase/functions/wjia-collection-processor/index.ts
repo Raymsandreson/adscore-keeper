@@ -365,23 +365,76 @@ REGRAS:
       .join(", ");
     const correctionMsg = `Ainda preciso de alguns dados para completar o documento: ${missingNames}. Poderia me informar?`;
 
-    const replyToClient = finalAllCollected
-      ? (result.reply_to_client || "Obrigado(a)! Todos os dados foram coletados. Vou preparar o documento.")
-      : (result.all_collected ? correctionMsg : (result.reply_to_client || correctionMsg));
+    // === CONFIRMATION STEP ===
+    // When all data is collected, show summary and ask for confirmation before generating
+    if (finalAllCollected) {
+      // Check if client just confirmed
+      const msgLower = (message_text || "").toLowerCase().trim();
+      const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
+      
+      if (session.status === 'collecting') {
+        // First time all data collected → show summary, move to "confirming"
+        const summaryLines = updatedFields
+          .filter((f: any) => f.para)
+          .map((f: any) => {
+            const label = (f.de || '').replace(/\{\{|\}\}/g, '');
+            return `• *${label}*: ${f.para}`;
+          }).join('\n');
+
+        const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+
+        // Update status to "confirming"
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({
+            collected_data: updatedCollectedData,
+            missing_fields: [],
+            status: "confirming",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", session.id);
+
+        // Send summary
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: summaryMsg }),
+          }).catch(e => console.error("Error sending summary:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone,
+            instance_name,
+            message_text: summaryMsg,
+            message_type: "text",
+            direction: "outbound",
+            contact_id: session.contact_id || null,
+            lead_id: session.lead_id || null,
+            external_message_id: `wjia_summary_${Date.now()}`,
+          });
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true,
+          processed: true,
+          all_collected: true,
+          awaiting_confirmation: true,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // Not all collected yet → normal flow
+    const replyToClient = result.all_collected ? correctionMsg : (result.reply_to_client || correctionMsg);
 
     // Fetch instance info (needed for replies)
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
-
     await supabase
       .from("wjia_collection_sessions")
       .update({
         collected_data: updatedCollectedData,
         missing_fields: actuallyMissing,
-        status: finalAllCollected ? "ready" : "collecting",
+        status: "collecting",
         updated_at: new Date().toISOString(),
       })
       .eq("id", session.id);
