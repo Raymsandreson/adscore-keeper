@@ -236,7 +236,23 @@ export function FloatingNav() {
 
   return (
     <>
-      <div ref={containerRef} className="fixed left-1/2 -translate-x-1/2 z-50 bottom-[calc(env(safe-area-inset-bottom)+1rem)] md:bottom-[calc(env(safe-area-inset-bottom)+1.5rem)]">
+      <div
+        ref={containerRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        className="fixed z-50 touch-none"
+        style={position ? {
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          transform: 'translate(-50%, -50%)',
+          bottom: 'auto',
+        } : {
+          left: '50%',
+          transform: 'translateX(-50%)',
+          bottom: 'calc(env(safe-area-inset-bottom) + 1rem)',
+        }}
+      >
         {/* Menu Panel - appears above the dock */}
         {menuOpen && !dockCollapsed && (
           <div
