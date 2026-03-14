@@ -36,7 +36,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2 } from 'lucide-react';
+import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
