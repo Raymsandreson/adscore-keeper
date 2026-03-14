@@ -519,6 +519,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 })}
               </div>
             )}
+            {/* Inline AI editor for this shortcut */}
+            {showAI && aiEditConfig?.shortcut_name === s.shortcut_name && (
+              <div className="mt-3">
+                <AIShortcutGenerator
+                  existingConfig={aiEditConfig}
+                  onApply={(config) => {
+                    setForm({
+                      shortcut_name: config.shortcut_name,
+                      description: config.description || '',
+                      template_token: form.template_token,
+                      template_name: form.template_name,
+                      prompt_instructions: config.prompt_instructions,
+                    });
+                    setFollowupSteps(config.followup_steps || []);
+                    setEditingId(s.id);
+                    setShowForm(true);
+                    setShowAI(false);
+                    setAiEditConfig(null);
+                  }}
+                  onClose={() => { setShowAI(false); setAiEditConfig(null); }}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       ))}
