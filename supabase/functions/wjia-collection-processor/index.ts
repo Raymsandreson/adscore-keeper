@@ -183,11 +183,16 @@ serve(async (req) => {
 
     const collectedData = session.collected_data || { fields: [] };
     const missingFields = session.missing_fields || [];
+    const requiredFieldCatalog = buildTemplateFieldCatalog(session);
 
     // Use AI to extract data from the client's message
-    // Build explicit list of ALL template fields for the AI
-    const allTemplateFields = (session.missing_fields || []).map((f: any) => f.friendly_name || f.field_name);
-    const alreadyCollected = (collectedData.fields || []).map((f: any) => f.de);
+    const allTemplateFields = requiredFieldCatalog.length > 0
+      ? requiredFieldCatalog.map((f) => `${f.variable} (${f.label})`)
+      : (session.missing_fields || []).map((f: any) => f.friendly_name || f.field_name);
+
+    const alreadyCollected = (collectedData.fields || [])
+      .map((f: any) => resolveTemplateVariable(f, requiredFieldCatalog) || f.de)
+      .filter(Boolean);
 
     const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
 
