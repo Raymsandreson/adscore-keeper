@@ -505,30 +505,14 @@ Responda APENAS o JSON, sem markdown.`
       }
 
       try {
-        const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              { role: 'system', content: 'Você extrai informações de signatários e testemunhas de conversas e documentos. Responda apenas JSON válido.' },
-              { role: 'user', content: userContent }
-            ],
-          }),
+        const aiData = await geminiChat({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: 'Você extrai informações de signatários e testemunhas de conversas e documentos. Responda apenas JSON válido.' },
+            { role: 'user', content: userContent }
+          ],
         })
 
-        if (!aiRes.ok) {
-          console.error('AI signer extraction error:', aiRes.status)
-          return new Response(
-            JSON.stringify({ success: true, signers: [], source: 'ai_error' }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          )
-        }
-
-        const aiData = await aiRes.json()
         const respText = aiData.choices?.[0]?.message?.content || '[]'
         let extractedSigners = []
         try {

@@ -279,39 +279,22 @@ async function lookupContactLead(supabase: any, phone: string) {
   return { contactId, leadId, leadName };
 }
 
-async function transcribeAudio(audioUrl: string, apiKey: string) {
+async function transcribeAudio(audioUrl: string, _apiKey: string) {
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: "Você é um assistente jurídico. Transcreva o áudio e forneça um resumo objetivo."
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Transcreva este áudio e forneça:\nTRANSCRIÇÃO:\n[transcrição]\n\nRESUMO:\n[resumo]" },
-              { type: "input_audio", input_audio: { url: audioUrl, format: "wav" } }
-            ]
-          }
-        ],
-      }),
+    const data = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: "Você é um assistente jurídico. Transcreva o áudio e forneça um resumo objetivo." },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Transcreva este áudio e forneça:\nTRANSCRIÇÃO:\n[transcrição]\n\nRESUMO:\n[resumo]" },
+            { type: "input_audio", input_audio: { url: audioUrl, format: "wav" } }
+          ]
+        }
+      ],
     });
 
-    if (!response.ok) {
-      console.error("AI transcription error:", response.status);
-      await response.text();
-      return null;
-    }
-
-    const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
     const transcriptMatch = content.match(/TRANSCRIÇÃO:\s*([\s\S]*?)(?=RESUMO:|$)/i);
     const summaryMatch = content.match(/RESUMO:\s*([\s\S]*?)$/i);
