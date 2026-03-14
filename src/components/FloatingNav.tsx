@@ -358,6 +358,15 @@ export function FloatingNav() {
         ) : (
           /* Dock Bar */
           <div className="flex items-center gap-1 sm:gap-1.5 bg-card/90 backdrop-blur-xl border border-border/60 rounded-full px-1.5 sm:px-2.5 py-1.5 sm:py-2 shadow-2xl animate-in slide-in-from-bottom-2 fade-in duration-200">
+            {/* Drag handle */}
+            <div
+              data-drag-handle
+              onDoubleClick={() => resetPosition()}
+              title="Arraste para mover · Duplo clique para resetar"
+              className="h-9 w-5 sm:h-11 sm:w-6 rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+            >
+              <GripVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+            </div>
             {/* Collapse button */}
             <button
               onClick={() => { setDockCollapsed(true); setMenuOpen(false); setExpandedSection(null); try { localStorage.setItem('dock_collapsed', '1'); } catch {} }}
