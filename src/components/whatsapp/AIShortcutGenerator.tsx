@@ -25,11 +25,12 @@ interface ShortcutConfig {
 interface Props {
   onApply: (config: ShortcutConfig) => void;
   onClose: () => void;
+  existingConfig?: ShortcutConfig | null;
 }
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shortcut-config`;
 
-export function AIShortcutGenerator({ onApply, onClose }: Props) {
+export function AIShortcutGenerator({ onApply, onClose, existingConfig }: Props) {
   const [description, setDescription] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<ShortcutConfig | null>(null);
