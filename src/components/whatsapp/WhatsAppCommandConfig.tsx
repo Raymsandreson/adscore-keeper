@@ -247,6 +247,30 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+  const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  const loadZapSignTemplates = useCallback(async () => {
+    if (zapsignTemplates.length > 0) return;
+    setLoadingTemplates(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapsign-api', {
+        body: { action: 'list_templates' },
+      });
+      if (!error && data?.success) {
+        const templates = Array.isArray(data.templates) ? data.templates : (data.templates?.results || []);
+        setZapsignTemplates(templates.map((t: any) => ({ token: t.token, name: t.name })));
+      }
+    } catch (e) {
+      console.error('Error loading ZapSign templates:', e);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }, [zapsignTemplates.length]);
+
+  useEffect(() => {
+    if (showForm) loadZapSignTemplates();
+  }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
     setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
