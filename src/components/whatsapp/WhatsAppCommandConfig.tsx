@@ -47,14 +47,7 @@ interface FollowupStep {
   priority?: string;
 }
 
-interface FollowupRule {
-  id: string;
-  name: string;
-  description: string | null;
-  trigger_status: string;
-  steps: FollowupStep[];
-  is_active: boolean;
-}
+// FollowupRule type removed - steps are now embedded in Shortcut
 
 interface Instance { id: string; instance_name: string; }
 interface Profile { user_id: string; full_name: string | null; }
