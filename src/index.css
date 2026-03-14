@@ -187,6 +187,15 @@ All colors MUST be HSL.
   .shadow-card-hover {
     box-shadow: var(--shadow-card-hover);
   }
+
+  /* Hide scrollbar for tab navigation */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer utilities {
