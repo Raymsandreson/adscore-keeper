@@ -327,6 +327,13 @@ serve(async (req) => {
       }
     }
 
+    // Fetch instance info (needed for replies and doc sending)
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+
     // Get recent conversation for context
     const { data: recentMsgs } = await supabase
       .from("whatsapp_messages")
