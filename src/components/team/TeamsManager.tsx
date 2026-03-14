@@ -394,82 +394,18 @@ export function TeamsManager() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {/* Current members */}
+                  {/* Current members - collapsible */}
                   {currentMembers.length > 0 ? (
-                    <div className="space-y-2">
-                      {currentMembers.map(m => {
-                        const memberMetrics = getMemberMetrics(team.id, m.user_id);
-                        return (
-                          <div key={m.user_id} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                                <Users className="h-3.5 w-3.5 text-primary" />
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-sm font-medium block truncate">{m.full_name || m.email || 'Sem nome'}</span>
-                                {memberMetrics.length > 0 && memberMetrics.length < ALL_METRICS.length && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    {memberMetrics.length} métrica{memberMetrics.length !== 1 ? 's' : ''}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {/* Metrics config popover */}
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7">
-                                    <Settings2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent align="end" className="w-56 p-3">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <p className="text-xs font-medium">Métricas avaliadas</p>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 text-xs px-2"
-                                      onClick={async () => {
-                                        const allSelected = memberMetrics.length === ALL_METRICS.length;
-                                        const newMetrics = allSelected ? [] : ALL_METRICS.map(met => met.key);
-                                        try {
-                                          await supabase
-                                            .from('team_members')
-                                            .update({ evaluated_metrics: newMetrics })
-                                            .eq('team_id', team.id)
-                                            .eq('user_id', m.user_id);
-                                          setTeamMembers(prev => prev.map(tm =>
-                                            tm.team_id === team.id && tm.user_id === m.user_id
-                                              ? { ...tm, evaluated_metrics: newMetrics }
-                                              : tm
-                                          ));
-                                        } catch { toast.error('Erro ao atualizar métricas'); }
-                                      }}
-                                    >
-                                      {memberMetrics.length === ALL_METRICS.length ? 'Desmarcar tudo' : 'Selecionar tudo'}
-                                    </Button>
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    {ALL_METRICS.map(metric => (
-                                      <label key={metric.key} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded p-1 -mx-1">
-                                        <Checkbox
-                                          checked={memberMetrics.includes(metric.key)}
-                                          onCheckedChange={() => handleToggleMetric(team.id, m.user_id, metric.key)}
-                                        />
-                                        {metric.label}
-                                      </label>
-                                    ))}
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveMember(team.id, m.user_id)}>
-                                <UserMinus className="h-3.5 w-3.5 text-destructive" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <CollapsibleMembers
+                      members={currentMembers}
+                      teamId={team.id}
+                      getMemberMetrics={getMemberMetrics}
+                      handleToggleMetric={handleToggleMetric}
+                      handleRemoveMember={handleRemoveMember}
+                      teamMembers={teamMembers}
+                      setTeamMembers={setTeamMembers}
+                      teamColor={team.color}
+                    />
                   ) : (
                     <p className="text-sm text-muted-foreground text-center py-2">Nenhum membro alocado</p>
                   )}
