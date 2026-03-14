@@ -34,6 +34,8 @@ import {
   GraduationCap,
   TrendingUp,
   Activity,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface TabDef {
