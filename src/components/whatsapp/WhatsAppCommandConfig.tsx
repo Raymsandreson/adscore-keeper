@@ -281,7 +281,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   };
 
   const addStep = () => {
-    setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60, message_template: '' }]);
+    setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60 }]);
   };
 
   const removeStep = (idx: number) => {
@@ -348,23 +348,22 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         </div>
       </div>
 
-      {showAI && (
+      {showAI && !aiEditConfig && (
         <AIShortcutGenerator
-          existingConfig={aiEditConfig}
+          existingConfig={null}
           onApply={(config) => {
             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
-              template_token: editingId ? form.template_token : '',
-              template_name: editingId ? form.template_name : '',
+              template_token: '',
+              template_name: '',
               prompt_instructions: config.prompt_instructions,
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
             setShowAI(false);
-            setAiEditConfig(null);
           }}
-          onClose={() => { setShowAI(false); setAiEditConfig(null); }}
+          onClose={() => { setShowAI(false); }}
         />
       )}
 
@@ -438,17 +437,6 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                         />
                       </div>
                     </div>
-                    {step.action_type === 'whatsapp_message' && (
-                      <div className="space-y-1">
-                        <Label className="text-[10px]">Mensagem (use {'{{nome}}'}, {'{{documento}}'}, {'{{link}}'})</Label>
-                        <Textarea
-                          placeholder="Olá {{nome}}! Notamos que o {{documento}} ainda não foi assinado..."
-                          value={step.message_template || ''}
-                          onChange={e => updateStep(idx, 'message_template', e.target.value)}
-                          className="min-h-[60px] text-xs"
-                        />
-                      </div>
-                    )}
                     {step.action_type === 'create_activity' && (
                       <div className="space-y-1">
                         <Label className="text-[10px]">Atribuir a</Label>
@@ -528,6 +516,29 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {/* Inline AI editor for this shortcut */}
+            {showAI && aiEditConfig?.shortcut_name === s.shortcut_name && (
+              <div className="mt-3">
+                <AIShortcutGenerator
+                  existingConfig={aiEditConfig}
+                  onApply={(config) => {
+                    setForm({
+                      shortcut_name: config.shortcut_name,
+                      description: config.description || '',
+                      template_token: form.template_token,
+                      template_name: form.template_name,
+                      prompt_instructions: config.prompt_instructions,
+                    });
+                    setFollowupSteps(config.followup_steps || []);
+                    setEditingId(s.id);
+                    setShowForm(true);
+                    setShowAI(false);
+                    setAiEditConfig(null);
+                  }}
+                  onClose={() => { setShowAI(false); setAiEditConfig(null); }}
+                />
               </div>
             )}
           </CardContent>
