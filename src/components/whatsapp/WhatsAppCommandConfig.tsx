@@ -324,10 +324,34 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <p className="text-xs text-muted-foreground">
           Atalhos @wjia com regras de follow-up integradas para cada documento.
         </p>
-        <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); }}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Novo
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => { setShowAI(!showAI); setShowForm(false); }} className="gap-1">
+            <Wand2 className="h-3.5 w-3.5" /> IA
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { resetForm(); setShowForm(!showForm); setShowAI(false); }}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Novo
+          </Button>
+        </div>
       </div>
+
+      {showAI && (
+        <AIShortcutGenerator
+          onApply={(config) => {
+            setForm({
+              shortcut_name: config.shortcut_name,
+              description: config.description || '',
+              template_token: '',
+              template_name: '',
+              prompt_instructions: config.prompt_instructions,
+            });
+            setFollowupSteps(config.followup_steps || []);
+            setEditingId(null);
+            setShowForm(true);
+            setShowAI(false);
+          }}
+          onClose={() => setShowAI(false)}
+        />
+      )}
 
       {showForm && (
         <Card className="border-primary/30">
