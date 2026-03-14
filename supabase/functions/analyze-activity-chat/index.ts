@@ -617,30 +617,14 @@ Responda em português do Brasil.${lengthInstruction}${customInstruction}`;
 
       const userContent: any[] = [{ type: "text", text: descriptionPrompt }, ...contentParts];
 
-      const descResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia trabalhista. Analise o arquivo recebido e forneça uma descrição/resumo útil." },
-            { role: "user", content: userContent },
-          ],
-        }),
+      const descData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia trabalhista. Analise o arquivo recebido e forneça uma descrição/resumo útil." },
+          { role: "user", content: userContent },
+        ],
       });
 
-      if (!descResponse.ok) {
-        const t = await descResponse.text();
-        console.error("AI describe error:", descResponse.status, t);
-        return new Response(JSON.stringify({ description: "Erro ao analisar arquivo com IA." }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const descData = await descResponse.json();
       const description = descData.choices?.[0]?.message?.content || "Não foi possível gerar uma descrição.";
 
       return new Response(JSON.stringify({ description }), {
