@@ -10,6 +10,126 @@ const corsHeaders = {
 
 const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
 
+type TemplateFieldRef = {
+  variable: string;
+  label: string;
+  normalized: string;
+};
+
+const normalizeFieldKey = (value: string): string =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\{\{|\}\}/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "")
+    .toUpperCase()
+    .trim();
+
+const hasFieldValue = (value: any): boolean => value !== null && value !== undefined && value.toString().trim().length > 0;
+
+const isOptionalFieldKey = (normalizedKey: string): boolean =>
+  normalizedKey.includes("EMAIL") || normalizedKey.includes("WHATSAPP");
+
+function buildTemplateFieldCatalog(session: any): TemplateFieldRef[] {
+  const required = Array.isArray(session?.required_fields) ? session.required_fields : [];
+  const fromRequired = required
+    .filter((f: any) => f && (f.required ?? true))
+    .map((f: any) => {
+      const variable = (f.variable || "").toString().trim();
+      const label = (f.label || variable || "").toString().trim();
+      const normalized = normalizeFieldKey(variable || label);
+      return { variable: variable || label, label, normalized };
+    })
+    .filter((f: TemplateFieldRef) => f.variable && f.normalized);
+
+  if (fromRequired.length > 0) return fromRequired;
+
+  const missing = Array.isArray(session?.missing_fields) ? session.missing_fields : [];
+  return missing
+    .map((f: any) => {
+      const variable = (f.field_name || f.friendly_name || "").toString().trim();
+      const label = (f.friendly_name || f.field_name || variable).toString().trim();
+      return { variable, label, normalized: normalizeFieldKey(variable || label) };
+    })
+    .filter((f: TemplateFieldRef) => f.variable && f.normalized);
+}
+
+function resolveTemplateVariable(field: any, catalog: TemplateFieldRef[]): string | null {
+  const candidates = [field?.field_name, field?.de, field?.friendly_name]
+    .map((v: any) => (v || "").toString().trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const normalizedCandidate = normalizeFieldKey(candidate);
+    if (!normalizedCandidate) continue;
+
+    const exact = catalog.find((f) => f.normalized === normalizedCandidate);
+    if (exact) return exact.variable;
+
+    const partial = catalog.find(
+      (f) => f.normalized.includes(normalizedCandidate) || normalizedCandidate.includes(f.normalized),
+    );
+    if (partial) return partial.variable;
+  }
+
+  return null;
+}
+
+function inferVariableFromValue(value: any, catalog: TemplateFieldRef[]): string | null {
+  const raw = (value || "").toString().trim();
+  if (!raw) return null;
+
+  const digits = raw.replace(/\D/g, "");
+  const pick = (matcher: (field: TemplateFieldRef) => boolean) => catalog.find(matcher)?.variable || null;
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+    return pick((f) => f.normalized.includes("EMAIL"));
+  }
+
+  if (/^\d{5}-?\d{3}$/.test(raw) || digits.length === 8) {
+    return pick((f) => f.normalized.includes("CEP"));
+  }
+
+  if (digits.length === 11) {
+    return pick((f) => f.normalized.includes("CPF"));
+  }
+
+  if (/^[A-Za-z]{2}$/.test(raw)) {
+    return pick((f) => f.normalized === "ESTADO" || f.normalized.endsWith("ESTADO") || f.normalized.startsWith("ESTADO"));
+  }
+
+  return null;
+}
+
+function upsertCollectedField(fields: any[], targetVariable: string, value: any) {
+  const targetKey = normalizeFieldKey(targetVariable);
+  if (!targetKey || !hasFieldValue(value)) return;
+
+  const existingIdx = fields.findIndex((f: any) => normalizeFieldKey((f?.de || f?.field_name || "").toString()) === targetKey);
+  if (existingIdx >= 0) {
+    fields[existingIdx].de = targetVariable;
+    fields[existingIdx].para = value;
+    return;
+  }
+
+  fields.push({ de: targetVariable, para: value });
+}
+
+function computeMissingRequiredFields(catalog: TemplateFieldRef[], fields: any[]) {
+  return catalog
+    .filter((requiredField) => {
+      if (isOptionalFieldKey(requiredField.normalized)) return false;
+
+      const found = fields.find((f: any) => {
+        const fKey = normalizeFieldKey((f?.de || f?.field_name || "").toString());
+        return fKey === requiredField.normalized && hasFieldValue(f?.para);
+      });
+
+      return !found;
+    })
+    .map((f) => ({ field_name: f.variable, friendly_name: f.label || f.variable }));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
