@@ -199,6 +199,15 @@ REGRAS:
 
     console.log("WJIA analysis result:", JSON.stringify(parsed));
 
+    // Force shortcut template if configured
+    if (forceTemplate) {
+      parsed.template_token = forceTemplate;
+      parsed.template_name = forceTemplateName || parsed.template_name;
+      if (parsed.action !== "generate_document") {
+        parsed.action = "generate_document";
+      }
+    }
+
     if (parsed.action !== "generate_document" || !parsed.template_token || !zapsignToken) {
       return new Response(JSON.stringify({
         success: true,
