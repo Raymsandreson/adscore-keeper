@@ -215,6 +215,7 @@ REGRAS:
 - Se o cliente mandou nome completo, CPF, RG, endereço, etc., extraia tudo
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Formate datas como DD/MM/AAAA
+- No campo "de", use EXATAMENTE a variável do template (ex: {{CEP}}, {{E-mail}}). NUNCA use o valor do cliente no campo "de"
 - Seja educado e natural na conversa
 - Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez, máximo 3 por vez)
 - IMPORTANTE: Só marque all_collected como true se ABSOLUTAMENTE TODOS os campos listados acima tiverem valores preenchidos
