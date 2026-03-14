@@ -1,0 +1,332 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { geminiChat } from "../_shared/gemini.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const ZAPSIGN_API_URL = "https://api.zapsign.com.br/api/v1";
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { phone, instance_name, message_text } = await req.json();
+    if (!phone || !instance_name) {
+      return new Response(JSON.stringify({ error: "phone and instance_name required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const zapsignToken = Deno.env.get("ZAPSIGN_API_TOKEN");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+
+    // Find active collection session for this phone
+    const { data: session } = await supabase
+      .from("wjia_collection_sessions")
+      .select("*")
+      .eq("phone", normalizedPhone)
+      .eq("instance_name", instance_name)
+      .eq("status", "collecting")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!session) {
+      return new Response(JSON.stringify({ active_session: false }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log("Active collection session found:", session.id, "missing:", JSON.stringify(session.missing_fields));
+
+    // Get recent conversation for context
+    const { data: recentMsgs } = await supabase
+      .from("whatsapp_messages")
+      .select("direction, message_text, created_at")
+      .eq("phone", normalizedPhone)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const conversationText = (recentMsgs || [])
+      .reverse()
+      .filter((m: any) => m.message_text)
+      .map((m: any) => `[${m.direction === "outbound" ? "Robô" : "Cliente"}]: ${m.message_text}`)
+      .join("\n");
+
+    const collectedData = session.collected_data || { fields: [] };
+    const missingFields = session.missing_fields || [];
+
+    // Use AI to extract data from the client's message
+    const systemPrompt = `Você é um assistente de coleta de dados para um escritório de advocacia. Está coletando informações do cliente para preencher um documento "${session.template_name}".
+
+DADOS JÁ COLETADOS:
+${JSON.stringify(collectedData.fields || [], null, 2)}
+
+DADOS QUE AINDA FALTAM:
+${missingFields.map((f: any) => `- ${f.friendly_name} (${f.field_name})`).join("\n")}
+
+CONVERSA RECENTE:
+${conversationText}
+
+MENSAGEM ATUAL DO CLIENTE: "${message_text || ""}"
+
+REGRAS:
+- Analise a mensagem do cliente e extraia QUALQUER dado que corresponda aos campos faltantes
+- Se o cliente mandou nome completo, CPF, RG, endereço, etc., extraia tudo
+- Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
+- Formate datas como DD/MM/AAAA
+- Seja educado e natural na conversa
+- Se ainda faltam dados após esta mensagem, peça os próximos de forma natural (não todos de uma vez)
+- Se TODOS os dados foram coletados, diga que vai preparar o documento`;
+
+    const tools = [{
+      type: "function",
+      function: {
+        name: "process_client_data",
+        description: "Processa dados do cliente e determina próximo passo",
+        parameters: {
+          type: "object",
+          properties: {
+            newly_extracted: {
+              type: "array",
+              description: "Campos extraídos desta mensagem",
+              items: {
+                type: "object",
+                properties: {
+                  field_name: { type: "string" },
+                  de: { type: "string", description: "Nome do campo no template (ex: {{NOME_COMPLETO}})" },
+                  para: { type: "string", description: "Valor extraído" },
+                },
+                required: ["field_name", "de", "para"],
+              },
+            },
+            still_missing: {
+              type: "array",
+              description: "Campos que AINDA faltam após esta extração",
+              items: {
+                type: "object",
+                properties: {
+                  field_name: { type: "string" },
+                  friendly_name: { type: "string" },
+                },
+                required: ["field_name", "friendly_name"],
+              },
+            },
+            all_collected: {
+              type: "boolean",
+              description: "true se TODOS os dados necessários foram coletados",
+            },
+            reply_to_client: {
+              type: "string",
+              description: "Mensagem para enviar ao cliente (agradecendo dados e pedindo próximos, ou confirmando que vai gerar o doc)",
+            },
+          },
+          required: ["newly_extracted", "still_missing", "all_collected", "reply_to_client"],
+        },
+      },
+    }];
+
+    const aiResult = await geminiChat({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message_text || "(mensagem vazia)" },
+      ],
+      tools,
+      tool_choice: { type: "function", function: { name: "process_client_data" } },
+      temperature: 0.2,
+    });
+
+    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) {
+      console.error("AI failed to process client data");
+      return new Response(JSON.stringify({ active_session: true, processed: false }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let result: any;
+    try {
+      result = JSON.parse(toolCall.function.arguments);
+    } catch {
+      return new Response(JSON.stringify({ active_session: true, processed: false }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log("Collection result:", JSON.stringify(result));
+
+    // Update collected data
+    const updatedFields = [...(collectedData.fields || [])];
+    for (const newField of (result.newly_extracted || [])) {
+      const existingIdx = updatedFields.findIndex((f: any) =>
+        f.de?.toUpperCase() === newField.de?.toUpperCase()
+      );
+      if (existingIdx >= 0) {
+        updatedFields[existingIdx].para = newField.para;
+      } else {
+        updatedFields.push({ de: newField.de, para: newField.para });
+      }
+    }
+
+    const updatedCollectedData = {
+      ...collectedData,
+      fields: updatedFields,
+      signer_name: collectedData.signer_name,
+      signer_phone: collectedData.signer_phone,
+    };
+
+    // Update session
+    await supabase
+      .from("wjia_collection_sessions")
+      .update({
+        collected_data: updatedCollectedData,
+        missing_fields: result.still_missing || [],
+        status: result.all_collected ? "ready" : "collecting",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", session.id);
+
+    // Send reply to client
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+
+    if (inst?.instance_token && result.reply_to_client) {
+      const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+      await fetch(`${baseUrl}/send/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", token: inst.instance_token },
+        body: JSON.stringify({ number: normalizedPhone, text: result.reply_to_client }),
+      }).catch(e => console.error("Error sending reply:", e));
+
+      // Save outbound
+      await supabase.from("whatsapp_messages").insert({
+        phone: normalizedPhone,
+        instance_name,
+        message_text: result.reply_to_client,
+        message_type: "text",
+        direction: "outbound",
+        contact_id: session.contact_id || null,
+        lead_id: session.lead_id || null,
+        external_message_id: `wjia_collect_reply_${Date.now()}`,
+      });
+    }
+
+    // If all data collected, generate the document!
+    if (result.all_collected && zapsignToken) {
+      console.log("All data collected! Generating document for session:", session.id);
+
+      // Apply defaults
+      for (const field of updatedFields) {
+        const fieldName = (field.de || "").replace(/\{\{|\}\}/g, "").toUpperCase().trim();
+        if ((fieldName === "EMAIL" || fieldName.includes("EMAIL")) && !field.para) {
+          field.para = "contato@prudencioadv.com";
+        }
+        if ((fieldName === "WHATSAPP" || fieldName.includes("WHATSAPP")) && !field.para) {
+          field.para = "(86)99447-3226";
+        }
+      }
+
+      const signerName = updatedCollectedData.signer_name || "Cliente";
+      const signerPhone = updatedCollectedData.signer_phone || normalizedPhone;
+
+      const createBody = {
+        template_id: session.template_token,
+        signer_name: signerName,
+        signer_phone: signerPhone,
+        data: updatedFields.length > 0 ? updatedFields : [{ de: "{{_}}", para: " " }],
+      };
+
+      console.log("Creating ZapSign doc:", JSON.stringify(createBody));
+
+      const createRes = await fetch(`${ZAPSIGN_API_URL}/models/create-doc/`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(createBody),
+      });
+
+      if (createRes.ok) {
+        const docData = await createRes.json();
+        const signer = docData.signers?.[0];
+        const signUrl = signer ? `https://app.zapsign.co/verificar/${signer.token}` : null;
+
+        // Update session
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({ status: "generated", doc_token: docData.token, sign_url: signUrl })
+          .eq("id", session.id);
+
+        // Save doc to zapsign_documents
+        await supabase.from("zapsign_documents").insert({
+          doc_token: docData.token,
+          template_id: session.template_token,
+          document_name: session.template_name || "Documento",
+          status: docData.status || "pending",
+          original_file_url: docData.original_file || null,
+          sign_url: signUrl,
+          signer_name: signerName,
+          signer_token: signer?.token || null,
+          signer_phone: signerPhone,
+          signer_status: signer?.status || "new",
+          template_data: updatedFields,
+          lead_id: session.lead_id || null,
+          contact_id: session.contact_id || null,
+          sent_via_whatsapp: true,
+          whatsapp_phone: normalizedPhone,
+        });
+
+        // Send sign link to client
+        if (inst?.instance_token && signUrl) {
+          const signMsg = `📝 *Documento pronto para assinatura!*\n\nOlá ${signerName.split(" ")[0]}! O documento *${session.template_name}* está pronto.\n\n👉 Clique para assinar: ${signUrl}\n\n*Instruções:*\n1. Clique no link\n2. Confira seus dados\n3. Assine digitalmente\n\nQualquer dúvida, estou à disposição! 🙏`;
+
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: signMsg }),
+          }).catch(e => console.error("Error sending sign link:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone,
+            instance_name,
+            message_text: signMsg,
+            message_type: "text",
+            direction: "outbound",
+            contact_id: session.contact_id || null,
+            lead_id: session.lead_id || null,
+            external_message_id: `wjia_sign_${Date.now()}`,
+          });
+        }
+
+        console.log("Document generated and sent! Doc token:", docData.token);
+      } else {
+        const errText = await createRes.text();
+        console.error("ZapSign error:", errText);
+      }
+    }
+
+    return new Response(JSON.stringify({
+      active_session: true,
+      processed: true,
+      all_collected: result.all_collected,
+      session_id: session.id,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  } catch (error: any) {
+    console.error("Collection processor error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
