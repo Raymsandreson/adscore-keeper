@@ -437,19 +437,13 @@ export function TeamsManager() {
                     <p className="text-sm text-muted-foreground text-center py-2">Nenhum membro alocado</p>
                   )}
 
-                  {/* Add member dropdown */}
+                  {/* Collapsible add member section */}
                   {available.length > 0 && (
-                    <div className="pt-2 border-t">
-                      <p className="text-xs text-muted-foreground mb-2">Adicionar membro:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {available.map(m => (
-                          <Button key={m.user_id} variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleAddMember(team.id, m.user_id)}>
-                            <UserPlus className="h-3 w-3 mr-1" />
-                            {m.full_name || m.email || 'Sem nome'}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
+                    <CollapsibleAddMembers
+                      available={available}
+                      teamId={team.id}
+                      onAdd={handleAddMember}
+                    />
                   )}
                 </CardContent>
               </Card>
