@@ -84,6 +84,8 @@ export function ZapSignDocumentDialog({
   // Signers state
   const [signers, setSigners] = useState<SignerInfo[]>([]);
   const [messagePeriod, setMessagePeriod] = useState<string>('7d');
+  const [notifyOnSignature, setNotifyOnSignature] = useState(true);
+  const [sendSignedPdf, setSendSignedPdf] = useState(true);
 
   // Filter messages by period
   const filteredMessages = useMemo(() => {
