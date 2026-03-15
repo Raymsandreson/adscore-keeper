@@ -90,14 +90,6 @@ serve(async (req) => {
     const sendSignedPdf = matchedShortcut?.send_signed_pdf !== false;
     const requestDocuments = matchedShortcut?.request_documents || false;
     const documentTypes = matchedShortcut?.document_types || [];
-    const shortcutAgentId = matchedShortcut?.agent_id || null;
-
-    // Load agent data if shortcut has an agent_id
-    let agentData: any = null;
-    if (shortcutAgentId) {
-      const { data } = await supabase.from("whatsapp_ai_agents").select("name, base_prompt").eq("id", shortcutAgentId).maybeSingle();
-      agentData = data;
-    }
 
     // 2) AI decides what to do — but does NOT generate doc yet if data is missing
     const systemPrompt = `Você é o assistente WJIA, integrado ao WhatsApp de um escritório de advocacia. O atendente digitou um comando @wjia.
@@ -122,7 +114,6 @@ CONVERSA COM O CLIENTE (últimas mensagens):
 ${conversationText || "(sem mensagens)"}
 
 ${shortcutInstructions ? `INSTRUÇÕES ESPECÍFICAS DO ATALHO:\n${shortcutInstructions}\n` : ''}
-${agentData ? `PERSONA DO AGENTE (use este tom e estilo na collection_message):\nNome: ${agentData.name}\n${agentData.base_prompt || ''}\n` : ''}
 REGRAS:
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Para WHATSAPP do escritório: use "(86)99447-3226"
@@ -278,7 +269,6 @@ REGRAS:
           send_signed_pdf: sendSignedPdf,
           request_documents: requestDocuments,
           document_types: documentTypes,
-          agent_id: shortcutAgentId,
         })
         .select()
         .single();
