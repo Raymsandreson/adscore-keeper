@@ -256,6 +256,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+  const [stopOnHumanReply, setStopOnHumanReply] = useState(true);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
