@@ -55,6 +55,15 @@ const tabs: Tab[] = [
     accentColor: 'text-pink-500',
   },
   {
+    id: 'voice',
+    label: 'Voz (TTS)',
+    icon: <Volume2 className="h-5 w-5" />,
+    description: 'Escolha ou clone sua voz',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-cyan-500',
+  },
+  {
     id: 'notifications',
     label: 'Notificações',
     icon: <Bell className="h-5 w-5" />,
