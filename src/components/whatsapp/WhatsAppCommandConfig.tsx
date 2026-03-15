@@ -578,6 +578,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                         <Select value={step.assigned_to || ''} onValueChange={v => updateStep(idx, 'assigned_to', v)}>
                           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="__self__">👤 Próprio usuário (quem disparou)</SelectItem>
                             {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
                           </SelectContent>
                         </Select>
