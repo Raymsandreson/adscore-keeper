@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone } from "lucide-react";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
