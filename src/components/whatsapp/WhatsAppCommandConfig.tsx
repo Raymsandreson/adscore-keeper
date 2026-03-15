@@ -67,7 +67,6 @@ export function WhatsAppCommandConfig() {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [stopOnHumanReply, setStopOnHumanReply] = useState(true);
   
   const [loading, setLoading] = useState(true);
 
