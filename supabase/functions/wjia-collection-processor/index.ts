@@ -277,6 +277,40 @@ serve(async (req) => {
             }
 
             console.log("Document generated after confirmation! Doc token:", docData.token);
+
+            // Attach received documents to ZapSign doc
+            const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+            for (const doc of receivedDocs) {
+              if (!doc.media_url) continue;
+              try {
+                // Download the file and convert to base64
+                const fileResp = await fetch(doc.media_url);
+                if (!fileResp.ok) { console.error("Failed to download doc:", doc.media_url); continue; }
+                const fileBuffer = await fileResp.arrayBuffer();
+                const base64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+                
+                const docTypeLabels: Record<string, string> = {
+                  rg_cnh: 'RG_CNH', comprovante_endereco: 'Comprovante_Endereco',
+                  comprovante_renda: 'Comprovante_Renda', outros: 'Documento_Anexo',
+                };
+                const attachName = docTypeLabels[doc.type] || 'Anexo';
+
+                const attachRes = await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/add-extra-doc/`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: attachName, base64_pdf: base64 }),
+                });
+
+                if (attachRes.ok) {
+                  console.log(`Attached ${attachName} to doc ${docData.token}`);
+                } else {
+                  const attachErr = await attachRes.text();
+                  console.error(`Failed to attach ${attachName}:`, attachErr);
+                }
+              } catch (attachErr) {
+                console.error("Error attaching document:", attachErr);
+              }
+            }
           } else {
             const errText = await createRes.text();
             console.error("ZapSign error after confirmation:", errText);
