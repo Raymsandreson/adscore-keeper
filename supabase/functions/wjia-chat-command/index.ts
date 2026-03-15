@@ -247,7 +247,10 @@ REGRAS:
     const hasMissing = missingFields.length > 0 && !parsed.all_data_available;
 
     if (hasMissing) {
-      // CREATE COLLECTION SESSION — AI agent will take over to collect data
+      // Decide initial status: if docs are required, ask for docs FIRST to extract data
+      const startWithDocs = requestDocuments && Array.isArray(documentTypes) && documentTypes.length > 0;
+      const initialStatus = startWithDocs ? "collecting_docs" : "collecting";
+
       const { data: session, error: sessionErr } = await supabase
         .from("wjia_collection_sessions")
         .insert({
@@ -260,7 +263,7 @@ REGRAS:
           required_fields: templateFields,
           collected_data: { fields: fieldsData, signer_name: signerName, signer_phone: signerPhone },
           missing_fields: missingFields,
-          status: "collecting",
+          status: initialStatus,
           triggered_by: command,
           notify_on_signature: notifyOnSignature,
           send_signed_pdf: sendSignedPdf,
@@ -275,22 +278,52 @@ REGRAS:
         return errorResponse("Erro ao iniciar sessão de coleta.");
       }
 
-      // Send collection message to client
       const inst = instanceRes.data;
+
+      if (startWithDocs) {
+        // ASK FOR DOCUMENTS FIRST — data will be extracted from them
+        const docTypeLabels: Record<string, string> = {
+          rg_cnh: 'RG / CNH (documento com foto)',
+          comprovante_endereco: 'Comprovante de endereço',
+          comprovante_renda: 'Comprovante de renda',
+          outros: 'Outros documentos',
+        };
+        const docNames = documentTypes.map((t: string) => docTypeLabels[t] || t).join('\n• ');
+        const docsFirstMsg = `📝 Para preparar o documento *${parsed.template_name || "Documento"}*, preciso que envie os seguintes documentos:\n\n• ${docNames}\n\n📸 Envie a *foto ou arquivo* de cada documento. Vou extrair as informações automaticamente para agilizar o preenchimento!\n\nSe não tiver algum agora, digite *pular*.`;
+
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await sendWhatsApp(baseUrl, inst.instance_token, normalizedPhone, docsFirstMsg);
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone, instance_name,
+            contact_name: contactData.full_name || null,
+            message_text: docsFirstMsg, message_type: "text", direction: "outbound",
+            contact_id: contact_id || null, lead_id: lead_id || null,
+            external_message_id: `wjia_docsfirst_${Date.now()}`,
+          });
+        }
+
+        const attendantMsg = `🔄 *Coleta de documentos iniciada*\n\nDocumento: *${parsed.template_name || "Documento"}*\n📎 Pedindo documentos ao cliente primeiro para extrair dados automaticamente.\n📊 Dados já encontrados: ${fieldsData.filter((f: any) => f.para).length}\n⚠️ Dados faltantes: ${missingFields.length}\n\n✅ Após receber os documentos, os dados serão extraídos e o que faltar será perguntado ao cliente.`;
+
+        return new Response(JSON.stringify({
+          success: true,
+          action: "collection_started",
+          message: attendantMsg,
+          session_id: session.id,
+          missing_count: missingFields.length,
+          docs_first: true,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Normal flow: ask for data fields
       if (inst?.instance_token && parsed.collection_message) {
         const baseUrl = inst.base_url || "https://abraci.uazapi.com";
         await sendWhatsApp(baseUrl, inst.instance_token, normalizedPhone, parsed.collection_message);
-
-        // Save outbound
         await supabase.from("whatsapp_messages").insert({
-          phone: normalizedPhone,
-          instance_name,
+          phone: normalizedPhone, instance_name,
           contact_name: contactData.full_name || null,
-          message_text: parsed.collection_message,
-          message_type: "text",
-          direction: "outbound",
-          contact_id: contact_id || null,
-          lead_id: lead_id || null,
+          message_text: parsed.collection_message, message_type: "text", direction: "outbound",
+          contact_id: contact_id || null, lead_id: lead_id || null,
           external_message_id: `wjia_collect_${Date.now()}`,
         });
       }
