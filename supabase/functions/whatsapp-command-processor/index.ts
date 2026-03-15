@@ -84,7 +84,15 @@ async function sendWhatsAppList(baseUrl: string, token: string, number: string, 
   return false;
 }
 
-// ── main handler ─────────────────────────────────────────────────────
+// ── Batch collection markers ──
+const COLLECTING_MARKER = "__COLLECTING__";
+const FINISH_KEYWORDS = ["pronto", "executar", "só isso", "somente isso", "pode executar", "finalizar", "é isso", "isso é tudo", "pode fazer", "manda", "envia", "go", "ok pronto", "feito"];
+
+function isFinishMessage(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
+  return FINISH_KEYWORDS.some(k => normalized === k || normalized.startsWith(k + " ") || normalized.endsWith(" " + k));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -127,8 +135,15 @@ serve(async (req) => {
       }
     }
 
-    if (!message_text) {
-      return new Response(JSON.stringify({ error: "No text content (audio transcription may have failed)" }), {
+    // Build the content to save (text + media reference)
+    const hasMedia = media_url && message_type !== 'text';
+    const contentToSave = [
+      message_text || '',
+      hasMedia ? `[MÍDIA: ${message_type} - ${media_url}]` : '',
+    ].filter(Boolean).join('\n');
+
+    if (!contentToSave) {
+      return new Response(JSON.stringify({ error: "No content to process" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -167,21 +182,135 @@ serve(async (req) => {
 
     console.log(`Command from authorized user: ${config.user_name} (${normalizedPhone})`);
 
-    // 2) Save incoming command
-    await supabase.from("whatsapp_command_history").insert({
-      phone: normalizedPhone, instance_name, role: "user", content: message_text,
-    });
-
-    // 3) Load conversation history (last 20)
-    const { data: history } = await supabase
+    // 2) Check if we're in batch collection mode
+    const { data: recentHistory } = await supabase
       .from("whatsapp_command_history")
       .select("role, content, tool_data, created_at")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(30);
 
-    const chatHistory = (history || []).reverse();
+    const lastAssistantMsg = (recentHistory || []).find((m: any) => m.role === "assistant");
+    const isInCollectingMode = lastAssistantMsg?.tool_data?.collecting === true;
+    const isFinish = message_text ? isFinishMessage(message_text) : false;
+
+    // Get WhatsApp instance for sending messages
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+    const baseUrl = inst?.base_url || "https://abraci.uazapi.com";
+    const instToken = inst?.instance_token || "";
+
+    // ── CASE 1: First message (not in collecting mode) → Start collecting ──
+    if (!isInCollectingMode && !isFinish) {
+      // Save the message
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone, instance_name, role: "user", content: contentToSave,
+        tool_data: hasMedia ? { media_url, message_type } : null,
+      });
+
+      // Ask if there's more
+      const collectMsg = `📥 *Recebido!*\n\nTem mais alguma coisa pra enviar? (áudio, documento, link, foto, ou mais informações)\n\n_Quando terminar, responda *PRONTO* que eu processo tudo de uma vez_ ✅`;
+      
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone, instance_name, role: "assistant", content: collectMsg,
+        tool_data: { collecting: true },
+      });
+
+      if (instToken) {
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${collectMsg}`).catch(e => console.error("Send error:", e));
+      }
+
+      return new Response(JSON.stringify({ success: true, status: "collecting", message: "Waiting for more content" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── CASE 2: In collecting mode, user sends more content (not "pronto") ──
+    if (isInCollectingMode && !isFinish) {
+      // Save additional content
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone, instance_name, role: "user", content: contentToSave,
+        tool_data: hasMedia ? { media_url, message_type } : null,
+      });
+
+      // Acknowledge and keep collecting
+      const ackMsg = `📥 *Anotado!* Mais alguma coisa?\n\n_Responda *PRONTO* quando terminar_ ✅`;
+      
+      await supabase.from("whatsapp_command_history").insert({
+        phone: normalizedPhone, instance_name, role: "assistant", content: ackMsg,
+        tool_data: { collecting: true },
+      });
+
+      if (instToken) {
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${ackMsg}`).catch(e => console.error("Send error:", e));
+      }
+
+      return new Response(JSON.stringify({ success: true, status: "collecting_more", message: "More content added" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── CASE 3: User says "pronto" → Consolidate all buffered content and process ──
+    // Gather all user messages since the first collecting prompt
+    const allHistory = (recentHistory || []).reverse(); // chronological
+    
+    // Find the first "collecting" assistant message
+    let collectStartIdx = -1;
+    for (let i = 0; i < allHistory.length; i++) {
+      if (allHistory[i].role === "assistant" && allHistory[i].tool_data?.collecting === true) {
+        // Find the user message just before this
+        collectStartIdx = Math.max(0, i - 1);
+        break;
+      }
+    }
+
+    // Consolidate all user messages from the collection period
+    const bufferedMessages: string[] = [];
+    const bufferedMedia: { url: string; type: string }[] = [];
+    
+    for (let i = collectStartIdx >= 0 ? collectStartIdx : 0; i < allHistory.length; i++) {
+      const msg = allHistory[i];
+      if (msg.role !== "user") continue;
+      if (msg.content) bufferedMessages.push(msg.content);
+      if (msg.tool_data?.media_url) {
+        bufferedMedia.push({ url: msg.tool_data.media_url, type: msg.tool_data.message_type || 'document' });
+      }
+    }
+
+    // Build consolidated message for AI
+    const consolidatedText = bufferedMessages.join("\n\n---\n\n");
+    const mediaContext = bufferedMedia.length > 0
+      ? `\n\n[MÍDIAS ANEXADAS: ${bufferedMedia.map(m => `${m.type}: ${m.url}`).join(", ")}]`
+      : "";
+    
+    const finalMessage = consolidatedText + mediaContext;
+    console.log(`Processing consolidated command (${bufferedMessages.length} messages, ${bufferedMedia.length} media):`, finalMessage.substring(0, 200));
+
+    // Save the "pronto" message
+    await supabase.from("whatsapp_command_history").insert({
+      phone: normalizedPhone, instance_name, role: "user", content: "[EXECUTAR COMANDO]",
+    });
+
+    // Now replace message_text with consolidated content for AI processing
+    // and continue with the normal flow below
+    const message_text_final = finalMessage;
+
+    // Clear collecting state by saving a non-collecting assistant placeholder
+    // (will be replaced by the actual response below)
+
+    // 3) Rebuild history WITHOUT the collecting messages for clean AI context
+    const chatHistory: any[] = [];
+    for (const msg of allHistory) {
+      if (msg.role === "assistant" && msg.tool_data?.collecting === true) continue; // skip collecting prompts
+      if (msg.content === "[EXECUTAR COMANDO]") continue; // skip execute marker
+      if (msg.role === "user" || msg.role === "assistant") {
+        chatHistory.push(msg);
+      }
+    }
 
     // 4) Fetch system context
     const [profilesRes, typesRes, boardsRes] = await Promise.all([
@@ -253,7 +382,9 @@ Usuário: "criar tarefa teste para amanhã"
 → response_text: "✅ Atividade criada!\\n📋 *teste*\\n📅 Prazo: 14/03/2026 09:00\\n🔔 Notificação: 14/03/2026 08:00\\n👤 ${config.user_name}\\n\\n✏️ Editar: {link}"
 
 EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
-"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções`;
+"Qual o tipo de atividade? Escolha entre: tarefa, audiência, prazo..." ← PROIBIDO listar opções
+
+IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, links, textos) de uma vez. Todas as informações foram consolidadas antes de chegar até você. Considere TODO o conteúdo junto. Se houver referências a mídias ([MÍDIA: ...]), considere como anexos relevantes ao contexto do comando.`;
 
     // Build AI messages
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
@@ -348,7 +479,7 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text }] }],
+          contents: googleContents.length > 0 ? googleContents : [{ role: "user", parts: [{ text: message_text_final }] }],
           tools: [{
             functionDeclarations: [{
               name: "execute_command",
@@ -380,9 +511,8 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
         phone: normalizedPhone, instance_name, role: "assistant", content: fallbackText, tool_data: { error_status: aiResponse.status },
       });
 
-      const { data: inst } = await supabase.from("whatsapp_instances").select("instance_token, base_url").eq("instance_name", instance_name).maybeSingle();
-      if (inst?.instance_token) {
-        await sendWhatsAppText(inst.base_url || "https://abraci.uazapi.com", inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${fallbackText}`).catch(e => console.error("Send error:", e));
+      if (instToken) {
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${fallbackText}`).catch(e => console.error("Send error:", e));
       }
       return new Response(JSON.stringify({ success: false, error: fallbackText }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -758,17 +888,10 @@ EXEMPLO DE RESPOSTA RUIM (NUNCA faça isso):
       phone: normalizedPhone, instance_name, role: "assistant", content: responseText, tool_data: toolData,
     });
 
-    // 6) Send response via WhatsApp
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
-
-    if (inst?.instance_token) {
-      const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+    // 6) Send response via WhatsApp (inst already fetched above)
+    if (instToken) {
       try {
-        await sendWhatsAppText(baseUrl, inst.instance_token, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
         console.log("Response sent to WhatsApp:", normalizedPhone);
       } catch (e) {
         console.error("Error sending response:", e);
