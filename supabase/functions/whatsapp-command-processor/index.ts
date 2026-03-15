@@ -221,10 +221,22 @@ async function sendWhatsAppList(baseUrl: string, token: string, number: string, 
 // ── Batch collection markers ──
 const COLLECTING_MARKER = "__COLLECTING__";
 const FINISH_KEYWORDS = ["pronto", "executar", "só isso", "somente isso", "pode executar", "finalizar", "é isso", "isso é tudo", "pode fazer", "manda", "envia", "go", "ok pronto", "feito"];
+const AUDIO_YES_KEYWORDS = ["sim", "s", "yes", "quero", "manda", "envia", "gera", "pode", "ok", "1"];
+const AUDIO_NO_KEYWORDS = ["nao", "não", "n", "no", "nope", "sem audio", "sem áudio", "2"];
 
 function isFinishMessage(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
   return FINISH_KEYWORDS.some(k => normalized === k || normalized.startsWith(k + " ") || normalized.endsWith(" " + k));
+}
+
+function isAudioYes(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
+  return AUDIO_YES_KEYWORDS.some(k => normalized === k);
+}
+
+function isAudioNo(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
+  return AUDIO_NO_KEYWORDS.some(k => normalized === k);
 }
 
 serve(async (req) => {
