@@ -200,6 +200,20 @@ serve(async (req) => {
       });
     }
 
+    // Load agent persona if session has agent_id
+    let agentPersona = "";
+    if ((session as any).agent_id) {
+      const { data: agentData } = await supabase
+        .from("whatsapp_ai_agents")
+        .select("name, base_prompt")
+        .eq("id", (session as any).agent_id)
+        .maybeSingle();
+      if (agentData) {
+        agentPersona = `\nPERSONA DO AGENTE (use este tom, estilo e forma de falar):\nNome: ${agentData.name}\n${agentData.base_prompt || ''}\n`;
+      }
+    }
+    }
+
     console.log("Active collection session found:", session.id, "status:", session.status, "missing:", JSON.stringify(session.missing_fields));
 
     // === HANDLE CONFIRMATION STATUS ===
