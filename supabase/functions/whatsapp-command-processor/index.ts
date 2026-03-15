@@ -37,6 +37,140 @@ async function sendWhatsAppText(baseUrl: string, token: string, number: string, 
   });
 }
 
+async function sendWhatsAppAudio(baseUrl: string, token: string, number: string, audioUrl: string) {
+  try {
+    const res = await fetch(`${baseUrl}/send/audio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", token },
+      body: JSON.stringify({ number, audio: audioUrl, ptt: true }),
+    });
+    if (!res.ok) {
+      console.warn("sendAudio failed:", await res.text());
+    }
+  } catch (e) {
+    console.error("sendAudio error:", e);
+  }
+}
+
+async function transcribeWith    ElevenLabs(mediaUrl: string): Promise<string | null> {
+  const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!ELEVENLABS_API_KEY) {
+    console.warn("ELEVENLABS_API_KEY not configured, falling back to Gemini");
+    return null;
+  }
+
+  try {
+    // Download audio file first
+    const audioResp = await fetch(mediaUrl);
+    if (!audioResp.ok) throw new Error(`Failed to download audio: ${audioResp.status}`);
+    const audioBlob = await audioResp.blob();
+
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.ogg");
+    formData.append("model_id", "scribe_v2");
+    formData.append("language_code", "por");
+
+    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: { "xi-api-key": ELEVENLABS_API_KEY },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("ElevenLabs STT error:", response.status, errText);
+      return null;
+    }
+
+    const result = await response.json();
+    return result.text?.trim() || null;
+  } catch (e) {
+    console.error("ElevenLabs STT error:", e);
+    return null;
+  }
+}
+
+async function generateTTSAudio(text: string): Promise<string | null> {
+  const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  
+  if (!ELEVENLABS_API_KEY) {
+    console.warn("ELEVENLABS_API_KEY not configured, skipping TTS");
+    return null;
+  }
+
+  try {
+    // Clean text for TTS (remove emojis, markdown formatting)
+    const cleanText = text
+      .replace(/\*([^*]+)\*/g, "$1") // remove bold markdown
+      .replace(/_([^_]+)_/g, "$1") // remove italic markdown
+      .replace(/✅|📋|📅|🔔|👤|✏️|🤖|⚠️|📊|📌|📞|💬|👥|🔄|📈|🏆|☑️|🕐|📍|🎯|💡|🔴|🟠|🟡|🟢|🌟|⏳|🔍|📥|1️⃣|2️⃣|3️⃣/g, "")
+      .replace(/https?:\/\/\S+/g, "") // remove URLs
+      .replace(/\n{3,}/g, "\n\n") // collapse multiple newlines
+      .trim();
+
+    if (!cleanText || cleanText.length < 10) return null;
+
+    // Truncate to avoid excessive TTS costs (max ~500 chars)
+    const truncated = cleanText.length > 500 ? cleanText.substring(0, 500) + "..." : cleanText;
+
+    // Use Laura voice (Portuguese-friendly) with multilingual model
+    const voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": ELEVENLABS_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: truncated,
+          model_id: "eleven_multilingual_v2",
+          voice_settings: {
+            stability: 0.6,
+            similarity_boost: 0.75,
+            style: 0.3,
+            speed: 1.1,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error("ElevenLabs TTS error:", response.status, await response.text());
+      return null;
+    }
+
+    const audioBuffer = await response.arrayBuffer();
+    
+    // Upload to Supabase storage
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const fileName = `tts-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    const filePath = `tts/${fileName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("whatsapp-media")
+      .upload(filePath, new Uint8Array(audioBuffer), {
+        contentType: "audio/mpeg",
+        upsert: false,
+      });
+
+    if (uploadErr) {
+      console.error("Upload TTS audio error:", uploadErr);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from("whatsapp-media").getPublicUrl(filePath);
+    return urlData?.publicUrl || null;
+  } catch (e) {
+    console.error("TTS generation error:", e);
+    return null;
+  }
+}
+
 async function sendWhatsAppButtons(baseUrl: string, token: string, number: string, text: string, buttons: { id: string; text: string }[]) {
   // uazapi send/quickReply – up to 3 buttons
   try {
