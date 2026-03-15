@@ -176,6 +176,7 @@ export function LeadEditDialog({
   const [acolhedor, setAcolhedor] = useState('');
   const profiles = useProfilesList();
   const [groupLink, setGroupLink] = useState('');
+  const [whatsappGroupId, setWhatsappGroupId] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress'>('');
