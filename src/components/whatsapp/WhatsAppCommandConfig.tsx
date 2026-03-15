@@ -249,7 +249,7 @@ function AuthorizedPhonesTab({ configs, instances, profiles, onReload }: {
 }
 
 // ==================== SHORTCUTS TAB (with embedded follow-up) ====================
-function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; agents: AgentOption[]; onReload: () => void }) {
+function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
