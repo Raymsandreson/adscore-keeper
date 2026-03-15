@@ -6700,7 +6700,9 @@ export type Database = {
           followup_steps: Json | null
           id: string
           is_active: boolean | null
+          notify_on_signature: boolean
           prompt_instructions: string | null
+          send_signed_pdf: boolean
           shortcut_name: string
           template_name: string | null
           template_token: string | null
@@ -6713,7 +6715,9 @@ export type Database = {
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
+          notify_on_signature?: boolean
           prompt_instructions?: string | null
+          send_signed_pdf?: boolean
           shortcut_name: string
           template_name?: string | null
           template_token?: string | null
@@ -6726,7 +6730,9 @@ export type Database = {
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
+          notify_on_signature?: boolean
           prompt_instructions?: string | null
+          send_signed_pdf?: boolean
           shortcut_name?: string
           template_name?: string | null
           template_token?: string | null
