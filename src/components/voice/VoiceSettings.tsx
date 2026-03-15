@@ -166,9 +166,11 @@ export function VoiceSettings() {
     }
   };
 
+  const allFiles = [...cloneFiles, ...recordedBlobs.map(r => new File([r.blob], r.name, { type: r.blob.type }))];
+
   const handleClone = async () => {
-    if (!cloneName.trim() || cloneFiles.length === 0) {
-      toast.error('Informe um nome e envie pelo menos um áudio');
+    if (!cloneName.trim() || allFiles.length === 0) {
+      toast.error('Informe um nome e envie ou grave pelo menos um áudio');
       return;
     }
 
