@@ -344,7 +344,6 @@ function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Sh
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
       document_types: form.document_types,
-      agent_id: form.agent_id || null,
     };
 
     let error;
