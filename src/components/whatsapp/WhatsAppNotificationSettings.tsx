@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays } from 'lucide-react';
+import { Loader2, Save, Plus, X, Bell, Clock, Target, AlertTriangle, CalendarDays, UserPlus, User } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Dom' },
@@ -20,12 +20,21 @@ const DAYS_OF_WEEK = [
   { value: 6, label: 'Sáb' },
 ];
 
+interface UserProfile {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
 interface NotificationConfig {
   id?: string;
   is_active: boolean;
   name: string;
   instance_name: string;
   recipient_phones: string[];
+  recipient_user_ids: string[];
   notify_overdue_tasks: boolean;
   notify_goal_progress: boolean;
   notify_daily_summary: boolean;
@@ -42,6 +51,7 @@ const DEFAULT_CONFIG: NotificationConfig = {
   name: 'Notificações Gerais',
   instance_name: '',
   recipient_phones: [],
+  recipient_user_ids: [],
   notify_overdue_tasks: true,
   notify_goal_progress: true,
   notify_daily_summary: true,
@@ -56,10 +66,11 @@ const DEFAULT_CONFIG: NotificationConfig = {
 export function WhatsAppNotificationSettings() {
   const [config, setConfig] = useState<NotificationConfig>(DEFAULT_CONFIG);
   const [instances, setInstances] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newPhone, setNewPhone] = useState('');
   const [newTime, setNewTime] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
 
   useEffect(() => {
     loadData();
@@ -67,11 +78,13 @@ export function WhatsAppNotificationSettings() {
 
   const loadData = async () => {
     setLoading(true);
-    const [instRes, configRes] = await Promise.all([
+    const [instRes, configRes, profilesRes] = await Promise.all([
       supabase.from('whatsapp_instances').select('instance_name').order('instance_name'),
       supabase.from('whatsapp_notification_config').select('*').limit(1).maybeSingle(),
+      supabase.from('profiles').select('id, user_id, full_name, email, phone').order('full_name'),
     ]);
     setInstances(instRes.data || []);
+    setProfiles((profilesRes.data as UserProfile[]) || []);
     if (configRes.data) {
       setConfig({
         id: configRes.data.id,
@@ -79,6 +92,7 @@ export function WhatsAppNotificationSettings() {
         name: configRes.data.name || 'Notificações Gerais',
         instance_name: configRes.data.instance_name || '',
         recipient_phones: configRes.data.recipient_phones || [],
+        recipient_user_ids: (configRes.data as any).recipient_user_ids || [],
         notify_overdue_tasks: configRes.data.notify_overdue_tasks ?? true,
         notify_goal_progress: configRes.data.notify_goal_progress ?? true,
         notify_daily_summary: configRes.data.notify_daily_summary ?? true,
@@ -96,11 +110,18 @@ export function WhatsAppNotificationSettings() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Build recipient_phones from selected user profiles
+      const phonesFromUsers = profiles
+        .filter(p => config.recipient_user_ids.includes(p.user_id))
+        .map(p => p.phone)
+        .filter(Boolean) as string[];
+
       const payload = {
         is_active: config.is_active,
         name: config.name,
         instance_name: config.instance_name || null,
-        recipient_phones: config.recipient_phones,
+        recipient_phones: phonesFromUsers,
+        recipient_user_ids: config.recipient_user_ids,
         notify_overdue_tasks: config.notify_overdue_tasks,
         notify_goal_progress: config.notify_goal_progress,
         notify_daily_summary: config.notify_daily_summary,
@@ -114,10 +135,10 @@ export function WhatsAppNotificationSettings() {
       };
 
       if (config.id) {
-        const { error } = await supabase.from('whatsapp_notification_config').update(payload).eq('id', config.id);
+        const { error } = await supabase.from('whatsapp_notification_config').update(payload as any).eq('id', config.id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('whatsapp_notification_config').insert(payload).select('id').single();
+        const { data, error } = await supabase.from('whatsapp_notification_config').insert(payload as any).select('id').single();
         if (error) throw error;
         setConfig(prev => ({ ...prev, id: data.id }));
       }
@@ -129,16 +150,15 @@ export function WhatsAppNotificationSettings() {
     }
   };
 
-  const addPhone = () => {
-    const cleaned = newPhone.replace(/\D/g, '');
-    if (cleaned.length >= 10 && !config.recipient_phones.includes(cleaned)) {
-      setConfig(prev => ({ ...prev, recipient_phones: [...prev.recipient_phones, cleaned] }));
-      setNewPhone('');
+  const addUser = () => {
+    if (selectedUserId && !config.recipient_user_ids.includes(selectedUserId)) {
+      setConfig(prev => ({ ...prev, recipient_user_ids: [...prev.recipient_user_ids, selectedUserId] }));
+      setSelectedUserId('');
     }
   };
 
-  const removePhone = (phone: string) => {
-    setConfig(prev => ({ ...prev, recipient_phones: prev.recipient_phones.filter(p => p !== phone) }));
+  const removeUser = (userId: string) => {
+    setConfig(prev => ({ ...prev, recipient_user_ids: prev.recipient_user_ids.filter(id => id !== userId) }));
   };
 
   const addTime = () => {
@@ -160,6 +180,9 @@ export function WhatsAppNotificationSettings() {
         : [...prev.schedule_days, day].sort(),
     }));
   };
+
+  const getProfileByUserId = (userId: string) => profiles.find(p => p.user_id === userId);
+  const availableUsers = profiles.filter(p => !config.recipient_user_ids.includes(p.user_id));
 
   if (loading) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
@@ -190,7 +213,7 @@ export function WhatsAppNotificationSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">📱 Instância e Destinatários</CardTitle>
-          <CardDescription>Escolha qual instância enviará as notificações e para quem</CardDescription>
+          <CardDescription>Escolha qual instância enviará as notificações e para quais usuários</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -210,29 +233,55 @@ export function WhatsAppNotificationSettings() {
           </div>
 
           <div className="space-y-2">
-            <Label>Telefones destinatários</Label>
+            <Label>Usuários destinatários</Label>
             <div className="flex gap-2">
-              <Input
-                placeholder="5586999999999"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addPhone()}
-              />
-              <Button size="sm" variant="outline" onClick={addPhone}>
-                <Plus className="h-4 w-4" />
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Selecione um usuário..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableUsers.map((profile) => (
+                    <SelectItem key={profile.user_id} value={profile.user_id}>
+                      <div className="flex items-center gap-2">
+                        <User className="h-3 w-3" />
+                        <span>{profile.full_name || profile.email || 'Sem nome'}</span>
+                        {profile.phone && <span className="text-muted-foreground text-xs">({profile.phone})</span>}
+                        {!profile.phone && <span className="text-destructive text-xs">(sem telefone)</span>}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" onClick={addUser} disabled={!selectedUserId}>
+                <UserPlus className="h-4 w-4" />
               </Button>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {config.recipient_phones.map((phone) => (
-                <Badge key={phone} variant="secondary" className="gap-1">
-                  {phone}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => removePhone(phone)} />
-                </Badge>
-              ))}
-              {config.recipient_phones.length === 0 && (
+              {config.recipient_user_ids.map((userId) => {
+                const profile = getProfileByUserId(userId);
+                return (
+                  <Badge key={userId} variant="secondary" className="gap-1 py-1">
+                    <User className="h-3 w-3" />
+                    {profile?.full_name || profile?.email || 'Usuário'}
+                    {profile?.phone ? (
+                      <span className="text-[10px] text-muted-foreground ml-0.5">({profile.phone})</span>
+                    ) : (
+                      <span className="text-[10px] text-destructive ml-0.5">(sem tel.)</span>
+                    )}
+                    <X className="h-3 w-3 cursor-pointer ml-1" onClick={() => removeUser(userId)} />
+                  </Badge>
+                );
+              })}
+              {config.recipient_user_ids.length === 0 && (
                 <p className="text-xs text-muted-foreground">Nenhum destinatário adicionado</p>
               )}
             </div>
+            {config.recipient_user_ids.some(uid => !getProfileByUserId(uid)?.phone) && (
+              <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                <AlertTriangle className="h-3 w-3" />
+                Alguns usuários não possuem telefone cadastrado no perfil. Cadastre o número na página de perfil.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
