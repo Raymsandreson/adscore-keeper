@@ -1276,6 +1276,8 @@ const ActivitiesPage = () => {
           onReorder={reorderFields}
         />
       </div>
+        );
+      })()}
     </div>
   );
 
