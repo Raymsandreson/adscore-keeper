@@ -6977,7 +6977,9 @@ export type Database = {
           id: string
           lead_id: string | null
           legal_case_id: string | null
+          notify_on_signature: boolean
           original_file_url: string | null
+          send_signed_pdf: boolean
           sent_via_whatsapp: boolean | null
           sign_url: string | null
           signed_at: string | null
@@ -7003,7 +7005,9 @@ export type Database = {
           id?: string
           lead_id?: string | null
           legal_case_id?: string | null
+          notify_on_signature?: boolean
           original_file_url?: string | null
+          send_signed_pdf?: boolean
           sent_via_whatsapp?: boolean | null
           sign_url?: string | null
           signed_at?: string | null
@@ -7029,7 +7033,9 @@ export type Database = {
           id?: string
           lead_id?: string | null
           legal_case_id?: string | null
+          notify_on_signature?: boolean
           original_file_url?: string | null
+          send_signed_pdf?: boolean
           sent_via_whatsapp?: boolean | null
           sign_url?: string | null
           signed_at?: string | null
