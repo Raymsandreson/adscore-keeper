@@ -33,8 +33,10 @@ import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles, Bell, BellOff, BellRing,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { ProcessMonitorDialog } from '@/components/cases/ProcessMonitorDialog';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 
