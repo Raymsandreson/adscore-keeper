@@ -390,6 +390,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               template_token: '',
               template_name: '',
               prompt_instructions: config.prompt_instructions,
+              notify_on_signature: true,
+              send_signed_pdf: true,
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
