@@ -342,7 +342,74 @@ serve(async (req) => {
 
     const lastAssistantMsg = (recentHistory || []).find((m: any) => m.role === "assistant");
     const isInCollectingMode = lastAssistantMsg?.tool_data?.collecting === true;
+    const isAwaitingAudioConfirm = lastAssistantMsg?.tool_data?.awaiting_audio_confirm === true;
     const isFinish = message_text ? isFinishMessage(message_text) : false;
+
+    // Get WhatsApp instance for sending messages
+    const { data: inst } = await supabase
+      .from("whatsapp_instances")
+      .select("instance_token, base_url")
+      .eq("instance_name", instance_name)
+      .maybeSingle();
+    const baseUrl = inst?.base_url || "https://abraci.uazapi.com";
+    const instToken = inst?.instance_token || "";
+
+    // ── CASE 0: Awaiting audio confirmation (SIM/NÃO) ──
+    if (isAwaitingAudioConfirm && message_text) {
+      const wantsAudio = isAudioYes(message_text);
+      const declinesAudio = isAudioNo(message_text);
+
+      if (wantsAudio) {
+        // Generate and send TTS audio of the last response
+        const lastResponseText = lastAssistantMsg?.content || "";
+        await supabase.from("whatsapp_command_history").insert({
+          phone: normalizedPhone, instance_name, role: "user", content: message_text,
+        });
+
+        if (instToken) {
+          await sendWhatsAppText(baseUrl, instToken, normalizedPhone, "🤖 *WhatsJUD IA*\n\n🔊 Gerando áudio...").catch(() => {});
+        }
+
+        // Get user's voice preference
+        const { data: voicePref } = await supabase
+          .from("voice_preferences")
+          .select("voice_id")
+          .eq("user_id", config.user_id)
+          .maybeSingle();
+
+        const audioUrl = await generateTTSAudio(lastResponseText, voicePref?.voice_id);
+        
+        let ackMsg = "";
+        if (audioUrl && instToken) {
+          await sendWhatsAppAudio(baseUrl, instToken, normalizedPhone, audioUrl);
+          ackMsg = "✅ Áudio enviado!";
+        } else {
+          ackMsg = "⚠️ Não foi possível gerar o áudio.";
+        }
+
+        await supabase.from("whatsapp_command_history").insert({
+          phone: normalizedPhone, instance_name, role: "assistant", content: ackMsg, tool_data: {},
+        });
+
+        return new Response(JSON.stringify({ success: true, status: "audio_sent" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (declinesAudio) {
+        await supabase.from("whatsapp_command_history").insert([
+          { phone: normalizedPhone, instance_name, role: "user", content: message_text },
+          { phone: normalizedPhone, instance_name, role: "assistant", content: "👍 Ok!", tool_data: {} },
+        ]);
+        if (instToken) {
+          await sendWhatsAppText(baseUrl, instToken, normalizedPhone, "🤖 *WhatsJUD IA*\n\n👍 Ok!").catch(() => {});
+        }
+        return new Response(JSON.stringify({ success: true, status: "audio_declined" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // If neither yes nor no, treat as a new command (fall through)
+    }
 
     // Get WhatsApp instance for sending messages
     const { data: inst } = await supabase
