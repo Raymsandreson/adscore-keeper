@@ -138,6 +138,7 @@ export function ContactDetailSheet({
   const [professionCboCode, setProfessionCboCode] = useState('');
   const [professionSearch, setProfessionSearch] = useState('');
   const [filteredProfessions, setFilteredProfessions] = useState<any[]>([]);
+  const [whatsappGroupId, setWhatsappGroupId] = useState('');
 
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
