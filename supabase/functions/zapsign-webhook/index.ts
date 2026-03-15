@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     // ====================================================
     const justSignedSigner = triggeringSigner?.status === 'signed' ? triggeringSigner : null
 
-    if (justSignedSigner && localDoc.whatsapp_phone) {
+    if (justSignedSigner && localDoc.whatsapp_phone && localDoc.notify_on_signature !== false) {
       try {
         const { data: instance } = await supabase
           .from('whatsapp_instances')
