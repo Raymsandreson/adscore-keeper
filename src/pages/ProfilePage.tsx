@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone } from "lucide-react";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
@@ -33,6 +33,7 @@ const ProfilePage = () => {
   const [gender, setGender] = useState((profile as any)?.gender || "none");
   const [oabNumber, setOabNumber] = useState((profile as any)?.oab_number || "");
   const [oabUf, setOabUf] = useState((profile as any)?.oab_uf || "");
+  const [phone, setPhone] = useState((profile as any)?.phone || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const getInitials = () => {
@@ -60,6 +61,7 @@ const ProfilePage = () => {
       gender: gender === 'none' ? null : gender,
       oab_number: oabNumber.trim() || null,
       oab_uf: oabUf.trim() || null,
+      phone: phone.trim() || null,
     } as any);
     
     if (error) {
@@ -191,6 +193,21 @@ const ProfilePage = () => {
               </div>
               <p className="text-xs text-muted-foreground">
                 Cadastre sua OAB para identificação automática como advogado interno nos processos
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Telefone / WhatsApp
+              </Label>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(11) 99999-9999"
+              />
+              <p className="text-xs text-muted-foreground">
+                Usado para receber notificações automáticas de movimentação processual
               </p>
             </div>
 
