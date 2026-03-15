@@ -186,6 +186,7 @@ export function ContactDetailSheet({
       setProfession((contact as any).profession || '');
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
+      setWhatsappGroupId((contact as any).whatsapp_group_id || '');
       setIsEditing(true);
       
       // Fetch profile name for created_by
