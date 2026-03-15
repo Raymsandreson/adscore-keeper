@@ -52,7 +52,7 @@ async function sendWhatsAppAudio(baseUrl: string, token: string, number: string,
   }
 }
 
-async function transcribeWith    ElevenLabs(mediaUrl: string): Promise<string | null> {
+async function transcribeWithElevenLabs(mediaUrl: string): Promise<string | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   if (!ELEVENLABS_API_KEY) {
     console.warn("ELEVENLABS_API_KEY not configured, falling back to Gemini");
