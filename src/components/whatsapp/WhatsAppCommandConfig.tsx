@@ -38,6 +38,8 @@ interface Shortcut {
   is_active: boolean;
   display_order: number;
   followup_steps: FollowupStep[];
+  notify_on_signature: boolean;
+  send_signed_pdf: boolean;
 }
 
 interface FollowupStep {
