@@ -658,13 +658,17 @@ REGRAS:
             .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
             .join('\n');
           const docsSummary = receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
+          const conflictsList = Array.isArray(collectedData.conflicts) ? collectedData.conflicts : [];
+          const conflictWarning = conflictsList.length > 0
+            ? `\n\n⚠️ *ATENÇÃO - Dados divergentes encontrados:*\n${conflictsList.map((c: any) => `• *${c.field}*: informado anteriormente "${c.existing}", mas no documento consta "${c.extracted}"`).join('\n')}\n\n_Verifique qual informação está correta._`
+            : '';
 
           if (actuallyMissing.length > 0) {
             // Still missing fields → move to "collecting" to ask the rest
             const missingNames = actuallyMissing.map((f: any) => f.friendly_name || f.field_name).join(', ');
             const extractedCount = updatedFields.filter((f: any) => f.para).length;
 
-            const afterExtractMsg = `✅ *Documentos recebidos e analisados!*\n\n📊 Consegui extrair *${extractedCount}* dados dos documentos:\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}\n\n⚠️ Ainda preciso que informe: *${missingNames}*\n\nPor favor, me envie esses dados.`;
+            const afterExtractMsg = `✅ *Documentos recebidos e analisados!*\n\n📊 Consegui extrair *${extractedCount}* dados dos documentos:\n${filledSummary}\n\nDocumentos anexos:\n${docsSummary}${conflictWarning}\n\n⚠️ Ainda preciso que informe: *${missingNames}*\n\nPor favor, me envie esses dados.`;
 
             await supabase
               .from("wjia_collection_sessions")
