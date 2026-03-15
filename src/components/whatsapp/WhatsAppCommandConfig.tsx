@@ -650,7 +650,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <AIShortcutGenerator
                   existingConfig={aiEditConfig}
                   onApply={(config) => {
-                    setForm({
+                     setForm({
                       shortcut_name: config.shortcut_name,
                       description: config.description || '',
                       template_token: form.template_token,
@@ -658,6 +658,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       prompt_instructions: config.prompt_instructions,
                       notify_on_signature: form.notify_on_signature,
                       send_signed_pdf: form.send_signed_pdf,
+                      request_documents: form.request_documents,
+                      document_types: form.document_types,
                     });
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);
