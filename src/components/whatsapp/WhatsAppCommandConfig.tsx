@@ -84,7 +84,7 @@ export function WhatsAppCommandConfig() {
     setInstances(instancesRes.data || []);
     setProfiles((profilesRes.data || []).filter((p: any) => p.full_name));
     setShortcuts((shortcutsRes.data || []).map((s: any) => ({ ...s, followup_steps: s.followup_steps || [] })) as Shortcut[]);
-    setAgents((agentsRes.data || []) as AgentOption[]);
+    
     setLoading(false);
   };
 
