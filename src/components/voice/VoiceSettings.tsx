@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2 } from 'lucide-react';
+import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2, Square, Circle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -40,7 +40,53 @@ export function VoiceSettings() {
   const [cloneName, setCloneName] = useState('');
   const [cloneFiles, setCloneFiles] = useState<File[]>([]);
   const [cloning, setCloning] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordedBlobs, setRecordedBlobs] = useState<{ blob: Blob; name: string }[]>([]);
+  const [recordingTime, setRecordingTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks: BlobPart[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const name = `gravacao_${recordedBlobs.length + 1}.webm`;
+        setRecordedBlobs(prev => [...prev, { blob, name }]);
+        stream.getTracks().forEach(t => t.stop());
+        setRecordingTime(0);
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
+    } catch {
+      toast.error('Não foi possível acessar o microfone');
+    }
+  }, [recordedBlobs.length]);
+
+  const stopRecording = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  const removeRecording = (index: number) => {
+    setRecordedBlobs(prev => prev.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     loadVoices();
@@ -120,9 +166,11 @@ export function VoiceSettings() {
     }
   };
 
+  const allFiles = [...cloneFiles, ...recordedBlobs.map(r => new File([r.blob], r.name, { type: r.blob.type }))];
+
   const handleClone = async () => {
-    if (!cloneName.trim() || cloneFiles.length === 0) {
-      toast.error('Informe um nome e envie pelo menos um áudio');
+    if (!cloneName.trim() || allFiles.length === 0) {
+      toast.error('Informe um nome e envie ou grave pelo menos um áudio');
       return;
     }
 
@@ -130,7 +178,7 @@ export function VoiceSettings() {
     try {
       // Upload files to storage first
       const sampleUrls: string[] = [];
-      for (const file of cloneFiles) {
+      for (const file of allFiles) {
         const fileName = `voice-samples/${Date.now()}-${file.name}`;
         const { error: uploadErr } = await supabase.storage
           .from('whatsapp-media')
@@ -149,6 +197,7 @@ export function VoiceSettings() {
       toast.success('Voz clonada com sucesso!');
       setCloneName('');
       setCloneFiles([]);
+      setRecordedBlobs([]);
       loadVoices();
     } catch (e: any) {
       toast.error(e.message || 'Erro ao clonar voz');
@@ -281,7 +330,7 @@ export function VoiceSettings() {
             Clonar Sua Voz
           </CardTitle>
           <CardDescription>
-            Envie amostras de áudio (mínimo 1, recomendado 3+) com sua voz falando naturalmente. Quanto mais amostras, melhor a qualidade.
+            Grave ou envie amostras de áudio com sua voz falando naturalmente. Quanto mais amostras, melhor a qualidade.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -294,8 +343,46 @@ export function VoiceSettings() {
               className="mt-1"
             />
           </div>
+
+          {/* Recorder */}
           <div>
-            <Label>Amostras de áudio (MP3, WAV, M4A)</Label>
+            <Label>Gravar áudio</Label>
+            <div className="mt-1 flex items-center gap-2">
+              {recording ? (
+                <>
+                  <Button variant="destructive" size="sm" onClick={stopRecording} className="gap-2">
+                    <Square className="h-3 w-3" /> Parar ({recordingTime}s)
+                  </Button>
+                  <span className="flex items-center gap-1 text-xs text-destructive animate-pulse">
+                    <Circle className="h-2 w-2 fill-current" /> Gravando...
+                  </span>
+                </>
+              ) : (
+                <Button variant="outline" size="sm" onClick={startRecording} className="gap-2">
+                  <Mic className="h-3 w-3" /> Gravar amostra
+                </Button>
+              )}
+            </div>
+            {recordedBlobs.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {recordedBlobs.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1">
+                    <Mic className="h-3 w-3 text-muted-foreground" />
+                    <span className="flex-1">{r.name}</span>
+                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => removeRecording(i)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* File upload */}
+          <div>
+            <Label>Ou envie arquivos (MP3, WAV, M4A)</Label>
             <div className="mt-1 flex items-center gap-2">
               <Input
                 type="file"
@@ -311,7 +398,14 @@ export function VoiceSettings() {
               </p>
             )}
           </div>
-          <Button onClick={handleClone} disabled={cloning || !cloneName.trim() || cloneFiles.length === 0} className="gap-2">
+
+          {allFiles.length > 0 && (
+            <p className="text-xs text-primary font-medium">
+              Total: {allFiles.length} amostra(s) pronta(s)
+            </p>
+          )}
+
+          <Button onClick={handleClone} disabled={cloning || !cloneName.trim() || allFiles.length === 0} className="gap-2">
             {cloning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {cloning ? 'Clonando...' : 'Clonar Voz'}
           </Button>
