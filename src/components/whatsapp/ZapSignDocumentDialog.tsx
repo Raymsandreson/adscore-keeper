@@ -709,6 +709,31 @@ export function ZapSignDocumentDialog({
               <UserPlus className="h-4 w-4" />
               Adicionar testemunha / signatário
             </Button>
+
+            {/* Opções pós-assinatura */}
+            <div className="border rounded-lg p-3 space-y-2 bg-muted/20 mt-2">
+              <Label className="text-xs font-semibold">📋 Após assinatura</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="dialog_notify_on_signature"
+                  checked={notifyOnSignature}
+                  onCheckedChange={(checked) => setNotifyOnSignature(!!checked)}
+                />
+                <Label htmlFor="dialog_notify_on_signature" className="text-xs cursor-pointer">
+                  Avisar quando o documento for assinado
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="dialog_send_signed_pdf"
+                  checked={sendSignedPdf}
+                  onCheckedChange={(checked) => setSendSignedPdf(!!checked)}
+                />
+                <Label htmlFor="dialog_send_signed_pdf" className="text-xs cursor-pointer">
+                  Enviar o PDF assinado via WhatsApp
+                </Label>
+              </div>
+            </div>
             </>
             )}
           </div>
