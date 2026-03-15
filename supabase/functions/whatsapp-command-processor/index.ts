@@ -1028,8 +1028,20 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
     // 6) Send response via WhatsApp (inst already fetched above)
     if (instToken) {
       try {
+        // Send text message
         await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
         console.log("Response sent to WhatsApp:", normalizedPhone);
+
+        // Generate and send TTS audio of the response
+        try {
+          const audioUrl = await generateTTSAudio(responseText);
+          if (audioUrl) {
+            await sendWhatsAppAudio(baseUrl, instToken, normalizedPhone, audioUrl);
+            console.log("TTS audio sent to WhatsApp:", normalizedPhone);
+          }
+        } catch (ttsErr) {
+          console.error("TTS generation/send error (non-blocking):", ttsErr);
+        }
       } catch (e) {
         console.error("Error sending response:", e);
       }
