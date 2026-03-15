@@ -642,6 +642,17 @@ export function ContactDetailSheet({
 
                     <div>
                       <Label className="flex items-center gap-1">
+                        👥 Grupo WhatsApp (ID)
+                      </Label>
+                      <Input
+                        value={whatsappGroupId}
+                        onChange={(e) => setWhatsappGroupId(e.target.value)}
+                        placeholder="120363xxxxx@g.us"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
                         Email
                       </Label>
