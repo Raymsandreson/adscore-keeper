@@ -61,6 +61,7 @@ const ProfilePage = () => {
       gender: gender === 'none' ? null : gender,
       oab_number: oabNumber.trim() || null,
       oab_uf: oabUf.trim() || null,
+      phone: phone.trim() || null,
     } as any);
     
     if (error) {
