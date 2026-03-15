@@ -437,6 +437,32 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
               )}
             </div>
+            {/* Opções pós-assinatura */}
+            {form.template_token && (
+              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="notify_on_signature"
+                    checked={form.notify_on_signature}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, notify_on_signature: !!checked }))}
+                  />
+                  <Label htmlFor="notify_on_signature" className="text-xs cursor-pointer">
+                    Avisar quando o documento for assinado
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="send_signed_pdf"
+                    checked={form.send_signed_pdf}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, send_signed_pdf: !!checked }))}
+                  />
+                  <Label htmlFor="send_signed_pdf" className="text-xs cursor-pointer">
+                    Enviar o PDF assinado via WhatsApp
+                  </Label>
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
               <Textarea
