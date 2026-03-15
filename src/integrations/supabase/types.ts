@@ -6796,6 +6796,7 @@ export type Database = {
           request_documents: boolean | null
           send_signed_pdf: boolean
           shortcut_name: string
+          stop_on_human_reply: boolean
           template_name: string | null
           template_token: string | null
           updated_at: string | null
@@ -6813,6 +6814,7 @@ export type Database = {
           request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name: string
+          stop_on_human_reply?: boolean
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null
@@ -6830,6 +6832,7 @@ export type Database = {
           request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name?: string
+          stop_on_human_reply?: boolean
           template_name?: string | null
           template_token?: string | null
           updated_at?: string | null

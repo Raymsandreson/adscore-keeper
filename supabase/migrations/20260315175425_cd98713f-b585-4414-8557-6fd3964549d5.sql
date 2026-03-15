@@ -1,0 +1,1 @@
+ALTER TABLE public.wjia_command_shortcuts ADD COLUMN IF NOT EXISTS stop_on_human_reply boolean NOT NULL DEFAULT true;

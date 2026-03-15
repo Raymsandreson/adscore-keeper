@@ -256,6 +256,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
   const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
+  const [stopOnHumanReply, setStopOnHumanReply] = useState(true);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
 
@@ -284,6 +285,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const resetForm = () => {
     setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
     setFollowupSteps([]);
+    setStopOnHumanReply(true);
     setEditingId(null);
     setShowForm(false);
     setAiEditConfig(null);
@@ -314,6 +316,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       document_types: s.document_types || [],
     });
     setFollowupSteps(s.followup_steps || []);
+    setStopOnHumanReply((s as any).stop_on_human_reply !== false);
     setEditingId(s.id);
     setShowForm(true);
   };
@@ -339,6 +342,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
       followup_steps: followupSteps,
+      stop_on_human_reply: stopOnHumanReply,
       notify_on_signature: form.notify_on_signature,
       send_signed_pdf: form.send_signed_pdf,
       request_documents: form.request_documents,
@@ -574,6 +578,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                         <Select value={step.assigned_to || ''} onValueChange={v => updateStep(idx, 'assigned_to', v)}>
                           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="__self__">👤 Próprio usuário (quem disparou)</SelectItem>
                             {profiles.map(p => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
                           </SelectContent>
                         </Select>
@@ -588,6 +593,16 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               <Button size="sm" variant="outline" onClick={addStep} className="w-full">
                 <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar Etapa de Follow-up
               </Button>
+
+              {followupSteps.length > 0 && (
+                <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Label className="text-[10px]">Parar follow-up quando humano responder</Label>
+                  </div>
+                  <Switch checked={stopOnHumanReply} onCheckedChange={setStopOnHumanReply} />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 justify-end">

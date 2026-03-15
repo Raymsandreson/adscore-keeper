@@ -54,6 +54,32 @@ serve(async (req) => {
     let actionsExecuted = 0;
 
     for (const session of sessions) {
+      // Check stop_on_human_reply: if a human sent an outbound message after session was generated, skip
+      const { data: shortcutData } = await supabase
+        .from("wjia_command_shortcuts")
+        .select("stop_on_human_reply")
+        .eq("shortcut_name", session.shortcut_name)
+        .maybeSingle();
+
+      if (shortcutData?.stop_on_human_reply !== false) {
+        // Check if there's a human outbound message after session updated_at
+        const { data: humanReply } = await supabase
+          .from("whatsapp_messages")
+          .select("id")
+          .eq("phone", session.phone)
+          .eq("instance_name", session.instance_name)
+          .eq("direction", "outbound")
+          .not("external_message_id", "like", "wjia_%")
+          .gt("created_at", session.updated_at)
+          .limit(1)
+          .maybeSingle();
+
+        if (humanReply) {
+          console.log(`Skipping followup for session ${session.id}: human already replied`);
+          continue;
+        }
+      }
+
       const rule = rules.find((r: any) => r.trigger_status === "generated") || rules[0];
       if (!rule) continue;
 
@@ -144,8 +170,21 @@ serve(async (req) => {
           });
         }
       } else if (step.action_type === "create_activity") {
-        const assignedTo = step.assigned_to || null;
+        let assignedTo = step.assigned_to || null;
         let assignedName = null;
+        
+        // __self__ means assign to the authorized user of this instance
+        if (assignedTo === "__self__") {
+          const { data: configUser } = await supabase
+            .from("wjia_command_configs")
+            .select("user_id")
+            .eq("instance_name", session.instance_name)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          assignedTo = configUser?.user_id || null;
+        }
+        
         if (assignedTo) {
           const { data: profile } = await supabase
             .from("profiles")
