@@ -582,6 +582,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
         acolhedor: acolhedor || null,
         group_link: groupLink || null,
+        whatsapp_group_id: whatsappGroupId || null,
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
