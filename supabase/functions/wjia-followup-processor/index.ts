@@ -173,9 +173,16 @@ serve(async (req) => {
         let assignedTo = step.assigned_to || null;
         let assignedName = null;
         
-        // __self__ means assign to the user who triggered the command
+        // __self__ means assign to the authorized user of this instance
         if (assignedTo === "__self__") {
-          assignedTo = session.triggered_by || null;
+          const { data: configUser } = await supabase
+            .from("wjia_command_configs")
+            .select("user_id")
+            .eq("instance_name", session.instance_name)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          assignedTo = configUser?.user_id || null;
         }
         
         if (assignedTo) {
