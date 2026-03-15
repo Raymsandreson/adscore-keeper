@@ -599,16 +599,37 @@ REGRAS:
                 const extractedData = JSON.parse(visionToolCall.function.arguments);
                 console.log("Vision extraction result:", JSON.stringify(extractedData));
 
-                // Merge extracted fields into collected data
+                // Merge extracted fields into collected data, detecting conflicts
+                const conflicts: { field: string; existing: string; extracted: string }[] = [];
                 for (const field of (extractedData.extracted_fields || [])) {
                   if (!field.de || !field.para) continue;
                   const canonicalVariable = resolveTemplateVariable(field, requiredFieldCatalog) || field.de;
+                  
+                  // Check for conflicts with already-collected data
+                  const existingField = updatedFields.find((f: any) => {
+                    const fKey = normalizeFieldKey((f?.de || f?.field_name || "").toString());
+                    return fKey === normalizeFieldKey(canonicalVariable) && hasFieldValue(f?.para);
+                  });
+                  if (existingField && existingField.para) {
+                    const existingNorm = existingField.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
+                    const newNorm = field.para.toString().replace(/\s+/g, ' ').trim().toUpperCase();
+                    if (existingNorm !== newNorm && existingNorm.length > 1 && newNorm.length > 1) {
+                      conflicts.push({ field: canonicalVariable.replace(/\{\{|\}\}/g, ''), existing: existingField.para, extracted: field.para });
+                    }
+                  }
+                  
                   upsertCollectedField(updatedFields, canonicalVariable, field.para);
                 }
 
                 // Update signer name if extracted
                 if (extractedData.signer_name) {
                   collectedData.signer_name = extractedData.signer_name;
+                }
+                
+                // Store conflicts for later reporting
+                if (conflicts.length > 0) {
+                  collectedData.conflicts = conflicts;
+                  console.log("Data conflicts detected:", JSON.stringify(conflicts));
                 }
               }
             } catch (visionErr) {
