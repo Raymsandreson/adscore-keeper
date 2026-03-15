@@ -313,7 +313,6 @@ function ShortcutsTab({ shortcuts, profiles, agents, onReload }: { shortcuts: Sh
       send_signed_pdf: s.send_signed_pdf !== false,
       request_documents: s.request_documents || false,
       document_types: s.document_types || [],
-      agent_id: s.agent_id || '',
     });
     setFollowupSteps(s.followup_steps || []);
     setEditingId(s.id);
