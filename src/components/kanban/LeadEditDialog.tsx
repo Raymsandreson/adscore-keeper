@@ -251,6 +251,7 @@ export function LeadEditDialog({
       setNotes(lead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
+      setWhatsappGroupId(leadAny.whatsapp_group_id || '');
       setClientClassification(lead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
