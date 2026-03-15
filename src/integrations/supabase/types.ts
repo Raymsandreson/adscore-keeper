@@ -6638,6 +6638,7 @@ export type Database = {
           contact_id: string | null
           created_at: string | null
           doc_token: string | null
+          document_types: string[] | null
           id: string
           instance_name: string
           lead_id: string | null
@@ -6645,6 +6646,8 @@ export type Database = {
           notify_on_signature: boolean
           phone: string
           prompt_instructions: string | null
+          received_documents: Json | null
+          request_documents: boolean | null
           required_fields: Json | null
           send_signed_pdf: boolean
           sign_url: string | null
@@ -6659,6 +6662,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string | null
           doc_token?: string | null
+          document_types?: string[] | null
           id?: string
           instance_name: string
           lead_id?: string | null
@@ -6666,6 +6670,8 @@ export type Database = {
           notify_on_signature?: boolean
           phone: string
           prompt_instructions?: string | null
+          received_documents?: Json | null
+          request_documents?: boolean | null
           required_fields?: Json | null
           send_signed_pdf?: boolean
           sign_url?: string | null
@@ -6680,6 +6686,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string | null
           doc_token?: string | null
+          document_types?: string[] | null
           id?: string
           instance_name?: string
           lead_id?: string | null
@@ -6687,6 +6694,8 @@ export type Database = {
           notify_on_signature?: boolean
           phone?: string
           prompt_instructions?: string | null
+          received_documents?: Json | null
+          request_documents?: boolean | null
           required_fields?: Json | null
           send_signed_pdf?: boolean
           sign_url?: string | null
@@ -6703,11 +6712,13 @@ export type Database = {
           created_at: string | null
           description: string | null
           display_order: number | null
+          document_types: string[] | null
           followup_steps: Json | null
           id: string
           is_active: boolean | null
           notify_on_signature: boolean
           prompt_instructions: string | null
+          request_documents: boolean | null
           send_signed_pdf: boolean
           shortcut_name: string
           template_name: string | null
@@ -6718,11 +6729,13 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           display_order?: number | null
+          document_types?: string[] | null
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
+          request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name: string
           template_name?: string | null
@@ -6733,11 +6746,13 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           display_order?: number | null
+          document_types?: string[] | null
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
           notify_on_signature?: boolean
           prompt_instructions?: string | null
+          request_documents?: boolean | null
           send_signed_pdf?: boolean
           shortcut_name?: string
           template_name?: string | null
