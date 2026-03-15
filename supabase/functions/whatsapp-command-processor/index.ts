@@ -586,7 +586,7 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
         } else {
           toolData.activity_created = newAct;
           // Append edit link
-          responseText += `\n\n✏️ Editar: ${APP_URL}/activities?edit=${newAct?.id}`;
+          responseText += `\n\n✏️ Editar: ${APP_URL}/?openActivity=${newAct?.id}`;
           console.log("Activity created via WhatsApp:", newAct?.id);
         }
       }
