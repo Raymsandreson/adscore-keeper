@@ -89,9 +89,46 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text } = await req.json();
-    if (!phone || !instance_name || !message_text) {
+    const body = await req.json();
+    const { phone, instance_name, media_url, message_type } = body;
+    let message_text = body.message_text;
+
+    if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "Missing fields" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── Audio transcription: convert voice messages to text ──
+    const isAudio = message_type === 'audio' || message_type === 'ptt';
+    if (isAudio && media_url && !message_text) {
+      console.log('Transcribing audio for command processing:', media_url);
+      try {
+        const transcriptionResult = await geminiChat({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: "Transcreva EXATAMENTE o que a pessoa disse no áudio. Retorne APENAS a transcrição literal, sem comentários, sem pontuação extra. Se não conseguir entender, retorne string vazia.",
+            },
+            {
+              role: "user",
+              content: [{ type: "image_url", image_url: { url: media_url } }],
+            },
+          ],
+        });
+        const transcript = transcriptionResult.choices?.[0]?.message?.content?.trim();
+        if (transcript) {
+          console.log('Audio transcribed for command:', transcript.substring(0, 100));
+          message_text = transcript;
+        }
+      } catch (e) {
+        console.error('Audio transcription error:', e);
+      }
+    }
+
+    if (!message_text) {
+      return new Response(JSON.stringify({ error: "No text content (audio transcription may have failed)" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
