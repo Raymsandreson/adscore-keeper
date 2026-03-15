@@ -31,11 +31,18 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
       if (contactId) {
         const { data: contact } = await supabase
           .from('contacts')
-          .select('full_name, phone')
+          .select('full_name, phone, whatsapp_group_id')
           .eq('id', contactId)
-          .maybeSingle();
+          .maybeSingle() as any;
         if (contact?.phone) {
           results.push({ label: `${contact.full_name} (${contact.phone})`, phone: contact.phone });
+        }
+        if (contact?.whatsapp_group_id) {
+          results.push({
+            label: `👥 Grupo ${contact.full_name}`,
+            phone: contact.whatsapp_group_id,
+            chatId: contact.whatsapp_group_id,
+          });
         }
       }
 
