@@ -260,6 +260,8 @@ REGRAS:
           missing_fields: missingFields,
           status: "collecting",
           triggered_by: command,
+          notify_on_signature: notifyOnSignature,
+          send_signed_pdf: sendSignedPdf,
         })
         .select()
         .single();
