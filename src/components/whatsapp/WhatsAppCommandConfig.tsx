@@ -390,7 +390,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <AIShortcutGenerator
           existingConfig={null}
           onApply={(config) => {
-            setForm({
+             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
               template_token: '',
@@ -398,6 +398,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               prompt_instructions: config.prompt_instructions,
               notify_on_signature: true,
               send_signed_pdf: true,
+              request_documents: false,
+              document_types: [],
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
