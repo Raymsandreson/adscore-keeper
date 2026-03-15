@@ -138,7 +138,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text } = await req.json();
+    const { phone, instance_name, message_text, media_url, media_type, message_type } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "phone and instance_name required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -152,13 +152,13 @@ serve(async (req) => {
 
     const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
 
-    // Find active collection session for this phone (collecting OR ready-for-confirmation)
+    // Find active collection session for this phone
     const { data: session } = await supabase
       .from("wjia_collection_sessions")
       .select("*")
       .eq("phone", normalizedPhone)
       .eq("instance_name", instance_name)
-      .in("status", ["collecting", "ready"])
+      .in("status", ["collecting", "collecting_docs", "ready"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -277,6 +277,40 @@ serve(async (req) => {
             }
 
             console.log("Document generated after confirmation! Doc token:", docData.token);
+
+            // Attach received documents to ZapSign doc
+            const receivedDocs = Array.isArray(session.received_documents) ? session.received_documents : [];
+            for (const doc of receivedDocs) {
+              if (!doc.media_url) continue;
+              try {
+                // Download the file and convert to base64
+                const fileResp = await fetch(doc.media_url);
+                if (!fileResp.ok) { console.error("Failed to download doc:", doc.media_url); continue; }
+                const fileBuffer = await fileResp.arrayBuffer();
+                const base64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+                
+                const docTypeLabels: Record<string, string> = {
+                  rg_cnh: 'RG_CNH', comprovante_endereco: 'Comprovante_Endereco',
+                  comprovante_renda: 'Comprovante_Renda', outros: 'Documento_Anexo',
+                };
+                const attachName = docTypeLabels[doc.type] || 'Anexo';
+
+                const attachRes = await fetch(`${ZAPSIGN_API_URL}/docs/${docData.token}/add-extra-doc/`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${zapsignToken}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: attachName, base64_pdf: base64 }),
+                });
+
+                if (attachRes.ok) {
+                  console.log(`Attached ${attachName} to doc ${docData.token}`);
+                } else {
+                  const attachErr = await attachRes.text();
+                  console.error(`Failed to attach ${attachName}:`, attachErr);
+                }
+              } catch (attachErr) {
+                console.error("Error attaching document:", attachErr);
+              }
+            }
           } else {
             const errText = await createRes.text();
             console.error("ZapSign error after confirmation:", errText);
@@ -325,6 +359,172 @@ serve(async (req) => {
           processed: true,
           correction_mode: true,
           session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
+    // === HANDLE DOCUMENT COLLECTION STATUS ===
+    if (session.status === 'collecting_docs') {
+      const { data: inst } = await supabase
+        .from("whatsapp_instances")
+        .select("instance_token, base_url")
+        .eq("instance_name", instance_name)
+        .maybeSingle();
+
+      const receivedDocs = Array.isArray(session.received_documents) ? [...session.received_documents] : [];
+      const docTypeLabels: Record<string, string> = {
+        rg_cnh: 'RG / CNH',
+        comprovante_endereco: 'Comprovante de endereço',
+        comprovante_renda: 'Comprovante de renda',
+        outros: 'Outros documentos',
+      };
+      const requestedTypes: string[] = Array.isArray(session.document_types) ? session.document_types : [];
+
+      // Check if client sent an image/document
+      const isMedia = media_url && (message_type === 'image' || message_type === 'document');
+
+      if (isMedia) {
+        // Determine which type this doc is for
+        let assignedType = 'outros';
+        const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
+        if (pendingTypes.length > 0) {
+          // Use AI or heuristic to assign - for simplicity, assign to first pending type
+          assignedType = pendingTypes[0];
+        }
+
+        receivedDocs.push({
+          type: assignedType,
+          media_url,
+          media_type: media_type || 'image/jpeg',
+          received_at: new Date().toISOString(),
+        });
+
+        const stillPending = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
+
+        await supabase
+          .from("wjia_collection_sessions")
+          .update({
+            received_documents: receivedDocs,
+            updated_at: new Date().toISOString(),
+            ...(stillPending.length === 0 ? { status: "ready" } : {}),
+          })
+          .eq("id", session.id);
+
+        let replyMsg: string;
+        if (stillPending.length === 0) {
+          // All docs received → show confirmation
+          const collectedData = session.collected_data || { fields: [] };
+          const summaryLines = (collectedData.fields || [])
+            .filter((f: any) => f.para)
+            .map((f: any) => {
+              const label = (f.de || '').replace(/\{\{|\}\}/g, '');
+              return `• *${label}*: ${f.para}`;
+            }).join('\n');
+
+          const docsSummary = receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n');
+
+          replyMsg = `✅ *Documento recebido: ${docTypeLabels[assignedType]}*\n\n✅ *Todos os documentos foram recebidos!*\n\nDados do documento:\n${summaryLines}\n\nDocumentos anexos:\n${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
+        } else {
+          const pendingNames = stillPending.map(t => docTypeLabels[t] || t).join(', ');
+          replyMsg = `✅ *Documento recebido: ${docTypeLabels[assignedType]}*\n\nAinda falta: ${pendingNames}.\nPor favor, envie a foto ou arquivo.`;
+        }
+
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: replyMsg }),
+          }).catch(e => console.error("Error sending doc reply:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone,
+            instance_name,
+            message_text: replyMsg,
+            message_type: "text",
+            direction: "outbound",
+            contact_id: session.contact_id || null,
+            lead_id: session.lead_id || null,
+            external_message_id: `wjia_doc_${Date.now()}`,
+          });
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true,
+          processed: true,
+          docs_received: receivedDocs.length,
+          docs_pending: requestedTypes.length - receivedDocs.length,
+          session_id: session.id,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      } else {
+        // Text message during doc collection - check if it's a "done" or question
+        const msgLower = (message_text || "").toLowerCase().trim();
+        const isSkip = /^(pular|n[aã]o tenho|n[aã]o possuo|depois|skip)/.test(msgLower);
+        
+        if (isSkip) {
+          // Skip remaining docs, move to ready
+          await supabase
+            .from("wjia_collection_sessions")
+            .update({ status: "ready", updated_at: new Date().toISOString() })
+            .eq("id", session.id);
+
+          const collectedData = session.collected_data || { fields: [] };
+          const summaryLines = (collectedData.fields || [])
+            .filter((f: any) => f.para)
+            .map((f: any) => `• *${(f.de || '').replace(/\{\{|\}\}/g, '')}*: ${f.para}`)
+            .join('\n');
+
+          const docsSummary = receivedDocs.length > 0
+            ? '\n\nDocumentos anexos:\n' + receivedDocs.map((d: any) => `• ✅ ${docTypeLabels[d.type] || d.type}`).join('\n')
+            : '';
+
+          const skipMsg = `Ok! Vamos prosseguir sem os documentos pendentes.\n\nDados do documento:\n${summaryLines}${docsSummary}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento.`;
+
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: normalizedPhone, text: skipMsg }),
+            }).catch(e => console.error("Error sending skip reply:", e));
+
+            await supabase.from("whatsapp_messages").insert({
+              phone: normalizedPhone, instance_name,
+              message_text: skipMsg, message_type: "text", direction: "outbound",
+              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+              external_message_id: `wjia_skip_${Date.now()}`,
+            });
+          }
+
+          return new Response(JSON.stringify({
+            active_session: true, processed: true, skipped_docs: true, session_id: session.id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Otherwise remind to send docs
+        const pendingTypes = requestedTypes.filter(t => !receivedDocs.some((d: any) => d.type === t));
+        const pendingNames = pendingTypes.map(t => docTypeLabels[t] || t).join(', ');
+        const reminderMsg = `📎 Ainda preciso que envie: *${pendingNames}*.\n\nEnvie a foto ou arquivo do documento. Se não tiver agora, digite *pular* para continuar sem.`;
+
+        if (inst?.instance_token) {
+          const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+          await fetch(`${baseUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: inst.instance_token },
+            body: JSON.stringify({ number: normalizedPhone, text: reminderMsg }),
+          }).catch(e => console.error("Error sending reminder:", e));
+
+          await supabase.from("whatsapp_messages").insert({
+            phone: normalizedPhone, instance_name,
+            message_text: reminderMsg, message_type: "text", direction: "outbound",
+            contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+            external_message_id: `wjia_remind_${Date.now()}`,
+          });
+        }
+
+        return new Response(JSON.stringify({
+          active_session: true, processed: true, awaiting_docs: true, session_id: session.id,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
@@ -538,7 +738,7 @@ REGRAS:
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
       
       if (session.status === 'collecting') {
-        // First time all data collected → show summary, move to "ready" (awaiting confirmation)
+        // First time all data collected
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
@@ -546,9 +746,55 @@ REGRAS:
             return `• *${label}*: ${f.para}`;
           }).join('\n');
 
+        // Check if we need to collect documents
+        const needsDocs = session.request_documents && Array.isArray(session.document_types) && session.document_types.length > 0;
+        const docTypeLabels: Record<string, string> = {
+          rg_cnh: 'RG / CNH',
+          comprovante_endereco: 'Comprovante de endereço',
+          comprovante_renda: 'Comprovante de renda',
+          outros: 'Outros documentos',
+        };
+
+        if (needsDocs) {
+          // Move to collecting_docs phase
+          const docNames = session.document_types.map((t: string) => docTypeLabels[t] || t).join('\n• ');
+          const docsMsg = `✅ *Todos os dados foram coletados!*\n\n${summaryLines}\n\n📎 Agora preciso que envie os seguintes documentos:\n• ${docNames}\n\nEnvie a *foto ou arquivo* de cada documento. Se não tiver algum agora, digite *pular*.`;
+
+          await supabase
+            .from("wjia_collection_sessions")
+            .update({
+              collected_data: updatedCollectedData,
+              missing_fields: [],
+              status: "collecting_docs",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", session.id);
+
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: normalizedPhone, text: docsMsg }),
+            }).catch(e => console.error("Error sending docs request:", e));
+
+            await supabase.from("whatsapp_messages").insert({
+              phone: normalizedPhone, instance_name,
+              message_text: docsMsg, message_type: "text", direction: "outbound",
+              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+              external_message_id: `wjia_docs_req_${Date.now()}`,
+            });
+          }
+
+          return new Response(JSON.stringify({
+            active_session: true, processed: true, all_collected: true,
+            collecting_docs: true, session_id: session.id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // No docs needed → go straight to confirmation (ready)
         const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
-        // Update status to "ready" (compatible with DB status check)
         const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
           .update({
@@ -563,7 +809,6 @@ REGRAS:
           console.error("Error setting WJIA session to ready:", setReadyError);
         }
 
-        // Send summary
         if (inst?.instance_token) {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
           await fetch(`${baseUrl}/send/text`, {
@@ -573,23 +818,16 @@ REGRAS:
           }).catch(e => console.error("Error sending summary:", e));
 
           await supabase.from("whatsapp_messages").insert({
-            phone: normalizedPhone,
-            instance_name,
-            message_text: summaryMsg,
-            message_type: "text",
-            direction: "outbound",
-            contact_id: session.contact_id || null,
-            lead_id: session.lead_id || null,
+            phone: normalizedPhone, instance_name,
+            message_text: summaryMsg, message_type: "text", direction: "outbound",
+            contact_id: session.contact_id || null, lead_id: session.lead_id || null,
             external_message_id: `wjia_summary_${Date.now()}`,
           });
         }
 
         return new Response(JSON.stringify({
-          active_session: true,
-          processed: true,
-          all_collected: true,
-          awaiting_confirmation: true,
-          session_id: session.id,
+          active_session: true, processed: true, all_collected: true,
+          awaiting_confirmation: true, session_id: session.id,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }

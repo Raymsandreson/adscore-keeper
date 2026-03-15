@@ -1319,7 +1319,7 @@ Deno.serve(async (req) => {
           .select('id')
           .eq('phone', phone)
           .eq('instance_name', instanceName)
-          .in('status', ['collecting', 'ready'])
+          .in('status', ['collecting', 'collecting_docs', 'ready'])
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle()
@@ -1338,6 +1338,9 @@ Deno.serve(async (req) => {
               phone,
               instance_name: instanceName,
               message_text: messageText,
+              media_url: storedMediaUrl || null,
+              media_type: mediaType || null,
+              message_type: messageType || 'text',
             }),
           }).catch(err => console.error('Collection processor trigger error:', err))
 

@@ -40,6 +40,8 @@ interface Shortcut {
   followup_steps: FollowupStep[];
   notify_on_signature: boolean;
   send_signed_pdf: boolean;
+  request_documents: boolean;
+  document_types: string[];
 }
 
 interface FollowupStep {
@@ -248,7 +250,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
-  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true });
+  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] as string[] });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -276,7 +278,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true });
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true, request_documents: false, document_types: [] });
     setFollowupSteps([]);
     setEditingId(null);
     setShowForm(false);
@@ -304,6 +306,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       prompt_instructions: s.prompt_instructions || '',
       notify_on_signature: s.notify_on_signature !== false,
       send_signed_pdf: s.send_signed_pdf !== false,
+      request_documents: s.request_documents || false,
+      document_types: s.document_types || [],
     });
     setFollowupSteps(s.followup_steps || []);
     setEditingId(s.id);
@@ -333,6 +337,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       followup_steps: followupSteps,
       notify_on_signature: form.notify_on_signature,
       send_signed_pdf: form.send_signed_pdf,
+      request_documents: form.request_documents,
+      document_types: form.document_types,
     };
 
     let error;
@@ -384,7 +390,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
         <AIShortcutGenerator
           existingConfig={null}
           onApply={(config) => {
-            setForm({
+             setForm({
               shortcut_name: config.shortcut_name,
               description: config.description || '',
               template_token: '',
@@ -392,6 +398,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               prompt_instructions: config.prompt_instructions,
               notify_on_signature: true,
               send_signed_pdf: true,
+              request_documents: false,
+              document_types: [],
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
@@ -463,6 +471,50 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                     Enviar o PDF assinado via WhatsApp
                   </Label>
                 </div>
+              </div>
+            )}
+            {/* Solicitar documentos */}
+            {form.template_token && (
+              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="request_documents"
+                    checked={form.request_documents}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, request_documents: !!checked }))}
+                  />
+                  <Label htmlFor="request_documents" className="text-xs font-semibold cursor-pointer">
+                    📎 Solicitar documentos do cliente para anexar
+                  </Label>
+                </div>
+                {form.request_documents && (
+                  <div className="ml-6 space-y-2">
+                    <p className="text-[10px] text-muted-foreground">Selecione os tipos de documentos que serão solicitados:</p>
+                    {[
+                      { key: 'rg_cnh', label: 'RG / CNH (identidade)' },
+                      { key: 'comprovante_endereco', label: 'Comprovante de endereço' },
+                      { key: 'comprovante_renda', label: 'Comprovante de renda' },
+                      { key: 'outros', label: 'Outros documentos' },
+                    ].map(docType => (
+                      <div key={docType.key} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`doc_${docType.key}`}
+                          checked={form.document_types.includes(docType.key)}
+                          onCheckedChange={(checked) => {
+                            setForm(f => ({
+                              ...f,
+                              document_types: checked
+                                ? [...f.document_types, docType.key]
+                                : f.document_types.filter(t => t !== docType.key),
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={`doc_${docType.key}`} className="text-xs cursor-pointer">
+                          {docType.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div className="space-y-1">
@@ -598,7 +650,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <AIShortcutGenerator
                   existingConfig={aiEditConfig}
                   onApply={(config) => {
-                    setForm({
+                     setForm({
                       shortcut_name: config.shortcut_name,
                       description: config.description || '',
                       template_token: form.template_token,
@@ -606,6 +658,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       prompt_instructions: config.prompt_instructions,
                       notify_on_signature: form.notify_on_signature,
                       send_signed_pdf: form.send_signed_pdf,
+                      request_documents: form.request_documents,
+                      document_types: form.document_types,
                     });
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);
