@@ -1722,6 +1722,7 @@ export type Database = {
           street: string | null
           tags: string[] | null
           updated_at: string
+          whatsapp_group_id: string | null
         }
         Insert: {
           cep?: string | null
@@ -1749,6 +1750,7 @@ export type Database = {
           street?: string | null
           tags?: string[] | null
           updated_at?: string
+          whatsapp_group_id?: string | null
         }
         Update: {
           cep?: string | null
@@ -1776,6 +1778,7 @@ export type Database = {
           street?: string | null
           tags?: string[] | null
           updated_at?: string
+          whatsapp_group_id?: string | null
         }
         Relationships: [
           {
@@ -3937,6 +3940,7 @@ export type Database = {
           visit_city: string | null
           visit_region: string | null
           visit_state: string | null
+          whatsapp_group_id: string | null
         }
         Insert: {
           accident_address?: string | null
@@ -4003,6 +4007,7 @@ export type Database = {
           visit_city?: string | null
           visit_region?: string | null
           visit_state?: string | null
+          whatsapp_group_id?: string | null
         }
         Update: {
           accident_address?: string | null
@@ -4069,6 +4074,7 @@ export type Database = {
           visit_city?: string | null
           visit_region?: string | null
           visit_state?: string | null
+          whatsapp_group_id?: string | null
         }
         Relationships: [
           {
