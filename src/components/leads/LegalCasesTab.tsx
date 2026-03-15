@@ -33,8 +33,10 @@ import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle,
-  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles,
+  ChevronDown, ChevronRight, FolderOpen, Users, Briefcase, XCircle, RefreshCw, Loader2, ScrollText, Upload, Sparkles, Bell, BellOff, BellRing,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { ProcessMonitorDialog } from '@/components/cases/ProcessMonitorDialog';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 
@@ -550,6 +552,7 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
   const [showPetitionDialog, setShowPetitionDialog] = useState(false);
   const [petitionText, setPetitionText] = useState('');
   const [analyzingPetition, setAnalyzingPetition] = useState(false);
+  const [showMonitorDialog, setShowMonitorDialog] = useState(false);
 
   useEffect(() => {
     if (showParties) fetchParties();
@@ -836,6 +839,16 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
         >
           <Sparkles className="h-2.5 w-2.5 mr-0.5" /> Analisar Petição
         </Button>
+        {process.process_number && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] px-2 text-emerald-600"
+            onClick={() => setShowMonitorDialog(true)}
+          >
+            <BellRing className="h-2.5 w-2.5 mr-0.5" /> Notificar
+          </Button>
+        )}
         {process.movimentacoes && (process.movimentacoes as any[]).length > 0 && (
           <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2"
             onClick={() => setShowMovimentacoes(!showMovimentacoes)}>
@@ -932,6 +945,15 @@ function ProcessCard({ process, statusColors, statusLabels, onEdit, onStatusChan
           ))}
         </div>
       )}
+
+      {/* Process Monitor Dialog */}
+      <ProcessMonitorDialog
+        open={showMonitorDialog}
+        onOpenChange={setShowMonitorDialog}
+        processId={process.id}
+        processNumber={process.process_number || ''}
+        processTitle={process.title}
+      />
 
       {/* Petition Analysis Dialog */}
       <Dialog open={showPetitionDialog} onOpenChange={setShowPetitionDialog}>
