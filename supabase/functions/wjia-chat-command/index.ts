@@ -114,7 +114,6 @@ CONVERSA COM O CLIENTE (últimas mensagens):
 ${conversationText || "(sem mensagens)"}
 
 ${shortcutInstructions ? `INSTRUÇÕES ESPECÍFICAS DO ATALHO:\n${shortcutInstructions}\n` : ''}
-${agentData ? `PERSONA DO AGENTE (use este tom e estilo na collection_message):\nNome: ${agentData.name}\n${agentData.base_prompt || ''}\n` : ''}
 REGRAS:
 - Para NACIONALIDADE: se tem CPF brasileiro, use "brasileiro(a)"
 - Para WHATSAPP do escritório: use "(86)99447-3226"
