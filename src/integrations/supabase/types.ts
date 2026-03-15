@@ -1961,6 +1961,42 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_voices: {
+        Row: {
+          created_at: string
+          elevenlabs_voice_id: string | null
+          error_message: string | null
+          id: string
+          name: string
+          sample_file_urls: string[] | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          error_message?: string | null
+          id?: string
+          name: string
+          sample_file_urls?: string[] | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          elevenlabs_voice_id?: string | null
+          error_message?: string | null
+          id?: string
+          name?: string
+          sample_file_urls?: string[] | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       daily_goal_snapshots: {
         Row: {
           achieved: boolean
@@ -5648,6 +5684,39 @@ export type Database = {
           start_minute?: number
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      voice_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+          user_id: string
+          voice_id: string
+          voice_name: string
+          voice_type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id: string
+          voice_id?: string
+          voice_name?: string
+          voice_type?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id?: string
+          voice_id?: string
+          voice_name?: string
+          voice_type?: string
         }
         Relationships: []
       }

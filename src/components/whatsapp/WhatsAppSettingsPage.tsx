@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { 
   Webhook, BarChart3, Megaphone, Bot, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2
 } from 'lucide-react';
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide';
 import { WhatsAppReportSettings } from './WhatsAppReportSettings';
@@ -14,6 +14,7 @@ import { WebhookLogsViewer } from './WebhookLogsViewer';
 import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
+import { VoiceSettings } from '@/components/voice/VoiceSettings';
 
 interface Tab {
   id: string;
@@ -52,6 +53,15 @@ const tabs: Tab[] = [
     badge: '🆕 Novo',
     badgeVariant: 'default',
     accentColor: 'text-pink-500',
+  },
+  {
+    id: 'voice',
+    label: 'Voz (TTS)',
+    icon: <Volume2 className="h-5 w-5" />,
+    description: 'Escolha ou clone sua voz',
+    badge: '🆕 Novo',
+    badgeVariant: 'default',
+    accentColor: 'text-cyan-500',
   },
   {
     id: 'notifications',
@@ -211,6 +221,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'agents' && <WhatsAppAIAgents />}
             {activeTab === 'commands' && <WhatsAppCommandConfig />}
             {activeTab === 'notifications' && <WhatsAppNotificationSettings />}
+            {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
             {activeTab === 'integration' && <WhatsAppSetupGuide />}

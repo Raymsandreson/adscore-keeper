@@ -90,7 +90,7 @@ async function transcribeWithElevenLabs(mediaUrl: string): Promise<string | null
   }
 }
 
-async function generateTTSAudio(text: string): Promise<string | null> {
+async function generateTTSAudio(text: string, voiceId?: string): Promise<string | null> {
   const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -116,9 +116,9 @@ async function generateTTSAudio(text: string): Promise<string | null> {
     const truncated = cleanText.length > 500 ? cleanText.substring(0, 500) + "..." : cleanText;
 
     // Use Laura voice (Portuguese-friendly) with multilingual model
-    const voiceId = "FGY2WhTYpPnrIDTdsKH5"; // Laura
+    const finalVoiceId = voiceId || "FGY2WhTYpPnrIDTdsKH5"; // Laura default
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_22050_32`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${finalVoiceId}?output_format=mp3_22050_32`,
       {
         method: "POST",
         headers: {
@@ -221,10 +221,22 @@ async function sendWhatsAppList(baseUrl: string, token: string, number: string, 
 // ── Batch collection markers ──
 const COLLECTING_MARKER = "__COLLECTING__";
 const FINISH_KEYWORDS = ["pronto", "executar", "só isso", "somente isso", "pode executar", "finalizar", "é isso", "isso é tudo", "pode fazer", "manda", "envia", "go", "ok pronto", "feito"];
+const AUDIO_YES_KEYWORDS = ["sim", "s", "yes", "quero", "manda", "envia", "gera", "pode", "ok", "1"];
+const AUDIO_NO_KEYWORDS = ["nao", "não", "n", "no", "nope", "sem audio", "sem áudio", "2"];
 
 function isFinishMessage(text: string): boolean {
   const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
   return FINISH_KEYWORDS.some(k => normalized === k || normalized.startsWith(k + " ") || normalized.endsWith(" " + k));
+}
+
+function isAudioYes(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
+  return AUDIO_YES_KEYWORDS.some(k => normalized === k);
+}
+
+function isAudioNo(text: string): boolean {
+  const normalized = text.trim().toLowerCase().replace(/[.!?,]/g, "");
+  return AUDIO_NO_KEYWORDS.some(k => normalized === k);
 }
 
 serve(async (req) => {
@@ -330,6 +342,7 @@ serve(async (req) => {
 
     const lastAssistantMsg = (recentHistory || []).find((m: any) => m.role === "assistant");
     const isInCollectingMode = lastAssistantMsg?.tool_data?.collecting === true;
+    const isAwaitingAudioConfirm = lastAssistantMsg?.tool_data?.awaiting_audio_confirm === true;
     const isFinish = message_text ? isFinishMessage(message_text) : false;
 
     // Get WhatsApp instance for sending messages
@@ -340,6 +353,66 @@ serve(async (req) => {
       .maybeSingle();
     const baseUrl = inst?.base_url || "https://abraci.uazapi.com";
     const instToken = inst?.instance_token || "";
+
+    // ── CASE 0: Awaiting audio confirmation (SIM/NÃO) ──
+    if (isAwaitingAudioConfirm && message_text) {
+      const wantsAudio = isAudioYes(message_text);
+      const declinesAudio = isAudioNo(message_text);
+
+      if (wantsAudio) {
+        // Generate and send TTS audio of the last response
+        const lastResponseText = lastAssistantMsg?.content || "";
+        await supabase.from("whatsapp_command_history").insert({
+          phone: normalizedPhone, instance_name, role: "user", content: message_text,
+        });
+
+        if (instToken) {
+          await sendWhatsAppText(baseUrl, instToken, normalizedPhone, "🤖 *WhatsJUD IA*\n\n🔊 Gerando áudio...").catch(() => {});
+        }
+
+        // Get user's voice preference
+        const { data: voicePref } = await supabase
+          .from("voice_preferences")
+          .select("voice_id")
+          .eq("user_id", config.user_id)
+          .maybeSingle();
+
+        const audioUrl = await generateTTSAudio(lastResponseText, voicePref?.voice_id);
+        
+        let ackMsg = "";
+        if (audioUrl && instToken) {
+          await sendWhatsAppAudio(baseUrl, instToken, normalizedPhone, audioUrl);
+          ackMsg = "✅ Áudio enviado!";
+        } else {
+          ackMsg = "⚠️ Não foi possível gerar o áudio.";
+        }
+
+        await supabase.from("whatsapp_command_history").insert({
+          phone: normalizedPhone, instance_name, role: "assistant", content: ackMsg, tool_data: {},
+        });
+
+        return new Response(JSON.stringify({ success: true, status: "audio_sent" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (declinesAudio) {
+        await supabase.from("whatsapp_command_history").insert([
+          { phone: normalizedPhone, instance_name, role: "user", content: message_text },
+          { phone: normalizedPhone, instance_name, role: "assistant", content: "👍 Ok!", tool_data: {} },
+        ]);
+        if (instToken) {
+          await sendWhatsAppText(baseUrl, instToken, normalizedPhone, "🤖 *WhatsJUD IA*\n\n👍 Ok!").catch(() => {});
+        }
+        return new Response(JSON.stringify({ success: true, status: "audio_declined" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // If neither yes nor no, treat as a new command (fall through)
+    }
+
+    // Instance already fetched above
+
 
     // ── CASE 1: First message (not in collecting mode) → Start collecting ──
     if (!isInCollectingMode && !isFinish) {
@@ -1020,28 +1093,25 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
       }
     }
 
+    // Determine if we should ask about audio (only for activity/lead creation)
+    const createdSomething = toolData?.activity_created || toolData?.lead_created;
+    const pendingAudioConfirm = createdSomething;
+
     // 5) Save AI response
     await supabase.from("whatsapp_command_history").insert({
-      phone: normalizedPhone, instance_name, role: "assistant", content: responseText, tool_data: toolData,
+      phone: normalizedPhone, instance_name, role: "assistant", content: responseText,
+      tool_data: { ...toolData, ...(pendingAudioConfirm ? { awaiting_audio_confirm: true } : {}) },
     });
 
-    // 6) Send response via WhatsApp (inst already fetched above)
+    // 6) Send response via WhatsApp
     if (instToken) {
       try {
-        // Send text message
-        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, `🤖 *WhatsJUD IA*\n\n${responseText}`);
-        console.log("Response sent to WhatsApp:", normalizedPhone);
-
-        // Generate and send TTS audio of the response
-        try {
-          const audioUrl = await generateTTSAudio(responseText);
-          if (audioUrl) {
-            await sendWhatsAppAudio(baseUrl, instToken, normalizedPhone, audioUrl);
-            console.log("TTS audio sent to WhatsApp:", normalizedPhone);
-          }
-        } catch (ttsErr) {
-          console.error("TTS generation/send error (non-blocking):", ttsErr);
+        let fullMsg = `🤖 *WhatsJUD IA*\n\n${responseText}`;
+        if (pendingAudioConfirm) {
+          fullMsg += `\n\n🔊 Quer que eu envie um *áudio* explicando essa mensagem?\n_Responda *SIM* ou *NÃO*_`;
         }
+        await sendWhatsAppText(baseUrl, instToken, normalizedPhone, fullMsg);
+        console.log("Response sent to WhatsApp:", normalizedPhone);
       } catch (e) {
         console.error("Error sending response:", e);
       }
