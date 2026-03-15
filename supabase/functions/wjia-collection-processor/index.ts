@@ -250,6 +250,8 @@ serve(async (req) => {
               contact_id: session.contact_id || null,
               sent_via_whatsapp: true,
               whatsapp_phone: normalizedPhone,
+              notify_on_signature: session.notify_on_signature !== false,
+              send_signed_pdf: session.send_signed_pdf !== false,
             });
 
             if (inst?.instance_token && signUrl) {

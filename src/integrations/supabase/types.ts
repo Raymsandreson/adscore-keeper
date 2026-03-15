@@ -6642,9 +6642,11 @@ export type Database = {
           instance_name: string
           lead_id: string | null
           missing_fields: Json | null
+          notify_on_signature: boolean
           phone: string
           prompt_instructions: string | null
           required_fields: Json | null
+          send_signed_pdf: boolean
           sign_url: string | null
           status: string | null
           template_name: string | null
@@ -6661,9 +6663,11 @@ export type Database = {
           instance_name: string
           lead_id?: string | null
           missing_fields?: Json | null
+          notify_on_signature?: boolean
           phone: string
           prompt_instructions?: string | null
           required_fields?: Json | null
+          send_signed_pdf?: boolean
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
@@ -6680,9 +6684,11 @@ export type Database = {
           instance_name?: string
           lead_id?: string | null
           missing_fields?: Json | null
+          notify_on_signature?: boolean
           phone?: string
           prompt_instructions?: string | null
           required_fields?: Json | null
+          send_signed_pdf?: boolean
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
@@ -6700,7 +6706,9 @@ export type Database = {
           followup_steps: Json | null
           id: string
           is_active: boolean | null
+          notify_on_signature: boolean
           prompt_instructions: string | null
+          send_signed_pdf: boolean
           shortcut_name: string
           template_name: string | null
           template_token: string | null
@@ -6713,7 +6721,9 @@ export type Database = {
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
+          notify_on_signature?: boolean
           prompt_instructions?: string | null
+          send_signed_pdf?: boolean
           shortcut_name: string
           template_name?: string | null
           template_token?: string | null
@@ -6726,7 +6736,9 @@ export type Database = {
           followup_steps?: Json | null
           id?: string
           is_active?: boolean | null
+          notify_on_signature?: boolean
           prompt_instructions?: string | null
+          send_signed_pdf?: boolean
           shortcut_name?: string
           template_name?: string | null
           template_token?: string | null
@@ -6971,7 +6983,9 @@ export type Database = {
           id: string
           lead_id: string | null
           legal_case_id: string | null
+          notify_on_signature: boolean
           original_file_url: string | null
+          send_signed_pdf: boolean
           sent_via_whatsapp: boolean | null
           sign_url: string | null
           signed_at: string | null
@@ -6997,7 +7011,9 @@ export type Database = {
           id?: string
           lead_id?: string | null
           legal_case_id?: string | null
+          notify_on_signature?: boolean
           original_file_url?: string | null
+          send_signed_pdf?: boolean
           sent_via_whatsapp?: boolean | null
           sign_url?: string | null
           signed_at?: string | null
@@ -7023,7 +7039,9 @@ export type Database = {
           id?: string
           lead_id?: string | null
           legal_case_id?: string | null
+          notify_on_signature?: boolean
           original_file_url?: string | null
+          send_signed_pdf?: boolean
           sent_via_whatsapp?: boolean | null
           sign_url?: string | null
           signed_at?: string | null

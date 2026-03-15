@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,8 @@ interface Shortcut {
   is_active: boolean;
   display_order: number;
   followup_steps: FollowupStep[];
+  notify_on_signature: boolean;
+  send_signed_pdf: boolean;
 }
 
 interface FollowupStep {
@@ -245,7 +248,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiEditConfig, setAiEditConfig] = useState<{ shortcut_name: string; description: string; prompt_instructions: string; followup_steps: FollowupStep[] } | null>(null);
-  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+  const [form, setForm] = useState({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true });
   const [followupSteps, setFollowupSteps] = useState<FollowupStep[]>([]);
   const [zapsignTemplates, setZapsignTemplates] = useState<ZapSignTemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -273,7 +276,7 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
   }, [showForm, loadZapSignTemplates]);
 
   const resetForm = () => {
-    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '' });
+    setForm({ shortcut_name: '', description: '', template_token: '', template_name: '', prompt_instructions: '', notify_on_signature: true, send_signed_pdf: true });
     setFollowupSteps([]);
     setEditingId(null);
     setShowForm(false);
@@ -299,6 +302,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_token: s.template_token || '',
       template_name: s.template_name || '',
       prompt_instructions: s.prompt_instructions || '',
+      notify_on_signature: s.notify_on_signature !== false,
+      send_signed_pdf: s.send_signed_pdf !== false,
     });
     setFollowupSteps(s.followup_steps || []);
     setEditingId(s.id);
@@ -326,6 +331,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       template_name: form.template_name || null,
       prompt_instructions: form.prompt_instructions || null,
       followup_steps: followupSteps,
+      notify_on_signature: form.notify_on_signature,
+      send_signed_pdf: form.send_signed_pdf,
     };
 
     let error;
@@ -383,6 +390,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
               template_token: '',
               template_name: '',
               prompt_instructions: config.prompt_instructions,
+              notify_on_signature: true,
+              send_signed_pdf: true,
             });
             setFollowupSteps(config.followup_steps || []);
             setShowForm(true);
@@ -430,6 +439,32 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                 <p className="text-[10px] text-muted-foreground">✅ {form.template_name}</p>
               )}
             </div>
+            {/* Opções pós-assinatura */}
+            {form.template_token && (
+              <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                <Label className="text-xs font-semibold">📋 Após assinatura do documento</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="notify_on_signature"
+                    checked={form.notify_on_signature}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, notify_on_signature: !!checked }))}
+                  />
+                  <Label htmlFor="notify_on_signature" className="text-xs cursor-pointer">
+                    Avisar quando o documento for assinado
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="send_signed_pdf"
+                    checked={form.send_signed_pdf}
+                    onCheckedChange={(checked) => setForm(f => ({ ...f, send_signed_pdf: !!checked }))}
+                  />
+                  <Label htmlFor="send_signed_pdf" className="text-xs cursor-pointer">
+                    Enviar o PDF assinado via WhatsApp
+                  </Label>
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Instruções do Prompt (como o robô deve agir)</Label>
               <Textarea
@@ -569,6 +604,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
                       template_token: form.template_token,
                       template_name: form.template_name,
                       prompt_instructions: config.prompt_instructions,
+                      notify_on_signature: form.notify_on_signature,
+                      send_signed_pdf: form.send_signed_pdf,
                     });
                     setFollowupSteps(config.followup_steps || []);
                     setEditingId(s.id);
