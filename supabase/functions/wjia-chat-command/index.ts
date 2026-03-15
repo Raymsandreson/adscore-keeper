@@ -443,6 +443,8 @@ async function generateAndSendDocument(opts: {
     contact_id: contact_id || null,
     sent_via_whatsapp: true,
     whatsapp_phone: normalizedPhone,
+    notify_on_signature: notifyOnSignature,
+    send_signed_pdf: sendSignedPdf,
   });
 
   // Update collection session if exists

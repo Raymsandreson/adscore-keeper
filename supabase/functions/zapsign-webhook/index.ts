@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
       }
 
       // Send signed PDF via WhatsApp
-      if (localDoc.whatsapp_phone) {
+      if (localDoc.whatsapp_phone && localDoc.send_signed_pdf !== false) {
         console.log('All signatures collected! Sending signed PDF via WhatsApp to:', localDoc.whatsapp_phone)
 
         try {
