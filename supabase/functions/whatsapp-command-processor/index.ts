@@ -411,14 +411,8 @@ serve(async (req) => {
       // If neither yes nor no, treat as a new command (fall through)
     }
 
-    // Get WhatsApp instance for sending messages
-    const { data: inst } = await supabase
-      .from("whatsapp_instances")
-      .select("instance_token, base_url")
-      .eq("instance_name", instance_name)
-      .maybeSingle();
-    const baseUrl = inst?.base_url || "https://abraci.uazapi.com";
-    const instToken = inst?.instance_token || "";
+    // Instance already fetched above
+
 
     // ── CASE 1: First message (not in collecting mode) → Start collecting ──
     if (!isInCollectingMode && !isFinish) {
