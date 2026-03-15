@@ -538,7 +538,7 @@ REGRAS:
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
       
       if (session.status === 'collecting') {
-        // First time all data collected → show summary, move to "confirming"
+        // First time all data collected → show summary, move to "ready" (awaiting confirmation)
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
@@ -548,13 +548,13 @@ REGRAS:
 
         const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
-        // Update status to "confirming"
-        await supabase
+        // Update status to "ready" (compatible with DB status check)
+        const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
           .update({
             collected_data: updatedCollectedData,
             missing_fields: [],
-            status: "confirming",
+            status: "ready",
             updated_at: new Date().toISOString(),
           })
           .eq("id", session.id);
