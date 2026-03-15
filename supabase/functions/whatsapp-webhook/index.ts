@@ -1365,6 +1365,174 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ========== AGENT CONTROL COMMANDS (#parar, #ativar, #status) ==========
+    if (direction === 'outbound' && instanceName && phone && messageText) {
+      const cmdTrimmed = (messageText || '').trim().toLowerCase()
+      const isAgentCommand = ['#parar', '#ativar', '#status'].includes(cmdTrimmed)
+
+      if (isAgentCommand) {
+        console.log('Agent control command detected:', cmdTrimmed, 'phone:', phone, 'instance:', instanceName)
+        try {
+          // Delete the command message from WhatsApp so contact doesn't see it
+          if (externalMessageId) {
+            let resolvedToken = instanceToken
+            let resolvedBaseUrl = baseUrl
+            if (!resolvedToken || !resolvedBaseUrl) {
+              const { data: inst } = await supabase
+                .from('whatsapp_instances')
+                .select('instance_token, base_url')
+                .eq('instance_name', instanceName)
+                .limit(1)
+                .maybeSingle()
+              if (inst) {
+                resolvedToken = resolvedToken || inst.instance_token
+                resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+              }
+            }
+            if (resolvedToken && resolvedBaseUrl) {
+              fetch(`${resolvedBaseUrl}/message/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                body: JSON.stringify({ id: externalMessageId }),
+              }).catch(e => console.error('Error deleting agent command message:', e))
+            }
+          }
+
+          // Delete from DB so it doesn't show in inbox
+          if (message?.id) {
+            await supabase.from('whatsapp_messages').delete().eq('id', message.id)
+          }
+
+          if (cmdTrimmed === '#parar') {
+            // Deactivate agent on this conversation
+            const { data: existing } = await supabase
+              .from('whatsapp_conversation_agents')
+              .select('agent_id, is_active')
+              .eq('phone', phone)
+              .eq('instance_name', instanceName)
+              .maybeSingle()
+
+            if (existing && (existing as any).is_active) {
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: false } as any)
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+
+              // Get agent name for confirmation
+              const { data: agentData } = await supabase
+                .from('whatsapp_ai_agents')
+                .select('name')
+                .eq('id', (existing as any).agent_id)
+                .maybeSingle()
+
+              console.log(`Agent "${(agentData as any)?.name}" deactivated for ${phone} via #parar command`)
+            } else {
+              console.log(`No active agent to deactivate for ${phone}`)
+            }
+          } else if (cmdTrimmed === '#ativar') {
+            // Reactivate agent on this conversation
+            const { data: existing } = await supabase
+              .from('whatsapp_conversation_agents')
+              .select('agent_id, is_active')
+              .eq('phone', phone)
+              .eq('instance_name', instanceName)
+              .maybeSingle()
+
+            if (existing && !(existing as any).is_active) {
+              await supabase
+                .from('whatsapp_conversation_agents')
+                .update({ is_active: true, human_paused_until: null } as any)
+                .eq('phone', phone)
+                .eq('instance_name', instanceName)
+
+              const { data: agentData } = await supabase
+                .from('whatsapp_ai_agents')
+                .select('name')
+                .eq('id', (existing as any).agent_id)
+                .maybeSingle()
+
+              console.log(`Agent "${(agentData as any)?.name}" reactivated for ${phone} via #ativar command`)
+            } else if (!existing) {
+              console.log(`No agent assigned to ${phone} to reactivate`)
+            } else {
+              console.log(`Agent already active for ${phone}`)
+            }
+          } else if (cmdTrimmed === '#status') {
+            // Check agent status - log it (the message was already deleted)
+            const { data: existing } = await supabase
+              .from('whatsapp_conversation_agents')
+              .select('agent_id, is_active, human_paused_until')
+              .eq('phone', phone)
+              .eq('instance_name', instanceName)
+              .maybeSingle()
+
+            let statusText = '🤖 Nenhum agente atribuído a esta conversa.'
+            if (existing) {
+              const { data: agentData } = await supabase
+                .from('whatsapp_ai_agents')
+                .select('name')
+                .eq('id', (existing as any).agent_id)
+                .maybeSingle()
+
+              const agentName = (agentData as any)?.name || 'Desconhecido'
+              const isActive = (existing as any).is_active
+              const pausedUntil = (existing as any).human_paused_until
+
+              if (!isActive) {
+                statusText = `🤖 Agente "${agentName}" está *DESATIVADO* nesta conversa.`
+              } else if (pausedUntil && new Date(pausedUntil) > new Date()) {
+                const pausedDate = new Date(pausedUntil)
+                const timeStr = pausedDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                statusText = `🤖 Agente "${agentName}" está *PAUSADO* (humano) até ${timeStr}.`
+              } else {
+                statusText = `🤖 Agente "${agentName}" está *ATIVO* nesta conversa.`
+              }
+            }
+
+            // Send status reply via the instance
+            let resolvedToken = instanceToken
+            let resolvedBaseUrl = baseUrl
+            if (!resolvedToken || !resolvedBaseUrl) {
+              const { data: inst } = await supabase
+                .from('whatsapp_instances')
+                .select('instance_token, base_url')
+                .eq('instance_name', instanceName)
+                .limit(1)
+                .maybeSingle()
+              if (inst) {
+                resolvedToken = resolvedToken || inst.instance_token
+                resolvedBaseUrl = resolvedBaseUrl || inst.base_url
+              }
+            }
+            if (resolvedToken && resolvedBaseUrl) {
+              // Send to self (owner) - use the phone of the conversation
+              await fetch(`${resolvedBaseUrl}/send/text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'token': resolvedToken },
+                body: JSON.stringify({ number: phone, text: statusText }),
+              })
+              console.log('Agent status sent to conversation:', phone)
+            }
+          }
+
+          const respData = {
+            success: true,
+            message_id: message.id,
+            agent_command: cmdTrimmed,
+            instance_name: instanceName,
+          }
+          await logWebhook('agent_command_processed', respData)
+          return new Response(
+            JSON.stringify(respData),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        } catch (e) {
+          console.error('Agent command processing error:', e)
+        }
+      }
+    }
+
     // ========== AI AGENT AUTO-REPLY ==========
     if (direction === 'inbound' && instanceName && phone) {
       try {
