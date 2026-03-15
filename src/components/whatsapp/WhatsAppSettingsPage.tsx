@@ -47,10 +47,10 @@ const tabs: Tab[] = [
   },
   {
     id: 'commands',
-    label: 'Comandos WhatsApp',
+    label: 'Assistente IA',
     icon: <Sparkles className="h-5 w-5" />,
-    description: 'Chat IA via WhatsApp',
-    badge: '🆕 Novo',
+    description: 'Atalhos inteligentes @wjia',
+    badge: '✨ IA',
     badgeVariant: 'default',
     accentColor: 'text-pink-500',
   },

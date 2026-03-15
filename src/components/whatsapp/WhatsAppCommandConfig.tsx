@@ -114,7 +114,7 @@ export function WhatsAppCommandConfig() {
             <Shield className="h-3.5 w-3.5" /> Autorizados
           </TabsTrigger>
           <TabsTrigger value="shortcuts" className="text-xs gap-1">
-            <Zap className="h-3.5 w-3.5" /> Atalhos & Follow-up
+            <Zap className="h-3.5 w-3.5" /> Assistentes & Follow-up
           </TabsTrigger>
         </TabsList>
 
