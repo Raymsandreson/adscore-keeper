@@ -31,11 +31,18 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
       if (contactId) {
         const { data: contact } = await supabase
           .from('contacts')
-          .select('full_name, phone')
+          .select('full_name, phone, whatsapp_group_id')
           .eq('id', contactId)
-          .maybeSingle();
+          .maybeSingle() as any;
         if (contact?.phone) {
           results.push({ label: `${contact.full_name} (${contact.phone})`, phone: contact.phone });
+        }
+        if (contact?.whatsapp_group_id) {
+          results.push({
+            label: `👥 Grupo ${contact.full_name}`,
+            phone: contact.whatsapp_group_id,
+            chatId: contact.whatsapp_group_id,
+          });
         }
       }
 
@@ -55,14 +62,28 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
           }
         }
 
-        // Check if lead has a whatsapp group
+        // Check lead's registered group and name
         const { data: lead } = await supabase
           .from('leads')
-          .select('lead_name')
+          .select('lead_name, whatsapp_group_id, lead_phone')
           .eq('id', leadId)
-          .maybeSingle();
+          .maybeSingle() as any;
 
-        // Look for group chats associated with the lead (phone containing @g.us)
+        // If lead has a registered WhatsApp group ID, use it
+        if (lead?.whatsapp_group_id) {
+          results.push({
+            label: `👥 Grupo ${lead.lead_name || 'do Lead'}`,
+            phone: lead.whatsapp_group_id,
+            chatId: lead.whatsapp_group_id,
+          });
+        }
+
+        // If lead has a phone, add it
+        if (lead?.lead_phone && !results.some(r => r.phone === lead.lead_phone)) {
+          results.push({ label: `${lead.lead_name || 'Lead'} (${lead.lead_phone})`, phone: lead.lead_phone });
+        }
+
+        // Also auto-detect groups from message history
         const { data: groupMsgs } = await supabase
           .from('whatsapp_messages')
           .select('phone')
@@ -71,13 +92,13 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
           .limit(5);
 
         if (groupMsgs) {
-          const seenGroups = new Set<string>();
+          const seenGroups = new Set<string>(lead?.whatsapp_group_id ? [lead.whatsapp_group_id] : []);
           for (const msg of groupMsgs) {
             const groupPhone = msg.phone;
             if (groupPhone && !seenGroups.has(groupPhone)) {
               seenGroups.add(groupPhone);
               results.push({
-                label: `👥 Grupo ${lead?.lead_name || 'do Lead'}`,
+                label: `👥 Grupo detectado (${groupPhone.split('@')[0].slice(-6)})`,
                 phone: groupPhone,
                 chatId: groupPhone,
               });

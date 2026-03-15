@@ -138,6 +138,7 @@ export function ContactDetailSheet({
   const [professionCboCode, setProfessionCboCode] = useState('');
   const [professionSearch, setProfessionSearch] = useState('');
   const [filteredProfessions, setFilteredProfessions] = useState<any[]>([]);
+  const [whatsappGroupId, setWhatsappGroupId] = useState('');
 
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
@@ -185,6 +186,7 @@ export function ContactDetailSheet({
       setProfession((contact as any).profession || '');
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
+      setWhatsappGroupId((contact as any).whatsapp_group_id || '');
       setIsEditing(true);
       
       // Fetch profile name for created_by
@@ -273,6 +275,7 @@ export function ContactDetailSheet({
           follower_status: followerStatus || 'none',
           profession: profession || null,
           profession_cbo_code: professionCboCode || null,
+          whatsapp_group_id: whatsappGroupId || null,
         })
         .eq('id', contact.id);
 
@@ -635,6 +638,17 @@ export function ContactDetailSheet({
                           />
                         )}
                       </div>
+                    </div>
+
+                    <div>
+                      <Label className="flex items-center gap-1">
+                        👥 Grupo WhatsApp (ID)
+                      </Label>
+                      <Input
+                        value={whatsappGroupId}
+                        onChange={(e) => setWhatsappGroupId(e.target.value)}
+                        placeholder="120363xxxxx@g.us"
+                      />
                     </div>
 
                     <div>

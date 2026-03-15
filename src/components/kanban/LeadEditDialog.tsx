@@ -176,6 +176,7 @@ export function LeadEditDialog({
   const [acolhedor, setAcolhedor] = useState('');
   const profiles = useProfilesList();
   const [groupLink, setGroupLink] = useState('');
+  const [whatsappGroupId, setWhatsappGroupId] = useState('');
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'closed' | 'refused' | 'in_progress'>('');
@@ -250,6 +251,7 @@ export function LeadEditDialog({
       setNotes(lead.notes || '');
       setAcolhedor(leadAny.acolhedor || '');
       setGroupLink(leadAny.group_link || '');
+      setWhatsappGroupId(leadAny.whatsapp_group_id || '');
       setClientClassification(lead.client_classification || '');
       setExpectedBirthDate(leadAny.expected_birth_date || '');
       setSelectedBoardId(leadAny.board_id || '');
@@ -580,6 +582,7 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
         client_classification: (clientClassification || null) as 'client' | 'non_client' | 'prospect' | null,
         acolhedor: acolhedor || null,
         group_link: groupLink || null,
+        whatsapp_group_id: whatsappGroupId || null,
         // Accident fields
         victim_name: victimName || null,
         victim_age: victimAge ? parseInt(victimAge) : null,
@@ -879,12 +882,21 @@ ${scrapeData.data?.markdown || scrapeData.data?.content || ''}
                   </Select>
                 </div>
 
-                <div className="col-span-2">
+                <div>
                   <Label>Link da Notícia</Label>
                   <Input
                     value={groupLink}
                     onChange={(e) => setGroupLink(e.target.value)}
                     placeholder="https://chat.whatsapp.com/..."
+                  />
+                </div>
+
+                <div>
+                  <Label>Grupo WhatsApp (ID)</Label>
+                  <Input
+                    value={whatsappGroupId}
+                    onChange={(e) => setWhatsappGroupId(e.target.value)}
+                    placeholder="120363xxxxx@g.us"
                   />
                 </div>
 
