@@ -6642,9 +6642,11 @@ export type Database = {
           instance_name: string
           lead_id: string | null
           missing_fields: Json | null
+          notify_on_signature: boolean
           phone: string
           prompt_instructions: string | null
           required_fields: Json | null
+          send_signed_pdf: boolean
           sign_url: string | null
           status: string | null
           template_name: string | null
@@ -6661,9 +6663,11 @@ export type Database = {
           instance_name: string
           lead_id?: string | null
           missing_fields?: Json | null
+          notify_on_signature?: boolean
           phone: string
           prompt_instructions?: string | null
           required_fields?: Json | null
+          send_signed_pdf?: boolean
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
@@ -6680,9 +6684,11 @@ export type Database = {
           instance_name?: string
           lead_id?: string | null
           missing_fields?: Json | null
+          notify_on_signature?: boolean
           phone?: string
           prompt_instructions?: string | null
           required_fields?: Json | null
+          send_signed_pdf?: boolean
           sign_url?: string | null
           status?: string | null
           template_name?: string | null
