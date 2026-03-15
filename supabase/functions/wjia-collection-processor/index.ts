@@ -138,11 +138,42 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { phone, instance_name, message_text, media_url, media_type, message_type } = await req.json();
+    let { phone, instance_name, message_text, media_url, media_type, message_type } = await req.json();
     if (!phone || !instance_name) {
       return new Response(JSON.stringify({ error: "phone and instance_name required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // === PRE-PROCESS AUDIO: Transcribe audio messages using Gemini ===
+    const isAudio = message_type === 'audio' || message_type === 'ptt' || (media_type && media_type.startsWith('audio/'));
+    if (isAudio && media_url && !message_text) {
+      try {
+        console.log("Transcribing audio message via Gemini...");
+        const transcriptionResult = await geminiChat({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você é um transcritor de áudio. Transcreva EXATAMENTE o que a pessoa disse no áudio, sem adicionar nada. Retorne apenas a transcrição literal." },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Transcreva este áudio:" },
+                { type: "image_url", image_url: { url: media_url } },
+              ],
+            },
+          ],
+          temperature: 0.1,
+        });
+
+        const transcription = transcriptionResult.choices?.[0]?.message?.content;
+        if (transcription && transcription.trim()) {
+          message_text = transcription.trim();
+          console.log("Audio transcribed:", message_text.substring(0, 100));
+        }
+      } catch (audioErr) {
+        console.error("Audio transcription error:", audioErr);
+        // Continue without transcription
+      }
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
