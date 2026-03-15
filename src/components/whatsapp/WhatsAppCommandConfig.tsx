@@ -99,9 +99,9 @@ export function WhatsAppCommandConfig() {
           <div className="flex items-start gap-3">
             <Sparkles className="h-5 w-5 text-primary mt-0.5 shrink-0" />
             <div className="space-y-1">
-              <p className="text-sm font-medium">Sistema de Comandos @wjia</p>
+              <p className="text-sm font-medium">Assistente IA @wjia</p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Configure números autorizados e atalhos de comandos com regras de follow-up integradas.
+                Configure números autorizados e assistentes IA com regras de follow-up integradas.
               </p>
             </div>
           </div>
