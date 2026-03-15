@@ -337,6 +337,8 @@ function ShortcutsTab({ shortcuts, profiles, onReload }: { shortcuts: Shortcut[]
       followup_steps: followupSteps,
       notify_on_signature: form.notify_on_signature,
       send_signed_pdf: form.send_signed_pdf,
+      request_documents: form.request_documents,
+      document_types: form.document_types,
     };
 
     let error;
