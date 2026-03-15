@@ -704,7 +704,7 @@ REGRAS:
       const isConfirmation = /^(sim|confirmo|correto|ok|está certo|tá certo|pode gerar|gerar|isso|exato|confirmar|pode|certo|tudo certo|ta certo)/.test(msgLower);
       
       if (session.status === 'collecting') {
-        // First time all data collected → show summary, move to "ready" (awaiting confirmation)
+        // First time all data collected
         const summaryLines = updatedFields
           .filter((f: any) => f.para)
           .map((f: any) => {
@@ -712,9 +712,55 @@ REGRAS:
             return `• *${label}*: ${f.para}`;
           }).join('\n');
 
+        // Check if we need to collect documents
+        const needsDocs = session.request_documents && Array.isArray(session.document_types) && session.document_types.length > 0;
+        const docTypeLabels: Record<string, string> = {
+          rg_cnh: 'RG / CNH',
+          comprovante_endereco: 'Comprovante de endereço',
+          comprovante_renda: 'Comprovante de renda',
+          outros: 'Outros documentos',
+        };
+
+        if (needsDocs) {
+          // Move to collecting_docs phase
+          const docNames = session.document_types.map((t: string) => docTypeLabels[t] || t).join('\n• ');
+          const docsMsg = `✅ *Todos os dados foram coletados!*\n\n${summaryLines}\n\n📎 Agora preciso que envie os seguintes documentos:\n• ${docNames}\n\nEnvie a *foto ou arquivo* de cada documento. Se não tiver algum agora, digite *pular*.`;
+
+          await supabase
+            .from("wjia_collection_sessions")
+            .update({
+              collected_data: updatedCollectedData,
+              missing_fields: [],
+              status: "collecting_docs",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", session.id);
+
+          if (inst?.instance_token) {
+            const baseUrl = inst.base_url || "https://abraci.uazapi.com";
+            await fetch(`${baseUrl}/send/text`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", token: inst.instance_token },
+              body: JSON.stringify({ number: normalizedPhone, text: docsMsg }),
+            }).catch(e => console.error("Error sending docs request:", e));
+
+            await supabase.from("whatsapp_messages").insert({
+              phone: normalizedPhone, instance_name,
+              message_text: docsMsg, message_type: "text", direction: "outbound",
+              contact_id: session.contact_id || null, lead_id: session.lead_id || null,
+              external_message_id: `wjia_docs_req_${Date.now()}`,
+            });
+          }
+
+          return new Response(JSON.stringify({
+            active_session: true, processed: true, all_collected: true,
+            collecting_docs: true, session_id: session.id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // No docs needed → go straight to confirmation (ready)
         const summaryMsg = `✅ *Todos os dados foram coletados!*\n\nConfira as informações antes de gerar o documento *${session.template_name}*:\n\n${summaryLines}\n\n📋 Está tudo correto? Responda *SIM* para gerar o documento ou me diga o que precisa corrigir.`;
 
-        // Update status to "ready" (compatible with DB status check)
         const { error: setReadyError } = await supabase
           .from("wjia_collection_sessions")
           .update({
@@ -729,7 +775,6 @@ REGRAS:
           console.error("Error setting WJIA session to ready:", setReadyError);
         }
 
-        // Send summary
         if (inst?.instance_token) {
           const baseUrl = inst.base_url || "https://abraci.uazapi.com";
           await fetch(`${baseUrl}/send/text`, {
@@ -739,23 +784,16 @@ REGRAS:
           }).catch(e => console.error("Error sending summary:", e));
 
           await supabase.from("whatsapp_messages").insert({
-            phone: normalizedPhone,
-            instance_name,
-            message_text: summaryMsg,
-            message_type: "text",
-            direction: "outbound",
-            contact_id: session.contact_id || null,
-            lead_id: session.lead_id || null,
+            phone: normalizedPhone, instance_name,
+            message_text: summaryMsg, message_type: "text", direction: "outbound",
+            contact_id: session.contact_id || null, lead_id: session.lead_id || null,
             external_message_id: `wjia_summary_${Date.now()}`,
           });
         }
 
         return new Response(JSON.stringify({
-          active_session: true,
-          processed: true,
-          all_collected: true,
-          awaiting_confirmation: true,
-          session_id: session.id,
+          active_session: true, processed: true, all_collected: true,
+          awaiting_confirmation: true, session_id: session.id,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
